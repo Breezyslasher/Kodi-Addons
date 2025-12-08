@@ -12,4 +12,75 @@
             <platform>all</platform>
         </extension>
     </addon>
+    <addon id="context.plexkodiconnect.download" version="1.0.0" name="PlexKodiConnect Download" provider-name="Breezyslasher">
+        <requires>
+            <import addon="xbmc.python" version="3.0.0"/>
+        </requires>
+        <extension point="kodi.context.item">
+            <menu id="kodi.core.main">
+                <item library="default.py">
+                    <label>Download from Plex</label>
+                    <visible>
+                        [String.Contains(ListItem.Path,plex)] | 
+                        [String.Contains(ListItem.Path,plugin://plugin.audio.plexkodiconnect)] |
+                        [String.StartsWith(ListItem.Path,musicdb://)] |
+                        [String.StartsWith(ListItem.Path,videodb://tvshows)] |
+                        [String.IsEqual(Container.Content,artists)] |
+                        [String.IsEqual(Container.Content,albums)] |
+                        [String.IsEqual(Container.Content,songs)]
+                    </visible>
+                </item>
+            </menu>
+        </extension>
+        <extension point="xbmc.addon.metadata">
+            <assets>
+                <icon>icon.png</icon>
+            </assets>
+            <summary lang="en_GB">Download Plex media for offline viewing/listening</summary>
+            <description lang="en_GB">Adds a context menu option to download movies, TV shows, and music from PlexKodiConnect to your Kodi device for offline use. Supports downloading individual items, entire albums/seasons, or full artists/shows.</description>
+            <language>en</language>
+            <platform>all</platform>
+            <license>MIT</license>
+        </extension>
+    </addon>
+
+    <addon id="script.audiobookshelf.simpleclient" name="Audiobookshelf SimpleClient" version="0.0.5" provider-name="Breezyslasher">
+    	<requires>
+    		<import addon="xbmc.python" version="3.0.0"/>
+    		<import addon="script.module.requests" version="2.31.0" />
+    	</requires>
+    	<extension point="xbmc.python.script" library="default.py">
+    		<provides>executable</provides>
+    	</extension>
+    	<extension point="xbmc.addon.metadata">
+    		<summary lang="en_GB">Audiobookshelf simple client for KODI</summary>
+    		<description lang="en_GB">Connect your Kodi installation to an Audiobookshelf server and stream audiobooks directly within Kodi. Supports well-tagged M4B files with chapter information.</description>
+    		<language></language>
+    		<platform>all</platform>
+    		<license>GPL-3.0-or-later</license>
+    		<source>https://github.com/platzregen/audiobookshelf_simpleclient</source>
+    		<assets>
+    			<icon>resources/icon.png</icon>
+    			<fanart>resources/fanart.jpg</fanart>
+    			<clearlogo>resources/clearlogo.png</clearlogo>
+    		</assets>
+    		<news>
+    v0.0.2 (2025-01-xx)
+    - Fixed for Kodi 21 (Omega) compatibility
+    - Fixed library_service singleton pattern
+    - Improved error handling
+    		</news>
+    	</extension>
+    </addon>
+    <addon id="script.webhook.runner" version="1.1.1" name="Webhook Runner"
+           provider-name="Breezyslasher">
+      <extension point="xbmc.python.script" library="resources/lib/default.py">
+        <provides>executable</provides>
+      </extension>
+      <extension point="xbmc.addon.metadata">
+        <summary>Run up to 10 Home Assistant webhooks from Kodi.</summary>
+        <description>Launch Home Assistant webhooks from remote buttons or via GUI list. Configure up to 10 URLs and names in settings.</description>
+        <platform>all</platform>
+      </extension>
+    </addon>
 </addons>
