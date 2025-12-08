@@ -494,6 +494,16 @@ def download_single_item(item_info, show_notifications=True):
     if item_info['type'] == 'episode':
         season = item_info.get('season', 0)
         episode = item_info.get('episode', 0)
+        
+        # Try to extract episode info from title if it contains format like "9x18. Title" or "9x18 - Title"
+        title_ep_match = re.search(r'(\d+)x(\d+)[.\s-]+(.+)', item_info['title'])
+        if title_ep_match:
+            # Use episode info from title
+            season = int(title_ep_match.group(1))
+            episode = int(title_ep_match.group(2))
+            clean_title = title_ep_match.group(3).strip()
+            safe_title = "".join(c for c in clean_title if c.isalnum() or c in (' ', '-', '_', '.'))
+        
         filename = "S{0:02d}E{1:02d} - {2}".format(season, episode, safe_title)
     else:
         # Format for movies
