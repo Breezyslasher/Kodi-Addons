@@ -527,8 +527,45 @@ def download_single_item(item_info, show_notifications=True):
     # Get file extension from source (before query parameters)
     base_path = source_path.split('?')[0]  # Remove query parameters
     ext = os.path.splitext(base_path)[1]
-    if not ext:
+    
+    # Convert .ts files to .mp4 (Plex sometimes serves as .ts)
+    if ext.lower() == '.ts':
+        ext = '.mp4'
+    elif not ext:
         ext = '.mp4'  # Default for Plex streams
+    
+    # For TV shows, organize into show/season folders if enabled
+    if item_info['type'] == 'episode':
+        organize_tvshows = addon.getSetting('organize_tvshows') == 'true'
+        if organize_tvshows:
+            # Get show name from JSON-RPC
+            query = {
+                "jsonrpc": "2.0",
+                "method": "VideoLibrary.GetTVShowDetails",
+                "params": {
+                    "tvshowid": item_info.get('tvshow_id'),
+                    "properties": ["title"]
+                },
+                "id": 1
+            }
+            response = xbmc.executeJSONRPC(json.dumps(query))
+            result = json.loads(response)
+            
+            if 'result' in result and 'tvshowdetails' in result['result']:
+                show_title = result['result']['tvshowdetails'].get('title', 'Unknown')
+                safe_show_title = "".join(c for c in show_title if c.isalnum() or c in (' ', '-', '_', '.'))
+                season_num = item_info.get('season', 1)
+                
+                # Create: TV Shows/Show Name/Season 1/
+                show_path = os.path.join(download_path, safe_show_title)
+                season_path = os.path.join(show_path, 'Season {0}'.format(season_num))
+                
+                if not xbmcvfs.exists(show_path):
+                    xbmcvfs.mkdirs(show_path)
+                if not xbmcvfs.exists(season_path):
+                    xbmcvfs.mkdirs(season_path)
+                
+                download_path = season_path
     
     dest_filename = filename + ext
     dest_file = os.path.join(download_path, dest_filename)
