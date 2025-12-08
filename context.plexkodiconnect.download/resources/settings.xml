@@ -6,16 +6,30 @@
         <setting id="organize_tvshows" label="Organize TV Shows by Show/Season folders" type="bool" default="false"></setting>
         <setting id="organize_music" label="Organize Music by Artist/Album folders" type="bool" default="true"></setting>
         <setting id="write_metadata" label="Write .nfo metadata files for Kodi" type="bool" default="true"></setting>
+        <setting id="download_artwork" label="Download poster/artwork with media" type="bool" default="true"></setting>
         <setting id="auto_play" label="Ask to play after download" type="bool" default="true"></setting>
+        <setting id="hide_plex_after_download" label="Hide Plex version after downloading locally" type="bool" default="false"></setting>
+        <setting id="restore_plex_on_delete" label="Restore Plex version when local file deleted" type="bool" default="false"></setting>
     </category>
     <category id="menus_tv" label="TV Show Menu Options">
-        <setting id="show_download_show_from_season" label="Show 'Download entire show' option on season pages" type="bool" default="true"></setting>
-        <setting id="show_download_show_from_episode" label="Show 'Download entire show' option on episode pages" type="bool" default="true"></setting>
-        <setting id="show_download_season_from_episode" label="Show 'Download entire season' option on episode pages" type="bool" default="true"></setting>
+        <setting id="show_download_show_from_season" label="Show 'Download entire show' on season pages" type="bool" default="true"></setting>
+        <setting id="show_download_show_from_episode" label="Show 'Download entire show' on episode pages" type="bool" default="true"></setting>
+        <setting id="show_download_season_from_episode" label="Show 'Download entire season' on episode pages" type="bool" default="true"></setting>
+        <setting id="show_download_season_from_season" label="Show 'Download entire season' on season pages" type="bool" default="true"></setting>
+        <setting id="show_unwatched_options" label="Show 'Download unwatched' options" type="bool" default="true"></setting>
+        <setting id="show_all_unwatched_option" label="Show 'Download ALL unwatched' option on season pages" type="bool" default="true"></setting>
+        <setting id="unwatched_option_1" label="First unwatched option (0 to hide)" type="number" default="1"></setting>
+        <setting id="unwatched_option_2" label="Second unwatched option (0 to hide)" type="number" default="5"></setting>
+        <setting id="unwatched_option_3" label="Third unwatched option (0 to hide)" type="number" default="10"></setting>
     </category>
     <category id="menus_music" label="Music Menu Options">
-        <setting id="show_download_artist_from_album" label="Show 'Download entire artist' option on album pages" type="bool" default="true"></setting>
-        <setting id="show_download_artist_from_song" label="Show 'Download entire artist' option on song pages" type="bool" default="true"></setting>
-        <setting id="show_download_album_from_song" label="Show 'Download entire album' option on song pages" type="bool" default="true"></setting>
+        <setting id="show_download_artist_from_album" label="Show 'Download entire artist' on album pages" type="bool" default="true"></setting>
+        <setting id="show_download_artist_from_song" label="Show 'Download entire artist' on song pages" type="bool" default="true"></setting>
+        <setting id="show_download_album_from_song" label="Show 'Download entire album' on song pages" type="bool" default="true"></setting>
+    </category>
+    <category id="expert" label="Expert / Danger Zone">
+        <setting id="delete_all_movies" label="Delete ALL downloaded movies" type="action" action="RunScript(context.plexkodiconnect.download, delete_movies)"></setting>
+        <setting id="delete_all_tvshows" label="Delete ALL downloaded TV shows" type="action" action="RunScript(context.plexkodiconnect.download, delete_tvshows)"></setting>
+        <setting id="delete_all_music" label="Delete ALL downloaded music" type="action" action="RunScript(context.plexkodiconnect.download, delete_music)"></setting>
     </category>
 </settings>
