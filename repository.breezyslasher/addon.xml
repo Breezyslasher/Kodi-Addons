@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="repository.breezyslasher" name="Breezyslasher Repository" version="1.0.0" provider-name="Breezyslasher">
+    <extension point="xbmc.addon.repository" name="Breezyslasher Repository">
+        <info compressed="false">https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/addons.xml</info>
+        <checksum>https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/addons.xml.md5</checksum>
+        <datadir zip="true">https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips</datadir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary>Breezyslasher's Kodi Addon Repository</summary>
+        <description>Install addons from Breezyslasher's repository</description>
+        <platform>all</platform>
+    </extension>
+</addon>
