@@ -8,4 +8,14 @@
         <setting id="write_metadata" label="Write .nfo metadata files for Kodi" type="bool" default="true"></setting>
         <setting id="auto_play" label="Ask to play after download" type="bool" default="true"></setting>
     </category>
+    <category id="menus_tv" label="TV Show Menu Options">
+        <setting id="show_download_show_from_season" label="Show 'Download entire show' option on season pages" type="bool" default="true"></setting>
+        <setting id="show_download_show_from_episode" label="Show 'Download entire show' option on episode pages" type="bool" default="true"></setting>
+        <setting id="show_download_season_from_episode" label="Show 'Download entire season' option on episode pages" type="bool" default="true"></setting>
+    </category>
+    <category id="menus_music" label="Music Menu Options">
+        <setting id="show_download_artist_from_album" label="Show 'Download entire artist' option on album pages" type="bool" default="true"></setting>
+        <setting id="show_download_artist_from_song" label="Show 'Download entire artist' option on song pages" type="bool" default="true"></setting>
+        <setting id="show_download_album_from_song" label="Show 'Download entire album' option on song pages" type="bool" default="true"></setting>
+    </category>
 </settings>
