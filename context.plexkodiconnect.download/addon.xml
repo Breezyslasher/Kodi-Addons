@@ -1,4 +1,4 @@
-<addon id="context.plexkodiconnect.download" version="0.8.1" name="PlexKodiConnect Download" provider-name="Breezyslasher">
+<addon id="context.plexkodiconnect.download" version="1.0.0" name="PlexKodiConnect Download" provider-name="Breezyslasher">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -7,9 +7,13 @@
             <item library="default.py">
                 <label>Download from Plex</label>
                 <visible>
-                    [String.Contains(ListItem.Path,plex) + !ListItem.IsFolder] | 
+                    [String.Contains(ListItem.Path,plex)] | 
                     [String.Contains(ListItem.Path,plugin://plugin.audio.plexkodiconnect)] |
-                    [String.StartsWith(ListItem.Path,musicdb://)]
+                    [String.StartsWith(ListItem.Path,musicdb://)] |
+                    [String.StartsWith(ListItem.Path,videodb://tvshows)] |
+                    [String.IsEqual(Container.Content,artists)] |
+                    [String.IsEqual(Container.Content,albums)] |
+                    [String.IsEqual(Container.Content,songs)]
                 </visible>
             </item>
         </menu>
