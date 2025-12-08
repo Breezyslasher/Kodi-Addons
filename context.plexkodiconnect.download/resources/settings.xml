@@ -2,8 +2,10 @@
 <settings>
     <category id="general" label="General">
         <setting id="download_path" label="Download Location" type="folder" default="special://home/plexdownloads/"></setting>
-        <setting id="organize_by_type" label="Organize by Media Type (Movies/TV Shows)" type="bool" default="false"></setting>
+        <setting id="organize_by_type" label="Organize by Media Type (Movies/TV Shows/Music)" type="bool" default="false"></setting>
         <setting id="organize_tvshows" label="Organize TV Shows by Show/Season folders" type="bool" default="false"></setting>
+        <setting id="organize_music" label="Organize Music by Artist/Album folders" type="bool" default="true"></setting>
+        <setting id="write_metadata" label="Write .nfo metadata files for Kodi" type="bool" default="true"></setting>
         <setting id="auto_play" label="Ask to play after download" type="bool" default="true"></setting>
     </category>
 </settings>
