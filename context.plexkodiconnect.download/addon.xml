@@ -1,5 +1,4 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<addon id="context.plexkodiconnect.download" version="0.7.1" name="PlexKodiConnect Download" provider-name="Breezyslasher">
+<addon id="context.plexkodiconnect.download" version="0.8.1" name="PlexKodiConnect Download" provider-name="Breezyslasher">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -8,7 +7,9 @@
             <item library="default.py">
                 <label>Download from Plex</label>
                 <visible>
-                    String.Contains(ListItem.Path,plex) + !ListItem.IsFolder
+                    [String.Contains(ListItem.Path,plex) + !ListItem.IsFolder] | 
+                    [String.Contains(ListItem.Path,plugin://plugin.audio.plexkodiconnect)] |
+                    [String.StartsWith(ListItem.Path,musicdb://)]
                 </visible>
             </item>
         </menu>
@@ -17,8 +18,8 @@
         <assets>
             <icon>icon.png</icon>
         </assets>
-        <summary lang="en_GB">Download Plex movies for offline viewing</summary>
-        <description lang="en_GB">Adds a context menu option to download movies from PlexKodiConnect to your Kodi device for offline viewing</description>
+        <summary lang="en_GB">Download Plex media for offline viewing/listening</summary>
+        <description lang="en_GB">Adds a context menu option to download movies, TV shows, and music from PlexKodiConnect to your Kodi device for offline use. Supports downloading individual items, entire albums/seasons, or full artists/shows.</description>
         <language>en</language>
         <platform>all</platform>
         <license>MIT</license>
