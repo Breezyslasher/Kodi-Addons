@@ -48,34 +48,6 @@
         <license>MIT</license>
     </extension>
 </addon>
-<addon id="script.audiobookshelf.simpleclient" name="Audiobookshelf SimpleClient" version="0.0.5" provider-name="Breezyslasher">
-	<requires>
-		<import addon="xbmc.python" version="3.0.0"/>
-		<import addon="script.module.requests" version="2.31.0" />
-	</requires>
-	<extension point="xbmc.python.script" library="default.py">
-		<provides>executable</provides>
-	</extension>
-	<extension point="xbmc.addon.metadata">
-		<summary lang="en_GB">Audiobookshelf simple client for KODI</summary>
-		<description lang="en_GB">Connect your Kodi installation to an Audiobookshelf server and stream audiobooks directly within Kodi. Supports well-tagged M4B files with chapter information.</description>
-		<language></language>
-		<platform>all</platform>
-		<license>GPL-3.0-or-later</license>
-		<source>https://github.com/platzregen/audiobookshelf_simpleclient</source>
-		<assets>
-			<icon>resources/icon.png</icon>
-			<fanart>resources/fanart.jpg</fanart>
-			<clearlogo>resources/clearlogo.png</clearlogo>
-		</assets>
-		<news>
-v0.0.2 (2025-01-xx)
-- Fixed for Kodi 21 (Omega) compatibility
-- Fixed library_service singleton pattern
-- Improved error handling
-		</news>
-	</extension>
-</addon>
 <addon id="script.webhook.runner" version="1.1.1" name="Webhook Runner"
        provider-name="Breezyslasher">
   <extension point="xbmc.python.script" library="resources/lib/default.py">
