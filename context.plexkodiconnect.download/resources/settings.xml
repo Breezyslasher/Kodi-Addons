@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category id="general" label="General">
+        <setting id="download_path" label="Download Location" type="folder" default="/home/breezy/Videos/script.plexkodiconnect.download/ resources"></setting>
+        <setting id="organize_by_type" label="Organize by Media Type (Movies/TV Shows)" type="bool" default="false"></setting>
+        <setting id="auto_play" label="Ask to play after download" type="bool" default="true"></setting>
+    </category>
+</settings>
