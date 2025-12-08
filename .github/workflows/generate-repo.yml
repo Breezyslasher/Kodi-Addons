@@ -22,8 +22,8 @@ jobs:
         import os
         import zipfile
         import hashlib
-        import re
-        
+        import xml.etree.ElementTree as ET
+
         # Addon folders to process
         addon_folders = [
             'repository.breezyslasher',
@@ -46,35 +46,48 @@ jobs:
             with open(addon_xml_path, 'r', encoding='utf-8') as f:
                 addon_xml = f.read()
             
-            # Extract version
-            version_match = re.search(r'version="([^"]+)"', addon_xml)
-            if not version_match:
+            # Parse XML properly to get version
+            try:
+                tree = ET.parse(addon_xml_path)
+                root = tree.getroot()
+                version = root.get('version')
+                actual_addon_id = root.get('id')
+            except Exception as e:
+                print(f"Error parsing {addon_id}: {e}")
+                continue
+            
+            if not version:
                 print(f"Skipping {addon_id} - no version found")
                 continue
-            version = version_match.group(1)
             
-            print(f"Processing {addon_id} version {version}")
+            print(f"Processing {actual_addon_id} version {version}")
             
             # Create zips/addon_id directory
-            zip_dir = os.path.join('zips', addon_id)
+            zip_dir = os.path.join('zips', actual_addon_id)
             os.makedirs(zip_dir, exist_ok=True)
             
             # Copy addon.xml to zips/addon_id/
             with open(os.path.join(zip_dir, 'addon.xml'), 'w', encoding='utf-8') as f:
                 f.write(addon_xml)
             
-            # Create zip file
-            zip_filename = f"{addon_id}-{version}.zip"
+            # Create zip file with correct version
+            zip_filename = f"{actual_addon_id}-{version}.zip"
             zip_path = os.path.join(zip_dir, zip_filename)
             
+            # Remove old zip files for this addon
+            for old_file in os.listdir(zip_dir):
+                if old_file.endswith('.zip'):
+                    os.remove(os.path.join(zip_dir, old_file))
+                    print(f"Removed old zip: {old_file}")
+            
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for root, dirs, files in os.walk(addon_path):
+                for root_dir, dirs, files in os.walk(addon_path):
                     # Skip hidden files/folders
                     dirs[:] = [d for d in dirs if not d.startswith('.')]
                     for file in files:
                         if not file.startswith('.'):
-                            file_path = os.path.join(root, file)
-                            arcname = os.path.join(addon_id, os.path.relpath(file_path, addon_path))
+                            file_path = os.path.join(root_dir, file)
+                            arcname = os.path.join(actual_addon_id, os.path.relpath(file_path, addon_path))
                             zipf.write(file_path, arcname)
             
             print(f"Created {zip_path}")
