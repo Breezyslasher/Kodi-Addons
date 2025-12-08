@@ -115,6 +115,90 @@ def get_plex_metadata(plex_id):
     return None
 
 
+def get_plex_track_by_path(file_path):
+    """Search Plex for a track by its file path and return download info"""
+    LOG('Searching Plex for track by path: {0}'.format(file_path), xbmc.LOGINFO)
+    
+    try:
+        pkc_addon = xbmcaddon.Addon('plugin.video.plexkodiconnect')
+        plex_token = pkc_addon.getSetting('accessToken')
+        plex_server = pkc_addon.getSetting('ipaddress')
+        plex_port = pkc_addon.getSetting('port')
+        use_https = pkc_addon.getSetting('https') == 'true'
+        
+        if not plex_server or not plex_token:
+            LOG('Plex server or token not configured', xbmc.LOGERROR)
+            return None
+        
+        protocol = 'https' if use_https else 'http'
+        
+        import xml.etree.ElementTree as ET
+        if sys.version_info.major == 3:
+            import urllib.request
+            import urllib.parse
+            
+            # Extract filename from path for searching
+            filename = os.path.basename(file_path)
+            # Remove extension for better search
+            search_term = os.path.splitext(filename)[0]
+            
+            # Search Plex for this track
+            search_url = '{0}://{1}:{2}/search?query={3}&type=10&X-Plex-Token={4}'.format(
+                protocol, plex_server, plex_port, urllib.parse.quote(search_term), plex_token
+            )
+            LOG('Plex search URL: {0}'.format(search_url.replace(plex_token, '***')), xbmc.LOGINFO)
+            
+            req = urllib.request.Request(search_url)
+            response = urllib.request.urlopen(req)
+            xml_data = response.read()
+        else:
+            import urllib2
+            import urllib
+            
+            filename = os.path.basename(file_path)
+            search_term = os.path.splitext(filename)[0]
+            
+            search_url = '{0}://{1}:{2}/search?query={3}&type=10&X-Plex-Token={4}'.format(
+                protocol, plex_server, plex_port, urllib.quote(search_term), plex_token
+            )
+            
+            response = urllib2.urlopen(search_url)
+            xml_data = response.read()
+        
+        root = ET.fromstring(xml_data)
+        
+        # Find matching track
+        for track in root.findall('.//Track'):
+            # Check if file path matches
+            part = track.find('.//Media/Part')
+            if part is not None:
+                plex_file = part.get('file', '')
+                # Compare filenames (paths may differ due to mount points)
+                if os.path.basename(plex_file) == os.path.basename(file_path):
+                    LOG('Found matching track in Plex: {0}'.format(track.get('title')), xbmc.LOGINFO)
+                    
+                    part_key = part.get('key')
+                    if part_key:
+                        download_url = '{0}://{1}:{2}{3}?X-Plex-Token={4}'.format(
+                            protocol, plex_server, plex_port, part_key, plex_token
+                        )
+                        return {
+                            'plex_id': track.get('ratingKey'),
+                            'download_url': download_url,
+                            'title': track.get('title'),
+                            'artist': track.get('grandparentTitle'),
+                            'album': track.get('parentTitle'),
+                            'track': track.get('index')
+                        }
+        
+        LOG('No matching track found in Plex search results', xbmc.LOGINFO)
+        
+    except Exception as e:
+        LOG('Error searching Plex for track: {0}'.format(str(e)), xbmc.LOGERROR)
+    
+    return None
+
+
 def get_season_episodes(tvshow_id, season_num):
     """Get all episodes in a season"""
     LOG('Getting episodes for show ID {0}, season {1}'.format(tvshow_id, season_num), xbmc.LOGINFO)
@@ -160,6 +244,52 @@ def get_all_episodes(tvshow_id):
         return result['result']['episodes']
     
     return []
+
+
+def get_tvshow_seasons(tvshow_id):
+    """Get all seasons in a TV show"""
+    LOG('Getting seasons for show ID {0}'.format(tvshow_id), xbmc.LOGINFO)
+    
+    query = {
+        "jsonrpc": "2.0",
+        "method": "VideoLibrary.GetSeasons",
+        "params": {
+            "tvshowid": tvshow_id,
+            "properties": ["season", "episode"]
+        },
+        "id": 1
+    }
+    
+    response = xbmc.executeJSONRPC(json.dumps(query))
+    result = json.loads(response)
+    
+    if 'result' in result and 'seasons' in result['result']:
+        return result['result']['seasons']
+    
+    return []
+
+
+def get_tvshow_details(tvshow_id):
+    """Get TV show details including title"""
+    LOG('Getting show details for ID {0}'.format(tvshow_id), xbmc.LOGINFO)
+    
+    query = {
+        "jsonrpc": "2.0",
+        "method": "VideoLibrary.GetTVShowDetails",
+        "params": {
+            "tvshowid": tvshow_id,
+            "properties": ["title", "year"]
+        },
+        "id": 1
+    }
+    
+    response = xbmc.executeJSONRPC(json.dumps(query))
+    result = json.loads(response)
+    
+    if 'result' in result and 'tvshowdetails' in result['result']:
+        return result['result']['tvshowdetails']
+    
+    return None
 
 
 def get_album_songs(album_id):
@@ -298,6 +428,68 @@ def get_plex_item_info():
     if file_path.startswith('videodb://'):
         LOG('Video database path detected, getting actual file path', xbmc.LOGINFO)
         
+        # Strip query string for pattern matching
+        base_path = file_path.split('?')[0]
+        
+        # Check if it's a TV show directory (e.g., videodb://tvshows/titles/123/)
+        tvshow_dir_match = re.search(r'videodb://tvshows/titles/(\d+)/$', base_path)
+        if tvshow_dir_match:
+            tvshow_id = int(tvshow_dir_match.group(1))
+            content_type = 'tvshow'
+            LOG('Detected TV show directory, show ID: {0}'.format(tvshow_id), xbmc.LOGINFO)
+            
+            # Get show details
+            show_details = get_tvshow_details(tvshow_id)
+            if show_details:
+                title = show_details.get('title', title)
+            
+            return {
+                'path': file_path,
+                'title': title,
+                'plex_id': None,
+                'year': listitem.getProperty('year'),
+                'type': content_type,
+                'episode_id': None,
+                'tvshow_id': tvshow_id,
+                'season': None,
+                'song_id': None,
+                'album_id': None,
+                'artist_id': None,
+                'artist': None,
+                'album': None,
+                'track': 0
+            }
+        
+        # Check if it's a season directory (e.g., videodb://tvshows/titles/123/1/ or videodb://tvshows/titles/123/-1/)
+        season_dir_match = re.search(r'videodb://tvshows/titles/(\d+)/(-?\d+)/$', base_path)
+        if season_dir_match:
+            tvshow_id = int(season_dir_match.group(1))
+            season_num = int(season_dir_match.group(2))
+            content_type = 'season'
+            LOG('Detected season directory, show ID: {0}, season: {1}'.format(tvshow_id, season_num), xbmc.LOGINFO)
+            
+            # Get show details for the title
+            show_details = get_tvshow_details(tvshow_id)
+            show_title = show_details.get('title', 'Unknown') if show_details else 'Unknown'
+            
+            return {
+                'path': file_path,
+                'title': title,
+                'show_title': show_title,
+                'plex_id': None,
+                'year': listitem.getProperty('year'),
+                'type': content_type,
+                'episode_id': None,
+                'tvshow_id': tvshow_id,
+                'season': season_num,
+                'song_id': None,
+                'album_id': None,
+                'artist_id': None,
+                'artist': None,
+                'album': None,
+                'track': 0
+            }
+        
         # Check if it's a movie
         movie_match = re.search(r'videodb://movies/titles/(\d+)', file_path)
         if movie_match:
@@ -352,6 +544,98 @@ def get_plex_item_info():
     # Check if it's a music item
     if file_path.startswith('musicdb://'):
         LOG('Music database path detected, getting actual file path', xbmc.LOGINFO)
+        
+        # Strip query string for pattern matching
+        base_music_path = file_path.split('?')[0]
+        
+        # Check if it's an artist directory (e.g., musicdb://artists/123/)
+        artist_dir_match = re.search(r'musicdb://artists/(\d+)/?$', base_music_path)
+        if artist_dir_match:
+            artist_id = int(artist_dir_match.group(1))
+            content_type = 'artist'
+            LOG('Detected artist directory, artist ID: {0}'.format(artist_id), xbmc.LOGINFO)
+            
+            # Get artist details
+            query = {
+                "jsonrpc": "2.0",
+                "method": "AudioLibrary.GetArtistDetails",
+                "params": {
+                    "artistid": artist_id,
+                    "properties": ["artist"]
+                },
+                "id": 1
+            }
+            response = xbmc.executeJSONRPC(json.dumps(query))
+            result = json.loads(response)
+            
+            artist_name = title
+            if 'result' in result and 'artistdetails' in result['result']:
+                details = result['result']['artistdetails']
+                artist_name = details.get('artist', title)
+            
+            return {
+                'path': file_path,
+                'title': artist_name,
+                'plex_id': None,
+                'year': listitem.getProperty('year'),
+                'type': content_type,
+                'episode_id': None,
+                'tvshow_id': None,
+                'season': None,
+                'song_id': None,
+                'album_id': None,
+                'artist_id': artist_id,
+                'artist': artist_name,
+                'album': None,
+                'track': 0
+            }
+        
+        # Check if it's an album directory (e.g., musicdb://albums/123/ or musicdb://artists/1/123/)
+        album_dir_match = re.search(r'musicdb://(?:albums|artists/\d+)/(\d+)/?$', base_music_path)
+        if album_dir_match:
+            album_id = int(album_dir_match.group(1))
+            content_type = 'album'
+            LOG('Detected album directory, album ID: {0}'.format(album_id), xbmc.LOGINFO)
+            
+            # Get album details
+            query = {
+                "jsonrpc": "2.0",
+                "method": "AudioLibrary.GetAlbumDetails",
+                "params": {
+                    "albumid": album_id,
+                    "properties": ["title", "artist", "artistid"]
+                },
+                "id": 1
+            }
+            response = xbmc.executeJSONRPC(json.dumps(query))
+            result = json.loads(response)
+            
+            album_title = title
+            artist_name = None
+            if 'result' in result and 'albumdetails' in result['result']:
+                details = result['result']['albumdetails']
+                album_title = details.get('title', title)
+                artists = details.get('artist', [])
+                if artists:
+                    artist_name = artists[0]
+            
+            return {
+                'path': file_path,
+                'title': album_title,
+                'plex_id': None,
+                'year': listitem.getProperty('year'),
+                'type': content_type,
+                'episode_id': None,
+                'tvshow_id': None,
+                'season': None,
+                'song_id': None,
+                'album_id': album_id,
+                'artist_id': None,
+                'artist': artist_name,
+                'album': album_title,
+                'track': 0
+            }
+        
         content_type = 'song'
         
         # Check if it's a song
@@ -388,6 +672,7 @@ def get_plex_item_info():
         LOG('Extracted Plex ID: {0}'.format(plex_id), xbmc.LOGINFO)
     
     LOG('Final file path: |{0}|'.format(file_path), xbmc.LOGINFO)
+    LOG('Content type: |{0}|'.format(content_type), xbmc.LOGINFO)
     
     # Check if this is a Plex item or network path
     is_network = (file_path.startswith('smb://') or 
@@ -395,10 +680,15 @@ def get_plex_item_info():
                   file_path.startswith('http://') or 
                   file_path.startswith('https://'))
     
-    is_plex = 'plex' in file_path.lower() or file_path.startswith('plugin://plugin.video.plexkodiconnect') or file_path.startswith('plugin://plugin.audio.plexkodiconnect')
+    is_plex = ('plex' in file_path.lower() or 
+               file_path.startswith('plugin://plugin.video.plexkodiconnect') or 
+               file_path.startswith('plugin://plugin.audio.plexkodiconnect'))
     
-    if not is_network and not is_plex:
-        LOG('Not a Plex/network item: {0}'.format(file_path), xbmc.LOGERROR)
+    # Also allow musicdb paths that contain plex content (determined by checking actual files)
+    is_musicdb = file_path.startswith('musicdb://')
+    
+    if not is_network and not is_plex and not is_musicdb:
+        LOG('Not a Plex/network/musicdb item: {0}'.format(file_path), xbmc.LOGERROR)
         return None
     
     return {
@@ -512,9 +802,18 @@ def download_season(tvshow_id, season_num):
         )
         return False
     
+    # Get show title for the confirmation message
+    show_details = get_tvshow_details(tvshow_id)
+    show_title = show_details.get('title', 'Unknown Show') if show_details else 'Unknown Show'
+    
+    if season_num == 0:
+        season_label = 'Specials'
+    else:
+        season_label = 'Season {0}'.format(season_num)
+    
     confirm = xbmcgui.Dialog().yesno(
-        'Download Season',
-        'Download {0} episodes from season {1}?'.format(len(episodes), season_num)
+        'Download {0}'.format(season_label),
+        'Download {0} episodes of "{1}" - {2}?'.format(len(episodes), show_title, season_label)
     )
     
     if not confirm:
@@ -523,7 +822,18 @@ def download_season(tvshow_id, season_num):
     success_count = 0
     fail_count = 0
     
+    # Show overall progress
+    pDialog = xbmcgui.DialogProgress()
+    pDialog.create('Downloading {0}'.format(season_label), 'Starting download...')
+    
     for idx, episode in enumerate(episodes):
+        if pDialog.iscanceled():
+            LOG("Season download cancelled by user", xbmc.LOGINFO)
+            break
+        
+        overall_percent = int((idx / len(episodes)) * 100)
+        pDialog.update(overall_percent, 'Episode {0} of {1}: {2}'.format(idx + 1, len(episodes), episode['title']))
+        
         # Extract plex_id from episode file path
         match = re.search(r'plex_id=(\d+)', episode['file'])
         if match:
@@ -533,13 +843,16 @@ def download_season(tvshow_id, season_num):
                 'plex_id': match.group(1),
                 'type': 'episode',
                 'season': episode['season'],
-                'episode': episode['episode']
+                'episode': episode['episode'],
+                'tvshow_id': tvshow_id
             }
             
             if download_single_item(ep_info, show_notifications=False):
                 success_count += 1
             else:
                 fail_count += 1
+    
+    pDialog.close()
     
     xbmcgui.Dialog().notification(
         'Season Download Complete',
@@ -566,9 +879,16 @@ def download_show(tvshow_id):
         )
         return False
     
+    # Get show title for the confirmation message
+    show_details = get_tvshow_details(tvshow_id)
+    show_title = show_details.get('title', 'Unknown Show') if show_details else 'Unknown Show'
+    
+    # Count seasons
+    seasons = set(ep['season'] for ep in episodes)
+    
     confirm = xbmcgui.Dialog().yesno(
         'Download Entire Show',
-        'Download all {0} episodes?'.format(len(episodes))
+        'Download all {0} episodes ({1} seasons) of "{2}"?'.format(len(episodes), len(seasons), show_title)
     )
     
     if not confirm:
@@ -577,7 +897,20 @@ def download_show(tvshow_id):
     success_count = 0
     fail_count = 0
     
+    # Show overall progress
+    pDialog = xbmcgui.DialogProgress()
+    pDialog.create('Downloading "{0}"'.format(show_title), 'Starting download...')
+    
     for idx, episode in enumerate(episodes):
+        if pDialog.iscanceled():
+            LOG("Show download cancelled by user", xbmc.LOGINFO)
+            break
+        
+        overall_percent = int((idx / len(episodes)) * 100)
+        pDialog.update(overall_percent, 'Episode {0} of {1}: S{2:02d}E{3:02d} - {4}'.format(
+            idx + 1, len(episodes), episode['season'], episode['episode'], episode['title']
+        ))
+        
         # Extract plex_id from episode file path
         match = re.search(r'plex_id=(\d+)', episode['file'])
         if match:
@@ -587,13 +920,16 @@ def download_show(tvshow_id):
                 'plex_id': match.group(1),
                 'type': 'episode',
                 'season': episode['season'],
-                'episode': episode['episode']
+                'episode': episode['episode'],
+                'tvshow_id': tvshow_id
             }
             
             if download_single_item(ep_info, show_notifications=False):
                 success_count += 1
             else:
                 fail_count += 1
+    
+    pDialog.close()
     
     xbmcgui.Dialog().notification(
         'Show Download Complete',
@@ -609,6 +945,8 @@ def download_show(tvshow_id):
 def download_album(album_id, album_name=None):
     """Download an entire album"""
     songs = get_album_songs(album_id)
+    
+    LOG('download_album: Found {0} songs for album ID {1}'.format(len(songs) if songs else 0, album_id), xbmc.LOGINFO)
     
     if not songs:
         xbmcgui.Dialog().notification(
@@ -633,30 +971,78 @@ def download_album(album_id, album_name=None):
     
     success_count = 0
     fail_count = 0
+    skipped_count = 0
     
-    for song in songs:
-        # Extract plex_id from song file path
-        match = re.search(r'plex_id=(\d+)', song['file'])
-        if match:
-            song_info = {
-                'path': song['file'],
-                'title': song['title'],
-                'plex_id': match.group(1),
-                'type': 'song',
-                'track': song.get('track', 0),
-                'artist': song.get('artist', ['Unknown'])[0] if song.get('artist') else 'Unknown',
-                'album': song.get('album', 'Unknown'),
-                'album_id': album_id
-            }
-            
-            if download_single_item(song_info, show_notifications=False):
-                success_count += 1
+    # Show progress dialog
+    pDialog = xbmcgui.DialogProgress()
+    pDialog.create('Downloading Album', 'Starting download...')
+    
+    for idx, song in enumerate(songs):
+        if pDialog.iscanceled():
+            LOG("Album download cancelled by user", xbmc.LOGINFO)
+            break
+        
+        overall_percent = int((idx / len(songs)) * 100)
+        pDialog.update(overall_percent, 'Song {0} of {1}: {2}'.format(idx + 1, len(songs), song.get('title', 'Unknown')))
+        
+        file_path = song.get('file', '')
+        LOG('download_album: Processing song "{0}" with path: {1}'.format(song.get('title', 'Unknown'), file_path), xbmc.LOGINFO)
+        
+        # Check if this is already a Plex direct download URL
+        # Format: https://xxx.plex.direct:32400/library/parts/12345/...
+        plex_direct_match = re.search(r'plex\.direct.*?/library/parts/(\d+)/', file_path)
+        
+        plex_id = None
+        download_url = None
+        
+        # Extract plex_id from song file path (plugin style)
+        plex_id_match = re.search(r'plex_id=(\d+)', file_path)
+        
+        if plex_id_match:
+            plex_id = plex_id_match.group(1)
+        elif plex_direct_match:
+            # This is already a direct Plex download URL - use it directly
+            plex_id = plex_direct_match.group(1)  # Use part ID as identifier
+            download_url = file_path  # The path IS the download URL
+            LOG('download_album: Found Plex direct URL with part ID: {0}'.format(plex_id), xbmc.LOGINFO)
+        else:
+            # Try to find the track in Plex by searching
+            LOG('download_album: No plex_id in path, searching Plex...', xbmc.LOGINFO)
+            plex_track = get_plex_track_by_path(file_path)
+            if plex_track:
+                plex_id = plex_track.get('plex_id')
+                download_url = plex_track.get('download_url')
+                LOG('download_album: Found track in Plex with ID: {0}'.format(plex_id), xbmc.LOGINFO)
             else:
-                fail_count += 1
+                LOG('download_album: Could not find track in Plex, skipping: {0}'.format(file_path), xbmc.LOGWARNING)
+                skipped_count += 1
+                continue
+        
+        song_info = {
+            'path': download_url if download_url else file_path,
+            'title': song['title'],
+            'plex_id': plex_id,
+            'type': 'song',
+            'track': song.get('track', 0),
+            'artist': song.get('artist', ['Unknown'])[0] if song.get('artist') else 'Unknown',
+            'album': song.get('album', 'Unknown'),
+            'album_id': album_id
+        }
+        
+        if download_single_item(song_info, show_notifications=False):
+            success_count += 1
+        else:
+            fail_count += 1
+    
+    pDialog.close()
+    
+    message = 'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count)
+    if skipped_count > 0:
+        message += ', Skipped: {0}'.format(skipped_count)
     
     xbmcgui.Dialog().notification(
         'Album Download Complete',
-        'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count),
+        message,
         os.path.join(addonFolder, "icon.png"),
         5000,
         True
@@ -668,6 +1054,8 @@ def download_album(album_id, album_name=None):
 def download_artist(artist_name):
     """Download all songs by an artist"""
     songs = get_artist_songs(artist_name)
+    
+    LOG('download_artist: Found {0} songs for artist "{1}"'.format(len(songs) if songs else 0, artist_name), xbmc.LOGINFO)
     
     if not songs:
         xbmcgui.Dialog().notification(
@@ -689,30 +1077,78 @@ def download_artist(artist_name):
     
     success_count = 0
     fail_count = 0
+    skipped_count = 0
     
-    for song in songs:
-        # Extract plex_id from song file path
-        match = re.search(r'plex_id=(\d+)', song['file'])
-        if match:
-            song_info = {
-                'path': song['file'],
-                'title': song['title'],
-                'plex_id': match.group(1),
-                'type': 'song',
-                'track': song.get('track', 0),
-                'artist': song.get('artist', ['Unknown'])[0] if song.get('artist') else 'Unknown',
-                'album': song.get('album', 'Unknown'),
-                'album_id': song.get('albumid')
-            }
-            
-            if download_single_item(song_info, show_notifications=False):
-                success_count += 1
+    # Show progress dialog
+    pDialog = xbmcgui.DialogProgress()
+    pDialog.create('Downloading Artist', 'Starting download...')
+    
+    for idx, song in enumerate(songs):
+        if pDialog.iscanceled():
+            LOG("Artist download cancelled by user", xbmc.LOGINFO)
+            break
+        
+        overall_percent = int((idx / len(songs)) * 100)
+        pDialog.update(overall_percent, 'Song {0} of {1}: {2}'.format(idx + 1, len(songs), song.get('title', 'Unknown')))
+        
+        file_path = song.get('file', '')
+        LOG('download_artist: Processing song "{0}" with path: {1}'.format(song.get('title', 'Unknown'), file_path), xbmc.LOGINFO)
+        
+        # Check if this is already a Plex direct download URL
+        # Format: https://xxx.plex.direct:32400/library/parts/12345/...
+        plex_direct_match = re.search(r'plex\.direct.*?/library/parts/(\d+)/', file_path)
+        
+        plex_id = None
+        download_url = None
+        
+        # Extract plex_id from song file path (plugin style)
+        plex_id_match = re.search(r'plex_id=(\d+)', file_path)
+        
+        if plex_id_match:
+            plex_id = plex_id_match.group(1)
+        elif plex_direct_match:
+            # This is already a direct Plex download URL - use it directly
+            plex_id = plex_direct_match.group(1)  # Use part ID as identifier
+            download_url = file_path  # The path IS the download URL
+            LOG('download_artist: Found Plex direct URL with part ID: {0}'.format(plex_id), xbmc.LOGINFO)
+        else:
+            # Try to find the track in Plex by searching
+            LOG('download_artist: No plex_id in path, searching Plex...', xbmc.LOGINFO)
+            plex_track = get_plex_track_by_path(file_path)
+            if plex_track:
+                plex_id = plex_track.get('plex_id')
+                download_url = plex_track.get('download_url')
+                LOG('download_artist: Found track in Plex with ID: {0}'.format(plex_id), xbmc.LOGINFO)
             else:
-                fail_count += 1
+                LOG('download_artist: Could not find track in Plex, skipping: {0}'.format(file_path), xbmc.LOGWARNING)
+                skipped_count += 1
+                continue
+        
+        song_info = {
+            'path': download_url if download_url else file_path,
+            'title': song['title'],
+            'plex_id': plex_id,
+            'type': 'song',
+            'track': song.get('track', 0),
+            'artist': song.get('artist', ['Unknown'])[0] if song.get('artist') else 'Unknown',
+            'album': song.get('album', 'Unknown'),
+            'album_id': song.get('albumid')
+        }
+        
+        if download_single_item(song_info, show_notifications=False):
+            success_count += 1
+        else:
+            fail_count += 1
+    
+    pDialog.close()
+    
+    message = 'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count)
+    if skipped_count > 0:
+        message += ', Skipped: {0}'.format(skipped_count)
     
     xbmcgui.Dialog().notification(
         'Artist Download Complete',
-        'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count),
+        message,
         os.path.join(addonFolder, "icon.png"),
         5000,
         True
@@ -1081,14 +1517,113 @@ def download_from_plex():
         )
         return False
     
+    # Handle TV show directory (download entire show or select seasons)
+    if item_info['type'] == 'tvshow' and item_info.get('tvshow_id'):
+        tvshow_id = item_info['tvshow_id']
+        show_title = item_info.get('title', 'Unknown Show')
+        
+        # Get available seasons
+        seasons = get_tvshow_seasons(tvshow_id)
+        
+        if not seasons:
+            xbmcgui.Dialog().notification(
+                'PlexKodiConnect Download',
+                'No seasons found for this show',
+                os.path.join(addonFolder, "icon.png"),
+                5000,
+                True
+            )
+            return False
+        
+        # Build options list
+        options = ['Download entire show ({0} seasons)'.format(len(seasons))]
+        
+        for season in seasons:
+            season_num = season.get('season', 0)
+            episode_count = season.get('episode', 0)
+            if season_num == 0:
+                options.append('Specials ({0} episodes)'.format(episode_count))
+            else:
+                options.append('Season {0} ({1} episodes)'.format(season_num, episode_count))
+        
+        choice = xbmcgui.Dialog().select('Download "{0}"'.format(show_title), options)
+        
+        if choice == -1:  # User cancelled
+            return False
+        elif choice == 0:  # Entire show
+            return download_show(tvshow_id)
+        else:
+            # Individual season selected
+            selected_season = seasons[choice - 1]
+            return download_season(tvshow_id, selected_season.get('season', 0))
+    
+    # Handle season directory (download entire season or select episodes)
+    elif item_info['type'] == 'season' and item_info.get('tvshow_id'):
+        tvshow_id = item_info['tvshow_id']
+        season_num = item_info['season']
+        show_title = item_info.get('show_title', 'Unknown Show')
+        
+        # Get episodes in this season
+        episodes = get_season_episodes(tvshow_id, season_num)
+        
+        if not episodes:
+            xbmcgui.Dialog().notification(
+                'PlexKodiConnect Download',
+                'No episodes found in this season',
+                os.path.join(addonFolder, "icon.png"),
+                5000,
+                True
+            )
+            return False
+        
+        # Build options
+        if season_num == 0:
+            season_label = 'Specials'
+        else:
+            season_label = 'Season {0}'.format(season_num)
+        
+        # Check setting for showing "Download entire show" option
+        show_download_show = addon.getSetting('show_download_show_from_season') == 'true'
+        
+        options = ['Download entire {0} ({1} episodes)'.format(season_label, len(episodes))]
+        
+        if show_download_show:
+            options.append('Download entire show')
+        
+        # If only one option, skip the dialog and download the season directly
+        if len(options) == 1:
+            return download_season(tvshow_id, season_num)
+        
+        choice = xbmcgui.Dialog().select('Download "{0}" - {1}'.format(show_title, season_label), options)
+        
+        if choice == -1:  # User cancelled
+            return False
+        elif choice == 0:  # Entire season
+            return download_season(tvshow_id, season_num)
+        elif choice == 1:  # Entire show
+            return download_show(tvshow_id)
+    
     # For TV episodes, offer options to download episode, season, or entire show
-    if item_info['type'] == 'episode' and item_info.get('tvshow_id'):
+    elif item_info['type'] == 'episode' and item_info.get('tvshow_id'):
+        # Check settings for menu options
+        show_season_option = addon.getSetting('show_download_season_from_episode') == 'true'
+        show_show_option = addon.getSetting('show_download_show_from_episode') == 'true'
+        
         options = ['Download this episode']
+        season_idx = -1
+        show_idx = -1
         
-        if item_info.get('season') is not None:
+        if show_season_option and item_info.get('season') is not None:
             options.append('Download entire season {0}'.format(item_info['season']))
+            season_idx = len(options) - 1
         
-        options.append('Download entire show')
+        if show_show_option:
+            options.append('Download entire show')
+            show_idx = len(options) - 1
+        
+        # If only one option, skip the dialog and download directly
+        if len(options) == 1:
+            return download_single_item(item_info)
         
         choice = xbmcgui.Dialog().select('Download Options', options)
         
@@ -1096,20 +1631,59 @@ def download_from_plex():
             return False
         elif choice == 0:  # Single episode
             return download_single_item(item_info)
-        elif choice == 1 and len(options) == 3:  # Season (if available)
+        elif choice == season_idx:  # Season
             return download_season(item_info['tvshow_id'], item_info['season'])
-        elif (choice == 1 and len(options) == 2) or (choice == 2):  # Entire show
+        elif choice == show_idx:  # Entire show
             return download_show(item_info['tvshow_id'])
+    
+    # Handle artist directory (download entire artist discography)
+    elif item_info['type'] == 'artist' and item_info.get('artist'):
+        artist_name = item_info['artist']
+        return download_artist(artist_name)
+    
+    # Handle album directory (download entire album or artist)
+    elif item_info['type'] == 'album' and item_info.get('album_id'):
+        album_id = item_info['album_id']
+        album_title = item_info.get('title', 'Unknown Album')
+        artist_name = item_info.get('artist')
+        
+        # Check setting for showing "Download entire artist" option
+        show_artist_option = addon.getSetting('show_download_artist_from_album') == 'true'
+        
+        options = ['Download entire album']
+        
+        if show_artist_option and artist_name:
+            options.append('Download all by {0}'.format(artist_name))
+        
+        # If only one option, skip the dialog and download the album directly
+        if len(options) == 1:
+            return download_album(album_id, album_title)
+        
+        choice = xbmcgui.Dialog().select('Download "{0}"'.format(album_title), options)
+        
+        if choice == -1:  # User cancelled
+            return False
+        elif choice == 0:  # Entire album
+            return download_album(album_id, album_title)
+        elif choice == 1:  # Entire artist
+            return download_artist(artist_name)
     
     # For music, offer options to download song, album, or artist
     elif item_info['type'] == 'song':
-        options = ['Download this song']
+        # Check settings for menu options
+        show_album_option = addon.getSetting('show_download_album_from_song') == 'true'
+        show_artist_option = addon.getSetting('show_download_artist_from_song') == 'true'
         
-        if item_info.get('album_id'):
+        options = ['Download this song']
+        album_idx = -1
+        artist_idx = -1
+        
+        if show_album_option and item_info.get('album_id'):
             options.append('Download entire album')
+            album_idx = len(options) - 1
         
         # Get artist name from JSON-RPC
-        if item_info.get('song_id'):
+        if show_artist_option and item_info.get('song_id'):
             query = {
                 "jsonrpc": "2.0",
                 "method": "AudioLibrary.GetSongDetails",
@@ -1126,6 +1700,11 @@ def download_from_plex():
                 if artists:
                     item_info['artist'] = artists[0]
                     options.append('Download all by {0}'.format(artists[0]))
+                    artist_idx = len(options) - 1
+        
+        # If only one option, skip the dialog and download directly
+        if len(options) == 1:
+            return download_single_item(item_info)
         
         choice = xbmcgui.Dialog().select('Download Options', options)
         
@@ -1133,7 +1712,7 @@ def download_from_plex():
             return False
         elif choice == 0:  # Single song
             return download_single_item(item_info)
-        elif choice == 1 and 'album' in options[1].lower():  # Album
+        elif choice == album_idx:  # Album
             # Get album name
             if item_info.get('song_id'):
                 query = {
@@ -1151,7 +1730,7 @@ def download_from_plex():
                     album_name = result['result']['songdetails'].get('album', 'Unknown')
                     return download_album(item_info['album_id'], album_name)
             return download_album(item_info['album_id'])
-        elif choice == 2:  # Artist
+        elif choice == artist_idx:  # Artist
             return download_artist(item_info.get('artist', 'Unknown'))
     
     else:
