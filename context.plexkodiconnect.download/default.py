@@ -90,6 +90,53 @@ def get_plex_metadata(plex_id):
     return None
 
 
+def get_season_episodes(tvshow_id, season_num):
+    """Get all episodes in a season"""
+    LOG('Getting episodes for show ID {0}, season {1}'.format(tvshow_id, season_num), xbmc.LOGINFO)
+    
+    query = {
+        "jsonrpc": "2.0",
+        "method": "VideoLibrary.GetEpisodes",
+        "params": {
+            "tvshowid": tvshow_id,
+            "season": season_num,
+            "properties": ["file", "title", "episode", "season"]
+        },
+        "id": 1
+    }
+    
+    response = xbmc.executeJSONRPC(json.dumps(query))
+    result = json.loads(response)
+    
+    if 'result' in result and 'episodes' in result['result']:
+        return result['result']['episodes']
+    
+    return []
+
+
+def get_all_episodes(tvshow_id):
+    """Get all episodes in a TV show"""
+    LOG('Getting all episodes for show ID {0}'.format(tvshow_id), xbmc.LOGINFO)
+    
+    query = {
+        "jsonrpc": "2.0",
+        "method": "VideoLibrary.GetEpisodes",
+        "params": {
+            "tvshowid": tvshow_id,
+            "properties": ["file", "title", "episode", "season"]
+        },
+        "id": 1
+    }
+    
+    response = xbmc.executeJSONRPC(json.dumps(query))
+    result = json.loads(response)
+    
+    if 'result' in result and 'episodes' in result['result']:
+        return result['result']['episodes']
+    
+    return []
+
+
 def get_plex_item_info():
     """Get information about the currently selected Plex item"""
     if not hasattr(sys, 'listitem'):
@@ -104,15 +151,19 @@ def get_plex_item_info():
     LOG('ListItem Title: |{0}|'.format(title), xbmc.LOGINFO)
     
     plex_id = None
+    content_type = 'movie'
+    episode_id = None
+    tvshow_id = None
+    season_num = None
     
     # If it's a videodb path, get the actual file path using JSON-RPC
     if file_path.startswith('videodb://'):
         LOG('Video database path detected, getting actual file path', xbmc.LOGINFO)
         
-        movie_id = None
-        match = re.search(r'videodb://movies/titles/(\d+)', file_path)
-        if match:
-            movie_id = int(match.group(1))
+        # Check if it's a movie
+        movie_match = re.search(r'videodb://movies/titles/(\d+)', file_path)
+        if movie_match:
+            movie_id = int(movie_match.group(1))
             LOG('Extracted movie ID: {0}'.format(movie_id), xbmc.LOGINFO)
             
             query = {
@@ -132,6 +183,33 @@ def get_plex_item_info():
             if 'result' in result and 'moviedetails' in result['result']:
                 file_path = result['result']['moviedetails'].get('file', '')
                 LOG('Got actual file path from database: |{0}|'.format(file_path), xbmc.LOGINFO)
+        
+        # Check if it's a TV episode
+        episode_match = re.search(r'videodb://tvshows/titles/(-?\d+)/(-?\d+)/(\d+)', file_path)
+        if episode_match:
+            episode_id = int(episode_match.group(3))
+            content_type = 'episode'
+            LOG('Extracted episode ID: {0}'.format(episode_id), xbmc.LOGINFO)
+            
+            query = {
+                "jsonrpc": "2.0",
+                "method": "VideoLibrary.GetEpisodeDetails",
+                "params": {
+                    "episodeid": episode_id,
+                    "properties": ["file", "tvshowid", "season"]
+                },
+                "id": 1
+            }
+            
+            response = xbmc.executeJSONRPC(json.dumps(query))
+            result = json.loads(response)
+            LOG('JSON-RPC response: {0}'.format(result), xbmc.LOGINFO)
+            
+            if 'result' in result and 'episodedetails' in result['result']:
+                file_path = result['result']['episodedetails'].get('file', '')
+                tvshow_id = result['result']['episodedetails'].get('tvshowid')
+                season_num = result['result']['episodedetails'].get('season')
+                LOG('Got episode file path: |{0}|'.format(file_path), xbmc.LOGINFO)
     
     # Extract Plex ID from the path
     match = re.search(r'plex_id=(\d+)', file_path)
@@ -158,7 +236,10 @@ def get_plex_item_info():
         'title': title,
         'plex_id': plex_id,
         'year': listitem.getProperty('year'),
-        'type': listitem.getProperty('type') or 'movie'
+        'type': content_type,
+        'episode_id': episode_id,
+        'tvshow_id': tvshow_id,
+        'season': season_num
     }
 
 
@@ -241,20 +322,116 @@ def copy_with_progress(source, dest, title, pDialog):
         return False
 
 
-def download_from_plex():
-    """Download the movie from Plex to local storage"""
+def download_season(tvshow_id, season_num):
+    """Download an entire season"""
+    episodes = get_season_episodes(tvshow_id, season_num)
     
-    item_info = get_plex_item_info()
-    
-    if not item_info:
+    if not episodes:
         xbmcgui.Dialog().notification(
             'PlexKodiConnect Download',
-            'Could not retrieve Plex item information',
+            'No episodes found in season',
             os.path.join(addonFolder, "icon.png"),
             5000,
             True
         )
         return False
+    
+    confirm = xbmcgui.Dialog().yesno(
+        'Download Season',
+        'Download {0} episodes from season {1}?'.format(len(episodes), season_num)
+    )
+    
+    if not confirm:
+        return False
+    
+    success_count = 0
+    fail_count = 0
+    
+    for idx, episode in enumerate(episodes):
+        # Extract plex_id from episode file path
+        match = re.search(r'plex_id=(\d+)', episode['file'])
+        if match:
+            ep_info = {
+                'path': episode['file'],
+                'title': episode['title'],
+                'plex_id': match.group(1),
+                'type': 'episode',
+                'season': episode['season'],
+                'episode': episode['episode']
+            }
+            
+            if download_single_item(ep_info, show_notifications=False):
+                success_count += 1
+            else:
+                fail_count += 1
+    
+    xbmcgui.Dialog().notification(
+        'Season Download Complete',
+        'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count),
+        os.path.join(addonFolder, "icon.png"),
+        5000,
+        True
+    )
+    
+    return True
+
+
+def download_show(tvshow_id):
+    """Download an entire TV show"""
+    episodes = get_all_episodes(tvshow_id)
+    
+    if not episodes:
+        xbmcgui.Dialog().notification(
+            'PlexKodiConnect Download',
+            'No episodes found',
+            os.path.join(addonFolder, "icon.png"),
+            5000,
+            True
+        )
+        return False
+    
+    confirm = xbmcgui.Dialog().yesno(
+        'Download Entire Show',
+        'Download all {0} episodes?'.format(len(episodes))
+    )
+    
+    if not confirm:
+        return False
+    
+    success_count = 0
+    fail_count = 0
+    
+    for idx, episode in enumerate(episodes):
+        # Extract plex_id from episode file path
+        match = re.search(r'plex_id=(\d+)', episode['file'])
+        if match:
+            ep_info = {
+                'path': episode['file'],
+                'title': episode['title'],
+                'plex_id': match.group(1),
+                'type': 'episode',
+                'season': episode['season'],
+                'episode': episode['episode']
+            }
+            
+            if download_single_item(ep_info, show_notifications=False):
+                success_count += 1
+            else:
+                fail_count += 1
+    
+    xbmcgui.Dialog().notification(
+        'Show Download Complete',
+        'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count),
+        os.path.join(addonFolder, "icon.png"),
+        5000,
+        True
+    )
+    
+    return True
+
+
+def download_single_item(item_info, show_notifications=True):
+    """Download a single movie or episode from Plex to local storage"""
     
     # Get download directory
     download_path = getDownloadPath()
@@ -266,13 +443,14 @@ def download_from_plex():
     # Check if download directory exists and is writable
     if not xbmcvfs.exists(download_path):
         LOG("Download directory does not exist!", xbmc.LOGERROR)
-        xbmcgui.Dialog().notification(
-            'PlexKodiConnect Download',
-            'Download path does not exist',
-            os.path.join(addonFolder, "icon.png"),
-            5000,
-            True
-        )
+        if show_notifications:
+            xbmcgui.Dialog().notification(
+                'PlexKodiConnect Download',
+                'Download path does not exist',
+                os.path.join(addonFolder, "icon.png"),
+                5000,
+                True
+            )
         return False
     
     # Test if directory is writable
@@ -287,13 +465,14 @@ def download_from_plex():
         LOG("Destination path is writeable", xbmc.LOGINFO)
     else:
         LOG("Destination path not writeable", xbmc.LOGERROR)
-        xbmcgui.Dialog().notification(
-            'PlexKodiConnect Download',
-            'Download path is not writeable',
-            os.path.join(addonFolder, "icon.png"),
-            5000,
-            True
-        )
+        if show_notifications:
+            xbmcgui.Dialog().notification(
+                'PlexKodiConnect Download',
+                'Download path is not writeable',
+                os.path.join(addonFolder, "icon.png"),
+                5000,
+                True
+            )
         return False
     
     # Organize by type if setting is enabled
@@ -310,11 +489,19 @@ def download_from_plex():
     
     # Sanitize filename
     safe_title = "".join(c for c in item_info['title'] if c.isalnum() or c in (' ', '-', '_', '.'))
-    year = item_info.get('year', '')
-    if year:
-        filename = "{0} ({1})".format(safe_title, year)
+    
+    # Format filename for TV episodes
+    if item_info['type'] == 'episode':
+        season = item_info.get('season', 0)
+        episode = item_info.get('episode', 0)
+        filename = "S{0:02d}E{1:02d} - {2}".format(season, episode, safe_title)
     else:
-        filename = safe_title
+        # Format for movies
+        year = item_info.get('year', '')
+        if year:
+            filename = "{0} ({1})".format(safe_title, year)
+        else:
+            filename = safe_title
     
     # Determine source path
     source_path = item_info['path']
@@ -327,13 +514,14 @@ def download_from_plex():
             source_path = stream_url
             LOG('Using Plex download URL', xbmc.LOGINFO)
         else:
-            xbmcgui.Dialog().notification(
-                'PlexKodiConnect Download',
-                'Could not get download URL. Check PlexKodiConnect settings.',
-                os.path.join(addonFolder, "icon.png"),
-                5000,
-                True
-            )
+            if show_notifications:
+                xbmcgui.Dialog().notification(
+                    'PlexKodiConnect Download',
+                    'Could not get download URL. Check PlexKodiConnect settings.',
+                    os.path.join(addonFolder, "icon.png"),
+                    5000,
+                    True
+                )
             return False
     
     # Get file extension from source (before query parameters)
@@ -348,6 +536,11 @@ def download_from_plex():
     # Check if file already exists
     if xbmcvfs.exists(dest_file):
         LOG("File already exists: {0}".format(dest_filename), xbmc.LOGINFO)
+        
+        # For batch downloads, skip existing files
+        if not show_notifications:
+            return True
+        
         continuedownload = xbmcgui.Dialog().yesno(
             'File Exists',
             '{0} already exists![CR][CR]Delete and download again?'.format(dest_filename)
@@ -366,19 +559,20 @@ def download_from_plex():
             LOG("Deleting existing file as requested", xbmc.LOGINFO)
             xbmcvfs.delete(dest_file)
     
-    # Show confirmation dialog
-    confirm = xbmcgui.Dialog().yesno(
-        'Download from Plex',
-        'Download "{0}" to:[CR]{1}'.format(item_info["title"], download_path),
-        nolabel='Cancel',
-        yeslabel='Download'
-    )
+    # Show confirmation dialog for single downloads
+    if show_notifications:
+        confirm = xbmcgui.Dialog().yesno(
+            'Download from Plex',
+            'Download "{0}" to:[CR]{1}'.format(item_info["title"], download_path),
+            nolabel='Cancel',
+            yeslabel='Download'
+        )
+        
+        if not confirm:
+            return False
     
-    if not confirm:
-        return False
-    
-    # Notify if playing
-    if xbmc.Player().isPlaying():
+    # Notify if playing (only for single downloads)
+    if show_notifications and xbmc.Player().isPlaying():
         xbmcgui.Dialog().notification(
             'Download started',
             item_info['title'],
@@ -399,47 +593,89 @@ def download_from_plex():
         pDialog.close()
         
         if success:
-            xbmcgui.Dialog().notification(
-                'Download Complete',
-                '{0} saved successfully!'.format(item_info["title"]),
-                os.path.join(addonFolder, "icon.png"),
-                5000,
-                True
-            )
-            
-            # Ask if user wants to play the downloaded file
-            auto_play_setting = addon.getSetting('auto_play') == 'true'
-            if auto_play_setting:
-                play_now = xbmcgui.Dialog().yesno(
+            if show_notifications:
+                xbmcgui.Dialog().notification(
                     'Download Complete',
-                    'Would you like to play the downloaded file now?'
+                    '{0} saved successfully!'.format(item_info["title"]),
+                    os.path.join(addonFolder, "icon.png"),
+                    5000,
+                    True
                 )
                 
-                if play_now:
-                    xbmc.Player().play(dest_file)
+                # Ask if user wants to play the downloaded file
+                auto_play_setting = addon.getSetting('auto_play') == 'true'
+                if auto_play_setting:
+                    play_now = xbmcgui.Dialog().yesno(
+                        'Download Complete',
+                        'Would you like to play the downloaded file now?'
+                    )
+                    
+                    if play_now:
+                        xbmc.Player().play(dest_file)
             
             return True
         else:
-            xbmcgui.Dialog().notification(
-                'Download Failed',
-                'Could not download file from Plex',
-                os.path.join(addonFolder, "icon.png"),
-                5000,
-                True
-            )
+            if show_notifications:
+                xbmcgui.Dialog().notification(
+                    'Download Failed',
+                    'Could not download file from Plex',
+                    os.path.join(addonFolder, "icon.png"),
+                    5000,
+                    True
+                )
             return False
     
     except Exception as e:
         pDialog.close()
         LOG("Download error: {0}".format(str(e)), xbmc.LOGERROR)
+        if show_notifications:
+            xbmcgui.Dialog().notification(
+                'Download Error',
+                str(e),
+                os.path.join(addonFolder, "icon.png"),
+                5000,
+                True
+            )
+        return False
+
+
+def download_from_plex():
+    """Main entry point - download movie or TV show from Plex"""
+    
+    item_info = get_plex_item_info()
+    
+    if not item_info:
         xbmcgui.Dialog().notification(
-            'Download Error',
-            str(e),
+            'PlexKodiConnect Download',
+            'Could not retrieve Plex item information',
             os.path.join(addonFolder, "icon.png"),
             5000,
             True
         )
         return False
+    
+    # For TV episodes, offer options to download episode, season, or entire show
+    if item_info['type'] == 'episode' and item_info.get('tvshow_id'):
+        options = ['Download this episode']
+        
+        if item_info.get('season') is not None:
+            options.append('Download entire season {0}'.format(item_info['season']))
+        
+        options.append('Download entire show')
+        
+        choice = xbmcgui.Dialog().select('Download Options', options)
+        
+        if choice == -1:  # User cancelled
+            return False
+        elif choice == 0:  # Single episode
+            return download_single_item(item_info)
+        elif choice == 1 and len(options) == 3:  # Season (if available)
+            return download_season(item_info['tvshow_id'], item_info['season'])
+        elif (choice == 1 and len(options) == 2) or (choice == 2):  # Entire show
+            return download_show(item_info['tvshow_id'])
+    else:
+        # For movies, just download directly
+        return download_single_item(item_info)
 
 
 if __name__ == '__main__':
