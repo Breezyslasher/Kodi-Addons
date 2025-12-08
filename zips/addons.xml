@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addons>
-<addon id="repository.breezyslasher" name="Breezyslasher Repository" version="1.0.1" provider-name="Breezyslasher">
+<addon id="repository.breezyslasher" name="Breezyslasher Repository" version="1.0.0" provider-name="Breezyslasher">
     <extension point="xbmc.addon.repository" name="Breezyslasher Repository">
         <info compressed="false">https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/refs/heads/main/zips/addons.xml</info>
         <checksum>https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/refs/heads/main/zips/addons.xml.md5</checksum>
