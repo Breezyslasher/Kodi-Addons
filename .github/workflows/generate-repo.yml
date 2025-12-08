@@ -2,29 +2,107 @@ name: Generate Kodi Repository
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
-  generate:
+  build:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-      
-      - name: Run generate_repo.py
-        run: python generate_repo.py
-      
-      - name: Commit and push changes
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add addons.xml addons.xml.md5
-          git diff --quiet && git diff --staged --quiet || git commit -m "Auto-update addons.xml and md5"
-          git push
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+    
+    - name: Generate repository files
+      run: |
+        import os
+        import zipfile
+        import hashlib
+        import re
+        
+        # Addon folders to process
+        addon_folders = [
+            'repository.breezyslasher',
+            'context.plexkodiconnect.download', 
+            'plugin.audio.audiobookshelf',
+            'script.webhook.runner'
+        ]
+        
+        addons_xml_content = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<addons>\n'
+        
+        for addon_id in addon_folders:
+            addon_path = addon_id
+            addon_xml_path = os.path.join(addon_path, 'addon.xml')
+            
+            if not os.path.exists(addon_xml_path):
+                print(f"Skipping {addon_id} - no addon.xml found")
+                continue
+            
+            # Read addon.xml
+            with open(addon_xml_path, 'r', encoding='utf-8') as f:
+                addon_xml = f.read()
+            
+            # Extract version
+            version_match = re.search(r'version="([^"]+)"', addon_xml)
+            if not version_match:
+                print(f"Skipping {addon_id} - no version found")
+                continue
+            version = version_match.group(1)
+            
+            print(f"Processing {addon_id} version {version}")
+            
+            # Create zips/addon_id directory
+            zip_dir = os.path.join('zips', addon_id)
+            os.makedirs(zip_dir, exist_ok=True)
+            
+            # Copy addon.xml to zips/addon_id/
+            with open(os.path.join(zip_dir, 'addon.xml'), 'w', encoding='utf-8') as f:
+                f.write(addon_xml)
+            
+            # Create zip file
+            zip_filename = f"{addon_id}-{version}.zip"
+            zip_path = os.path.join(zip_dir, zip_filename)
+            
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(addon_path):
+                    # Skip hidden files/folders
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+                    for file in files:
+                        if not file.startswith('.'):
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.join(addon_id, os.path.relpath(file_path, addon_path))
+                            zipf.write(file_path, arcname)
+            
+            print(f"Created {zip_path}")
+            
+            # Add to addons.xml (extract just the <addon>...</addon> part)
+            addon_start = addon_xml.find('<addon')
+            if addon_start != -1:
+                addons_xml_content += addon_xml[addon_start:].strip() + '\n'
+        
+        addons_xml_content += '</addons>\n'
+        
+        # Write addons.xml to ZIPS folder
+        with open('zips/addons.xml', 'w', encoding='utf-8') as f:
+            f.write(addons_xml_content)
+        print("Created zips/addons.xml")
+        
+        # Generate MD5 in ZIPS folder
+        md5 = hashlib.md5(addons_xml_content.encode('utf-8')).hexdigest()
+        with open('zips/addons.xml.md5', 'w', encoding='utf-8') as f:
+            f.write(md5)
+        print(f"Created zips/addons.xml.md5: {md5}")
+        
+      shell: python
+    
+    - name: Commit and push changes
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add -A
+        git diff --staged --quiet || git commit -m "Auto-update repository files"
+        git push
