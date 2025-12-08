@@ -209,7 +209,7 @@ def get_season_episodes(tvshow_id, season_num):
         "params": {
             "tvshowid": tvshow_id,
             "season": season_num,
-            "properties": ["file", "title", "episode", "season"]
+            "properties": ["file", "title", "episode", "season", "playcount"]
         },
         "id": 1
     }
@@ -232,7 +232,7 @@ def get_all_episodes(tvshow_id):
         "method": "VideoLibrary.GetEpisodes",
         "params": {
             "tvshowid": tvshow_id,
-            "properties": ["file", "title", "episode", "season"]
+            "properties": ["file", "title", "episode", "season", "playcount"]
         },
         "id": 1
     }
@@ -244,6 +244,56 @@ def get_all_episodes(tvshow_id):
         return result['result']['episodes']
     
     return []
+
+
+def get_unwatched_episodes_in_season(tvshow_id, season_num, limit=None):
+    """Get unwatched episodes in a season, optionally limited to a certain number"""
+    LOG('Getting unwatched episodes for show ID {0}, season {1}, limit {2}'.format(tvshow_id, season_num, limit), xbmc.LOGINFO)
+    
+    episodes = get_season_episodes(tvshow_id, season_num)
+    
+    # Filter to unwatched (playcount == 0)
+    unwatched = [ep for ep in episodes if ep.get('playcount', 0) == 0]
+    
+    # Sort by episode number
+    unwatched.sort(key=lambda x: x.get('episode', 0))
+    
+    if limit and limit > 0:
+        unwatched = unwatched[:limit]
+    
+    LOG('Found {0} unwatched episodes in season'.format(len(unwatched)), xbmc.LOGINFO)
+    return unwatched
+
+
+def get_unwatched_episodes_in_show(tvshow_id, limit=None):
+    """Get unwatched episodes in entire show, optionally limited to a certain number"""
+    LOG('Getting unwatched episodes for show ID {0}, limit {1}'.format(tvshow_id, limit), xbmc.LOGINFO)
+    
+    episodes = get_all_episodes(tvshow_id)
+    
+    # Filter to unwatched (playcount == 0)
+    unwatched = [ep for ep in episodes if ep.get('playcount', 0) == 0]
+    
+    # Sort by season then episode number
+    unwatched.sort(key=lambda x: (x.get('season', 0), x.get('episode', 0)))
+    
+    if limit and limit > 0:
+        unwatched = unwatched[:limit]
+    
+    LOG('Found {0} unwatched episodes in show'.format(len(unwatched)), xbmc.LOGINFO)
+    return unwatched
+
+
+def count_unwatched_in_season(tvshow_id, season_num):
+    """Count unwatched episodes in a season"""
+    episodes = get_season_episodes(tvshow_id, season_num)
+    return len([ep for ep in episodes if ep.get('playcount', 0) == 0])
+
+
+def count_unwatched_in_show(tvshow_id):
+    """Count unwatched episodes in entire show"""
+    episodes = get_all_episodes(tvshow_id)
+    return len([ep for ep in episodes if ep.get('playcount', 0) == 0])
 
 
 def get_tvshow_seasons(tvshow_id):
@@ -338,34 +388,181 @@ def get_artist_songs(artist_name):
     return []
 
 
-def write_nfo_file(dest_file, item_info, metadata=None):
-    """Write .nfo metadata file for Kodi"""
+def get_plex_full_metadata(plex_id):
+    """Get full metadata from Plex including artwork URLs, plot, genres, etc."""
+    LOG('Getting full Plex metadata for ID: {0}'.format(plex_id), xbmc.LOGINFO)
+    
+    try:
+        pkc_addon = xbmcaddon.Addon('plugin.video.plexkodiconnect')
+        plex_token = pkc_addon.getSetting('accessToken')
+        plex_server = pkc_addon.getSetting('ipaddress')
+        plex_port = pkc_addon.getSetting('port')
+        use_https = pkc_addon.getSetting('https') == 'true'
+        
+        if not plex_server or not plex_token:
+            return None
+        
+        protocol = 'https' if use_https else 'http'
+        base_url = '{0}://{1}:{2}'.format(protocol, plex_server, plex_port)
+        
+        import xml.etree.ElementTree as ET
+        if sys.version_info.major == 3:
+            import urllib.request
+            metadata_url = '{0}/library/metadata/{1}?X-Plex-Token={2}'.format(base_url, plex_id, plex_token)
+            req = urllib.request.Request(metadata_url)
+            response = urllib.request.urlopen(req)
+            xml_data = response.read()
+        else:
+            import urllib2
+            metadata_url = '{0}/library/metadata/{1}?X-Plex-Token={2}'.format(base_url, plex_id, plex_token)
+            response = urllib2.urlopen(metadata_url)
+            xml_data = response.read()
+        
+        root = ET.fromstring(xml_data)
+        
+        # Try to find Video (movie/episode) or Track (music)
+        video = root.find('.//Video')
+        track = root.find('.//Track')
+        
+        metadata = {}
+        
+        if video is not None:
+            metadata['title'] = video.get('title', '')
+            metadata['year'] = video.get('year', '')
+            metadata['plot'] = video.get('summary', '')
+            metadata['tagline'] = video.get('tagline', '')
+            metadata['rating'] = video.get('rating', '')
+            metadata['runtime'] = video.get('duration', '')
+            metadata['studio'] = video.get('studio', '')
+            metadata['mpaa'] = video.get('contentRating', '')
+            metadata['originally_available'] = video.get('originallyAvailableAt', '')
+            
+            # Get poster/thumb
+            thumb = video.get('thumb', '')
+            if thumb:
+                metadata['poster_url'] = '{0}{1}?X-Plex-Token={2}'.format(base_url, thumb, plex_token)
+            
+            # Get art/fanart
+            art = video.get('art', '')
+            if art:
+                metadata['fanart_url'] = '{0}{1}?X-Plex-Token={2}'.format(base_url, art, plex_token)
+            
+            # Get genres
+            genres = []
+            for genre in video.findall('.//Genre'):
+                genres.append(genre.get('tag', ''))
+            metadata['genres'] = genres
+            
+            # Get directors
+            directors = []
+            for director in video.findall('.//Director'):
+                directors.append(director.get('tag', ''))
+            metadata['directors'] = directors
+            
+            # Get writers
+            writers = []
+            for writer in video.findall('.//Writer'):
+                writers.append(writer.get('tag', ''))
+            metadata['writers'] = writers
+            
+            # Get actors
+            actors = []
+            for role in video.findall('.//Role'):
+                actors.append({
+                    'name': role.get('tag', ''),
+                    'role': role.get('role', ''),
+                    'thumb': role.get('thumb', '')
+                })
+            metadata['actors'] = actors
+            
+            # Episode specific
+            metadata['season'] = video.get('parentIndex', '')
+            metadata['episode'] = video.get('index', '')
+            metadata['show_title'] = video.get('grandparentTitle', '')
+            
+        elif track is not None:
+            metadata['title'] = track.get('title', '')
+            metadata['artist'] = track.get('grandparentTitle', '')
+            metadata['album'] = track.get('parentTitle', '')
+            metadata['track'] = track.get('index', '')
+            metadata['year'] = track.get('parentYear', '') or track.get('year', '')
+            
+            thumb = track.get('thumb', '') or track.get('parentThumb', '')
+            if thumb:
+                metadata['poster_url'] = '{0}{1}?X-Plex-Token={2}'.format(base_url, thumb, plex_token)
+        
+        return metadata
+        
+    except Exception as e:
+        LOG('Error getting full Plex metadata: {0}'.format(str(e)), xbmc.LOGERROR)
+        return None
+
+
+def download_artwork(url, dest_path):
+    """Download artwork from URL to destination path"""
+    LOG('Downloading artwork to: {0}'.format(dest_path), xbmc.LOGINFO)
+    
+    try:
+        if sys.version_info.major == 3:
+            import urllib.request
+            urllib.request.urlretrieve(url, dest_path)
+        else:
+            import urllib
+            urllib.urlretrieve(url, dest_path)
+        return True
+    except Exception as e:
+        LOG('Error downloading artwork: {0}'.format(str(e)), xbmc.LOGERROR)
+        return False
+
+
+def write_nfo_file(dest_file, item_info, metadata=None, plex_metadata=None):
+    """Write .nfo metadata file for Kodi with full metadata"""
     nfo_file = os.path.splitext(dest_file)[0] + '.nfo'
+    
+    # Helper to escape XML
+    def escape_xml(text):
+        if text is None:
+            return ''
+        text = str(text)
+        text = text.replace('&', '&amp;')
+        text = text.replace('<', '&lt;')
+        text = text.replace('>', '&gt;')
+        text = text.replace('"', '&quot;')
+        return text
     
     try:
         if item_info['type'] == 'song' or item_info['type'] == 'music':
             # Music NFO format
             nfo_content = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
             nfo_content += '<musicvideo>\n'
-            nfo_content += '    <title>{0}</title>\n'.format(item_info.get('title', 'Unknown'))
+            nfo_content += '    <title>{0}</title>\n'.format(escape_xml(item_info.get('title', 'Unknown')))
             
-            if metadata:
+            if plex_metadata:
+                if plex_metadata.get('artist'):
+                    nfo_content += '    <artist>{0}</artist>\n'.format(escape_xml(plex_metadata['artist']))
+                if plex_metadata.get('album'):
+                    nfo_content += '    <album>{0}</album>\n'.format(escape_xml(plex_metadata['album']))
+                if plex_metadata.get('track'):
+                    nfo_content += '    <track>{0}</track>\n'.format(escape_xml(plex_metadata['track']))
+                if plex_metadata.get('year'):
+                    nfo_content += '    <year>{0}</year>\n'.format(escape_xml(plex_metadata['year']))
+            elif metadata:
                 if metadata.get('artist'):
-                    nfo_content += '    <artist>{0}</artist>\n'.format(metadata['artist'])
+                    nfo_content += '    <artist>{0}</artist>\n'.format(escape_xml(metadata['artist']))
                 if metadata.get('album'):
-                    nfo_content += '    <album>{0}</album>\n'.format(metadata['album'])
+                    nfo_content += '    <album>{0}</album>\n'.format(escape_xml(metadata['album']))
                 if metadata.get('track'):
-                    nfo_content += '    <track>{0}</track>\n'.format(metadata['track'])
+                    nfo_content += '    <track>{0}</track>\n'.format(escape_xml(metadata['track']))
                 if metadata.get('year'):
-                    nfo_content += '    <year>{0}</year>\n'.format(metadata['year'])
+                    nfo_content += '    <year>{0}</year>\n'.format(escape_xml(metadata['year']))
             else:
                 artist = item_info.get('artist', 'Unknown')
                 if isinstance(artist, list):
                     artist = artist[0] if artist else 'Unknown'
-                nfo_content += '    <artist>{0}</artist>\n'.format(artist)
-                nfo_content += '    <album>{0}</album>\n'.format(item_info.get('album', 'Unknown'))
+                nfo_content += '    <artist>{0}</artist>\n'.format(escape_xml(artist))
+                nfo_content += '    <album>{0}</album>\n'.format(escape_xml(item_info.get('album', 'Unknown')))
                 if item_info.get('track'):
-                    nfo_content += '    <track>{0}</track>\n'.format(item_info['track'])
+                    nfo_content += '    <track>{0}</track>\n'.format(escape_xml(item_info['track']))
             
             nfo_content += '</musicvideo>\n'
         
@@ -373,20 +570,81 @@ def write_nfo_file(dest_file, item_info, metadata=None):
             # TV Episode NFO format
             nfo_content = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
             nfo_content += '<episodedetails>\n'
-            nfo_content += '    <title>{0}</title>\n'.format(item_info.get('title', 'Unknown'))
-            if item_info.get('season'):
-                nfo_content += '    <season>{0}</season>\n'.format(item_info['season'])
-            if item_info.get('episode'):
-                nfo_content += '    <episode>{0}</episode>\n'.format(item_info['episode'])
+            nfo_content += '    <title>{0}</title>\n'.format(escape_xml(item_info.get('title', 'Unknown')))
+            
+            if plex_metadata:
+                if plex_metadata.get('season'):
+                    nfo_content += '    <season>{0}</season>\n'.format(escape_xml(plex_metadata['season']))
+                if plex_metadata.get('episode'):
+                    nfo_content += '    <episode>{0}</episode>\n'.format(escape_xml(plex_metadata['episode']))
+                if plex_metadata.get('plot'):
+                    nfo_content += '    <plot>{0}</plot>\n'.format(escape_xml(plex_metadata['plot']))
+                if plex_metadata.get('rating'):
+                    nfo_content += '    <rating>{0}</rating>\n'.format(escape_xml(plex_metadata['rating']))
+                if plex_metadata.get('originally_available'):
+                    nfo_content += '    <aired>{0}</aired>\n'.format(escape_xml(plex_metadata['originally_available']))
+                if plex_metadata.get('directors'):
+                    for director in plex_metadata['directors']:
+                        nfo_content += '    <director>{0}</director>\n'.format(escape_xml(director))
+                if plex_metadata.get('writers'):
+                    for writer in plex_metadata['writers']:
+                        nfo_content += '    <credits>{0}</credits>\n'.format(escape_xml(writer))
+            else:
+                if item_info.get('season'):
+                    nfo_content += '    <season>{0}</season>\n'.format(escape_xml(item_info['season']))
+                if item_info.get('episode'):
+                    nfo_content += '    <episode>{0}</episode>\n'.format(escape_xml(item_info['episode']))
+            
             nfo_content += '</episodedetails>\n'
         
         else:
             # Movie NFO format
             nfo_content = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
             nfo_content += '<movie>\n'
-            nfo_content += '    <title>{0}</title>\n'.format(item_info.get('title', 'Unknown'))
-            if item_info.get('year'):
-                nfo_content += '    <year>{0}</year>\n'.format(item_info['year'])
+            nfo_content += '    <title>{0}</title>\n'.format(escape_xml(item_info.get('title', 'Unknown')))
+            
+            if plex_metadata:
+                if plex_metadata.get('year'):
+                    nfo_content += '    <year>{0}</year>\n'.format(escape_xml(plex_metadata['year']))
+                if plex_metadata.get('plot'):
+                    nfo_content += '    <plot>{0}</plot>\n'.format(escape_xml(plex_metadata['plot']))
+                if plex_metadata.get('tagline'):
+                    nfo_content += '    <tagline>{0}</tagline>\n'.format(escape_xml(plex_metadata['tagline']))
+                if plex_metadata.get('rating'):
+                    nfo_content += '    <rating>{0}</rating>\n'.format(escape_xml(plex_metadata['rating']))
+                if plex_metadata.get('mpaa'):
+                    nfo_content += '    <mpaa>{0}</mpaa>\n'.format(escape_xml(plex_metadata['mpaa']))
+                if plex_metadata.get('runtime'):
+                    # Convert from ms to minutes
+                    try:
+                        runtime_min = int(int(plex_metadata['runtime']) / 60000)
+                        nfo_content += '    <runtime>{0}</runtime>\n'.format(runtime_min)
+                    except:
+                        pass
+                if plex_metadata.get('studio'):
+                    nfo_content += '    <studio>{0}</studio>\n'.format(escape_xml(plex_metadata['studio']))
+                if plex_metadata.get('originally_available'):
+                    nfo_content += '    <premiered>{0}</premiered>\n'.format(escape_xml(plex_metadata['originally_available']))
+                if plex_metadata.get('genres'):
+                    for genre in plex_metadata['genres']:
+                        nfo_content += '    <genre>{0}</genre>\n'.format(escape_xml(genre))
+                if plex_metadata.get('directors'):
+                    for director in plex_metadata['directors']:
+                        nfo_content += '    <director>{0}</director>\n'.format(escape_xml(director))
+                if plex_metadata.get('writers'):
+                    for writer in plex_metadata['writers']:
+                        nfo_content += '    <credits>{0}</credits>\n'.format(escape_xml(writer))
+                if plex_metadata.get('actors'):
+                    for actor in plex_metadata['actors']:
+                        nfo_content += '    <actor>\n'
+                        nfo_content += '        <name>{0}</name>\n'.format(escape_xml(actor.get('name', '')))
+                        if actor.get('role'):
+                            nfo_content += '        <role>{0}</role>\n'.format(escape_xml(actor['role']))
+                        nfo_content += '    </actor>\n'
+            else:
+                if item_info.get('year'):
+                    nfo_content += '    <year>{0}</year>\n'.format(escape_xml(item_info['year']))
+            
             nfo_content += '</movie>\n'
         
         # Write NFO file
@@ -395,10 +653,104 @@ def write_nfo_file(dest_file, item_info, metadata=None):
         nfo_file_obj.close()
         
         LOG('Wrote NFO file: {0}'.format(nfo_file), xbmc.LOGINFO)
+        
+        # Download artwork if enabled
+        download_artwork_setting = addon.getSetting('download_artwork') == 'true'
+        if download_artwork_setting and plex_metadata:
+            base_name = os.path.splitext(dest_file)[0]
+            
+            # Download poster
+            if plex_metadata.get('poster_url'):
+                poster_ext = '.jpg'
+                if item_info['type'] == 'episode':
+                    poster_file = base_name + '-thumb' + poster_ext
+                else:
+                    poster_file = base_name + '-poster' + poster_ext
+                download_artwork(plex_metadata['poster_url'], poster_file)
+            
+            # Download fanart for movies
+            if plex_metadata.get('fanart_url') and item_info['type'] == 'movie':
+                fanart_file = base_name + '-fanart.jpg'
+                download_artwork(plex_metadata['fanart_url'], fanart_file)
+        
         return True
     
     except Exception as e:
         LOG('Could not write NFO file: {0}'.format(str(e)), xbmc.LOGERROR)
+        return False
+
+
+def delete_downloads_by_type(media_type):
+    """Delete all downloads of a specific media type"""
+    download_path = addon.getSetting('download_path')
+    if not download_path:
+        return False
+    
+    organize_by_type = addon.getSetting('organize_by_type') == 'true'
+    
+    if organize_by_type:
+        if media_type == 'movies':
+            target_path = os.path.join(download_path, 'Movies')
+        elif media_type == 'tvshows':
+            target_path = os.path.join(download_path, 'TV Shows')
+        elif media_type == 'music':
+            target_path = os.path.join(download_path, 'Music')
+        else:
+            return False
+    else:
+        # If not organized by type, we can't easily separate them
+        xbmcgui.Dialog().ok(
+            'Cannot Delete',
+            'Downloads are not organized by media type. Enable "Organize by Media Type" in settings first, or manually delete files from: {0}'.format(download_path)
+        )
+        return False
+    
+    if not xbmcvfs.exists(target_path):
+        xbmcgui.Dialog().ok('Nothing to Delete', 'No {0} folder found.'.format(media_type))
+        return False
+    
+    # Count files first
+    import shutil
+    
+    confirm = xbmcgui.Dialog().yesno(
+        'Confirm Delete',
+        'Are you sure you want to delete ALL downloaded {0}?[CR][CR]This will delete everything in:[CR]{1}'.format(media_type, target_path),
+        nolabel='Cancel',
+        yeslabel='Delete All'
+    )
+    
+    if not confirm:
+        return False
+    
+    # Double confirm for safety
+    confirm2 = xbmcgui.Dialog().yesno(
+        'FINAL WARNING',
+        'This action CANNOT be undone![CR][CR]Delete all {0}?'.format(media_type),
+        nolabel='Cancel',
+        yeslabel='Yes, Delete Everything'
+    )
+    
+    if not confirm2:
+        return False
+    
+    try:
+        # Use shutil to remove directory tree
+        if sys.version_info.major == 3:
+            shutil.rmtree(xbmcvfs.translatePath(target_path))
+        else:
+            shutil.rmtree(xbmc.translatePath(target_path).decode('utf-8'))
+        
+        xbmcgui.Dialog().notification(
+            'Deleted',
+            'All {0} have been deleted'.format(media_type),
+            os.path.join(addonFolder, "icon.png"),
+            5000,
+            True
+        )
+        return True
+    except Exception as e:
+        LOG('Error deleting {0}: {1}'.format(media_type, str(e)), xbmc.LOGERROR)
+        xbmcgui.Dialog().ok('Error', 'Could not delete files: {0}'.format(str(e)))
         return False
 
 
@@ -786,6 +1138,96 @@ def copy_with_progress(source, dest, title, pDialog):
     except Exception as e:
         LOG('Copy error: {0}'.format(str(e)), xbmc.LOGERROR)
         return False
+
+
+def download_episodes(episodes, tvshow_id, title='Download', show_confirm=True):
+    """Download a list of episodes"""
+    if not episodes:
+        xbmcgui.Dialog().notification(
+            'PlexKodiConnect Download',
+            'No episodes to download',
+            os.path.join(addonFolder, "icon.png"),
+            5000,
+            True
+        )
+        return False
+    
+    if show_confirm:
+        confirm = xbmcgui.Dialog().yesno(
+            title,
+            'Download {0} episodes?'.format(len(episodes))
+        )
+        
+        if not confirm:
+            return False
+    
+    success_count = 0
+    fail_count = 0
+    
+    # Show overall progress
+    pDialog = xbmcgui.DialogProgress()
+    pDialog.create(title, 'Starting download...')
+    
+    for idx, episode in enumerate(episodes):
+        if pDialog.iscanceled():
+            LOG("Episode download cancelled by user", xbmc.LOGINFO)
+            break
+        
+        overall_percent = int((idx / len(episodes)) * 100)
+        pDialog.update(overall_percent, 'Episode {0} of {1}: S{2:02d}E{3:02d} - {4}'.format(
+            idx + 1, len(episodes), episode.get('season', 0), episode.get('episode', 0), episode.get('title', 'Unknown')
+        ))
+        
+        file_path = episode.get('file', '')
+        
+        # Check for plex_id or Plex direct URL
+        plex_id_match = re.search(r'plex_id=(\d+)', file_path)
+        plex_direct_match = re.search(r'plex\.direct.*?/library/parts/(\d+)/', file_path)
+        
+        plex_id = None
+        download_url = None
+        
+        if plex_id_match:
+            plex_id = plex_id_match.group(1)
+        elif plex_direct_match:
+            plex_id = plex_direct_match.group(1)
+            download_url = file_path
+        else:
+            # Try extracting from standard path
+            match = re.search(r'plex_id=(\d+)', file_path)
+            if match:
+                plex_id = match.group(1)
+        
+        if plex_id or download_url:
+            ep_info = {
+                'path': download_url if download_url else file_path,
+                'title': episode.get('title', 'Unknown'),
+                'plex_id': plex_id,
+                'type': 'episode',
+                'season': episode.get('season', 0),
+                'episode': episode.get('episode', 0),
+                'tvshow_id': tvshow_id
+            }
+            
+            if download_single_item(ep_info, show_notifications=False):
+                success_count += 1
+            else:
+                fail_count += 1
+        else:
+            LOG('No plex_id found for episode: {0}'.format(episode.get('title', 'Unknown')), xbmc.LOGWARNING)
+            fail_count += 1
+    
+    pDialog.close()
+    
+    xbmcgui.Dialog().notification(
+        'Download Complete',
+        'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count),
+        os.path.join(addonFolder, "icon.png"),
+        5000,
+        True
+    )
+    
+    return True
 
 
 def download_season(tvshow_id, season_num):
@@ -1454,7 +1896,11 @@ def download_single_item(item_info, show_notifications=True):
             # Write metadata NFO file
             write_metadata = addon.getSetting('write_metadata') == 'true'
             if write_metadata:
-                write_nfo_file(dest_file, item_info, metadata)
+                # Get full metadata from Plex if we have a plex_id
+                plex_metadata = None
+                if item_info.get('plex_id'):
+                    plex_metadata = get_plex_full_metadata(item_info['plex_id'])
+                write_nfo_file(dest_file, item_info, metadata, plex_metadata)
             
             if show_notifications:
                 xbmcgui.Dialog().notification(
@@ -1535,8 +1981,32 @@ def download_from_plex():
             )
             return False
         
+        # Check settings for unwatched options
+        show_unwatched = addon.getSetting('show_unwatched_options') == 'true'
+        unwatched_count = count_unwatched_in_show(tvshow_id) if show_unwatched else 0
+        
+        # Get unwatched option values from settings (0 means disabled)
+        unwatched_opt1 = int(addon.getSetting('unwatched_option_1') or '1')
+        unwatched_opt2 = int(addon.getSetting('unwatched_option_2') or '5')
+        unwatched_opt3 = int(addon.getSetting('unwatched_option_3') or '10')
+        
         # Build options list
         options = ['Download entire show ({0} seasons)'.format(len(seasons))]
+        option_actions = [('show', None)]
+        
+        # Add unwatched options if enabled and there are unwatched episodes
+        if show_unwatched and unwatched_count > 0:
+            if unwatched_opt1 > 0 and unwatched_count >= unwatched_opt1:
+                options.append('Download next {0} unwatched'.format(unwatched_opt1))
+                option_actions.append(('unwatched', unwatched_opt1))
+            if unwatched_opt2 > 0 and unwatched_count >= unwatched_opt2:
+                options.append('Download next {0} unwatched'.format(unwatched_opt2))
+                option_actions.append(('unwatched', unwatched_opt2))
+            if unwatched_opt3 > 0 and unwatched_count >= unwatched_opt3:
+                options.append('Download next {0} unwatched'.format(unwatched_opt3))
+                option_actions.append(('unwatched', unwatched_opt3))
+            options.append('Download all {0} unwatched'.format(unwatched_count))
+            option_actions.append(('unwatched', None))
         
         for season in seasons:
             season_num = season.get('season', 0)
@@ -1545,17 +2015,21 @@ def download_from_plex():
                 options.append('Specials ({0} episodes)'.format(episode_count))
             else:
                 options.append('Season {0} ({1} episodes)'.format(season_num, episode_count))
+            option_actions.append(('season', season_num))
         
         choice = xbmcgui.Dialog().select('Download "{0}"'.format(show_title), options)
         
         if choice == -1:  # User cancelled
             return False
-        elif choice == 0:  # Entire show
+        
+        action, value = option_actions[choice]
+        if action == 'show':
             return download_show(tvshow_id)
-        else:
-            # Individual season selected
-            selected_season = seasons[choice - 1]
-            return download_season(tvshow_id, selected_season.get('season', 0))
+        elif action == 'unwatched':
+            episodes = get_unwatched_episodes_in_show(tvshow_id, value)
+            return download_episodes(episodes, tvshow_id, 'Downloading Unwatched')
+        elif action == 'season':
+            return download_season(tvshow_id, value)
     
     # Handle season directory (download entire season or select episodes)
     elif item_info['type'] == 'season' and item_info.get('tvshow_id'):
@@ -1582,25 +2056,74 @@ def download_from_plex():
         else:
             season_label = 'Season {0}'.format(season_num)
         
-        # Check setting for showing "Download entire show" option
+        # Check settings
+        show_download_season = addon.getSetting('show_download_season_from_season') == 'true'
         show_download_show = addon.getSetting('show_download_show_from_season') == 'true'
+        show_unwatched = addon.getSetting('show_unwatched_options') == 'true'
+        show_all_unwatched = addon.getSetting('show_all_unwatched_option') == 'true'
+        unwatched_count = count_unwatched_in_season(tvshow_id, season_num) if show_unwatched else 0
         
-        options = ['Download entire {0} ({1} episodes)'.format(season_label, len(episodes))]
+        # Get unwatched option values from settings (0 means disabled)
+        unwatched_opt1 = int(addon.getSetting('unwatched_option_1') or '1')
+        unwatched_opt2 = int(addon.getSetting('unwatched_option_2') or '5')
+        unwatched_opt3 = int(addon.getSetting('unwatched_option_3') or '10')
+        
+        options = []
+        option_actions = []
+        
+        # Add download entire season option if enabled
+        if show_download_season:
+            options.append('Download entire {0} ({1} episodes)'.format(season_label, len(episodes)))
+            option_actions.append(('season', None))
+        
+        # Add unwatched options if enabled and there are unwatched episodes
+        if show_unwatched and unwatched_count > 0:
+            if unwatched_opt1 > 0 and unwatched_count >= unwatched_opt1:
+                options.append('Download next {0} unwatched'.format(unwatched_opt1))
+                option_actions.append(('unwatched_season', unwatched_opt1))
+            if unwatched_opt2 > 0 and unwatched_count >= unwatched_opt2:
+                options.append('Download next {0} unwatched'.format(unwatched_opt2))
+                option_actions.append(('unwatched_season', unwatched_opt2))
+            if unwatched_opt3 > 0 and unwatched_count >= unwatched_opt3:
+                options.append('Download next {0} unwatched'.format(unwatched_opt3))
+                option_actions.append(('unwatched_season', unwatched_opt3))
+            if show_all_unwatched:
+                options.append('Download all {0} unwatched in season'.format(unwatched_count))
+                option_actions.append(('unwatched_season', None))
         
         if show_download_show:
             options.append('Download entire show')
+            option_actions.append(('show', None))
         
-        # If only one option, skip the dialog and download the season directly
+        # Make sure at least one option is available
+        if len(options) == 0:
+            # Force show the season download option
+            options.append('Download entire {0} ({1} episodes)'.format(season_label, len(episodes)))
+            option_actions.append(('season', None))
+        
+        # If only one option, skip the dialog and execute directly
         if len(options) == 1:
-            return download_season(tvshow_id, season_num)
+            action, value = option_actions[0]
+            if action == 'season':
+                return download_season(tvshow_id, season_num)
+            elif action == 'unwatched_season':
+                eps = get_unwatched_episodes_in_season(tvshow_id, season_num, value)
+                return download_episodes(eps, tvshow_id, 'Downloading Unwatched')
+            elif action == 'show':
+                return download_show(tvshow_id)
         
         choice = xbmcgui.Dialog().select('Download "{0}" - {1}'.format(show_title, season_label), options)
         
         if choice == -1:  # User cancelled
             return False
-        elif choice == 0:  # Entire season
+        
+        action, value = option_actions[choice]
+        if action == 'season':
             return download_season(tvshow_id, season_num)
-        elif choice == 1:  # Entire show
+        elif action == 'unwatched_season':
+            episodes = get_unwatched_episodes_in_season(tvshow_id, season_num, value)
+            return download_episodes(episodes, tvshow_id, 'Downloading Unwatched')
+        elif action == 'show':
             return download_show(tvshow_id)
     
     # For TV episodes, offer options to download episode, season, or entire show
@@ -1739,4 +2262,16 @@ def download_from_plex():
 
 
 if __name__ == '__main__':
-    download_from_plex()
+    # Check if we're being called with a specific action (from settings)
+    if len(sys.argv) > 1:
+        action = sys.argv[1]
+        if action == 'delete_movies':
+            delete_downloads_by_type('movies')
+        elif action == 'delete_tvshows':
+            delete_downloads_by_type('tvshows')
+        elif action == 'delete_music':
+            delete_downloads_by_type('music')
+        else:
+            download_from_plex()
+    else:
+        download_from_plex()
