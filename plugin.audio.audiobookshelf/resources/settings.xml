@@ -1,0 +1,27 @@
+<settings>
+    <category label="Server Settings">
+        <setting id="ipaddress" type="text" label="IP Address" default="" />
+        <setting id="port" type="text" label="Port" default="13378" />
+        <setting id="username" type="text" label="Username" default="" />
+        <setting id="password" type="text" label="Password" option="hidden" default="" />
+    </category>
+
+    <category label="View Settings">
+        <setting id="view_filter" type="enum" label="Show Items" default="0">
+            <options>
+                <option label="Show All" value="0" />
+                <option label="Hide Watched" value="1" />
+                <option label="Downloaded Only" value="2" />
+            </options>
+        </setting>
+        <setting id="sync_watched" type="bool" label="Sync Watched Status from Server" default="true" />
+    </category>
+
+    <category label="Download Settings">
+        <setting id="enable_downloads" type="bool" label="Enable Downloads" default="false" />
+        
+        <setting id="download_path" type="file" label="Download Folder" default="" enable="eq(-1,true)" />
+        
+        <setting id="auto_delete" type="bool" label="Auto-delete After Finished" default="false" enable="eq(-2,true)" />
+    </category>
+</settings>
