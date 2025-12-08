@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="script.webhook.runner" version="1.1.1" name="Webhook Runner"
+       provider-name="Breezyslasher">
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <summary>Run up to 10 Home Assistant webhooks from Kodi.</summary>
+    <description>Launch Home Assistant webhooks from remote buttons or via GUI list. Configure up to 10 URLs and names in settings.</description>
+    <platform>all</platform>
+  </extension>
+</addon>
+
