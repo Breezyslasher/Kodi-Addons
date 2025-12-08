@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="context.plexkodiconnect.download" version="1.0.0" name="PlexKodiConnect Download" provider-name="Breezyslasher">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="kodi.context.item">
+        <menu id="kodi.core.main">
+            <item library="default.py">
+                <label>Download from Plex</label>
+                <visible>
+                    String.Contains(ListItem.Path,plex) + !ListItem.IsFolder
+                </visible>
+            </item>
+        </menu>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+        <summary lang="en_GB">Download Plex movies for offline viewing</summary>
+        <description lang="en_GB">Adds a context menu option to download movies from PlexKodiConnect to your Kodi device for offline viewing</description>
+        <language>en</language>
+        <platform>all</platform>
+        <license>MIT</license>
+    </extension>
+</addon>
