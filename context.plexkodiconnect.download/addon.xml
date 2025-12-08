@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="context.plexkodiconnect.download" version="1.0.0" name="PlexKodiConnect Download" provider-name="Breezyslasher">
+<addon id="context.plexkodiconnect.download" version="0.6.0" name="PlexKodiConnect Download" provider-name="Breezyslasher">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
