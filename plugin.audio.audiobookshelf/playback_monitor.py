@@ -2,12 +2,16 @@ import xbmc
 import xbmcgui
 import time
 import threading
+try:
+	import json
+except ImportError:
+	import simplejson as json
 
 
 class PlaybackMonitor:
 	"""Monitor playback and sync progress with Audiobookshelf server"""
 	
-	def __init__(self, library_service, item_id, duration, episode_id=None):
+	def __init__(self, library_service, item_id, duration, episode_id=None, sync_kodi_watched=False, episode_title=None):
 		self.library_service = library_service
 		self.item_id = item_id
 		self.episode_id = episode_id
@@ -20,6 +24,9 @@ class PlaybackMonitor:
 		self.sync_interval = 10  # Sync every 10 seconds
 		self.start_time = None
 		self.total_time_listened = 0
+		self.sync_kodi_watched = sync_kodi_watched
+		self.episode_title = episode_title
+		self.marked_as_watched = False
 		
 	def start_monitoring(self, start_position=0):
 		"""Start monitoring playback"""
@@ -95,6 +102,11 @@ class PlaybackMonitor:
 				episode_id=self.episode_id
 			)
 			
+			# Mark as watched in Kodi if finished and sync enabled
+			if is_finished and self.sync_kodi_watched and not self.marked_as_watched:
+				self._mark_as_watched_in_kodi()
+				self.marked_as_watched = True
+			
 			# Sync session if we have one
 			if self.session_id:
 				time_listened = time.time() - self.start_time
@@ -107,6 +119,39 @@ class PlaybackMonitor:
 			
 		except Exception as e:
 			xbmc.log(f"Error syncing progress: {str(e)}", xbmc.LOGERROR)
+	
+	def _mark_as_watched_in_kodi(self):
+		"""Mark episode as watched in Kodi's database"""
+		try:
+			# Use JSON-RPC to mark as watched
+			json_query = {
+				"jsonrpc": "2.0",
+				"method": "Files.SetFileDetails",
+				"params": {
+					"file": f"audiobookshelf://{self.item_id}/{self.episode_id if self.episode_id else 'item'}",
+					"media": "music",
+					"playcount": 1,
+					"lastplayed": time.strftime("%Y-%m-%d %H:%M:%S")
+				},
+				"id": 1
+			}
+			
+			# Execute JSON-RPC command
+			xbmc.executeJSONRPC(json.dumps(json_query))
+			
+			xbmc.log(f"Marked as watched in Kodi: {self.item_id}/{self.episode_id}", xbmc.LOGINFO)
+			
+			# Also show notification
+			if self.episode_title:
+				xbmcgui.Dialog().notification(
+					'Episode Complete',
+					f'Marked as watched: {self.episode_title}',
+					xbmcgui.NOTIFICATION_INFO,
+					3000
+				)
+			
+		except Exception as e:
+			xbmc.log(f"Error marking as watched in Kodi: {str(e)}", xbmc.LOGDEBUG)
 	
 	def stop_monitoring(self):
 		"""Stop monitoring and close session"""
