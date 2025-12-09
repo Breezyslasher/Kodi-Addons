@@ -5,7 +5,7 @@ import xbmcgui
 import xbmcaddon
 import xbmcplugin
 import xbmcvfs
-from urllib.parse import urlencode, parse_qsl
+from urllib.parse import urlencode, parse_qsl, quote, unquote
 from login_service import AudioBookShelfService
 from library_service import AudioBookShelfLibraryService
 from playback_monitor import PlaybackMonitor, get_resume_position
@@ -28,7 +28,6 @@ def build_url(**kwargs):
 
 
 def get_setting(setting_id, default=''):
-    """Get setting with fallback"""
     try:
         val = ADDON.getSetting(setting_id)
         return val if val else default
@@ -37,13 +36,11 @@ def get_setting(setting_id, default=''):
 
 
 def get_setting_bool(setting_id, default=False):
-    """Get boolean setting"""
     val = get_setting(setting_id, 'true' if default else 'false')
     return val.lower() == 'true'
 
 
 def get_setting_int(setting_id, default=0):
-    """Get integer setting (for enum values)"""
     try:
         return int(get_setting(setting_id, str(default)))
     except:
@@ -51,7 +48,6 @@ def get_setting_int(setting_id, default=0):
 
 
 def get_sync_interval(is_podcast=False):
-    """Get sync interval in seconds based on settings"""
     setting_id = 'podcast_sync_interval' if is_podcast else 'audiobook_sync_interval'
     idx = get_setting_int(setting_id, 1)
     intervals = [10, 15, 30, 60]
@@ -59,9 +55,7 @@ def get_sync_interval(is_podcast=False):
 
 
 def get_library_service():
-    """Initialize library service with network check"""
     if not is_network_available() and get_setting_bool('enable_downloads'):
-        xbmc.log("Offline mode - using downloads only", xbmc.LOGINFO)
         return None, None, None, True
     
     ip = get_setting('ipaddress')
@@ -85,7 +79,6 @@ def get_library_service():
         
         lib_service = AudioBookShelfLibraryService(url, token)
         
-        # Sync offline progress if enabled
         if get_setting_bool('offline_sync_on_connect', True):
             try:
                 synced = download_manager.sync_positions_to_server(lib_service)
@@ -105,7 +98,6 @@ def get_library_service():
 
 
 def download_cover(url, item_id):
-    """Download and cache cover image"""
     try:
         profile_path = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
         cache_dir = os.path.join(profile_path, 'covers')
@@ -121,7 +113,6 @@ def download_cover(url, item_id):
 
 
 def set_music_info(list_item, title, artist='', duration=0, playcount=0, tracknumber=0):
-    """Set music info - compatible with Kodi 21"""
     try:
         info_tag = list_item.getMusicInfoTag()
         info_tag.setTitle(title)
@@ -141,7 +132,6 @@ def set_music_info(list_item, title, artist='', duration=0, playcount=0, tracknu
 
 
 def find_file_for_position(audio_files, position):
-    """Find which file contains position and calculate seek time within that file"""
     sorted_files = sorted(audio_files, key=lambda x: x.get('index', 0))
     
     cumulative = 0
@@ -155,7 +145,6 @@ def find_file_for_position(audio_files, position):
         
         cumulative = file_end
     
-    # Position beyond all files
     if sorted_files:
         return sorted_files[-1], 0, cumulative - sorted_files[-1].get('duration', 0)
     
@@ -163,7 +152,6 @@ def find_file_for_position(audio_files, position):
 
 
 def format_time(seconds):
-    """Format seconds as human readable"""
     hours = int(seconds // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
@@ -176,11 +164,9 @@ def format_time(seconds):
 
 
 def resolve_progress_conflict(server_time, local_time, duration, is_podcast=False):
-    """Resolve conflict between server and local progress based on settings"""
     setting_id = 'podcast_conflict_resolution' if is_podcast else 'audiobook_conflict_resolution'
     resolution = get_setting_int(setting_id, 0)
     
-    # 0 = Use server, 1 = Use local, 2 = Use furthest, 3 = Always ask
     if resolution == 0:
         return server_time
     elif resolution == 1:
@@ -188,7 +174,6 @@ def resolve_progress_conflict(server_time, local_time, duration, is_podcast=Fals
     elif resolution == 2:
         return max(server_time, local_time)
     else:
-        # Ask user
         server_str = format_time(server_time)
         local_str = format_time(local_time)
         
@@ -206,11 +191,10 @@ def resolve_progress_conflict(server_time, local_time, duration, is_podcast=Fals
         elif choice == 2:
             return max(server_time, local_time)
         
-        return server_time  # Default
+        return server_time
 
 
 def ask_resume(current_time, duration, title='Resume Playback'):
-    """Ask user if they want to resume"""
     if current_time < 10:
         return False
     
@@ -226,7 +210,6 @@ def ask_resume(current_time, duration, title='Resume Playback'):
 
 
 def list_libraries():
-    """List available libraries"""
     xbmcplugin.setContent(ADDON_HANDLE, 'albums')
     
     library_service, url, token, offline = get_library_service()
@@ -243,18 +226,15 @@ def list_libraries():
         return
     
     try:
-        # Search podcasts option
         list_item = xbmcgui.ListItem(label='[Search Podcasts]')
         list_item.setArt({'icon': 'DefaultAddonLookAndFeel.png'})
         xbmcplugin.addDirectoryItem(ADDON_HANDLE, build_url(action='search'), list_item, isFolder=True)
         
-        # Downloads option
         if get_setting_bool('enable_downloads'):
             list_item = xbmcgui.ListItem(label='[Downloaded Items]')
             list_item.setArt({'icon': 'DefaultFolder.png'})
             xbmcplugin.addDirectoryItem(ADDON_HANDLE, build_url(action='downloads'), list_item, isFolder=True)
         
-        # Libraries
         data = library_service.get_all_libraries()
         for library in data.get('libraries', []):
             list_item = xbmcgui.ListItem(label=library['name'])
@@ -264,12 +244,11 @@ def list_libraries():
         
         xbmcplugin.endOfDirectory(ADDON_HANDLE)
     except Exception as e:
-        xbmc.log(f"Error listing libraries: {str(e)}", xbmc.LOGERROR)
+        xbmc.log(f"Error: {str(e)}", xbmc.LOGERROR)
         xbmcplugin.endOfDirectory(ADDON_HANDLE, succeeded=False)
 
 
 def list_downloads():
-    """List downloaded items"""
     xbmcplugin.setContent(ADDON_HANDLE, 'songs')
     
     downloads = download_manager.get_all_downloads()
@@ -298,7 +277,6 @@ def list_downloads():
 
 
 def fetch_podcast_metadata(feed_url):
-    """Fetch podcast metadata from RSS feed"""
     import requests
     try:
         response = requests.get(feed_url, timeout=15)
@@ -337,18 +315,97 @@ def fetch_podcast_metadata(feed_url):
                 if url_el is not None and url_el.text:
                     metadata['imageUrl'] = url_el.text
         
-        lang_el = channel.find('language')
-        if lang_el is not None and lang_el.text:
-            metadata['language'] = lang_el.text
-        
         return metadata
     except Exception as e:
         xbmc.log(f"Error fetching podcast metadata: {str(e)}", xbmc.LOGERROR)
         return {}
 
 
+def fetch_rss_episodes(feed_url):
+    """Fetch episodes from RSS feed"""
+    import requests
+    try:
+        response = requests.get(feed_url, timeout=30)
+        response.raise_for_status()
+        
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(response.content)
+        channel = root.find('channel')
+        if channel is None:
+            return []
+        
+        episodes = []
+        itunes_ns = '{http://www.itunes.com/dtds/podcast-1.0.dtd}'
+        
+        for item in channel.findall('item'):
+            episode = {}
+            
+            title_el = item.find('title')
+            episode['title'] = title_el.text if title_el is not None and title_el.text else 'Unknown'
+            
+            # Get enclosure (audio URL)
+            enclosure = item.find('enclosure')
+            if enclosure is not None:
+                episode['audioUrl'] = enclosure.get('url', '')
+                episode['audioType'] = enclosure.get('type', 'audio/mpeg')
+                try:
+                    episode['size'] = int(enclosure.get('length', 0))
+                except:
+                    episode['size'] = 0
+            else:
+                episode['audioUrl'] = ''
+            
+            # GUID
+            guid_el = item.find('guid')
+            episode['guid'] = guid_el.text if guid_el is not None and guid_el.text else episode['title']
+            
+            # Pub date
+            pubdate_el = item.find('pubDate')
+            episode['pubDate'] = pubdate_el.text if pubdate_el is not None else ''
+            
+            # Description
+            desc_el = item.find('description')
+            episode['description'] = desc_el.text[:500] if desc_el is not None and desc_el.text else ''
+            
+            # Duration
+            duration_el = item.find(f'{itunes_ns}duration')
+            if duration_el is not None and duration_el.text:
+                episode['duration'] = parse_duration(duration_el.text)
+            else:
+                episode['duration'] = 0
+            
+            # Episode number
+            ep_el = item.find(f'{itunes_ns}episode')
+            episode['episode'] = int(ep_el.text) if ep_el is not None and ep_el.text else None
+            
+            # Season
+            season_el = item.find(f'{itunes_ns}season')
+            episode['season'] = int(season_el.text) if season_el is not None and season_el.text else None
+            
+            if episode['audioUrl']:  # Only add if has audio
+                episodes.append(episode)
+        
+        return episodes
+    except Exception as e:
+        xbmc.log(f"Error fetching RSS episodes: {str(e)}", xbmc.LOGERROR)
+        return []
+
+
+def parse_duration(duration_str):
+    """Parse duration string (HH:MM:SS or seconds) to seconds"""
+    try:
+        if ':' in duration_str:
+            parts = duration_str.split(':')
+            if len(parts) == 3:
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+            elif len(parts) == 2:
+                return int(parts[0]) * 60 + int(parts[1])
+        return int(duration_str)
+    except:
+        return 0
+
+
 def search_podcasts():
-    """Search iTunes for podcasts"""
     library_service, url, token, offline = get_library_service()
     if not library_service or offline:
         xbmcgui.Dialog().notification('Error', 'Search requires network', xbmcgui.NOTIFICATION_ERROR)
@@ -366,7 +423,7 @@ def search_podcasts():
     
     try:
         import requests
-        search_url = f"https://itunes.apple.com/search?term={requests.utils.quote(query)}&media=podcast&limit=20"
+        search_url = f"https://itunes.apple.com/search?term={quote(query)}&media=podcast&limit=20"
         response = requests.get(search_url, timeout=10)
         results = response.json()
         
@@ -407,7 +464,6 @@ def search_podcasts():
 
 
 def add_podcast_to_library(feed_url, name):
-    """Add podcast to Audiobookshelf library"""
     library_service, url, token, offline = get_library_service()
     if not library_service or offline:
         xbmcgui.Dialog().notification('Error', 'Cannot add podcast offline', xbmcgui.NOTIFICATION_ERROR)
@@ -495,8 +551,135 @@ def add_podcast_to_library(feed_url, name):
         xbmcgui.Dialog().notification('Error', str(e)[:50], xbmcgui.NOTIFICATION_ERROR)
 
 
+def find_new_episodes(item_id):
+    """Show episodes from RSS feed that aren't on server yet"""
+    library_service, url, token, offline = get_library_service()
+    if not library_service or offline:
+        xbmcgui.Dialog().notification('Error', 'Requires network', xbmcgui.NOTIFICATION_ERROR)
+        return
+    
+    try:
+        # Get podcast info from server
+        item = library_service.get_library_item_by_id(item_id, expanded=1)
+        feed_url = item.get('media', {}).get('metadata', {}).get('feedUrl', '')
+        
+        if not feed_url:
+            xbmcgui.Dialog().notification('Error', 'No feed URL found', xbmcgui.NOTIFICATION_ERROR)
+            return
+        
+        # Get existing episodes on server
+        server_episodes = item.get('media', {}).get('episodes', [])
+        server_guids = set()
+        server_titles = set()
+        for ep in server_episodes:
+            if ep.get('guid'):
+                server_guids.add(ep.get('guid'))
+            if ep.get('title'):
+                server_titles.add(ep.get('title').lower().strip())
+        
+        # Fetch RSS feed
+        progress = xbmcgui.DialogProgress()
+        progress.create('Finding Episodes', 'Fetching RSS feed...')
+        
+        rss_episodes = fetch_rss_episodes(feed_url)
+        progress.close()
+        
+        if not rss_episodes:
+            xbmcgui.Dialog().notification('No Episodes', 'Could not fetch RSS feed', xbmcgui.NOTIFICATION_WARNING)
+            return
+        
+        # Filter to episodes not on server
+        new_episodes = []
+        for ep in rss_episodes:
+            guid = ep.get('guid', '')
+            title = ep.get('title', '').lower().strip()
+            
+            if guid not in server_guids and title not in server_titles:
+                new_episodes.append(ep)
+        
+        if not new_episodes:
+            xbmcgui.Dialog().notification('Up to Date', 'All episodes already on server', xbmcgui.NOTIFICATION_INFO)
+            return
+        
+        # Show list
+        xbmcplugin.setContent(ADDON_HANDLE, 'episodes')
+        
+        for episode in new_episodes[:50]:  # Limit to 50
+            title = episode.get('title', 'Unknown')
+            duration = episode.get('duration', 0)
+            pub_date = episode.get('pubDate', '')[:16]  # Trim date
+            
+            display_title = title
+            if pub_date:
+                display_title = f"{title} ({pub_date})"
+            
+            list_item = xbmcgui.ListItem(label=display_title)
+            list_item.setProperty('IsPlayable', 'false')
+            set_music_info(list_item, title=title, duration=duration)
+            
+            # Encode episode data in URL
+            url_params = build_url(
+                action='add_episode_to_server',
+                item_id=item_id,
+                episode_url=quote(episode.get('audioUrl', '')),
+                episode_title=quote(title)
+            )
+            
+            xbmcplugin.addDirectoryItem(ADDON_HANDLE, url_params, list_item, isFolder=False)
+        
+        xbmcplugin.endOfDirectory(ADDON_HANDLE)
+        
+    except Exception as e:
+        xbmc.log(f"Error finding episodes: {str(e)}", xbmc.LOGERROR)
+        xbmcgui.Dialog().notification('Error', str(e)[:50], xbmcgui.NOTIFICATION_ERROR)
+
+
+def add_episode_to_server(item_id, episode_url, episode_title):
+    """Add specific episode to server"""
+    library_service, url, token, offline = get_library_service()
+    if not library_service or offline:
+        xbmcgui.Dialog().notification('Error', 'Requires network', xbmcgui.NOTIFICATION_ERROR)
+        return
+    
+    try:
+        import requests
+        
+        # Decode URL parameters
+        audio_url = unquote(episode_url)
+        title = unquote(episode_title)
+        
+        # Call API to download episode by URL
+        download_url = f"{url}/api/podcasts/{item_id}/download-episodes"
+        
+        # First check if server supports URL-based download
+        # Try the new episode download endpoint
+        payload = [{
+            'episodeUrl': audio_url,
+            'title': title
+        }]
+        
+        response = requests.post(download_url, headers=library_service.headers, json=payload, timeout=30)
+        
+        if response.status_code == 200:
+            xbmcgui.Dialog().notification('Download Started', title[:30], xbmcgui.NOTIFICATION_INFO)
+            xbmc.log(f"Server downloading episode: {title}", xbmc.LOGINFO)
+        else:
+            # Try alternative: use check-new-episodes endpoint to trigger refresh
+            check_url = f"{url}/api/podcasts/{item_id}/check-new-episodes"
+            response2 = requests.get(check_url, headers=library_service.headers, timeout=30)
+            
+            if response2.status_code == 200:
+                xbmcgui.Dialog().notification('Refreshing', 'Checking for new episodes...', xbmcgui.NOTIFICATION_INFO)
+            else:
+                xbmcgui.Dialog().notification('Note', 'Select episode from server list to download', xbmcgui.NOTIFICATION_INFO)
+            
+    except Exception as e:
+        xbmc.log(f"Error adding episode: {str(e)}", xbmc.LOGERROR)
+        xbmcgui.Dialog().notification('Error', str(e)[:50], xbmcgui.NOTIFICATION_ERROR)
+
+
 def download_episode_to_server(item_id, episode_id):
-    """Tell server to download a podcast episode"""
+    """Tell server to download a podcast episode by ID"""
     library_service, url, token, offline = get_library_service()
     if not library_service or offline:
         xbmcgui.Dialog().notification('Error', 'Requires network', xbmcgui.NOTIFICATION_ERROR)
@@ -521,7 +704,6 @@ def download_episode_to_server(item_id, episode_id):
 
 
 def list_library_items(library_id):
-    """List items in a library"""
     xbmcplugin.setContent(ADDON_HANDLE, 'songs')
     
     library_service, url, token, offline = get_library_service()
@@ -540,7 +722,6 @@ def list_library_items(library_id):
             item_id = item['id']
             media_type = item.get('mediaType', 'book')
             
-            # Get progress
             is_finished = False
             try:
                 progress = library_service.get_media_progress(item_id)
@@ -550,13 +731,11 @@ def list_library_items(library_id):
             
             is_downloaded = download_manager.is_downloaded(item_id)
             
-            # Apply filter
             if view_filter == 1 and is_finished:
                 continue
             elif view_filter == 2 and not is_downloaded:
                 continue
             
-            # Cover
             cover_url = f"{url}/api/items/{item_id}/cover?token={token}"
             local_cover = download_cover(cover_url, item_id)
             
@@ -564,7 +743,6 @@ def list_library_items(library_id):
             author = metadata.get('authorName', '')
             duration = media.get('duration', 0)
             
-            # Prefix
             prefix = ''
             if is_downloaded:
                 prefix = '[Downloaded] '
@@ -577,7 +755,6 @@ def list_library_items(library_id):
             set_music_info(list_item, title=title, artist=author, duration=duration,
                            playcount=1 if is_finished else 0)
             
-            # Context menu
             context_items = []
             if get_setting_bool('enable_downloads'):
                 if is_downloaded:
@@ -586,11 +763,11 @@ def list_library_items(library_id):
                     context_items.append(('Download', f'RunPlugin({build_url(action="download", item_id=item_id, library_id=library_id)})'))
             list_item.addContextMenuItems(context_items)
             
-            # Determine action
             has_episodes = media_type == 'podcast' and media.get('numEpisodes', 0) > 0
             num_files = media.get('numAudioFiles', 1)
             
-            if has_episodes:
+            # For empty podcasts, still show folder to allow finding episodes
+            if media_type == 'podcast':
                 xbmcplugin.addDirectoryItem(ADDON_HANDLE, 
                                            build_url(action='episodes', item_id=item_id),
                                            list_item, isFolder=True)
@@ -611,7 +788,7 @@ def list_library_items(library_id):
 
 
 def list_episodes(item_id):
-    """List podcast episodes"""
+    """List podcast episodes with Find New Episodes option"""
     xbmcplugin.setContent(ADDON_HANDLE, 'episodes')
     
     library_service, url, token, offline = get_library_service()
@@ -622,15 +799,25 @@ def list_episodes(item_id):
     try:
         item = library_service.get_library_item_by_id(item_id, expanded=1)
         episodes = item.get('media', {}).get('episodes', [])
-        
-        # Handle empty podcast
-        if not episodes:
-            xbmcgui.Dialog().notification('No Episodes', 'This podcast has no episodes yet', xbmcgui.NOTIFICATION_INFO)
-            xbmcplugin.endOfDirectory(ADDON_HANDLE)
-            return
+        feed_url = item.get('media', {}).get('metadata', {}).get('feedUrl', '')
         
         view_filter = get_setting_int('view_filter', 0)
         show_finished_marker = get_setting_bool('show_finished_marker', True)
+        
+        # Add "Find New Episodes" option at top if feed URL exists
+        if feed_url:
+            list_item = xbmcgui.ListItem(label='[Find New Episodes]')
+            list_item.setArt({'icon': 'DefaultAddSource.png'})
+            xbmcplugin.addDirectoryItem(ADDON_HANDLE, 
+                                       build_url(action='find_episodes', item_id=item_id),
+                                       list_item, isFolder=True)
+        
+        # Handle empty podcast
+        if not episodes:
+            if not feed_url:
+                xbmcgui.Dialog().notification('No Episodes', 'This podcast has no episodes', xbmcgui.NOTIFICATION_INFO)
+            xbmcplugin.endOfDirectory(ADDON_HANDLE)
+            return
         
         # Sort episodes
         def sort_key(ep):
@@ -648,7 +835,6 @@ def list_episodes(item_id):
             duration = episode.get('duration', 0)
             has_audio = episode.get('audioFile') is not None
             
-            # Get progress
             is_finished = False
             try:
                 progress = library_service.get_media_progress(item_id, episode_id)
@@ -658,13 +844,11 @@ def list_episodes(item_id):
             
             is_downloaded = download_manager.is_downloaded(item_id, episode_id)
             
-            # Filter
             if view_filter == 1 and is_finished:
                 continue
             elif view_filter == 2 and not is_downloaded:
                 continue
             
-            # Prefix
             prefix = ''
             if is_downloaded:
                 prefix = '[Downloaded] '
@@ -677,7 +861,6 @@ def list_episodes(item_id):
             list_item.setProperty('IsPlayable', 'true' if has_audio or is_downloaded else 'false')
             set_music_info(list_item, title=title, duration=duration, playcount=1 if is_finished else 0)
             
-            # Context menu
             context_items = []
             if not has_audio:
                 context_items.append(('Download to Server', 
@@ -691,7 +874,6 @@ def list_episodes(item_id):
                                          f'RunPlugin({build_url(action="download_episode", item_id=item_id, episode_id=episode_id)})'))
             list_item.addContextMenuItems(context_items)
             
-            # Action
             if has_audio or is_downloaded:
                 url_params = build_url(action='play_episode', item_id=item_id, episode_id=episode_id)
             else:
@@ -707,7 +889,6 @@ def list_episodes(item_id):
 
 
 def list_parts(item_id):
-    """List chapters/parts - no Play from Beginning, just chapters with Resume at top"""
     xbmcplugin.setContent(ADDON_HANDLE, 'songs')
     
     library_service, url, token, offline = get_library_service()
@@ -721,16 +902,13 @@ def list_parts(item_id):
         audio_files = item.get('media', {}).get('audioFiles', [])
         total_duration = item.get('media', {}).get('duration', 0)
         
-        # Get server progress
         progress = library_service.get_media_progress(item_id)
         server_time = progress.get('currentTime', 0) if progress else 0
         is_finished = progress.get('isFinished', False) if progress else False
         
-        # Get local progress
         local_pos = download_manager.get_local_resume_position(item_id)
         local_time = local_pos.get('current_time', 0) if local_pos else 0
         
-        # Resolve conflict
         current_time = server_time
         if local_time > 0 and server_time > 0 and abs(local_time - server_time) > 30:
             current_time = resolve_progress_conflict(server_time, local_time, total_duration, is_podcast=False)
@@ -739,14 +917,13 @@ def list_parts(item_id):
         
         sorted_files = sorted(audio_files, key=lambda x: x.get('index', 0))
         
-        # Add Resume option at top if there's progress
+        # Resume option
         if current_time > 10 and not is_finished:
             target_file, seek_in_file, _ = find_file_for_position(audio_files, current_time)
             
             if target_file:
                 file_ino = target_file.get('ino')
                 
-                # Find current chapter name
                 current_chapter = ""
                 if chapters:
                     for ch in sorted(chapters, key=lambda x: x.get('start', 0)):
@@ -763,7 +940,7 @@ def list_parts(item_id):
                                                     file_ino=file_ino, seek_time=int(seek_in_file)),
                                            list_item, isFolder=False)
         
-        # List chapters
+        # Chapters
         if chapters:
             chapters = sorted(chapters, key=lambda x: x.get('start', 0))
             for i, chapter in enumerate(chapters):
@@ -774,7 +951,6 @@ def list_parts(item_id):
                 
                 target_file, seek_in_file, _ = find_file_for_position(audio_files, chapter_start)
                 
-                # Mark current chapter
                 display_title = title
                 if current_time > 0 and chapter_start <= current_time < chapter_end:
                     display_title = f'▶ {title}'
@@ -791,7 +967,6 @@ def list_parts(item_id):
                 
                 xbmcplugin.addDirectoryItem(ADDON_HANDLE, url_params, list_item, isFolder=False)
         else:
-            # No chapters, list files
             cumulative = 0
             for i, f in enumerate(sorted_files):
                 title = f.get('metadata', {}).get('title', f'Part {i+1}')
@@ -819,7 +994,6 @@ def list_parts(item_id):
 
 def play_audio(play_url, title, duration, library_service, item_id, episode_id=None, 
                start_position=0, is_podcast=False):
-    """Universal playback with monitoring"""
     global _active_monitor
     
     list_item = xbmcgui.ListItem(path=play_url)
@@ -827,7 +1001,6 @@ def play_audio(play_url, title, duration, library_service, item_id, episode_id=N
     
     xbmcplugin.setResolvedUrl(ADDON_HANDLE, True, list_item)
     
-    # Get sync settings
     sync_enabled = get_setting_bool('sync_podcast_progress' if is_podcast else 'sync_audiobook_progress', True)
     sync_on_stop = get_setting_bool('podcast_sync_on_stop' if is_podcast else 'audiobook_sync_on_stop', True)
     sync_interval = get_sync_interval(is_podcast)
@@ -844,7 +1017,6 @@ def play_audio(play_url, title, duration, library_service, item_id, episode_id=N
 
 
 def play_at_position(item_id, file_ino, seek_time):
-    """Play specific file at specific position"""
     library_service, url, token, offline = get_library_service()
     if not library_service:
         return
@@ -866,7 +1038,6 @@ def play_at_position(item_id, file_ino, seek_time):
 
 
 def play_item(item_id):
-    """Play single-file item"""
     library_service, url, token, offline = get_library_service()
     
     if download_manager.is_downloaded(item_id):
@@ -881,7 +1052,6 @@ def play_item(item_id):
         duration = item.get('media', {}).get('duration', 0)
         title = item.get('media', {}).get('metadata', {}).get('title', 'Unknown')
         
-        # Get resume position
         server_time = get_resume_position(library_service, item_id, None)
         local_pos = download_manager.get_local_resume_position(item_id)
         local_time = local_pos.get('current_time', 0) if local_pos else 0
@@ -906,7 +1076,6 @@ def play_item(item_id):
 
 
 def play_chapter(item_id, chapter_start):
-    """Play chapter"""
     library_service, url, token, offline = get_library_service()
     if not library_service:
         return
@@ -931,7 +1100,6 @@ def play_chapter(item_id, chapter_start):
 
 
 def play_episode(item_id, episode_id):
-    """Play podcast episode"""
     library_service, url, token, offline = get_library_service()
     
     if download_manager.is_downloaded(item_id, episode_id):
@@ -956,7 +1124,6 @@ def play_episode(item_id, episode_id):
         title = episode.get('title', 'Unknown')
         duration = episode.get('duration', 0)
         
-        # Resume
         server_time = get_resume_position(library_service, item_id, episode_id)
         local_pos = download_manager.get_local_resume_position(item_id, episode_id)
         local_time = local_pos.get('current_time', 0) if local_pos else 0
@@ -982,7 +1149,6 @@ def play_episode(item_id, episode_id):
 
 
 def play_offline_item(item_id, episode_id=None):
-    """Play downloaded item"""
     download_info = download_manager.get_download_info(item_id, episode_id)
     if not download_info:
         xbmcgui.Dialog().notification('Error', 'Download not found', xbmcgui.NOTIFICATION_ERROR)
@@ -996,7 +1162,6 @@ def play_offline_item(item_id, episode_id=None):
         if ask_resume(local_pos['current_time'], duration):
             start_position = local_pos['current_time']
     
-    # Get file
     if download_info.get('is_multifile'):
         file_path, seek_pos = download_manager.get_file_for_position(item_id, start_position)
         if not file_path:
@@ -1027,7 +1192,6 @@ def play_offline_item(item_id, episode_id=None):
 
 
 def download_item(item_id, library_id):
-    """Download audiobook"""
     library_service, url, token, offline = get_library_service()
     if not library_service:
         return
@@ -1056,7 +1220,6 @@ def download_item(item_id, library_id):
 
 
 def download_episode(item_id, episode_id):
-    """Download podcast episode"""
     library_service, url, token, offline = get_library_service()
     if not library_service:
         return
@@ -1082,7 +1245,6 @@ def download_episode(item_id, episode_id):
 
 
 def delete_download(item_id=None, episode_id=None, key=None):
-    """Delete download"""
     if key:
         parts = key.split('_', 1)
         item_id = parts[0]
@@ -1094,7 +1256,6 @@ def delete_download(item_id=None, episode_id=None, key=None):
 
 
 def router(paramstring):
-    """Route to appropriate function"""
     params = dict(parse_qsl(paramstring))
     action = params.get('action')
     
@@ -1124,6 +1285,10 @@ def router(paramstring):
         search_podcasts()
     elif action == 'add_podcast':
         add_podcast_to_library(params['feed_url'], params['name'])
+    elif action == 'find_episodes':
+        find_new_episodes(params['item_id'])
+    elif action == 'add_episode_to_server':
+        add_episode_to_server(params['item_id'], params['episode_url'], params['episode_title'])
     elif action == 'download_to_server':
         download_episode_to_server(params['item_id'], params['episode_id'])
     elif action == 'download':
