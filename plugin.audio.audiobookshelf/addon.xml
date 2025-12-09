@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="1.0.2" provider-name="Breezyslasher">
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="1.0.5" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0" />
@@ -18,7 +18,7 @@
 * Chapter navigation
 * Resume playback
 * Search and add new podcasts
-* Find and download new episodes
+* Find new episodes (from RSS)
 * API Key or Username/Password authentication</description>
 		<language></language>
 		<platform>all</platform>
@@ -28,24 +28,34 @@
 			<icon>resources/icon.png</icon>
 		</assets>
 		<news>
-v1.0.2 (2025-12-09) - Kodi 21 Compatibility
-- FIXED: "takes at most 2 arguments" error - Kodi 21 changed DialogProgress.update() API
-- FIXED: RSS refresh now uses POST request (required by newer Audiobookshelf)
-- FIXED: Podcast [Done] marker - now shows [X/Y] episode count, never [Done]
-- FIXED: Batch add episodes properly reports results
-- IMPROVED: Falls back to GET if POST returns 404 (older server compatibility)
-- IMPROVED: Better logging for debugging RSS/server issues
+v1.0.5 (2025-12-09) - Comprehensive Sync Overhaul
+- NEW: Bidirectional sync - pulls progress from server if ahead
+- NEW: Automatic sync when opening app (startup sync)
+- NEW: Automatic sync when reconnecting to WiFi after offline mode
+- NEW: Background sync periodically polls server for updates
+- NEW: Unified progress storage for both downloaded and streamed content
+- FIXED: Audiobook progress sync now works correctly
+- FIXED: Podcast progress sync improved
+- FIXED: Duration detection issues resolved
+- FIXED: Resume position now properly syncs both ways
+- IMPROVED: If local progress ahead, uploads to server
+- IMPROVED: If server progress ahead, downloads to local
+- IMPROVED: Migrates old progress data automatically
 
-v1.0.1 (2025-12-09) - Bug Fixes
-- FIXED: Invalid credentials now shows error instead of offline mode
-- FIXED: Token caching persists to file
-- FIXED: Progress sync no longer marks items finished prematurely
-- REMOVED: Grid view option (skin-dependent)
+v1.0.4 - Direct Episode Adding
+- NEW: Add episodes directly from RSS without server refresh endpoint
+- NEW: Click [NEW] episode to add it directly to server
+- NEW: [Add All X Episodes] adds all new episodes at once
+- NEW: Episodes cached locally for faster batch operations
+- REMOVED: Refresh Podcast from RSS (server endpoint not available)
+- FIXED: No more "Server RSS refresh not available" errors
+- FIXED: Progress sync now works for both audiobooks and podcasts
+- IMPROVED: Full RSS metadata captured (description, pubDate, etc.)
 
-v1.0.0 (2025-12-09) - Major Release
-- NEW: API Key authentication
-- NEW: Auto-navigate when only one library type
-- NEW: Progress markers [X%] for audiobooks
+v1.0.3 - Progress sync overhaul
+v1.0.2 - Kodi 21 DialogProgress fix
+v1.0.1 - Token caching, finished threshold fix
+v1.0.0 - Initial release
 		</news>
 	</extension>
 </addon>
