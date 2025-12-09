@@ -18,32 +18,30 @@
 			<icon>resources/icon.png</icon>
 		</assets>
 		<news>
+v0.1.0 (2025-12-08)
+- FIXED: Settings now appear correctly (using legacy XML format)
+- FIXED: Empty podcasts handled gracefully
+- FIXED: Episodes not on server now show [Not on Server] prefix
+- FIXED: Progress syncs to server when closing audiobook/podcast
+- REMOVED: "Play from Beginning" option (just click first chapter)
+- NEW: Sync settings page with options for audiobooks and podcasts
+- NEW: Conflict resolution when local and server progress differ
+- NEW: Option to use server position, local position, furthest, or ask
+- NEW: Configurable sync intervals (10s, 15s, 30s, 60s)
+- NEW: Option to disable server sync entirely
+- NEW: Offline progress saving with sync on reconnect
+- IMPROVED: Resume button shows current chapter name
+
 v0.0.5 (2025-12-08)
-- FIXED: Chapter/resume playback now calculates correct file and seek position
-- NEW: Resume button at top of chapter list shows current position
-- NEW: "Download to Server" for podcast episodes not yet on server
-- NEW: Multi-file audiobook downloads (all files)
-- NEW: Podcast search fetches full metadata from RSS feed
-- NEW: Offline resume tracking with server sync on reconnect
-- FIXED: Settings XML empty default value errors
-- FIXED: Download progress dialog arguments
-- Improved playback stability with better seek timing
+- Fixed chapter/resume playback calculation
+- Added multi-file audiobook downloads
+- Added podcast metadata from RSS feeds
+- Added "Download to Server" for podcast episodes
 
 v0.0.4 (2025-12-07)
-- Added download functionality with progress bar
+- Added download functionality
 - Added offline playback support
-- Added auto-delete after finished option
 - Fixed Kodi 21 deprecation warnings
-- Added Hide Watched filter
-
-v0.0.3 (2025-01-06)
-- Changed to Music addon type
-- Fixed chapter playback to use individual files
-- Added Kodi watch history sync
-- Progress sync with Audiobookshelf server
-- Resume playback support
-- Multi-file audiobook support
-- Podcast episode list support
 		</news>
 	</extension>
 </addon>
