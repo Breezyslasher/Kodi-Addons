@@ -23,12 +23,21 @@ class DownloadManager:
     def _get_download_path(self):
         """Get configured download path"""
         path = self.addon.getSetting('download_path')
-        if not path:
+        
+        # If path is empty or not set, use profile directory
+        if not path or path.strip() == '':
             path = xbmcvfs.translatePath(self.addon.getAddonInfo('profile'))
             path = os.path.join(path, 'downloads')
+        else:
+            path = xbmcvfs.translatePath(path)
         
-        if not os.path.exists(path):
-            os.makedirs(path)
+        # Only create directory if downloads are enabled
+        if self.addon.getSetting('enable_downloads').lower() == 'true':
+            if not os.path.exists(path):
+                try:
+                    os.makedirs(path)
+                except:
+                    pass
         
         return path
     
@@ -156,20 +165,22 @@ class DownloadManager:
         key = f"{item_id}_{episode_id}" if episode_id else item_id
         return self.downloads.get(key)
     
-    def download_item(self, item_id, item_data, library_service, episode_id=None):
+    def download_item(self, item_id, item_data, library_service, episode_id=None, show_progress=True):
         """Download an item for offline playback"""
         key = f"{item_id}_{episode_id}" if episode_id else item_id
         
         if self.is_downloaded(item_id, episode_id):
-            xbmcgui.Dialog().notification('Already Downloaded', 
-                                         item_data['title'], 
-                                         xbmcgui.NOTIFICATION_INFO)
+            if show_progress:
+                xbmcgui.Dialog().notification('Already Downloaded', 
+                                             item_data['title'], 
+                                             xbmcgui.NOTIFICATION_INFO)
             return True
         
         if key in self.active_downloads:
-            xbmcgui.Dialog().notification('Already Downloading', 
-                                         item_data['title'], 
-                                         xbmcgui.NOTIFICATION_INFO)
+            if show_progress:
+                xbmcgui.Dialog().notification('Already Downloading', 
+                                             item_data['title'], 
+                                             xbmcgui.NOTIFICATION_INFO)
             return True
         
         item_folder = os.path.join(self.download_path, self._sanitize_filename(item_id))
@@ -178,14 +189,65 @@ class DownloadManager:
         
         self.active_downloads[key] = True
         
-        thread = threading.Thread(
-            target=self._download_worker_with_progress,
-            args=(item_id, item_data, library_service, episode_id, item_folder, key)
-        )
-        thread.daemon = True
-        thread.start()
+        if show_progress:
+            thread = threading.Thread(
+                target=self._download_worker_with_progress,
+                args=(item_id, item_data, library_service, episode_id, item_folder, key)
+            )
+            thread.daemon = True
+            thread.start()
+        else:
+            # Synchronous download without dialog (for batch downloads)
+            self._download_worker_silent(item_id, item_data, library_service, episode_id, item_folder, key)
         
         return True
+    
+    def _download_worker_silent(self, item_id, item_data, library_service, episode_id, item_folder, key):
+        """Background download worker without progress dialog"""
+        try:
+            download_url = library_service.get_file_url(item_id, episode_id=episode_id)
+            
+            title = self._sanitize_filename(item_data['title'])
+            if episode_id:
+                filename = f"{title}_{episode_id}.m4b"
+            else:
+                filename = f"{title}.m4b"
+            
+            file_path = os.path.join(item_folder, filename)
+            
+            response = requests.get(download_url, stream=True, timeout=30)
+            
+            with open(file_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            cover_path = self._download_cover(item_data.get('cover_url'), item_folder, item_data['title'])
+            
+            self.downloads[key] = {
+                'item_id': item_id,
+                'episode_id': episode_id,
+                'title': item_data['title'],
+                'file_path': file_path,
+                'cover_path': cover_path,
+                'duration': item_data.get('duration', 0),
+                'description': item_data.get('description', ''),
+                'author': item_data.get('author', ''),
+                'narrator': item_data.get('narrator', ''),
+                'downloaded_at': datetime.now().isoformat(),
+                'file_size': os.path.getsize(file_path),
+                'is_multifile': False
+            }
+            self._save_metadata()
+            
+            del self.active_downloads[key]
+            xbmc.log(f"Download completed: {filename}", xbmc.LOGINFO)
+            
+        except Exception as e:
+            if key in self.active_downloads:
+                del self.active_downloads[key]
+            xbmc.log(f"Download error: {str(e)}", xbmc.LOGERROR)
+            raise
     
     def download_audiobook_complete(self, item_id, item_data, library_service):
         """Download complete audiobook with all files"""
