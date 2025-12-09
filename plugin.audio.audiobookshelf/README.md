@@ -1,52 +1,106 @@
-# audiobookshelf_simpleclient
+# Audiobookshelf for Kodi
 
-A Kodi Addon for Audiobookshelf – a self-hosted audiobook and podcast server.
+Stream audiobooks and podcasts from your [Audiobookshelf](https://www.audiobookshelf.org/) server directly in Kodi.
 
-## Description
+## Features
 
-With the `audiobookshelf_simpleclient` addon, you can seamlessly connect your Kodi installation to an Audiobookshelf server and stream audiobooks stored there directly within Kodi.
+### Audiobooks
+- Stream single-file (M4B) and multi-file audiobooks
+- Chapter navigation with resume support
+- Progress sync with server
+- Download for offline playback
 
-## Key Features
+### Podcasts
+- Browse and stream podcast episodes
+- Search and add new podcasts from iTunes
+- Find new episodes from RSS feeds
+- Download episodes to server
+- Download locally for offline playback
+- Episode progress tracking
 
-- Direct connection to an Audiobookshelf server over API.
-- Play audiobooks directly within Kodi.
-- Currently supports well-tagged M4B files.
-
-## Prerequisites
-
-- Kodi media center installed and set up.
-- A running Audiobookshelf server.
+### General
+- **Authentication**: Username/Password or API Key
+- **Progress Sync**: Automatic sync with configurable intervals
+- **Offline Mode**: Download content for offline playback
+- **View Modes**: List or Grid view with cover art
+- **Resume Playback**: Pick up where you left off
+- **Progress Markers**: See completion status at a glance
 
 ## Installation
 
-1. Download the `audiobookshelf_simpleclient` addon.
-2. Open Kodi and navigate to **Settings** > **Add-ons**.
-3. Choose **Install from Zip File** and navigate to the previously downloaded addon zip.
-4. Follow the on-screen instructions for installation.
-5. Configure the addon with your Audiobookshelf server connection details.
+1. Download the latest release ZIP file
+2. In Kodi: Settings → Add-ons → Install from zip file
+3. Select the downloaded ZIP file
+4. Go to Add-ons → Music add-ons → Audiobookshelf
+5. Configure your server settings
+
+## Configuration
+
+### Server Settings
+- **Server IP Address**: Your Audiobookshelf server IP
+- **Port**: Default is 13378
+- **Authentication Method**: Choose Username/Password or API Key
+- **Username/Password**: Your Audiobookshelf credentials
+- **API Key**: Generate from Audiobookshelf settings → Users → Your user → API Key
+
+### Display Settings
+- **View Mode**: List or Grid (covers)
+- **Show titles in grid**: Toggle title display in grid view
+- **Show Items**: All, Hide Finished, or Downloaded Only
+- **Show progress markers**: Toggle [X%], [Done], etc.
+
+### Download Settings
+- **Enable Downloads**: Turn on local downloads
+- **Download Folder**: Where to save downloads
+
+### Sync Settings
+- Configure sync intervals and behavior for audiobooks and podcasts separately
+- Choose how to resolve conflicts between local and server progress
 
 ## Usage
 
-1. After installation and configuration, navigate to the **Add-ons** section on your Kodi home screen.
-2. Launch `audiobookshelf_simpleclient`.
-3. Browse through your audiobook library and select a book to play.
+### Playing Content
+1. Navigate to your audiobook or podcast
+2. For multi-file books: select chapter or use Resume
+3. Progress automatically syncs to server
 
-## Known Issues and Solutions
-Audiobook listening time may not sync correctly.
+### Finding New Podcast Episodes
+1. Open a podcast
+2. Select "[Find New Episodes]"
+3. Click "[Refresh Podcast from RSS]" to check for new episodes
+4. Episodes marked [NEW] are from RSS but not on server
+5. Episodes marked [Need DL] are on server but not downloaded
+6. Click an episode to add/download to server
 
-## Updates and Future Plans
+### Downloading for Offline
+1. Enable downloads in settings
+2. Set a download folder
+3. Use context menu → Download on any item
+4. Access downloads from "[Downloaded Items]"
 
-1. Offline Download 
-2. Podcast Management 
-3. View filter options for showing all items or hiding watched/downloaded content
+## Requirements
 
-## Acknowledgements
+- Kodi 19 (Matrix) or later
+- Audiobookshelf server 2.0+
+- Network connection (or downloaded content for offline)
 
-A big shoutout and thanks to advplyr for Audiobookshelf!
+## Troubleshooting
 
-## Support and Feedback
+### "Too Many Requests" Error
+The addon caches authentication tokens for 5 minutes. If you see this error, wait a moment and try again.
 
+### Episodes Not Downloading to Server
+Make sure the episode exists in Audiobookshelf's database first. Use "[Refresh Podcast from RSS]" to update the episode list.
+
+### Playback Issues
+- Check your server is accessible from Kodi's device
+- Verify your credentials are correct
+- For podcasts, ensure the episode has audio downloaded on the server
 
 ## License
 
-Please refer to the LICENSE file in the main directory of the addon for licensing information.
+GPL-3.0-or-later
+
+## Credits
+
+Based on the original audiobookshelf_simpleclient by platzregen.
