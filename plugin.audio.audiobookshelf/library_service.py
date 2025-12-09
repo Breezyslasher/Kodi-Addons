@@ -104,7 +104,7 @@ class AudioBookShelfLibraryService:
 		"""Get the streaming URL for an audiobook file or podcast episode"""
 		try:
 			# First try to get the item details to find direct file access
-			item = self.get_library_item_by_id(iid, expanded=1 if episode_id else None, episode=episode_id)
+			item = self.get_library_item_by_id(iid, expanded=1, episode=episode_id)
 			
 			# For podcast episodes
 			if episode_id:
@@ -119,49 +119,67 @@ class AudioBookShelfLibraryService:
 						episode_data = ep
 						break
 				
-				if episode_data and 'audioFile' in episode_data:
-					audio_file = episode_data['audioFile']
-					ino = audio_file.get('ino')
+				if episode_data:
+					# Check for audioFile
+					if 'audioFile' in episode_data and episode_data['audioFile']:
+						audio_file = episode_data['audioFile']
+						ino = audio_file.get('ino')
+						
+						if ino:
+							direct_url = f"{self.base_url}/api/items/{iid}/file/{ino}?token={self.token}"
+							xbmc.log(f"Using direct episode file URL: {direct_url}", xbmc.LOGINFO)
+							return direct_url
 					
-					if ino:
-						# Use direct file streaming endpoint for episode
-						direct_url = f"{self.base_url}/api/items/{iid}/file/{ino}?token={self.token}"
-						xbmc.log(f"Using direct episode file URL: {direct_url}", xbmc.LOGINFO)
-						return direct_url
+					# Episode exists but no audio file - not downloaded on server
+					raise Exception(f"Episode not downloaded on server")
+				else:
+					raise Exception(f"Episode {episode_id} not found")
 			
 			# For regular audiobooks - check if we can get direct file access
-			if 'media' in item and 'audioFiles' in item['media']:
-				audio_files = item['media']['audioFiles']
-				if audio_files and len(audio_files) > 0:
-					# Get the first audio file's ino
-					audio_file = audio_files[0]
-					ino = audio_file.get('ino')
-					
-					if ino:
-						# Use direct file streaming endpoint
-						direct_url = f"{self.base_url}/api/items/{iid}/file/{ino}?token={self.token}"
-						xbmc.log(f"Using direct file URL: {direct_url}", xbmc.LOGINFO)
-						return direct_url
+			media = item.get('media', {})
+			audio_files = media.get('audioFiles', [])
 			
-			# Fallback to play session API (HLS)
+			if audio_files and len(audio_files) > 0:
+				# Sort by index and get the first audio file
+				sorted_files = sorted(audio_files, key=lambda x: x.get('index', 0))
+				audio_file = sorted_files[0]
+				ino = audio_file.get('ino')
+				
+				if ino:
+					direct_url = f"{self.base_url}/api/items/{iid}/file/{ino}?token={self.token}"
+					xbmc.log(f"Using direct file URL: {direct_url}", xbmc.LOGINFO)
+					return direct_url
+			
+			# Check for tracks (single file audiobooks like m4b)
+			tracks = media.get('tracks', [])
+			if tracks and len(tracks) > 0:
+				# Use the content URL from track
+				content_url = tracks[0].get('contentUrl')
+				if content_url:
+					direct_url = f"{self.base_url}{content_url}?token={self.token}"
+					xbmc.log(f"Using track content URL: {direct_url}", xbmc.LOGINFO)
+					return direct_url
+			
+			# Fallback to play session API
 			xbmc.log("Falling back to play session API", xbmc.LOGINFO)
-			response = self.play_library_item_by_id(
-				iid,
-				episode_id=episode_id,
-				force_direct_play=True,  # Request direct play, not transcoding
-				supported_mime_types=["audio/flac", "audio/mpeg", "audio/mp4", "audio/m4b"]
-			)
+			try:
+				response = self.play_library_item_by_id(
+					iid,
+					episode_id=episode_id,
+					force_direct_play=True,
+					supported_mime_types=["audio/flac", "audio/mpeg", "audio/mp4", "audio/m4b", "audio/x-m4b"]
+				)
 
-			full_content_url = None
-			if "audioTracks" in response and len(response["audioTracks"]) > 0:
-				relative_content_url = response["audioTracks"][0]["contentUrl"]
-				full_content_url = f"{self.base_url}{relative_content_url}?token={self.token}"
-				xbmc.log(f"Using audioTrack URL: {full_content_url}", xbmc.LOGINFO)
-
-			if not full_content_url:
-				raise Exception("Content URL not found or empty.")
+				if "audioTracks" in response and len(response["audioTracks"]) > 0:
+					relative_content_url = response["audioTracks"][0]["contentUrl"]
+					full_content_url = f"{self.base_url}{relative_content_url}?token={self.token}"
+					xbmc.log(f"Using audioTrack URL: {full_content_url}", xbmc.LOGINFO)
+					return full_content_url
+			except Exception as play_err:
+				xbmc.log(f"Play session API error: {str(play_err)}", xbmc.LOGDEBUG)
 			
-			return full_content_url
+			raise Exception("No audio files found for this item")
+			
 		except Exception as e:
 			xbmc.log(f"Error getting file URL: {str(e)}", xbmc.LOGERROR)
 			raise
