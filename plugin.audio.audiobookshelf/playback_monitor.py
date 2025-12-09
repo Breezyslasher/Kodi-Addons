@@ -1,6 +1,7 @@
 """
-Playback Monitor v2.1.0 - Unified progress tracking for streamed and downloaded content
+Playback Monitor v2.1.1 - Unified progress tracking for streamed and downloaded content
 Uses sync_manager for all progress storage and synchronization
+Fixed: file_offset now properly added to player time for overall audiobook position
 """
 import xbmc
 import xbmcaddon
@@ -23,7 +24,22 @@ class PlaybackMonitor:
     
     def __init__(self, library_service, item_id, duration, episode_id=None,
                  sync_enabled=True, sync_on_stop=True, sync_interval=15,
-                 finished_threshold=0.95):
+                 finished_threshold=0.95, file_offset=0):
+        """
+        Initialize playback monitor.
+        
+        Args:
+            library_service: Service for server communication
+            item_id: Library item ID
+            duration: Total duration of the OVERALL audiobook (not just this file)
+            episode_id: Episode ID (for podcasts)
+            sync_enabled: Whether to sync progress
+            sync_on_stop: Whether to sync when playback stops
+            sync_interval: Interval between syncs in seconds
+            finished_threshold: Progress percentage to mark as finished
+            file_offset: For multi-file audiobooks, where this file starts in the 
+                        overall timeline. Added to player position for sync.
+        """
         self.library_service = library_service
         self.item_id = item_id
         self.episode_id = episode_id
@@ -36,6 +52,7 @@ class PlaybackMonitor:
         self.sync_on_stop = sync_on_stop
         self.sync_interval = sync_interval
         self.finished_threshold = finished_threshold
+        self.file_offset = file_offset  # Offset for multi-file audiobooks
         self.start_position = 0
         self.last_position = 0
         self.last_synced_position = 0
@@ -46,8 +63,8 @@ class PlaybackMonitor:
         self.sync_mgr.set_library_service(library_service)
         
         key = f"{item_id}_{episode_id}" if episode_id else item_id
-        xbmc.log(f"[MONITOR] Created for {key}, duration={duration:.1f}s, sync_enabled={sync_enabled}, "
-                f"library_service={'YES' if library_service else 'NO'}", xbmc.LOGINFO)
+        xbmc.log(f"[MONITOR] Created for {key}, duration={duration:.1f}s, file_offset={file_offset:.1f}s, "
+                f"sync_enabled={sync_enabled}, library_service={'YES' if library_service else 'NO'}", xbmc.LOGINFO)
     
     def start_monitoring_async(self, start_position=0):
         """Start monitoring in background"""
@@ -163,8 +180,13 @@ class PlaybackMonitor:
     def _save_progress(self, current_time, is_final=False):
         """Save progress using sync_manager"""
         try:
-            # Calculate progress percentage
-            progress_pct = current_time / self.duration if self.duration > 0 else 0
+            # Add file_offset to get the overall audiobook position
+            # current_time is the position within this file
+            # file_offset is where this file starts in the overall audiobook
+            overall_time = current_time + self.file_offset
+            
+            # Calculate progress percentage using overall time
+            progress_pct = overall_time / self.duration if self.duration > 0 else 0
             
             # Determine if finished - only on final sync and if past threshold
             finished = False
@@ -175,16 +197,17 @@ class PlaybackMonitor:
             if finished:
                 self.is_finished = True
             
-            xbmc.log(f"[MONITOR] Saving: {current_time:.1f}s / {self.duration:.1f}s ({progress_pct*100:.1f}%) "
+            xbmc.log(f"[MONITOR] Saving: file_time={current_time:.1f}s + offset={self.file_offset:.1f}s = "
+                    f"overall={overall_time:.1f}s / {self.duration:.1f}s ({progress_pct*100:.1f}%) "
                     f"finished={finished} is_final={is_final}", xbmc.LOGINFO)
             
-            # Use sync_manager for all progress operations
+            # Use sync_manager for all progress operations - pass OVERALL time
             if is_final:
                 # Final sync - use on_playback_stop for full sync handling
                 self.sync_mgr.on_playback_stop(
                     self.item_id, 
                     self.episode_id, 
-                    current_time, 
+                    overall_time,  # Use overall time, not file time
                     self.duration, 
                     is_finished=finished
                 )
@@ -193,7 +216,7 @@ class PlaybackMonitor:
                 self.sync_mgr.on_playback_progress(
                     self.item_id, 
                     self.episode_id, 
-                    current_time, 
+                    overall_time,  # Use overall time, not file time
                     self.duration, 
                     is_finished=finished
                 )
