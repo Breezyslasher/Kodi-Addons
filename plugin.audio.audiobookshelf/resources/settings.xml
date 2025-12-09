@@ -1,9 +1,35 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <settings>
     <category label="Server Settings">
-        <setting id="ipaddress" type="text" label="IP Address" default="" />
-        <setting id="port" type="text" label="Port" default="13378" />
+        <setting id="ipaddress" type="text" label="Server IP Address" default="" />
+        <setting id="port" type="text" label="Server Port" default="13378" />
         <setting id="username" type="text" label="Username" default="" />
-        <setting id="password" type="text" label="Password" default="" option="hidden" />
+        <setting id="password" type="text" label="Password" option="hidden" default="" />
+    </category>
+    <category label="View Settings">
+        <setting id="view_filter" type="enum" label="Show Items" default="0" lvalues="All Items|Hide Finished|Downloaded Only" />
+        <setting id="show_finished_marker" type="bool" label="Show [Finished] marker on completed items" default="true" />
+    </category>
+    <category label="Download Settings">
+        <setting id="enable_downloads" type="bool" label="Enable Downloads" default="false" />
+        <setting id="download_path" type="folder" label="Download Folder" default="special://home/audiobookshelf/" enable="eq(-1,true)" />
+        <setting id="auto_delete" type="bool" label="Auto-delete after finished" default="false" enable="eq(-2,true)" />
+    </category>
+    <category label="Audiobook Sync">
+        <setting id="sync_audiobook_progress" type="bool" label="Sync audiobook progress to server" default="true" />
+        <setting id="audiobook_sync_interval" type="enum" label="Sync interval (seconds)" default="1" lvalues="10|15|30|60" enable="eq(-1,true)" />
+        <setting id="audiobook_sync_on_stop" type="bool" label="Sync when playback stops" default="true" />
+        <setting id="audiobook_conflict_resolution" type="enum" label="If local and server progress differ" default="0" lvalues="Use server position|Use local position|Use furthest position|Always ask" />
+    </category>
+    <category label="Podcast Sync">
+        <setting id="sync_podcast_progress" type="bool" label="Sync podcast progress to server" default="true" />
+        <setting id="podcast_sync_interval" type="enum" label="Sync interval (seconds)" default="1" lvalues="10|15|30|60" enable="eq(-1,true)" />
+        <setting id="podcast_sync_on_stop" type="bool" label="Sync when playback stops" default="true" />
+        <setting id="podcast_conflict_resolution" type="enum" label="If local and server progress differ" default="0" lvalues="Use server position|Use local position|Use furthest position|Always ask" />
+        <setting id="mark_podcast_finished_threshold" type="enum" label="Mark episode finished when" default="1" lvalues="90% complete|95% complete|Last 30 seconds|Last 60 seconds" />
+    </category>
+    <category label="Offline Mode">
+        <setting id="offline_save_progress" type="bool" label="Save progress locally when offline" default="true" />
+        <setting id="offline_sync_on_connect" type="bool" label="Sync saved progress when back online" default="true" />
     </category>
 </settings>
