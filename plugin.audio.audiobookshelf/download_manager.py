@@ -546,10 +546,18 @@ class DownloadManager:
         return filename[:100]  # Limit length
     
     def get_file_for_position(self, item_id, position):
-        """Get the correct file and seek position for a multi-file download"""
+        """
+        Get the correct file and seek position for a multi-file download.
+        
+        Returns:
+            (file_path, seek_in_file, file_offset)
+            - file_path: Path to the file containing this position
+            - seek_in_file: Position to seek to within this file
+            - file_offset: Where this file starts in the overall audiobook timeline
+        """
         download_info = self.get_download_info(item_id)
         if not download_info or not download_info.get('is_multifile'):
-            return None, 0
+            return None, 0, 0
         
         files = download_info.get('files', [])
         files = sorted(files, key=lambda x: x.get('index', 0))
@@ -559,14 +567,17 @@ class DownloadManager:
             file_duration = f.get('duration', 0)
             if cumulative <= position < cumulative + file_duration:
                 seek_in_file = position - cumulative
-                return f['path'], seek_in_file
+                file_offset = cumulative  # Where this file starts
+                return f['path'], seek_in_file, file_offset
             cumulative += file_duration
         
         # Position beyond all files, return last file at end
         if files:
-            return files[-1]['path'], 0
+            last_file = files[-1]
+            last_offset = cumulative - last_file.get('duration', 0)
+            return last_file['path'], 0, last_offset
         
-        return None, 0
+        return None, 0, 0
 
 
 def is_network_available():
