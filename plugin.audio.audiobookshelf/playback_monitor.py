@@ -112,13 +112,20 @@ class PlaybackMonitor:
     def _save_progress(self, current_time, is_final=False):
         """Save progress locally and to server"""
         try:
-            # Check if finished
-            finished = (self.duration - current_time) < 30
-            if is_final and (self.duration - current_time) < 60:
-                finished = True
+            # Only mark finished if very close to end AND is_final
+            # Use 95% threshold or last 10 seconds
+            progress_pct = current_time / self.duration if self.duration > 0 else 0
+            finished = False
+            
+            if is_final:
+                # Only mark finished if stopped within last 10 seconds or 95%+
+                if progress_pct >= 0.95 or (self.duration - current_time) < 10:
+                    finished = True
             
             if finished:
                 self.is_finished = True
+            
+            xbmc.log(f"Saving progress: {current_time:.1f}s / {self.duration:.1f}s ({progress_pct*100:.1f}%) finished={finished}", xbmc.LOGINFO)
             
             # Save locally
             if self.download_manager:
