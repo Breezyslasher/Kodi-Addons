@@ -1071,7 +1071,8 @@ def list_parts(item_id):
                 list_item.setProperty('IsPlayable', 'true')
                 xbmcplugin.addDirectoryItem(ADDON_HANDLE,
                                            build_url(action='play_at_position', item_id=item_id,
-                                                    file_ino=target_file.get('ino'), seek_time=int(seek)),
+                                                    file_ino=target_file.get('ino'), seek_time=int(seek),
+                                                    overall_time=int(current_time)),
                                            list_item, isFolder=False)
         
         if chapters:
@@ -1090,7 +1091,8 @@ def list_parts(item_id):
                 if target_file:
                     xbmcplugin.addDirectoryItem(ADDON_HANDLE,
                                                build_url(action='play_at_position', item_id=item_id,
-                                                        file_ino=target_file.get('ino'), seek_time=int(seek)),
+                                                        file_ino=target_file.get('ino'), seek_time=int(seek),
+                                                        overall_time=int(ch_start)),
                                                list_item, isFolder=False)
         else:
             cumulative = 0
@@ -1106,7 +1108,8 @@ def list_parts(item_id):
                 
                 xbmcplugin.addDirectoryItem(ADDON_HANDLE,
                                            build_url(action='play_at_position', item_id=item_id,
-                                                    file_ino=f.get('ino'), seek_time=0),
+                                                    file_ino=f.get('ino'), seek_time=0,
+                                                    overall_time=int(cumulative)),
                                            list_item, isFolder=False)
                 cumulative += dur
         
@@ -1283,10 +1286,26 @@ def list_downloads():
 # === PLAYBACK FUNCTIONS ===
 
 def play_audio(play_url, title, duration, library_service, item_id, episode_id=None, 
-               start_position=0, is_podcast=False):
+               start_position=0, is_podcast=False, file_offset=0):
+    """
+    Start audio playback with progress monitoring.
+    
+    Args:
+        play_url: URL to stream from
+        title: Display title
+        duration: Total duration of the OVERALL audiobook/podcast (not just this file)
+        library_service: Service for server communication
+        item_id: Library item ID
+        episode_id: Episode ID (for podcasts)
+        start_position: Position to seek to within the current file
+        is_podcast: Whether this is a podcast
+        file_offset: For multi-file audiobooks, the offset where this file starts
+                    in the overall audiobook timeline
+    """
     global _active_monitor
     
-    xbmc.log(f"[PLAY] play_audio: title={title}, duration={duration}, start={start_position}, is_podcast={is_podcast}", xbmc.LOGINFO)
+    xbmc.log(f"[PLAY] play_audio: title={title}, duration={duration}, start={start_position}, "
+            f"file_offset={file_offset}, is_podcast={is_podcast}", xbmc.LOGINFO)
     
     # Don't let duration be 0 - try to get from server progress if we have none
     if duration == 0 and library_service:
@@ -1311,17 +1330,28 @@ def play_audio(play_url, title, duration, library_service, item_id, episode_id=N
         library_service, item_id, duration if duration > 0 else 1,
         episode_id=episode_id,
         sync_enabled=sync_enabled, sync_on_stop=sync_on_stop, 
-        sync_interval=sync_interval, finished_threshold=finished_threshold
+        sync_interval=sync_interval, finished_threshold=finished_threshold,
+        file_offset=file_offset
     )
     _active_monitor.start_monitoring_async(start_position)
 
 
-def play_at_position(item_id, file_ino, seek_time):
+def play_at_position(item_id, file_ino, seek_time, overall_time=None):
+    """
+    Play audiobook at a specific position within a file.
+    
+    Args:
+        item_id: Library item ID
+        file_ino: File identifier
+        seek_time: Position within the specific file (for player seeking)
+        overall_time: Position in the overall audiobook (for progress sync)
+    """
     library_service, url, token, offline = get_library_service()
     
     # Check if downloaded
     if download_manager.is_downloaded(item_id):
-        play_offline_item(item_id, seek_position=seek_time)
+        # For downloaded files, use overall_time if provided
+        play_offline_item(item_id, seek_position=overall_time if overall_time is not None else seek_time)
         return
     
     if not library_service:
@@ -1344,10 +1374,28 @@ def play_at_position(item_id, file_ino, seek_time):
         
         title = media.get('metadata', {}).get('title', 'Unknown')
         
-        xbmc.log(f"[PLAY] play_at_position: item={item_id}, duration={duration}, seek={seek_time}", xbmc.LOGINFO)
+        # Calculate file offset (difference between overall_time and seek_time)
+        # This is where the file starts in the overall audiobook
+        if overall_time is not None:
+            file_offset = overall_time - seek_time
+        else:
+            # Try to calculate from audio files
+            file_offset = 0
+            audio_files = media.get('audioFiles', [])
+            sorted_files = sorted(audio_files, key=lambda x: x.get('index', 0))
+            cumulative = 0
+            for f in sorted_files:
+                if f.get('ino') == file_ino:
+                    file_offset = cumulative
+                    break
+                cumulative += f.get('duration', 0)
+        
+        xbmc.log(f"[PLAY] play_at_position: item={item_id}, duration={duration}, seek={seek_time}, "
+                f"overall={overall_time}, file_offset={file_offset}", xbmc.LOGINFO)
         
         play_url = f"{url}/api/items/{item_id}/file/{file_ino}?token={token}"
-        play_audio(play_url, title, duration, library_service, item_id, start_position=seek_time)
+        play_audio(play_url, title, duration, library_service, item_id, 
+                  start_position=seek_time, file_offset=file_offset)
         
     except Exception as e:
         xbmc.log(f"[PLAY] Error: {str(e)}", xbmc.LOGERROR)
@@ -1465,20 +1513,26 @@ def play_offline_item(item_id, episode_id=None, seek_position=None):
         xbmc.log(f"[OFFLINE] Could not get library service: {str(e)}", xbmc.LOGDEBUG)
     
     # Get best resume position (unified - uses same position as streaming)
+    # This is the OVERALL audiobook position
     if seek_position is not None:
-        start_pos = seek_position
+        overall_pos = seek_position
     else:
-        start_pos, is_finished, server_duration = get_best_resume_position(library_service, item_id, episode_id)
+        overall_pos, is_finished, server_duration = get_best_resume_position(library_service, item_id, episode_id)
         if server_duration > duration:
             duration = server_duration
         
-        if start_pos > 10 and not is_finished:
-            if not ask_resume(start_pos, duration):
-                start_pos = 0
+        if overall_pos > 10 and not is_finished:
+            if not ask_resume(overall_pos, duration):
+                overall_pos = 0
     
+    # For multi-file downloads, get the right file and calculate offsets
     file_path = download_info.get('file_path')
+    file_offset = 0  # Default for single-file
+    start_pos = overall_pos  # Position to seek to in player
+    
     if download_info.get('is_multifile'):
-        file_path, start_pos = download_manager.get_file_for_position(item_id, start_pos)
+        file_path, start_pos, file_offset = download_manager.get_file_for_position(item_id, overall_pos)
+        xbmc.log(f"[OFFLINE] Multi-file: overall={overall_pos:.1f}s -> file_offset={file_offset:.1f}s, seek={start_pos:.1f}s", xbmc.LOGINFO)
     
     if not file_path or not os.path.exists(file_path):
         xbmcgui.Dialog().notification('Error', 'File not found', xbmcgui.NOTIFICATION_ERROR)
@@ -1493,7 +1547,8 @@ def play_offline_item(item_id, episode_id=None, seek_position=None):
     is_podcast = episode_id is not None
     finished_threshold = get_finished_threshold()
     
-    xbmc.log(f"[OFFLINE] Starting monitor with library_service={'YES' if library_service else 'NO'}", xbmc.LOGINFO)
+    xbmc.log(f"[OFFLINE] Starting monitor with library_service={'YES' if library_service else 'NO'}, "
+            f"file_offset={file_offset:.1f}s", xbmc.LOGINFO)
     
     _active_monitor = PlaybackMonitor(
         library_service,  # Pass library service for server sync
@@ -1503,7 +1558,8 @@ def play_offline_item(item_id, episode_id=None, seek_position=None):
         sync_enabled=True,  # Always enable sync
         sync_on_stop=True,
         sync_interval=get_sync_interval(is_podcast),
-        finished_threshold=finished_threshold
+        finished_threshold=finished_threshold,
+        file_offset=file_offset  # Pass file offset for correct overall time calculation
     )
     _active_monitor.start_monitoring_async(start_pos)
 
@@ -1648,7 +1704,8 @@ def router(paramstring):
     elif action == 'play':
         play_item(params['item_id'])
     elif action == 'play_at_position':
-        play_at_position(params['item_id'], params['file_ino'], int(params.get('seek_time', 0)))
+        overall_time = int(params.get('overall_time')) if params.get('overall_time') else None
+        play_at_position(params['item_id'], params['file_ino'], int(params.get('seek_time', 0)), overall_time)
     elif action == 'play_episode':
         play_episode(params['item_id'], params['episode_id'])
     elif action == 'downloads':
