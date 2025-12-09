@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="0.1.3" provider-name="Breezyslasher">
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="1.0.2" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0" />
@@ -9,7 +9,17 @@
 	</extension>
 	<extension point="xbmc.addon.metadata">
 		<summary lang="en_GB">Audiobookshelf client for Kodi</summary>
-		<description lang="en_GB">Connect your Kodi installation to an Audiobookshelf server and stream audiobooks and podcasts directly within Kodi. Supports M4B files, multi-file audiobooks, and podcasts with full progress sync.</description>
+		<description lang="en_GB">Stream audiobooks and podcasts from your Audiobookshelf server. Features include:
+
+* Stream audiobooks (M4B, MP3, multi-file)
+* Stream podcasts with episode management
+* Progress sync with server
+* Download for offline playback
+* Chapter navigation
+* Resume playback
+* Search and add new podcasts
+* Find and download new episodes
+* API Key or Username/Password authentication</description>
 		<language></language>
 		<platform>all</platform>
 		<license>GPL-3.0-or-later</license>
@@ -18,38 +28,24 @@
 			<icon>resources/icon.png</icon>
 		</assets>
 		<news>
-v0.1.1 (2025-12-08)
-- FIXED: Settings dropdowns now show correct options (seconds, positions, etc.)
-- NEW: "Find New Episodes" feature for podcasts
-  - Shows episodes from RSS feed not yet on server
-  - Click to add episode to server
-- IMPROVED: Empty podcasts now show Find Episodes option
-- Changed settings format from enum/lvalues to select/values
+v1.0.2 (2025-12-09) - Kodi 21 Compatibility
+- FIXED: "takes at most 2 arguments" error - Kodi 21 changed DialogProgress.update() API
+- FIXED: RSS refresh now uses POST request (required by newer Audiobookshelf)
+- FIXED: Podcast [Done] marker - now shows [X/Y] episode count, never [Done]
+- FIXED: Batch add episodes properly reports results
+- IMPROVED: Falls back to GET if POST returns 404 (older server compatibility)
+- IMPROVED: Better logging for debugging RSS/server issues
 
-v0.1.0 (2025-12-08)
-- FIXED: Settings now appear correctly (using legacy XML format)
-- FIXED: Empty podcasts handled gracefully
-- FIXED: Episodes not on server now show [Not on Server] prefix
-- FIXED: Progress syncs to server when closing audiobook/podcast
-- REMOVED: "Play from Beginning" option (just click first chapter)
-- NEW: Sync settings page with options for audiobooks and podcasts
-- NEW: Conflict resolution when local and server progress differ
-- NEW: Option to use server position, local position, furthest, or ask
-- NEW: Configurable sync intervals (10s, 15s, 30s, 60s)
-- NEW: Option to disable server sync entirely
-- NEW: Offline progress saving with sync on reconnect
-- IMPROVED: Resume button shows current chapter name
+v1.0.1 (2025-12-09) - Bug Fixes
+- FIXED: Invalid credentials now shows error instead of offline mode
+- FIXED: Token caching persists to file
+- FIXED: Progress sync no longer marks items finished prematurely
+- REMOVED: Grid view option (skin-dependent)
 
-v0.0.5 (2025-12-08)
-- Fixed chapter/resume playback calculation
-- Added multi-file audiobook downloads
-- Added podcast metadata from RSS feeds
-- Added "Download to Server" for podcast episodes
-
-v0.0.4 (2025-12-07)
-- Added download functionality
-- Added offline playback support
-- Fixed Kodi 21 deprecation warnings
+v1.0.0 (2025-12-09) - Major Release
+- NEW: API Key authentication
+- NEW: Auto-navigate when only one library type
+- NEW: Progress markers [X%] for audiobooks
 		</news>
 	</extension>
 </addon>
