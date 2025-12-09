@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="0.1.2" provider-name="Breezyslasher">
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="0.1.3" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0" />
@@ -18,6 +18,14 @@
 			<icon>resources/icon.png</icon>
 		</assets>
 		<news>
+v0.1.1 (2025-12-08)
+- FIXED: Settings dropdowns now show correct options (seconds, positions, etc.)
+- NEW: "Find New Episodes" feature for podcasts
+  - Shows episodes from RSS feed not yet on server
+  - Click to add episode to server
+- IMPROVED: Empty podcasts now show Find Episodes option
+- Changed settings format from enum/lvalues to select/values
+
 v0.1.0 (2025-12-08)
 - FIXED: Settings now appear correctly (using legacy XML format)
 - FIXED: Empty podcasts handled gracefully
