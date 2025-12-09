@@ -7,7 +7,7 @@
         <setting id="password" type="text" label="Password" option="hidden" default="" />
     </category>
     <category label="View Settings">
-        <setting id="view_filter" type="enum" label="Show Items" default="0" lvalues="All Items|Hide Finished|Downloaded Only" />
+        <setting id="view_filter" type="select" label="Show Items" default="0" values="All Items|Hide Finished|Downloaded Only" />
         <setting id="show_finished_marker" type="bool" label="Show [Finished] marker on completed items" default="true" />
     </category>
     <category label="Download Settings">
@@ -17,16 +17,16 @@
     </category>
     <category label="Audiobook Sync">
         <setting id="sync_audiobook_progress" type="bool" label="Sync audiobook progress to server" default="true" />
-        <setting id="audiobook_sync_interval" type="enum" label="Sync interval (seconds)" default="1" lvalues="10|15|30|60" enable="eq(-1,true)" />
+        <setting id="audiobook_sync_interval" type="select" label="Sync interval" default="1" values="10 seconds|15 seconds|30 seconds|60 seconds" enable="eq(-1,true)" />
         <setting id="audiobook_sync_on_stop" type="bool" label="Sync when playback stops" default="true" />
-        <setting id="audiobook_conflict_resolution" type="enum" label="If local and server progress differ" default="0" lvalues="Use server position|Use local position|Use furthest position|Always ask" />
+        <setting id="audiobook_conflict_resolution" type="select" label="If local and server progress differ" default="0" values="Use server position|Use local position|Use furthest position|Always ask" />
     </category>
     <category label="Podcast Sync">
         <setting id="sync_podcast_progress" type="bool" label="Sync podcast progress to server" default="true" />
-        <setting id="podcast_sync_interval" type="enum" label="Sync interval (seconds)" default="1" lvalues="10|15|30|60" enable="eq(-1,true)" />
+        <setting id="podcast_sync_interval" type="select" label="Sync interval" default="1" values="10 seconds|15 seconds|30 seconds|60 seconds" enable="eq(-1,true)" />
         <setting id="podcast_sync_on_stop" type="bool" label="Sync when playback stops" default="true" />
-        <setting id="podcast_conflict_resolution" type="enum" label="If local and server progress differ" default="0" lvalues="Use server position|Use local position|Use furthest position|Always ask" />
-        <setting id="mark_podcast_finished_threshold" type="enum" label="Mark episode finished when" default="1" lvalues="90% complete|95% complete|Last 30 seconds|Last 60 seconds" />
+        <setting id="podcast_conflict_resolution" type="select" label="If local and server progress differ" default="0" values="Use server position|Use local position|Use furthest position|Always ask" />
+        <setting id="mark_podcast_finished_threshold" type="select" label="Mark episode finished when" default="1" values="90% complete|95% complete|Last 30 seconds|Last 60 seconds" />
     </category>
     <category label="Offline Mode">
         <setting id="offline_save_progress" type="bool" label="Save progress locally when offline" default="true" />
