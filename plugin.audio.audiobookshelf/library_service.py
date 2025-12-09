@@ -221,16 +221,27 @@ class AudioBookShelfLibraryService:
 			"progress": (current_time / duration) if duration > 0 else 0
 		}
 		
+		xbmc.log(f"[SYNC] Sending to {endpoint}: currentTime={current_time:.1f}, duration={duration:.1f}, progress={data['progress']*100:.1f}%, isFinished={is_finished}", xbmc.LOGINFO)
+		
 		try:
 			response = requests.patch(self.base_url + endpoint, headers=self.headers, json=data)
+			xbmc.log(f"[SYNC] Response status: {response.status_code}", xbmc.LOGINFO)
 			response.raise_for_status()
-			xbmc.log(f"Progress updated: {current_time:.1f}s / {duration:.1f}s ({data['progress']*100:.1f}%)", xbmc.LOGINFO)
-			return response.json()
-		except json.JSONDecodeError:
-			xbmc.log("Invalid or empty JSON response received", xbmc.LOGERROR)
+			
+			try:
+				result = response.json()
+				xbmc.log(f"[SYNC] Success: Progress saved to server", xbmc.LOGINFO)
+				return result
+			except json.JSONDecodeError:
+				# Some servers return empty response on success
+				xbmc.log(f"[SYNC] Success (no JSON response)", xbmc.LOGINFO)
+				return {"success": True}
+				
+		except requests.exceptions.HTTPError as e:
+			xbmc.log(f"[SYNC] HTTP Error: {e.response.status_code} - {e.response.text[:100]}", xbmc.LOGERROR)
 			return None
 		except Exception as e:
-			xbmc.log(f"Error updating media progress: {str(e)}", xbmc.LOGERROR)
+			xbmc.log(f"[SYNC] Error updating media progress: {str(e)}", xbmc.LOGERROR)
 			return None
 	
 	def start_playback_session(self, library_item_id, episode_id=None):
