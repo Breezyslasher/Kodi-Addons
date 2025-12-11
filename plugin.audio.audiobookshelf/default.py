@@ -1,5 +1,5 @@
 """
-Audiobookshelf Kodi Client v1.0.5+combined+unified+enhanced+fixed+final
+Audiobookshelf Kodi Client V2025..12.10
 Stream audiobooks and podcasts from your Audiobookshelf server
 - Comprehensive bidirectional progress sync
 - Startup sync pulls/pushes progress to server
