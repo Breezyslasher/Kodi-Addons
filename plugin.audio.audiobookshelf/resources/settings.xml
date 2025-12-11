@@ -3,36 +3,35 @@
     <category label="Server">
         <setting id="ipaddress" type="text" label="Server IP Address" default="" />
         <setting id="port" type="text" label="Server Port" default="13378" />
-        <setting id="auth_method" type="select" label="Authentication Method" default="0" values="Username/Password|API Key" />
-        <setting id="username" type="text" label="Username" default="" enable="eq(-1,0)" />
-        <setting id="password" type="text" label="Password" option="hidden" default="" enable="eq(-2,0)" />
-        <setting id="api_key" type="text" label="API Key" option="hidden" default="" enable="eq(-3,1)" />
+        <setting id="username" type="text" label="Username" default="" />
+        <setting id="password" type="text" label="Password" option="hidden" default="" />
     </category>
     <category label="Display">
-        <setting id="view_filter" type="select" label="Show Items" default="0" values="All Items|Hide Finished|Downloaded Only" />
         <setting id="show_progress_markers" type="bool" label="Show progress markers ([X%], [Done])" default="true" />
         <setting id="min_episodes_for_sort" type="number" label="Min episodes to show sort option" default="10" />
     </category>
     <category label="Downloads">
-        <setting id="enable_downloads" type="bool" label="Enable Local Downloads" default="false" />
+        <setting id="enable_downloads" type="bool" label="Enable Local Downloads" default="true" />
         <setting id="download_path" type="folder" label="Download Folder" default="" enable="eq(-1,true)" />
-        <setting id="auto_delete" type="bool" label="Auto-delete after finished" default="false" enable="eq(-2,true)" />
+
+        <setting id="delete_all_downloads" type="action" label="Delete All Downloads" action="RunPlugin(plugin://plugin.audio.audiobookshelf/?action=delete_all_downloads)" enable="eq(-3,true)" />
+        <setting id="podcast_download_mode" type="select" label="Podcast Download Mode" default="0" values="All Episodes|Unwatched Only|New Only" />
     </category>
     <category label="Audiobook Sync">
         <setting id="sync_audiobook_progress" type="bool" label="Sync progress to server" default="true" />
         <setting id="audiobook_sync_interval" type="select" label="Sync interval" default="1" values="10 seconds|15 seconds|30 seconds|60 seconds" enable="eq(-1,true)" />
         <setting id="audiobook_sync_on_stop" type="bool" label="Sync when playback stops" default="true" />
-        <setting id="audiobook_conflict_resolution" type="select" label="Progress conflict resolution" default="0" values="Use server|Use local|Use furthest|Always ask" />
+
     </category>
     <category label="Podcast Sync">
         <setting id="sync_podcast_progress" type="bool" label="Sync progress to server" default="true" />
         <setting id="podcast_sync_interval" type="select" label="Sync interval" default="1" values="10 seconds|15 seconds|30 seconds|60 seconds" enable="eq(-1,true)" />
         <setting id="podcast_sync_on_stop" type="bool" label="Sync when playback stops" default="true" />
-        <setting id="podcast_conflict_resolution" type="select" label="Progress conflict resolution" default="0" values="Use server|Use local|Use furthest|Always ask" />
+
         <setting id="mark_podcast_finished_threshold" type="select" label="Mark finished when" default="1" values="90% complete|95% complete|Last 30 seconds|Last 60 seconds" />
     </category>
     <category label="Offline">
-        <setting id="offline_save_progress" type="bool" label="Save progress when offline" default="true" />
+
         <setting id="offline_sync_on_connect" type="bool" label="Sync when back online" default="true" />
     </category>
 </settings>
