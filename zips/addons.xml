@@ -48,7 +48,7 @@
         <license>MIT</license>
     </extension>
 </addon>
-<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="1.0.6" provider-name="Breezyslasher">
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2025.12.10" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0" />
