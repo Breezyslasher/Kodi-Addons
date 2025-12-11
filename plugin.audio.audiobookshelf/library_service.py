@@ -310,3 +310,129 @@ class AudioBookShelfLibraryService:
 		except Exception as e:
 			xbmc.log(f"Error getting chapters: {str(e)}", xbmc.LOGERROR)
 			return []
+
+	# === PODCAST API ENDPOINTS ===
+	
+	def create_podcast(self, library_id, folder_id, podcast_metadata, folder_path=None):
+		"""Create a new podcast in the library"""
+		try:
+			url = f"{self.base_url}/api/podcasts"
+			payload = {
+				"libraryId": library_id,
+				"folderId": folder_id,
+				"media": {
+					"metadata": podcast_metadata
+				},
+				"autoDownloadEpisodes": False
+			}
+			
+			# Add path if provided
+			if folder_path:
+				payload["path"] = folder_path
+			
+			response = requests.post(url, headers=self.headers, json=payload, timeout=30)
+			response.raise_for_status()
+			result = response.json()
+			xbmc.log(f"Created podcast: {podcast_metadata.get('title', 'Unknown')}", xbmc.LOGINFO)
+			return result
+		except Exception as e:
+			xbmc.log(f"Error creating podcast: {str(e)}", xbmc.LOGERROR)
+			raise
+	
+	def get_podcast_feed(self, rss_feed, podcast_id=None):
+		"""Get podcast feed information from RSS URL"""
+		try:
+			url = f"{self.base_url}/api/podcasts/feed"
+			payload = {
+				"rssFeed": rss_feed
+			}
+			if podcast_id:
+				payload["podcastId"] = podcast_id
+			
+			response = requests.post(url, headers=self.headers, json=payload, timeout=30)
+			response.raise_for_status()
+			result = response.json()
+			xbmc.log(f"Retrieved podcast feed: {rss_feed}", xbmc.LOGINFO)
+			return result
+		except Exception as e:
+			xbmc.log(f"Error getting podcast feed: {str(e)}", xbmc.LOGERROR)
+			raise
+	
+	def download_podcast_episodes(self, podcast_id, episode_ids):
+		"""Download specific podcast episodes on the server"""
+		try:
+			url = f"{self.base_url}/api/podcasts/{podcast_id}/download-episodes"
+			payload = episode_ids if isinstance(episode_ids, list) else [episode_ids]
+			
+			response = requests.post(url, headers=self.headers, json=payload, timeout=30)
+			response.raise_for_status()
+			result = response.json()
+			xbmc.log(f"Queued download for {len(payload)} episodes", xbmc.LOGINFO)
+			return result
+		except Exception as e:
+			xbmc.log(f"Error downloading podcast episodes: {str(e)}", xbmc.LOGERROR)
+			raise
+	
+	def check_new_podcast_episodes(self, podcast_id):
+		"""Check for new podcast episodes from RSS feed and add them to server"""
+		try:
+			url = f"{self.base_url}/api/podcasts/{podcast_id}/checknew"
+			response = requests.get(url, headers=self.headers, timeout=30)
+			response.raise_for_status()
+			result = response.json()
+			xbmc.log(f"Checked for new episodes: {result}", xbmc.LOGINFO)
+			return result
+		except Exception as e:
+			xbmc.log(f"Error checking new podcast episodes: {str(e)}", xbmc.LOGERROR)
+			raise
+	
+	def get_podcast_episode(self, podcast_id, episode_id):
+		"""Get a specific podcast episode"""
+		try:
+			url = f"{self.base_url}/api/podcasts/{podcast_id}/episode/{episode_id}"
+			response = requests.get(url, headers=self.headers, timeout=30)
+			response.raise_for_status()
+			result = response.json()
+			xbmc.log(f"Retrieved podcast episode: {episode_id}", xbmc.LOGINFO)
+			return result
+		except Exception as e:
+			xbmc.log(f"Error getting podcast episode: {str(e)}", xbmc.LOGERROR)
+			raise
+	
+	def download_podcast_episodes_with_data(self, podcast_id, episode_data):
+		"""Download specific podcast episodes with full episode data"""
+		try:
+			url = f"{self.base_url}/api/podcasts/{podcast_id}/download-episodes"
+			payload = [episode_data] if isinstance(episode_data, dict) else episode_data
+			
+			response = requests.post(url, headers=self.headers, json=payload, timeout=30)
+			response.raise_for_status()
+			
+			# Check if response has content
+			if response.text.strip():
+				result = response.json()
+				xbmc.log(f"Downloaded podcast episode with data: {episode_data.get('title', 'Unknown')}", xbmc.LOGINFO)
+				return result
+			else:
+				xbmc.log(f"Empty response from download API for: {episode_data.get('title', 'Unknown')}", xbmc.LOGWARNING)
+				return {"success": False, "message": "Empty response"}
+		except Exception as e:
+			# Suppress JSON parsing errors if functionality is working
+			error_msg = str(e)
+			if "Expecting value" in error_msg and "line 1 column 1" in error_msg:
+				xbmc.log(f"Suppressed JSON parsing error (functionality working): {error_msg}", xbmc.LOGDEBUG)
+			else:
+				xbmc.log(f"Error downloading podcast episodes with data: {error_msg}", xbmc.LOGERROR)
+			raise
+	
+	def create_podcast_episode(self, podcast_id, episode_data):
+		"""Create a new episode for a podcast"""
+		try:
+			# Note: Audiobookshelf doesn't support direct episode creation
+			# Episodes must be added via RSS feed processing
+			# This function is kept for compatibility but should not be used
+			xbmc.log(f"Direct episode creation not supported - use feed API instead", xbmc.LOGWARNING)
+			return None
+		except Exception as e:
+			xbmc.log(f"Error in create_podcast_episode: {str(e)}", xbmc.LOGERROR)
+			raise
