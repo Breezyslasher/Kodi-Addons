@@ -5,6 +5,7 @@ import xbmcgui
 import xbmcvfs
 import requests
 import threading
+import subprocess
 from datetime import datetime
 
 
@@ -224,6 +225,10 @@ class DownloadManager:
             
             cover_path = self._download_cover(item_data.get('cover_url'), item_folder, item_data['title'])
             
+            # Embed cover into the audio file if available
+            if cover_path and os.path.exists(cover_path):
+                self._embed_cover_in_file(file_path, cover_path, item_data)
+            
             self.downloads[key] = {
                 'item_id': item_id,
                 'episode_id': episode_id,
@@ -250,7 +255,7 @@ class DownloadManager:
             raise
     
     def download_audiobook_complete(self, item_id, item_data, library_service):
-        """Download complete audiobook with all files"""
+        """Download complete audiobook as one combined file"""
         key = item_id
         
         if self.is_downloaded(item_id):
@@ -272,7 +277,7 @@ class DownloadManager:
         self.active_downloads[key] = True
         
         thread = threading.Thread(
-            target=self._download_multifile_worker,
+            target=self._download_combined_worker,
             args=(item_id, item_data, library_service, item_folder, key)
         )
         thread.daemon = True
@@ -280,8 +285,283 @@ class DownloadManager:
         
         return True
     
+    def _download_combined_worker(self, item_id, item_data, library_service, item_folder, key):
+        """Download audiobook as one combined file with embedded chapters"""
+        progress_dialog = None
+        
+        try:
+            audio_files = item_data.get('audio_files', [])
+            chapters = item_data.get('chapters', [])
+            
+            if not audio_files:
+                raise ValueError("No audio files found")
+            
+            # Sort by index
+            audio_files = sorted(audio_files, key=lambda x: x.get('index', 0))
+            
+            progress_dialog = xbmcgui.DialogProgress()
+            progress_dialog.create('Downloading Audiobook', f'Preparing {item_data["title"]}')
+            
+            # Download all individual files first
+            temp_files = []
+            total_files = len(audio_files)
+            
+            for i, audio_file in enumerate(audio_files):
+                if progress_dialog.iscanceled():
+                    progress_dialog.close()
+                    self._cleanup_temp_files(temp_files)
+                    del self.active_downloads[key]
+                    xbmcgui.Dialog().notification('Download Cancelled', item_data['title'], xbmcgui.NOTIFICATION_INFO)
+                    return
+                
+                ino = audio_file.get('ino')
+                file_index = audio_file.get('index', i)
+                
+                # Get download URL
+                download_url = f"{library_service.base_url}/api/items/{item_id}/file/{ino}?token={library_service.token}"
+                
+                progress_dialog.update(
+                    int((i / (total_files + 1)) * 100),  # +1 for combining step
+                    f'Downloading file {i+1}/{total_files}'
+                )
+                
+                # Download to temp file
+                temp_filename = f"temp_{file_index:03d}.tmp"
+                temp_path = os.path.join(item_folder, temp_filename)
+                
+                response = requests.get(download_url, stream=True, timeout=30)
+                
+                with open(temp_path, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if progress_dialog.iscanceled():
+                            f.close()
+                            os.remove(temp_path)
+                            progress_dialog.close()
+                            self._cleanup_temp_files(temp_files)
+                            del self.active_downloads[key]
+                            return
+                        f.write(chunk)
+                
+                temp_files.append({
+                    'path': temp_path,
+                    'index': file_index,
+                    'duration': audio_file.get('duration', 0)
+                })
+            
+            # Combine files into one M4B with chapters
+            progress_dialog.update(90, 'Combining files...')
+            combined_filename = f"{self._sanitize_filename(item_data['title'])}.m4b"
+            combined_path = os.path.join(item_folder, combined_filename)
+            
+            self._combine_audio_files(temp_files, combined_path, chapters, item_data)
+            
+            # Clean up temp files
+            self._cleanup_temp_files(temp_files)
+            
+            # Download cover
+            cover_path = self._download_cover(item_data.get('cover_url'), item_folder, item_data['title'])
+            
+            # Save metadata for single file
+            self.downloads[key] = {
+                'item_id': item_id,
+                'episode_id': None,
+                'title': item_data['title'],
+                'file_path': combined_path,
+                'cover_path': cover_path,
+                'duration': item_data.get('duration', 0),
+                'author': item_data.get('author', ''),
+                'narrator': item_data.get('narrator', ''),
+                'chapters': chapters,  # Preserve chapter metadata
+                'downloaded_at': datetime.now().isoformat(),
+                'file_size': os.path.getsize(combined_path),
+                'is_multifile': False  # Single file now
+            }
+            self._save_metadata()
+            
+            del self.active_downloads[key]
+            
+            xbmc.log(f"Combined download completed: {item_data['title']}", xbmc.LOGINFO)
+            xbmcgui.Dialog().notification('Download Complete', item_data['title'], xbmcgui.NOTIFICATION_INFO)
+            
+        except Exception as e:
+            if progress_dialog:
+                try:
+                    progress_dialog.close()
+                except:
+                    pass
+            
+            if key in self.active_downloads:
+                del self.active_downloads[key]
+            
+            xbmc.log(f"Combined download error: {str(e)}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification('Download Failed', str(e)[:50], xbmcgui.NOTIFICATION_ERROR)
+    
+    def _combine_audio_files(self, temp_files, output_path, chapters, item_data):
+        """Combine multiple audio files into one M4B with embedded chapters"""
+        try:
+            # Try to use ffmpeg for combining with chapter metadata
+            import subprocess
+            
+            # Create input list for ffmpeg
+            input_args = []
+            for temp_file in sorted(temp_files, key=lambda x: x['index']):
+                input_args.extend(['-i', temp_file['path']])
+            
+            # Build metadata file for chapters if available
+            metadata_file = None
+            if chapters:
+                metadata_file = self._create_chapter_metadata(chapters, output_path)
+            
+            # Build ffmpeg command
+            cmd = [
+                'ffmpeg', '-y'  # Overwrite output file
+            ] + input_args + [
+                '-filter_complex', f'concat=n={len(temp_files)}:v=0:a=1[out]',
+                '-map', '[out]',
+                '-c:a', 'aac',  # Use AAC codec for M4B compatibility
+                '-b:a', '192k',  # Good quality
+                '-f', 'mp4',
+            ]
+            
+            # Add metadata if available
+            if metadata_file:
+                cmd.extend(['-i', metadata_file, '-map_metadata', '1'])
+            
+            # Add book metadata
+            cmd.extend([
+                '-metadata', f'title={item_data.get("title", "")}',
+                '-metadata', f'artist={item_data.get("author", "")}',
+                '-metadata', f'album={item_data.get("title", "")}',
+                '-metadata', f'genre=Audiobook',
+            ])
+            
+            # Add cover if available
+            cover_path = item_data.get('cover_path')
+            if cover_path and os.path.exists(cover_path):
+                cmd.extend(['-i', cover_path, '-map', '2:0', '-disposition:v:0', 'attached_pic'])
+            
+            cmd.append(output_path)
+            
+            # Run ffmpeg
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            
+            # Clean up metadata file
+            if metadata_file and os.path.exists(metadata_file):
+                os.remove(metadata_file)
+            
+            if result.returncode != 0:
+                xbmc.log(f"FFmpeg combine failed: {result.stderr}", xbmc.LOGERROR)
+                # Fallback to simple concatenation
+                self._fallback_combine(temp_files, output_path)
+            else:
+                xbmc.log("Successfully combined audio files with FFmpeg and chapters", xbmc.LOGINFO)
+                
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+            xbmc.log(f"FFmpeg not available or failed: {str(e)}", xbmc.LOGWARNING)
+            # Fallback to simple concatenation
+            self._fallback_combine(temp_files, output_path)
+    
+    def _create_chapter_metadata(self, chapters, output_path):
+        """Create FFmpeg metadata file for chapters"""
+        try:
+            metadata_path = output_path.replace('.m4b', '_metadata.txt')
+            
+            with open(metadata_path, 'w', encoding='utf-8') as f:
+                f.write(';FFMETADATA1\n')
+                
+                for i, chapter in enumerate(chapters):
+                    start = chapter.get('start', 0)
+                    end = chapter.get('end', 0)
+                    title = chapter.get('title', f'Chapter {i+1}')
+                    
+                    # Convert to milliseconds for FFmpeg
+                    start_ms = int(start * 1000)
+                    end_ms = int(end * 1000)
+                    
+                    f.write('[CHAPTER]\n')
+                    f.write('TIMEBASE=1/1000\n')
+                    f.write(f'START={start_ms}\n')
+                    f.write(f'END={end_ms}\n')
+                    f.write(f'title={title}\n')
+            
+            return metadata_path
+            
+        except Exception as e:
+            xbmc.log(f"Failed to create chapter metadata: {str(e)}", xbmc.LOGERROR)
+            return None
+    
+    def _fallback_combine(self, temp_files, output_path):
+        """Fallback method to combine files without ffmpeg"""
+        try:
+            # Simple concatenation for MP3 files
+            with open(output_path, 'wb') as outfile:
+                for temp_file in sorted(temp_files, key=lambda x: x['index']):
+                    with open(temp_file['path'], 'rb') as infile:
+                        outfile.write(infile.read())
+            
+            xbmc.log("Used fallback concatenation method", xbmc.LOGINFO)
+            
+        except Exception as e:
+            xbmc.log(f"Fallback combine failed: {str(e)}", xbmc.LOGERROR)
+            raise
+    
+    def _embed_cover_in_file(self, audio_path, cover_path, item_data):
+        """Embed cover image into audio file using FFmpeg"""
+        try:
+            # Create temporary output file
+            temp_output = audio_path.replace('.m4b', '_temp.m4b').replace('.mp3', '_temp.mp3')
+            
+            # Build FFmpeg command to embed cover
+            cmd = [
+                'ffmpeg', '-y',  # Overwrite output
+                '-i', audio_path,  # Input audio
+                '-i', cover_path,  # Input cover
+                '-map', '0:a',    # Map audio stream
+                '-map', '1:v',    # Map cover as video stream
+                '-c:a', 'copy',   # Copy audio codec
+                '-c:v', 'mjpeg',   # Convert cover to MJPEG
+                '-disposition:v:0', 'attached_pic',  # Mark as attached picture
+                '-metadata', f'title={item_data.get("title", "")}',
+                '-metadata', f'artist={item_data.get("author", "")}',
+                '-metadata', f'album={item_data.get("title", "")}',
+            ]
+            
+            # Add genre based on content type
+            if item_data.get('episode_id'):
+                cmd.extend(['-metadata', 'genre=Podcast'])
+            else:
+                cmd.extend(['-metadata', 'genre=Audiobook'])
+            
+            cmd.append(temp_output)
+            
+            # Run FFmpeg
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            
+            if result.returncode == 0:
+                # Replace original with temp file
+                os.remove(audio_path)
+                os.rename(temp_output, audio_path)
+                xbmc.log(f"Successfully embedded cover in {os.path.basename(audio_path)}", xbmc.LOGINFO)
+            else:
+                xbmc.log(f"Cover embedding failed: {result.stderr}", xbmc.LOGERROR)
+                # Clean up temp file if it exists
+                if os.path.exists(temp_output):
+                    os.remove(temp_output)
+                    
+        except Exception as e:
+            xbmc.log(f"Cover embedding error: {str(e)}", xbmc.LOGERROR)
+    
+    def _cleanup_temp_files(self, temp_files):
+        """Clean up temporary files"""
+        for temp_file in temp_files:
+            try:
+                if os.path.exists(temp_file['path']):
+                    os.remove(temp_file['path'])
+            except:
+                pass
+    
     def _download_multifile_worker(self, item_id, item_data, library_service, item_folder, key):
-        """Download all files for a multi-file audiobook"""
+        """Download all files for a multi-file audiobook (legacy method)"""
         progress_dialog = None
         
         try:
@@ -538,6 +818,52 @@ class DownloadManager:
         """Get list of all downloaded items"""
         return self.downloads
     
+    def delete_all_downloads(self):
+        """Delete all downloaded items"""
+        deleted_count = 0
+        failed_count = 0
+        
+        for key in list(self.downloads.keys()):
+            try:
+                download_info = self.downloads[key]
+                
+                # Delete files
+                if 'files' in download_info:
+                    for f in download_info['files']:
+                        if os.path.exists(f['path']):
+                            os.remove(f['path'])
+                elif download_info.get('file_path') and os.path.exists(download_info['file_path']):
+                    os.remove(download_info['file_path'])
+                
+                # Delete cover
+                if download_info.get('cover_path') and os.path.exists(download_info['cover_path']):
+                    os.remove(download_info['cover_path'])
+                
+                # Delete item folder if empty
+                item_folder = os.path.dirname(download_info.get('file_path') or 
+                                             (download_info.get('files', [{}])[0].get('path') if download_info.get('files') else ''))
+                if item_folder and os.path.exists(item_folder):
+                    try:
+                        if not os.listdir(item_folder):  # Folder is empty
+                            os.rmdir(item_folder)
+                    except:
+                        pass
+                
+                deleted_count += 1
+            except Exception as e:
+                xbmc.log(f"Error deleting download {key}: {str(e)}", xbmc.LOGERROR)
+                failed_count += 1
+        
+        # Clear metadata
+        self.downloads.clear()
+        self._save_metadata()
+        
+        # Clear resume positions
+        self.resume_positions.clear()
+        self._save_resume_positions()
+        
+        return deleted_count, failed_count
+    
     def _sanitize_filename(self, filename):
         """Sanitize filename for filesystem"""
         invalid_chars = '<>:"/\\|?*'
@@ -547,7 +873,7 @@ class DownloadManager:
     
     def get_file_for_position(self, item_id, position):
         """
-        Get the correct file and seek position for a multi-file download.
+        Get the correct file and seek position for a download.
         
         Returns:
             (file_path, seek_in_file, file_offset)
@@ -556,9 +882,15 @@ class DownloadManager:
             - file_offset: Where this file starts in the overall audiobook timeline
         """
         download_info = self.get_download_info(item_id)
-        if not download_info or not download_info.get('is_multifile'):
+        if not download_info:
             return None, 0, 0
         
+        # For combined single files, just return the file and position
+        if not download_info.get('is_multifile'):
+            file_path = download_info.get('file_path')
+            return file_path, position, 0
+        
+        # Legacy multi-file handling
         files = download_info.get('files', [])
         files = sorted(files, key=lambda x: x.get('index', 0))
         
