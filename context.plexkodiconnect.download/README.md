@@ -59,8 +59,7 @@ A Kodi context menu addon that allows you to download movies, TV shows, and musi
 - **Metadata Files**: Generate .nfo files for Kodi library integration
 - **Download Artwork**: Include posters and cover art with downloads
 - **Auto-play**: Ask to play content immediately after download
-- **Hide Plex Versions**: Hide Plex versions after successful download
-- **Restore Plex Versions**: Show Plex versions again when local files are deleted
+
 
 ### TV Show Menu Options
 - Toggle visibility of "Download entire show" options
