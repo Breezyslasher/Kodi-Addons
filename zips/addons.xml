@@ -17,7 +17,7 @@
         <platform>all</platform>
     </extension>
 </addon>
-<addon id="context.plexkodiconnect.download" version="1.0.0" name="PlexKodiConnect Download" provider-name="Breezyslasher">
+<addon id="context.plexkodiconnect.download" version="2025.12.12" name="PlexKodiConnect Download" provider-name="Breezyslasher">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
