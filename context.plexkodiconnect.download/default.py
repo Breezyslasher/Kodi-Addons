@@ -27,6 +27,28 @@ def LOG(msg, level=xbmc.LOGINFO):
         xbmc.log(log_message.encode("utf-8"), level)
 
 
+def show_system_notification(title, message, icon=None, display_time=5000):
+    """Show system notification instead of popup dialog"""
+    if icon is None:
+        icon = os.path.join(addonFolder, "icon.png")
+    
+    # Use Kodi's built-in notification system for system notifications
+    xbmc.executebuiltin('Notification({0},{1},{2},{3})'.format(
+        title, message, display_time, icon
+    ))
+
+
+def show_persistent_notification(title, message, icon=None):
+    """Show notification that stays visible until replaced"""
+    if icon is None:
+        icon = os.path.join(addonFolder, "icon.png")
+    
+    # Use very long display time (30 seconds) to keep notification visible
+    xbmc.executebuiltin('Notification({0},{1},{2},{3})'.format(
+        title, message, 30000, icon
+    ))
+
+
 def getDownloadPath():
     """Get download path from settings"""
     path = addon.getSetting('download_path')
@@ -699,14 +721,17 @@ def delete_downloads_by_type(media_type):
             return False
     else:
         # If not organized by type, we can't easily separate them
-        xbmcgui.Dialog().ok(
+        show_system_notification(
             'Cannot Delete',
-            'Downloads are not organized by media type. Enable "Organize by Media Type" in settings first, or manually delete files from: {0}'.format(download_path)
+            'Enable "Organize by Media Type" in settings first'
         )
         return False
     
     if not xbmcvfs.exists(target_path):
-        xbmcgui.Dialog().ok('Nothing to Delete', 'No {0} folder found.'.format(media_type))
+        show_system_notification(
+            'Nothing to Delete',
+            'No {0} folder found.'.format(media_type)
+        )
         return False
     
     # Count files first
@@ -740,17 +765,17 @@ def delete_downloads_by_type(media_type):
         else:
             shutil.rmtree(xbmc.translatePath(target_path).decode('utf-8'))
         
-        xbmcgui.Dialog().notification(
+        show_system_notification(
             'Deleted',
-            'All {0} have been deleted'.format(media_type),
-            os.path.join(addonFolder, "icon.png"),
-            5000,
-            True
+            'All {0} have been deleted'.format(media_type)
         )
         return True
     except Exception as e:
         LOG('Error deleting {0}: {1}'.format(media_type, str(e)), xbmc.LOGERROR)
-        xbmcgui.Dialog().ok('Error', 'Could not delete files: {0}'.format(str(e)))
+        show_system_notification(
+            'Error',
+            'Could not delete files: {0}'.format(str(e))
+        )
         return False
 
 
@@ -1065,6 +1090,9 @@ def copy_with_progress(source, dest, title, pDialog):
     """Copy file with progress updates"""
     LOG("Copying from {0} to {1}".format(source, dest), xbmc.LOGINFO)
     
+    # Track last percentage to avoid duplicate notifications
+    last_percent = -1
+    
     try:
         # Get file size for progress calculation
         if source.startswith('http://') or source.startswith('https://'):
@@ -1093,26 +1121,45 @@ def copy_with_progress(source, dest, title, pDialog):
                     
                     if file_size > 0:
                         percent = int((bytes_downloaded / file_size) * 100)
-                        pDialog.update(percent, 'Downloading {0}... {1}%'.format(title, percent))
+                        if pDialog:  # Only update if dialog exists
+                            pDialog.update(percent, 'Downloading {0}... {1}%'.format(title, percent))
+                        elif percent != last_percent and percent % 5 == 0:  # Update notification every 5% and only when changed
+                            show_persistent_notification('Downloading', '{0} - {1}%'.format(title, percent))
+                            last_percent = percent
             
             return True
         else:
             # For local/network files, use xbmcvfs
-            pDialog.update(10, 'Copying {0}...'.format(title))
+            if pDialog:
+                pDialog.update(10, 'Copying {0}...'.format(title))
+            else:
+                show_persistent_notification('Downloading', '{0} - 10%'.format(title))
+                last_percent = 10
             
             if xbmcvfs.copy(source, dest):
-                pDialog.update(100, 'Download complete')
+                if pDialog:
+                    pDialog.update(100, 'Download complete')
+                else:
+                    show_persistent_notification('Download Complete', '{0} - 100%'.format(title))
                 return True
             else:
                 # Alternative method - read entire file
                 LOG("xbmcvfs.copy failed, trying alternative method", xbmc.LOGINFO)
-                pDialog.update(20, 'Reading file...')
+                if pDialog:
+                    pDialog.update(20, 'Reading file...')
+                else:
+                    show_persistent_notification('Downloading', '{0} - 20%'.format(title))
+                    last_percent = 20
                 
                 src_file = xbmcvfs.File(source, 'rb')
                 file_data = src_file.readBytes()
                 src_file.close()
                 
-                pDialog.update(60, 'Writing file...')
+                if pDialog:
+                    pDialog.update(60, 'Writing file...')
+                else:
+                    show_persistent_notification('Downloading', '{0} - 60%'.format(title))
+                    last_percent = 60
                 
                 dst_file = xbmcvfs.File(dest, 'wb')
                 dst_file.write(file_data)
@@ -1131,7 +1178,10 @@ def copy_with_progress(source, dest, title, pDialog):
                         dst_size = dst_stat.st_size()
                     
                     if src_size == dst_size:
-                        pDialog.update(100, 'Download complete')
+                        if pDialog:
+                            pDialog.update(100, 'Download complete')
+                        else:
+                            show_persistent_notification('Download Complete', '{0} - 100%'.format(title))
                         return True
                 
                 return False
@@ -1143,12 +1193,9 @@ def copy_with_progress(source, dest, title, pDialog):
 def download_episodes(episodes, tvshow_id, title='Download', show_confirm=True):
     """Download a list of episodes"""
     if not episodes:
-        xbmcgui.Dialog().notification(
+        show_system_notification(
             'PlexKodiConnect Download',
-            'No episodes to download',
-            os.path.join(addonFolder, "icon.png"),
-            5000,
-            True
+            'No episodes to download'
         )
         return False
     
@@ -1164,19 +1211,20 @@ def download_episodes(episodes, tvshow_id, title='Download', show_confirm=True):
     success_count = 0
     fail_count = 0
     
-    # Show overall progress
-    pDialog = xbmcgui.DialogProgress()
-    pDialog.create(title, 'Starting download...')
+    # Show progress via system notifications instead of dialog
+    show_system_notification(title, 'Starting download of {0} episodes...'.format(len(episodes)))
     
     for idx, episode in enumerate(episodes):
-        if pDialog.iscanceled():
-            LOG("Episode download cancelled by user", xbmc.LOGINFO)
-            break
-        
-        overall_percent = int((idx / len(episodes)) * 100)
-        pDialog.update(overall_percent, 'Episode {0} of {1}: S{2:02d}E{3:02d} - {4}'.format(
-            idx + 1, len(episodes), episode.get('season', 0), episode.get('episode', 0), episode.get('title', 'Unknown')
-        ))
+        # Show progress notification every 5 episodes or for first/last
+        if idx == 0 or idx == len(episodes) - 1 or (idx + 1) % 5 == 0:
+            overall_percent = int((idx / len(episodes)) * 100)
+            show_system_notification(
+                'Download Progress', 
+                'Episode {0} of {1}: S{2:02d}E{3:02d} - {4} ({5}%)'.format(
+                    idx + 1, len(episodes), episode.get('season', 0), episode.get('episode', 0), 
+                    episode.get('title', 'Unknown'), overall_percent
+                )
+            )
         
         file_path = episode.get('file', '')
         
@@ -1217,14 +1265,11 @@ def download_episodes(episodes, tvshow_id, title='Download', show_confirm=True):
             LOG('No plex_id found for episode: {0}'.format(episode.get('title', 'Unknown')), xbmc.LOGWARNING)
             fail_count += 1
     
-    pDialog.close()
+    # Progress notifications handled in loop
     
-    xbmcgui.Dialog().notification(
+    show_system_notification(
         'Download Complete',
-        'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count),
-        os.path.join(addonFolder, "icon.png"),
-        5000,
-        True
+        'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count)
     )
     
     return True
@@ -1235,12 +1280,9 @@ def download_season(tvshow_id, season_num):
     episodes = get_season_episodes(tvshow_id, season_num)
     
     if not episodes:
-        xbmcgui.Dialog().notification(
+        show_system_notification(
             'PlexKodiConnect Download',
-            'No episodes found in season',
-            os.path.join(addonFolder, "icon.png"),
-            5000,
-            True
+            'No episodes found in season'
         )
         return False
     
@@ -1264,17 +1306,19 @@ def download_season(tvshow_id, season_num):
     success_count = 0
     fail_count = 0
     
-    # Show overall progress
-    pDialog = xbmcgui.DialogProgress()
-    pDialog.create('Downloading {0}'.format(season_label), 'Starting download...')
+    # Show progress via system notifications instead of dialog
+    show_system_notification('Downloading {0}'.format(season_label), 'Starting download of {0} episodes...'.format(len(episodes)))
     
     for idx, episode in enumerate(episodes):
-        if pDialog.iscanceled():
-            LOG("Season download cancelled by user", xbmc.LOGINFO)
-            break
-        
-        overall_percent = int((idx / len(episodes)) * 100)
-        pDialog.update(overall_percent, 'Episode {0} of {1}: {2}'.format(idx + 1, len(episodes), episode['title']))
+        # Show progress notification every 5 episodes or for first/last
+        if idx == 0 or idx == len(episodes) - 1 or (idx + 1) % 5 == 0:
+            overall_percent = int((idx / len(episodes)) * 100)
+            show_system_notification(
+                'Season Download Progress', 
+                'Episode {0} of {1}: {2} ({3}%)'.format(
+                    idx + 1, len(episodes), episode['title'], overall_percent
+                )
+            )
         
         # Extract plex_id from episode file path
         match = re.search(r'plex_id=(\d+)', episode['file'])
@@ -1294,14 +1338,11 @@ def download_season(tvshow_id, season_num):
             else:
                 fail_count += 1
     
-    pDialog.close()
+    # Progress notifications handled in loop
     
-    xbmcgui.Dialog().notification(
+    show_system_notification(
         'Season Download Complete',
-        'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count),
-        os.path.join(addonFolder, "icon.png"),
-        5000,
-        True
+        'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count)
     )
     
     return True
@@ -1312,12 +1353,9 @@ def download_show(tvshow_id):
     episodes = get_all_episodes(tvshow_id)
     
     if not episodes:
-        xbmcgui.Dialog().notification(
+        show_system_notification(
             'PlexKodiConnect Download',
-            'No episodes found',
-            os.path.join(addonFolder, "icon.png"),
-            5000,
-            True
+            'No episodes found'
         )
         return False
     
@@ -1339,19 +1377,20 @@ def download_show(tvshow_id):
     success_count = 0
     fail_count = 0
     
-    # Show overall progress
-    pDialog = xbmcgui.DialogProgress()
-    pDialog.create('Downloading "{0}"'.format(show_title), 'Starting download...')
+    # Show progress via system notifications instead of dialog
+    show_system_notification('Downloading "{0}"'.format(show_title), 'Starting download of {0} episodes...'.format(len(episodes)))
     
     for idx, episode in enumerate(episodes):
-        if pDialog.iscanceled():
-            LOG("Show download cancelled by user", xbmc.LOGINFO)
-            break
-        
-        overall_percent = int((idx / len(episodes)) * 100)
-        pDialog.update(overall_percent, 'Episode {0} of {1}: S{2:02d}E{3:02d} - {4}'.format(
-            idx + 1, len(episodes), episode['season'], episode['episode'], episode['title']
-        ))
+        # Show progress notification every 10 episodes or for first/last
+        if idx == 0 or idx == len(episodes) - 1 or (idx + 1) % 10 == 0:
+            overall_percent = int((idx / len(episodes)) * 100)
+            show_system_notification(
+                'Show Download Progress', 
+                'Episode {0} of {1}: S{2:02d}E{3:02d} - {4} ({5}%)'.format(
+                    idx + 1, len(episodes), episode['season'], episode['episode'], 
+                    episode['title'], overall_percent
+                )
+            )
         
         # Extract plex_id from episode file path
         match = re.search(r'plex_id=(\d+)', episode['file'])
@@ -1371,14 +1410,11 @@ def download_show(tvshow_id):
             else:
                 fail_count += 1
     
-    pDialog.close()
+    # Progress notifications handled in loop
     
-    xbmcgui.Dialog().notification(
+    show_system_notification(
         'Show Download Complete',
-        'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count),
-        os.path.join(addonFolder, "icon.png"),
-        5000,
-        True
+        'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count)
     )
     
     return True
@@ -1391,12 +1427,9 @@ def download_album(album_id, album_name=None):
     LOG('download_album: Found {0} songs for album ID {1}'.format(len(songs) if songs else 0, album_id), xbmc.LOGINFO)
     
     if not songs:
-        xbmcgui.Dialog().notification(
+        show_system_notification(
             'PlexKodiConnect Download',
-            'No songs found in album',
-            os.path.join(addonFolder, "icon.png"),
-            5000,
-            True
+            'No songs found in album'
         )
         return False
     
@@ -1415,17 +1448,19 @@ def download_album(album_id, album_name=None):
     fail_count = 0
     skipped_count = 0
     
-    # Show progress dialog
-    pDialog = xbmcgui.DialogProgress()
-    pDialog.create('Downloading Album', 'Starting download...')
+    # Show progress via system notifications instead of dialog
+    show_system_notification('Downloading Album', 'Starting download of {0} songs...'.format(len(songs)))
     
     for idx, song in enumerate(songs):
-        if pDialog.iscanceled():
-            LOG("Album download cancelled by user", xbmc.LOGINFO)
-            break
-        
-        overall_percent = int((idx / len(songs)) * 100)
-        pDialog.update(overall_percent, 'Song {0} of {1}: {2}'.format(idx + 1, len(songs), song.get('title', 'Unknown')))
+        # Show progress notification every 5 songs or for first/last
+        if idx == 0 or idx == len(songs) - 1 or (idx + 1) % 5 == 0:
+            overall_percent = int((idx / len(songs)) * 100)
+            show_system_notification(
+                'Album Download Progress', 
+                'Song {0} of {1}: {2} ({3}%)'.format(
+                    idx + 1, len(songs), song.get('title', 'Unknown'), overall_percent
+                )
+            )
         
         file_path = song.get('file', '')
         LOG('download_album: Processing song "{0}" with path: {1}'.format(song.get('title', 'Unknown'), file_path), xbmc.LOGINFO)
@@ -1476,18 +1511,15 @@ def download_album(album_id, album_name=None):
         else:
             fail_count += 1
     
-    pDialog.close()
+    # Progress notifications handled in loop
     
     message = 'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count)
     if skipped_count > 0:
         message += ', Skipped: {0}'.format(skipped_count)
     
-    xbmcgui.Dialog().notification(
+    show_system_notification(
         'Album Download Complete',
-        message,
-        os.path.join(addonFolder, "icon.png"),
-        5000,
-        True
+        message
     )
     
     return True
@@ -1500,12 +1532,9 @@ def download_artist(artist_name):
     LOG('download_artist: Found {0} songs for artist "{1}"'.format(len(songs) if songs else 0, artist_name), xbmc.LOGINFO)
     
     if not songs:
-        xbmcgui.Dialog().notification(
+        show_system_notification(
             'PlexKodiConnect Download',
-            'No songs found for artist',
-            os.path.join(addonFolder, "icon.png"),
-            5000,
-            True
+            'No songs found for artist'
         )
         return False
     
@@ -1521,17 +1550,19 @@ def download_artist(artist_name):
     fail_count = 0
     skipped_count = 0
     
-    # Show progress dialog
-    pDialog = xbmcgui.DialogProgress()
-    pDialog.create('Downloading Artist', 'Starting download...')
+    # Show progress via system notifications instead of dialog
+    show_system_notification('Downloading Artist', 'Starting download of {0} songs...'.format(len(songs)))
     
     for idx, song in enumerate(songs):
-        if pDialog.iscanceled():
-            LOG("Artist download cancelled by user", xbmc.LOGINFO)
-            break
-        
-        overall_percent = int((idx / len(songs)) * 100)
-        pDialog.update(overall_percent, 'Song {0} of {1}: {2}'.format(idx + 1, len(songs), song.get('title', 'Unknown')))
+        # Show progress notification every 10 songs or for first/last
+        if idx == 0 or idx == len(songs) - 1 or (idx + 1) % 10 == 0:
+            overall_percent = int((idx / len(songs)) * 100)
+            show_system_notification(
+                'Artist Download Progress', 
+                'Song {0} of {1}: {2} ({3}%)'.format(
+                    idx + 1, len(songs), song.get('title', 'Unknown'), overall_percent
+                )
+            )
         
         file_path = song.get('file', '')
         LOG('download_artist: Processing song "{0}" with path: {1}'.format(song.get('title', 'Unknown'), file_path), xbmc.LOGINFO)
@@ -1582,18 +1613,15 @@ def download_artist(artist_name):
         else:
             fail_count += 1
     
-    pDialog.close()
+    # Progress notifications handled in loop
     
     message = 'Downloaded: {0}, Failed: {1}'.format(success_count, fail_count)
     if skipped_count > 0:
         message += ', Skipped: {0}'.format(skipped_count)
     
-    xbmcgui.Dialog().notification(
+    show_system_notification(
         'Artist Download Complete',
-        message,
-        os.path.join(addonFolder, "icon.png"),
-        5000,
-        True
+        message
     )
     
     return True
@@ -1613,12 +1641,9 @@ def download_single_item(item_info, show_notifications=True):
     if not xbmcvfs.exists(download_path):
         LOG("Download directory does not exist!", xbmc.LOGERROR)
         if show_notifications:
-            xbmcgui.Dialog().notification(
+            show_system_notification(
                 'PlexKodiConnect Download',
-                'Download path does not exist',
-                os.path.join(addonFolder, "icon.png"),
-                5000,
-                True
+                'Download path does not exist'
             )
         return False
     
@@ -1635,12 +1660,9 @@ def download_single_item(item_info, show_notifications=True):
     else:
         LOG("Destination path not writeable", xbmc.LOGERROR)
         if show_notifications:
-            xbmcgui.Dialog().notification(
+            show_system_notification(
                 'PlexKodiConnect Download',
-                'Download path is not writeable',
-                os.path.join(addonFolder, "icon.png"),
-                5000,
-                True
+                'Download path is not writeable'
             )
         return False
     
@@ -1749,12 +1771,9 @@ def download_single_item(item_info, show_notifications=True):
         
         if not source_path or source_path.startswith('plugin://'):
             if show_notifications:
-                xbmcgui.Dialog().notification(
+                show_system_notification(
                     'PlexKodiConnect Download',
-                    'Could not get download URL. Check PlexKodiConnect settings.',
-                    os.path.join(addonFolder, "icon.png"),
-                    5000,
-                    True
+                    'Could not get download URL. Check PlexKodiConnect settings.'
                 )
             return False
     
@@ -1841,56 +1860,42 @@ def download_single_item(item_info, show_notifications=True):
         if not show_notifications:
             return True
         
-        continuedownload = xbmcgui.Dialog().yesno(
-            'File Exists',
-            '{0} already exists![CR][CR]Delete and download again?'.format(dest_filename)
-        )
-        if not continuedownload:
-            LOG("User chose not to overwrite existing file", xbmc.LOGINFO)
-            xbmcgui.Dialog().notification(
-                'PlexKodiConnect Download',
-                'Download cancelled',
-                os.path.join(addonFolder, "icon.png"),
-                5000,
-                True
-            )
-            return False
-        else:
-            LOG("Deleting existing file as requested", xbmc.LOGINFO)
-            xbmcvfs.delete(dest_file)
-    
-    # Show confirmation dialog for single downloads
-    if show_notifications:
-        confirm = xbmcgui.Dialog().yesno(
-            'Download from Plex',
-            'Download "{0}" to:[CR]{1}'.format(item_info["title"], download_path),
-            nolabel='Cancel',
-            yeslabel='Download'
+        # Ask user if they want to redownload existing file
+        redrawn = xbmcgui.Dialog().yesno(
+            'File Already Exists',
+            '{0} already exists.[CR]Do you want to redownload and overwrite?'.format(dest_filename),
+            nolabel='Skip',
+            yeslabel='Redownload'
         )
         
-        if not confirm:
-            return False
+        if not redrawn:
+            LOG("File already exists, user chose to skip", xbmc.LOGINFO)
+            return True
+        
+        LOG("File already exists, user chose to redownload", xbmc.LOGINFO)
+    
+    # Show persistent notification for single downloads
+    if show_notifications:
+        show_persistent_notification(
+            'Downloading',
+            '{0} - 0%'.format(item_info["title"])
+        )
     
     # Notify if playing (only for single downloads)
     if show_notifications and xbmc.Player().isPlaying():
-        xbmcgui.Dialog().notification(
-            'Download started',
-            item_info['title'],
-            os.path.join(addonFolder, "icon.png"),
-            3000,
-            False
+        show_persistent_notification(
+            'Downloading',
+            '{0} - 0%'.format(item_info['title'])
         )
     
-    # Show progress dialog (regular dialog for better visibility)
-    pDialog = xbmcgui.DialogProgress()
-    pDialog.create('PlexKodiConnect Download', 'Preparing to download {0}...'.format(item_info["title"]))
+    # Show progress via system notification instead of dialog
+    show_system_notification('PlexKodiConnect Download', 'Preparing to download {0}...'.format(item_info["title"]))
     
     try:
-        # Copy file with progress
-        success = copy_with_progress(source_path, dest_file, item_info["title"], pDialog)
+        # Copy file with progress (no progress dialog for single items)
+        success = copy_with_progress(source_path, dest_file, item_info["title"], None)
         
         xbmc.sleep(500)
-        pDialog.close()
         
         if success:
             # Write metadata NFO file
@@ -1903,47 +1908,35 @@ def download_single_item(item_info, show_notifications=True):
                 write_nfo_file(dest_file, item_info, metadata, plex_metadata)
             
             if show_notifications:
-                xbmcgui.Dialog().notification(
+                show_system_notification(
                     'Download Complete',
-                    '{0} saved successfully!'.format(item_info["title"]),
-                    os.path.join(addonFolder, "icon.png"),
-                    5000,
-                    True
+                    '{0} saved successfully!'.format(item_info["title"])
                 )
                 
-                # Ask if user wants to play the downloaded file
+                # Auto-play the downloaded file if setting is enabled
                 auto_play_setting = addon.getSetting('auto_play') == 'true'
                 if auto_play_setting:
-                    play_now = xbmcgui.Dialog().yesno(
-                        'Download Complete',
-                        'Would you like to play the downloaded file now?'
+                    show_system_notification(
+                        'Auto-playing',
+                        'Playing {0}'.format(item_info["title"])
                     )
-                    
-                    if play_now:
-                        xbmc.Player().play(dest_file)
+                    xbmc.Player().play(dest_file)
             
             return True
         else:
             if show_notifications:
-                xbmcgui.Dialog().notification(
+                show_system_notification(
                     'Download Failed',
-                    'Could not download file from Plex',
-                    os.path.join(addonFolder, "icon.png"),
-                    5000,
-                    True
+                    'Could not download file from Plex'
                 )
             return False
     
     except Exception as e:
-        pDialog.close()
         LOG("Download error: {0}".format(str(e)), xbmc.LOGERROR)
         if show_notifications:
-            xbmcgui.Dialog().notification(
+            show_system_notification(
                 'Download Error',
-                str(e),
-                os.path.join(addonFolder, "icon.png"),
-                5000,
-                True
+                str(e)
             )
         return False
 
@@ -1954,12 +1947,9 @@ def download_from_plex():
     item_info = get_plex_item_info()
     
     if not item_info:
-        xbmcgui.Dialog().notification(
+        show_system_notification(
             'PlexKodiConnect Download',
-            'Could not retrieve Plex item information',
-            os.path.join(addonFolder, "icon.png"),
-            5000,
-            True
+            'Could not retrieve Plex item information'
         )
         return False
     
