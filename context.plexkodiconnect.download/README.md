@@ -129,6 +129,29 @@ plexdownloads/
 - Verify the file format is supported by Kodi
 - Try playing the file directly from the filesystem
 
+## 📸 Screenshots
+
+### Context Menu
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/eab73e5a-3092-4f88-bde4-066890687399" alt="Context Menu" width="300">
+</p>
+
+### Download Options
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/212a0ec5-f7b5-4692-80ec-e055f79b9af1" alt="Show Download Options" width="800">
+</p>
+
+### Settings Pages
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/50e5ff94-970c-41c3-af03-47028abbc69a" alt="Settings Page 1" width="380">
+  <img src="https://github.com/user-attachments/assets/c3b66524-f569-4d60-bd42-2bfdeb04269c" alt="Settings Page 3" width="380">
+</p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/ce14c11d-04d5-4ab0-8345-ffe89fc6162a" alt="Settings Page 2" width="380">
+  <img src="https://github.com/user-attachments/assets/352895f2-ec20-4e96-b300-3dbc623719fa" alt="Settings Page 4" width="380">
+</p>
+
 ## Version
 
 **Version**: 1.0.0  
