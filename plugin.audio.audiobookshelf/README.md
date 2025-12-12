@@ -104,3 +104,14 @@ GPL-3.0-or-later
 ## Credits
 
 Based on the original audiobookshelf_simpleclient by platzregen.
+
+
+<img width="1278" height="951" alt="podcast" src="https://github.com/user-attachments/assets/eb92d87a-a916-4d8e-a343-bdf56a7ec464" />
+<img width="1282" height="950" alt="audiobooks" src="https://github.com/user-attachments/assets/d01a6611-69ca-422e-a95a-233272f5bf94" />
+<img width="1281" height="949" alt="podcast episodes" src="https://github.com/user-attachments/assets/d807e805-6e48-423b-b0ea-32e2791ef335" />
+<img width="1279" height="946" alt="podcast downlaod" src="https://github.com/user-attachments/assets/c6f73258-129c-4a66-ac42-1600f815f27d" />
+<img width="1280" height="946" alt="offline" src="https://github.com/user-attachments/assets/f09e31d8-b2a8-4a24-9ecf-097ecac8f5bb" />
+<img width="1279" height="945" alt="Main Page" src="https://github.com/user-attachments/assets/0b5f7f1c-ceec-4404-ba11-ee90b6a9cce4" />
+<img width="1281" height="947" alt="audiobooks offline" src="https://github.com/user-attachments/assets/c0566369-487d-44ee-a05f-2f7bc6b8286e" />
+<img width="1272" height="951" alt="audiobooks chapters" src="https://github.com/user-attachments/assets/fe2c32fb-1d4d-4a3d-8ba2-081dd78e1395" />
+
