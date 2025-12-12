@@ -60,7 +60,7 @@ Execute up to 10 Home Assistant webhooks from Kodi.
 
 ### Method 2: Manual Installation
 
-1. Download the desired addon ZIP file from the [Releases](https://github.com/Breezyslasher/Kodi-Addons/releases) page
+1. Download the desired addon ZIP file from the [Zip](https://github.com/Breezyslasher/Kodi-Addons/tree/main/zips) page
 2. In Kodi: Settings → Add-ons → Install from zip file
 3. Select the downloaded ZIP file
 
