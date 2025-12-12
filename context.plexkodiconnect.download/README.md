@@ -136,4 +136,4 @@ plexdownloads/
 
 ## Support
 
-For issues and feature requests, please check the Kodi forum thread or GitHub repository for this addon.
+For issues and feature requests, please check GitHub repository for this addon.
