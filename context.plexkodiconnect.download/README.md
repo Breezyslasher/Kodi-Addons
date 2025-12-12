@@ -23,8 +23,7 @@ A Kodi context menu addon that allows you to download movies, TV shows, and musi
 
 ### ⚙️ Smart Features
 - **Auto-play**: Option to play content immediately after download
-- **Hide Plex Versions**: Hide Plex versions after local download
-- **Restore on Delete**: Restore Plex versions when local files are deleted
+
 
 ## Installation
 
