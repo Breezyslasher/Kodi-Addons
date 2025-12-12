@@ -131,11 +131,6 @@ plexdownloads/
 
 ## 📸 Screenshots
 
-### Context Menu
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/eab73e5a-3092-4f88-bde4-066890687399" alt="Context Menu" width="300">
-</p>
-
 ### Download Options
 <p align="center">
   <img src="https://github.com/user-attachments/assets/212a0ec5-f7b5-4692-80ec-e055f79b9af1" alt="Show Download Options" width="800">
