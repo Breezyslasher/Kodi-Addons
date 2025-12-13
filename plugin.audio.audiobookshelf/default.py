@@ -400,6 +400,9 @@ def mark_as_finished(item_id, episode_id=None, finished=True):
     xbmc.executebuiltin('ReloadSkin')  # Force skin reload to update context menus
 
 
+
+
+
 def get_downloaded_structure():
     """Get structure of downloaded items organized by type and podcast"""
     downloads = download_manager.get_all_downloads()
@@ -521,6 +524,7 @@ def list_audiobooks_combined(book_libs=None):
             # Context menu
             context_items = [
                 ('Clear Progress', f'RunPlugin({build_url(action="clear_progress", item_id=item_id)})'),
+                ('Sync Progress from Server', f'RunPlugin({build_url(action="sync_progress_from_server", item_id=item_id)})'),
             ]
             if is_finished:
                 context_items.append(('Mark Unfinished', f'RunPlugin({build_url(action="mark_unfinished", item_id=item_id)})'))
@@ -720,6 +724,7 @@ def list_offline_books():
         # Context menu - same options as online
         context_items = [
             ('Clear Progress', f'RunPlugin({build_url(action="clear_progress", item_id=item_id)})'),
+            ('Sync Progress from Server', f'RunPlugin({build_url(action="sync_progress_from_server", item_id=item_id)})'),
         ]
         if is_finished:
             context_items.append(('Mark Unfinished', f'RunPlugin({build_url(action="mark_unfinished", item_id=item_id)})'))
@@ -847,6 +852,7 @@ def list_offline_episodes(item_id):
         # Context menu - same options as online
         context_items = [
             ('Clear Progress', f'RunPlugin({build_url(action="clear_progress", item_id=item_id, episode_id=episode_id)})'),
+            ('Sync Progress from Server', f'RunPlugin({build_url(action="sync_progress_from_server", item_id=item_id, episode_id=episode_id)})'),
         ]
         if is_finished:
             context_items.append(('Mark Unfinished', f'RunPlugin({build_url(action="mark_unfinished", item_id=item_id, episode_id=episode_id)})'))
@@ -1143,6 +1149,7 @@ def list_library_items(library_id, is_podcast=False):
             # Add progress management for non-podcasts
             if media_type != 'podcast':
                 context_items.append(('Clear Progress', f'RunPlugin({build_url(action="clear_progress", item_id=item_id)})'))
+                context_items.append(('Sync Progress from Server', f'RunPlugin({build_url(action="sync_progress_from_server", item_id=item_id)})'))
                 if is_finished:
                     context_items.append(('Mark Unfinished', f'RunPlugin({build_url(action="mark_unfinished", item_id=item_id)})'))
                 else:
@@ -1310,6 +1317,7 @@ def list_episodes(item_id, sort_by='date'):
             
             # Add progress management options
             context_items.append(('Clear Progress', f'RunPlugin({build_url(action="clear_progress", item_id=item_id, episode_id=episode_id)})'))
+            context_items.append(('Sync Progress from Server', f'RunPlugin({build_url(action="sync_progress_from_server", item_id=item_id, episode_id=episode_id)})'))
             if is_finished:
                 context_items.append(('Mark Unfinished', f'RunPlugin({build_url(action="mark_unfinished", item_id=item_id, episode_id=episode_id)})'))
             else:
@@ -2599,6 +2607,61 @@ def router(paramstring):
         mark_as_finished(params['item_id'], params.get('episode_id'), finished=True)
     elif action == 'mark_unfinished':
         mark_as_finished(params['item_id'], params.get('episode_id'), finished=False)
+    elif action == 'sync_progress_from_server':
+        # Use sync_manager directly for bidirectional sync
+        library_service = None
+        try:
+            lib_svc, _, _, offline = get_library_service()
+            if offline or not lib_svc:
+                xbmcgui.Dialog().notification('Offline', 'Cannot sync - no network connection', xbmcgui.NOTIFICATION_WARNING)
+                return
+            library_service = lib_svc
+        except:
+            xbmcgui.Dialog().notification('Error', 'Cannot connect to server', xbmcgui.NOTIFICATION_ERROR)
+            return
+        
+        sync_mgr = get_sync_manager()
+        sync_mgr.set_library_service(library_service)
+        
+        try:
+            item_id = params['item_id']
+            episode_id = params.get('episode_id')
+            
+            # Use sync_manager's bidirectional sync
+            synced_from_server, uploaded_to_server = sync_mgr.sync_item_bidirectional(item_id, episode_id)
+            
+            if synced_from_server or uploaded_to_server:
+                # Get updated progress for notification
+                local = sync_mgr.get_local_progress(item_id, episode_id)
+                if local:
+                    current_time = local.get('current_time', 0)
+                    duration = local.get('duration', 0)
+                    is_finished = local.get('is_finished', False)
+                    
+                    status_msg = f"Synced: {format_time(current_time)}"
+                    if is_finished:
+                        status_msg += " (Finished)"
+                    
+                    if synced_from_server and uploaded_to_server:
+                        status_msg += " (Bidirectional sync)"
+                    elif synced_from_server:
+                        status_msg += " (From server)"
+                    elif uploaded_to_server:
+                        status_msg += " (To server)"
+                    
+                    xbmcgui.Dialog().notification('Sync Complete', status_msg, xbmcgui.NOTIFICATION_INFO, 3000)
+                    xbmc.log(f"[SYNC] Synced item: {item_id}/{episode_id} = {current_time:.1f}s / {duration:.1f}s finished={is_finished}", xbmc.LOGINFO)
+                else:
+                    xbmcgui.Dialog().notification('Sync Complete', 'Progress synchronized', xbmcgui.NOTIFICATION_INFO, 3000)
+            else:
+                xbmcgui.Dialog().notification('No Changes', 'Progress already in sync', xbmcgui.NOTIFICATION_INFO, 2000)
+            
+            # Refresh to show updated progress
+            xbmc.executebuiltin('Container.Refresh')
+            
+        except Exception as e:
+            xbmc.log(f"[SYNC] Error syncing from server: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification('Sync Failed', f'Error: {str(e)[:50]}', xbmcgui.NOTIFICATION_ERROR)
     # Search and podcast management
     elif action == 'search':
         search_podcasts()
