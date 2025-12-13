@@ -2411,17 +2411,14 @@ def download_podcast(item_id):
         if not xbmcgui.Dialog().yesno('Download Podcast', f'Download {len(episodes)} episodes?'):
             return
         
-        progress = xbmcgui.DialogProgress()
-        progress.create('Downloading Podcast')
+        # Show start notification
+        xbmcgui.Dialog().notification('Download Started', f'Downloading {len(episodes)} episodes', xbmcgui.NOTIFICATION_INFO, 5000)
         
         success = 0
         for i, ep in enumerate(episodes):
-            if progress.iscanceled():
-                break
-            
-            pct = int((i / len(episodes)) * 100)
-            msg = f'{i+1}/{len(episodes)}: {ep.get("title", "")[:40]}'
-            progress.update(pct, msg)
+            # Show progress notification every 5 episodes or for the last one
+            if (i + 1) % 5 == 0 or i == len(episodes) - 1:
+                xbmcgui.Dialog().notification('Download Progress', f'Episode {i+1}/{len(episodes)}: {ep.get("title", "")[:30]}', xbmcgui.NOTIFICATION_INFO, 2000)
             
             try:
                 ep_id = ep.get('id')
@@ -2435,7 +2432,6 @@ def download_podcast(item_id):
             except Exception as e:
                 xbmc.log(f"Episode download error: {str(e)}", xbmc.LOGERROR)
         
-        progress.close()
         xbmcgui.Dialog().notification('Complete', f'{success} episodes downloaded', xbmcgui.NOTIFICATION_INFO)
         
     except Exception as e:
