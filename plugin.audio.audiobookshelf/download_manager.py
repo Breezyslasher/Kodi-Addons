@@ -287,8 +287,6 @@ class DownloadManager:
     
     def _download_combined_worker(self, item_id, item_data, library_service, item_folder, key):
         """Download audiobook as one combined file with embedded chapters"""
-        progress_dialog = None
-        
         try:
             audio_files = item_data.get('audio_files', [])
             chapters = item_data.get('chapters', [])
@@ -299,31 +297,23 @@ class DownloadManager:
             # Sort by index
             audio_files = sorted(audio_files, key=lambda x: x.get('index', 0))
             
-            progress_dialog = xbmcgui.DialogProgress()
-            progress_dialog.create('Downloading Audiobook', f'Preparing {item_data["title"]}')
+            # Show start notification
+            xbmcgui.Dialog().notification('Download Started', f'Preparing {item_data["title"]}', xbmcgui.NOTIFICATION_INFO, 5000)
             
             # Download all individual files first
             temp_files = []
             total_files = len(audio_files)
             
             for i, audio_file in enumerate(audio_files):
-                if progress_dialog.iscanceled():
-                    progress_dialog.close()
-                    self._cleanup_temp_files(temp_files)
-                    del self.active_downloads[key]
-                    xbmcgui.Dialog().notification('Download Cancelled', item_data['title'], xbmcgui.NOTIFICATION_INFO)
-                    return
-                
                 ino = audio_file.get('ino')
                 file_index = audio_file.get('index', i)
                 
                 # Get download URL
                 download_url = f"{library_service.base_url}/api/items/{item_id}/file/{ino}?token={library_service.token}"
                 
-                progress_dialog.update(
-                    int((i / (total_files + 1)) * 100),  # +1 for combining step
-                    f'Downloading file {i+1}/{total_files}'
-                )
+                # Show progress notification for each file
+                if total_files > 1:
+                    xbmcgui.Dialog().notification('Download Progress', f'{item_data["title"]} - File {i+1}/{total_files}', xbmcgui.NOTIFICATION_INFO, 2000)
                 
                 # Download to temp file
                 temp_filename = f"temp_{file_index:03d}.tmp"
@@ -333,13 +323,6 @@ class DownloadManager:
                 
                 with open(temp_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
-                        if progress_dialog.iscanceled():
-                            f.close()
-                            os.remove(temp_path)
-                            progress_dialog.close()
-                            self._cleanup_temp_files(temp_files)
-                            del self.active_downloads[key]
-                            return
                         f.write(chunk)
                 
                 temp_files.append({
@@ -348,8 +331,9 @@ class DownloadManager:
                     'duration': audio_file.get('duration', 0)
                 })
             
-            # Combine files into one M4B with chapters
-            progress_dialog.update(90, 'Combining files...')
+            # Show combining notification
+            xbmcgui.Dialog().notification('Download Progress', f'{item_data["title"]} - Combining files...', xbmcgui.NOTIFICATION_INFO, 3000)
+            
             combined_filename = f"{self._sanitize_filename(item_data['title'])}.m4b"
             combined_path = os.path.join(item_folder, combined_filename)
             
@@ -384,12 +368,6 @@ class DownloadManager:
             xbmcgui.Dialog().notification('Download Complete', item_data['title'], xbmcgui.NOTIFICATION_INFO)
             
         except Exception as e:
-            if progress_dialog:
-                try:
-                    progress_dialog.close()
-                except:
-                    pass
-            
             if key in self.active_downloads:
                 del self.active_downloads[key]
             
@@ -562,8 +540,6 @@ class DownloadManager:
     
     def _download_multifile_worker(self, item_id, item_data, library_service, item_folder, key):
         """Download all files for a multi-file audiobook (legacy method)"""
-        progress_dialog = None
-        
         try:
             audio_files = item_data.get('audio_files', [])
             if not audio_files:
@@ -575,20 +551,13 @@ class DownloadManager:
             total_files = len(audio_files)
             downloaded_files = []
             
-            progress_dialog = xbmcgui.DialogProgress()
-            progress_dialog.create('Downloading Audiobook', f'{item_data["title"]} - 0/{total_files} files')
+            # Show start notification
+            xbmcgui.Dialog().notification('Download Started', f'{item_data["title"]} - 0/{total_files} files', xbmcgui.NOTIFICATION_INFO, 5000)
             
             total_size = sum(f.get('size', 0) for f in audio_files)
             downloaded_total = 0
             
             for i, audio_file in enumerate(audio_files):
-                if progress_dialog.iscanceled():
-                    progress_dialog.close()
-                    self._cleanup_partial_download(downloaded_files)
-                    del self.active_downloads[key]
-                    xbmcgui.Dialog().notification('Download Cancelled', item_data['title'], xbmcgui.NOTIFICATION_INFO)
-                    return
-                
                 ino = audio_file.get('ino')
                 file_index = audio_file.get('index', i)
                 file_duration = audio_file.get('duration', 0)
@@ -602,10 +571,8 @@ class DownloadManager:
                 # Get download URL
                 download_url = f"{library_service.base_url}/api/items/{item_id}/file/{ino}?token={library_service.token}"
                 
-                progress_dialog.update(
-                    int((i / total_files) * 100),
-                    f'Downloading file {i+1}/{total_files}'
-                )
+                # Show progress notification for each file
+                xbmcgui.Dialog().notification('Download Progress', f'{item_data["title"]} - File {i+1}/{total_files}', xbmcgui.NOTIFICATION_INFO, 2000)
                 
                 # Download file
                 response = requests.get(download_url, stream=True, timeout=30)
@@ -613,13 +580,6 @@ class DownloadManager:
                 with open(file_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
-                            if progress_dialog.iscanceled():
-                                f.close()
-                                os.remove(file_path)
-                                progress_dialog.close()
-                                self._cleanup_partial_download(downloaded_files)
-                                del self.active_downloads[key]
-                                return
                             f.write(chunk)
                             downloaded_total += len(chunk)
                 
@@ -630,8 +590,6 @@ class DownloadManager:
                     'duration': file_duration,
                     'size': os.path.getsize(file_path)
                 })
-            
-            progress_dialog.close()
             
             # Download cover
             cover_path = self._download_cover(item_data.get('cover_url'), item_folder, item_data['title'])
@@ -658,12 +616,6 @@ class DownloadManager:
             xbmcgui.Dialog().notification('Download Complete', item_data['title'], xbmcgui.NOTIFICATION_INFO)
             
         except Exception as e:
-            if progress_dialog:
-                try:
-                    progress_dialog.close()
-                except:
-                    pass
-            
             if key in self.active_downloads:
                 del self.active_downloads[key]
             
@@ -703,8 +655,6 @@ class DownloadManager:
     
     def _download_worker_with_progress(self, item_id, item_data, library_service, episode_id, item_folder, key):
         """Background download worker for single file"""
-        progress_dialog = None
-        
         try:
             download_url = library_service.get_file_url(item_id, episode_id=episode_id)
             
@@ -716,40 +666,33 @@ class DownloadManager:
             
             file_path = os.path.join(item_folder, filename)
             
-            progress_dialog = xbmcgui.DialogProgress()
-            progress_dialog.create('Downloading', item_data["title"])
+            # Show start notification
+            xbmcgui.Dialog().notification('Download Started', item_data["title"], xbmcgui.NOTIFICATION_INFO, 5000)
             
             response = requests.get(download_url, stream=True, timeout=30)
             total_size = int(response.headers.get('content-length', 0))
             
             downloaded = 0
-            last_percent = 0
+            last_notification_percent = 0
             
             with open(file_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     if chunk:
-                        if progress_dialog.iscanceled():
-                            progress_dialog.close()
-                            try:
-                                os.remove(file_path)
-                            except:
-                                pass
-                            del self.active_downloads[key]
-                            xbmcgui.Dialog().notification('Download Cancelled', item_data['title'], xbmcgui.NOTIFICATION_INFO)
-                            return
-                        
                         f.write(chunk)
                         downloaded += len(chunk)
                         
                         if total_size > 0:
                             percent = int((downloaded / total_size) * 100)
-                            if percent != last_percent:
-                                last_percent = percent
-                                size_mb = downloaded / (1024 * 1024)
-                                total_mb = total_size / (1024 * 1024)
-                                progress_dialog.update(percent, f'{size_mb:.1f} MB / {total_mb:.1f} MB')
-            
-            progress_dialog.close()
+                            # Show progress notifications at 25%, 50%, 75%
+                            if percent >= 75 and last_notification_percent < 75:
+                                xbmcgui.Dialog().notification('Download Progress', f'{item_data["title"]} - 75%', xbmcgui.NOTIFICATION_INFO, 3000)
+                                last_notification_percent = 75
+                            elif percent >= 50 and last_notification_percent < 50:
+                                xbmcgui.Dialog().notification('Download Progress', f'{item_data["title"]} - 50%', xbmcgui.NOTIFICATION_INFO, 3000)
+                                last_notification_percent = 50
+                            elif percent >= 25 and last_notification_percent < 25:
+                                xbmcgui.Dialog().notification('Download Progress', f'{item_data["title"]} - 25%', xbmcgui.NOTIFICATION_INFO, 3000)
+                                last_notification_percent = 25
             
             cover_path = self._download_cover(item_data.get('cover_url'), item_folder, item_data['title'])
             
@@ -775,12 +718,6 @@ class DownloadManager:
             xbmcgui.Dialog().notification('Download Complete', item_data['title'], xbmcgui.NOTIFICATION_INFO)
             
         except Exception as e:
-            if progress_dialog:
-                try:
-                    progress_dialog.close()
-                except:
-                    pass
-            
             if key in self.active_downloads:
                 del self.active_downloads[key]
             
