@@ -111,7 +111,7 @@ v1.0.0 - Initial release
 		</news>
 	</extension>
 </addon>
-<addon id="script.webhook.runner" version="1.1.1" name="Webhook Runner"
+<addon id="script.webhook.runner" version="2.0.0" name="Webhook Runner"
        provider-name="Breezyslasher">
   <extension point="xbmc.python.script" library="resources/lib/default.py">
     <provides>executable</provides>

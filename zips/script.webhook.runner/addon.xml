@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.webhook.runner" version="1.1.1" name="Webhook Runner"
+<addon id="script.webhook.runner" version="2.0.0" name="Webhook Runner"
        provider-name="Breezyslasher">
   <extension point="xbmc.python.script" library="resources/lib/default.py">
     <provides>executable</provides>
