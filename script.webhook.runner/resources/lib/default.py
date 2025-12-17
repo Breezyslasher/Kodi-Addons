@@ -172,13 +172,18 @@ def save_gen_xml(root):
     ensure_keymaps_dir()
     # Write as single line XML with proper formatting
     xml_string = ET.tostring(root, encoding='unicode', method='xml')
-    # Remove all newlines first
-    xml_string = ''.join(xml_string.split())
-    # Add space between key and id specifically
+    # Remove all newlines but ensure proper spacing
+    xml_lines = xml_string.split()
+    xml_string = ''.join(xml_lines)
+    # Fix spacing issues
     xml_string = xml_string.replace('<keyid=', '<key id=')
-    # Ensure no double spaces
-    while '  ' in xml_string:
-        xml_string = xml_string.replace('  ', ' ')
+    # Ensure space before mod attribute
+    xml_string = xml_string.replace('id="longpress"', 'id="longpress"')  # Fix any reversed order
+    xml_string = xml_string.replace('id="', 'id="')  # Keep id as is
+    # Ensure proper spacing: <key id="123" mod="longpress">
+    xml_string = xml_string.replace('"mod="', '" mod="')
+    # Ensure no spaces between other tags
+    xml_string = xml_string.replace('<key ', '<key')
     with open(GEN_XML_FILE, 'w', encoding='utf-8') as f:
         f.write(xml_string)
     xbmc.executebuiltin('Action(reloadkeymaps)')
