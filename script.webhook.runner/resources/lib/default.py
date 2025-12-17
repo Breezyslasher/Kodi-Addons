@@ -206,13 +206,15 @@ def add_to_keymap(button, button_type, webhook_id, longpress=False):
         global_elem = get_or_create(root, 'global')
         keyboard_elem = get_or_create(global_elem, 'keyboard')
         
-        # Check if key with this id already exists
+        # Check if key with this id AND same longpress mode already exists
         for key_elem in keyboard_elem.findall('key'):
             if key_elem.get('id') == button:
-                # Check if it's already mapped to our webhook runner
-                if key_elem.text and ADDON_ID in key_elem.text:
-                    xbmc.log(f"[Webhook Runner] Warning: Button {button} already mapped to webhook runner", xbmc.LOGWARNING)
-                return key_elem.text  # Return existing mapping
+                existing_longpress = key_elem.get('mod') == 'longpress'
+                if existing_longpress == longpress:
+                    # Same button with same longpress mode already exists
+                    if key_elem.text and ADDON_ID in key_elem.text:
+                        xbmc.log(f"[Webhook Runner] Warning: Button {button} ({'longpress' if longpress else 'press'}) already mapped to webhook runner", xbmc.LOGWARNING)
+                    return key_elem.text  # Return existing mapping
         
         # Create new key element with id attribute
         key_elem = ET.SubElement(keyboard_elem, 'key')
@@ -237,7 +239,7 @@ def add_to_keymap(button, button_type, webhook_id, longpress=False):
         btn.text = action
     
     save_gen_xml(root)
-    xbmc.log(f"[Webhook Runner] Mapped: {button} -> webhook {webhook_id}", xbmc.LOGINFO)
+    xbmc.log(f"[Webhook Runner] Mapped: {button} ({'longpress' if longpress else 'press'}) -> webhook {webhook_id}", xbmc.LOGINFO)
     return None
 
 
@@ -297,7 +299,14 @@ def get_keymap_mappings():
                 if button_id:
                     try:
                         wh_id = key_elem.text.split(',')[1].rstrip(')')
-                        mappings[wh_id] = {'button': button_id, 'button_type': 'keyboard'}
+                        longpress = key_elem.get('mod') == 'longpress'
+                        # Create unique key for webhook mapping including longpress status
+                        map_key = f"{wh_id}_{button_id}_{'longpress' if longpress else 'press'}"
+                        mappings[wh_id] = {
+                            'button': button_id, 
+                            'button_type': 'keyboard',
+                            'longpress': longpress
+                        }
                     except:
                         pass
     
@@ -313,7 +322,7 @@ def get_keymap_mappings():
                     try:
                         wh_id = btn.text.split(',')[1].rstrip(')')
                         if wh_id not in mappings:
-                            mappings[wh_id] = {'button': btn.tag, 'button_type': device_type}
+                            mappings[wh_id] = {'button': btn.tag, 'button_type': device_type, 'longpress': False}
                     except:
                         pass
     
