@@ -209,17 +209,18 @@ def add_to_keymap(button, button_type, webhook_id, longpress=False):
         # Check if key with this id already exists
         for key_elem in keyboard_elem.findall('key'):
             if key_elem.get('id') == button:
-                key_elem.text = action
-                if longpress:
-                    key_elem.set('mod', 'longpress')
-                break
-        else:
-            # Create new key element with id attribute
-            key_elem = ET.SubElement(keyboard_elem, 'key')
-            key_elem.set('id', button)
-            if longpress:
-                key_elem.set('mod', 'longpress')
-            key_elem.text = action
+                # Check if it's already mapped to our webhook runner
+                if key_elem.text and ADDON_ID in key_elem.text:
+                    xbmc.log(f"[Webhook Runner] Warning: Button {button} already mapped to webhook runner", xbmc.LOGWARNING)
+                return key_elem.text  # Return existing mapping
+        
+        # Create new key element with id attribute
+        key_elem = ET.SubElement(keyboard_elem, 'key')
+        key_elem.set('id', button)
+        if longpress:
+            key_elem.set('mod', 'longpress')
+        key_elem.text = action
+        
     else:
         # Use regular mapping for standard button names
         global_elem = get_or_create(root, 'global')
@@ -227,13 +228,17 @@ def add_to_keymap(button, button_type, webhook_id, longpress=False):
         
         existing = device_elem.find(button)
         if existing is not None:
-            existing.text = action
-        else:
-            btn = ET.SubElement(device_elem, button)
-            btn.text = action
+            # Check if it's already mapped to our webhook runner
+            if existing.text and ADDON_ID in existing.text:
+                xbmc.log(f"[Webhook Runner] Warning: Button {button} already mapped to webhook runner", xbmc.LOGWARNING)
+            return existing.text  # Return existing mapping
+        
+        btn = ET.SubElement(device_elem, button)
+        btn.text = action
     
     save_gen_xml(root)
     xbmc.log(f"[Webhook Runner] Mapped: {button} -> webhook {webhook_id}", xbmc.LOGINFO)
+    return None
 
 
 def remove_from_keymap(button, button_type):
@@ -538,17 +543,24 @@ def add_webhook_dialog():
                 button, button_type, longpress = result
                 
             if button:
-                # Check for conflicts
-                keymap = get_keymap_mappings()
-                for wh_id, m in keymap.items():
-                    if m['button'] == button and m['button_type'] == button_type and wh_id != new_id:
-                        other = get_webhook(wh_id)
-                        other_name = other.get('name') if other else wh_id
-                        if not dialog.yesno('Button In Use', f'{button} is used by "{other_name}".\n\nReassign?'):
-                            return
-                        remove_from_keymap(button, button_type)
+                # Check if button is already mapped to any webhook runner action
+                existing_mapping = add_to_keymap(button, button_type, new_id, longpress)
+                if existing_mapping:
+                    if dialog.yesno('Button Already Mapped', 
+                                  f'Button {button} is already mapped.\n\n'
+                                  f'Existing: {existing_mapping}\n\n'
+                                  f'Replace with webhook {new_id}?'):
+                        # Remove existing mapping by finding the webhook ID
+                        try:
+                            existing_wh_id = existing_mapping.split(',')[1].rstrip(')')
+                            remove_from_keymap(button, button_type)
+                            # Now add the new mapping
+                            add_to_keymap(button, button_type, new_id, longpress)
+                        except:
+                            pass
+                    else:
+                        return
                 
-                add_to_keymap(button, button_type, new_id, longpress)
                 update_webhook(new_id, button=button, button_type=button_type)
                 dialog.notification('Mapped', f'{name} → {button}', xbmcgui.NOTIFICATION_INFO, 2000)
 
@@ -621,21 +633,28 @@ def edit_webhook_dialog(webhook_id):
                     new_button, new_type, longpress = result
                     
                 if new_button:
-                    # Check conflicts
-                    for wh_id, m in keymap.items():
-                        if m['button'] == new_button and m['button_type'] == new_type and wh_id != str(webhook_id):
-                            other = get_webhook(wh_id)
-                            other_name = other.get('name') if other else wh_id
-                            if not dialog.yesno('In Use', f'{new_button} used by "{other_name}".\n\nReassign?'):
-                                continue
-                            remove_from_keymap(new_button, new_type)
+                    # Check if button is already mapped to any webhook runner action
+                    existing_mapping = add_to_keymap(new_button, new_type, webhook_id, longpress)
+                    if existing_mapping:
+                        if dialog.yesno('Button Already Mapped', 
+                                      f'Button {new_button} is already mapped.\n\n'
+                                      f'Existing: {existing_mapping}\n\n'
+                                      f'Replace with webhook {webhook_id}?'):
+                            # Remove existing mapping by finding the webhook ID
+                            try:
+                                existing_wh_id = existing_mapping.split(',')[1].rstrip(')')
+                                remove_from_keymap(new_button, new_type)
+                                # Now add the new mapping
+                                add_to_keymap(new_button, new_type, webhook_id, longpress)
+                            except:
+                                pass
+                        else:
+                            continue
                     
-                    # Remove old
+                    # Remove old button mapping for this webhook
                     if button:
                         remove_from_keymap(button, button_type)
                     
-                    # Add new
-                    add_to_keymap(new_button, new_type, webhook_id, longpress)
                     update_webhook(webhook_id, button=new_button, button_type=new_type)
                     dialog.notification('Mapped', f'{name} → {new_button}', xbmcgui.NOTIFICATION_INFO, 2000)
         
