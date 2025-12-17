@@ -4,6 +4,7 @@ Webhook Runner - Simple webhook management with direct Keymap Editor integration
 import sys
 import os
 import json
+import re
 import urllib.request
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -172,18 +173,27 @@ def save_gen_xml(root):
     ensure_keymaps_dir()
     # Write as single line XML with proper formatting
     xml_string = ET.tostring(root, encoding='unicode', method='xml')
-    # Remove all newlines but ensure proper spacing
-    xml_lines = xml_string.split()
-    xml_string = ''.join(xml_lines)
-    # Fix spacing issues
+    # Remove all newlines first
+    xml_string = ''.join(xml_string.split())
+    # Fix spacing issues step by step
+    # 1. Fix missing space after key
     xml_string = xml_string.replace('<keyid=', '<key id=')
-    # Ensure space before mod attribute
-    xml_string = xml_string.replace('id="longpress"', 'id="longpress"')  # Fix any reversed order
-    xml_string = xml_string.replace('id="', 'id="')  # Keep id as is
-    # Ensure proper spacing: <key id="123" mod="longpress">
+    # 2. Ensure proper spacing for key elements
+    xml_string = xml_string.replace('<keyid', '<key id')
+    # 3. Ensure space for <key id=
+    xml_string = re.sub(r'<key(?!>)([^>]*)>', r'<key\1>', xml_string)
+    xml_string = re.sub(r'<key([^i])', r'<key \1', xml_string)
+    # 4. Ensure space before mod attribute
     xml_string = xml_string.replace('"mod="', '" mod="')
-    # Ensure no spaces between other tags
-    xml_string = xml_string.replace('<key ', '<key')
+    # 5. Remove ALL spaces from specific tags - no spaces anywhere
+    xml_string = xml_string.replace('<keymap ', '<keymap')
+    xml_string = xml_string.replace('<keymap>', '<keymap>')  # keep as is
+    xml_string = xml_string.replace('<keyboard ', '<keyboard')
+    xml_string = xml_string.replace('<global ', '<global')
+    xml_string = xml_string.replace('<key ', '<key')  # remove all spaces after <key first
+    xml_string = xml_string.replace('<keyid=', '<key id=')  # then add back only for id
+    # 6. Clean up any double spaces
+    xml_string = xml_string.replace('  ', ' ')
     with open(GEN_XML_FILE, 'w', encoding='utf-8') as f:
         f.write(xml_string)
     xbmc.executebuiltin('Action(reloadkeymaps)')
