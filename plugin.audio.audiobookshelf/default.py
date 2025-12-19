@@ -1,24 +1,3 @@
-"""
-Audiobookshelf Kodi Client V2025..12.10 
-Stream audiobooks and podcasts from your Audiobookshelf server
-- Comprehensive bidirectional progress sync
-- Startup sync pulls/pushes progress to server
-- Background sync keeps local and server in sync
-- Network reconnection automatically syncs
-- Works for both streaming and downloaded content
-- Multi-file audiobooks downloaded as single combined files
-- Chapter metadata preserved in combined files for easy navigation
-- Unified folder structure online and offline
-- Enhanced progress management (Clear, Mark Finished/Unfinished)
-- Cover embedding for better offline display
-- Reorganized context menus (Download options first)
-- Podcast download filtering (All/Unwatched/New)
-- Fixed auto-delete setting dependency
-- Fixed context menu refresh issues
-- Cover caching in addon data for streaming mode
-- Fixed podcast download mode dependency
-- Improved cover handling for online/offline consistency
-"""
 import os
 import sys
 import time
