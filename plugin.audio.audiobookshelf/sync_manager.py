@@ -1,16 +1,3 @@
-"""
-Sync Manager v2.1.0 - Comprehensive bidirectional progress synchronization
-Handles all progress sync between local storage and Audiobookshelf server
-
-Features:
-- Unified progress storage (single source of truth)
-- Bidirectional sync (local <-> server)
-- Startup sync with server fetch
-- Periodic background sync
-- Network reconnection sync
-- Works for both audiobooks and podcasts
-- Downloaded and streaming content use same progress
-"""
 import xbmc
 import xbmcvfs
 import xbmcaddon
