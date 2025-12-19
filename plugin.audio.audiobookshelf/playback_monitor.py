@@ -1,8 +1,3 @@
-"""
-Playback Monitor v2.1.1 - Unified progress tracking for streamed and downloaded content
-Uses sync_manager for all progress storage and synchronization
-Fixed: file_offset now properly added to player time for overall audiobook position
-"""
 import xbmc
 import xbmcaddon
 import time
