@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="Server">
+        <setting id="server_url" type="text" label="Music Assistant Server URL" default="http://192.168.1.28:8095" />
+        <setting id="username" type="text" label="Username" default="" />
+        <setting id="password" type="text" label="Password" option="hidden" default="" />
+    </category>
+    <category label="Playback">
+        <setting id="ma_player_id" type="text" label="Music Assistant Player ID" default="" />
+        <setting id="hidden_players" type="text" label="Hidden Players (comma-separated IDs)" default="" />
+        <setting id="auto_start_sendspin" type="bool" label="Auto-start Sendspin Player" default="true" />
+        <setting id="sendspin_player_name" type="text" label="Sendspin Player Name" default="" enable="eq(-1,true)" />
+        <setting id="sendspin_path" type="text" label="Sendspin Path (e.g. /usr/local/bin/sendspin)" default="" enable="eq(-2,true)" />
+    </category>
+    <category label="Display">
+        <setting id="items_per_page" type="number" label="Items per page" default="50" />
+    </category>
+</settings>
