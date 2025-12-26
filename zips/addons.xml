@@ -1,22 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addons>
-<addon id="repository.breezyslasher" name="Breezyslasher Repository" version="2025.12.17" provider-name="Breezyslasher">
-    <requires>
-        <import addon="xbmc.addon" version="12.0.0"/>
-    </requires>
-    <extension point="xbmc.addon.repository" name="Breezyslasher Repository">
-        <dir minversion="19.0.0">
-            <info compressed="false">https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/refs/heads/main/zips/addons.xml</info>
-            <checksum>https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/refs/heads/main/zips/addons.xml.md5</checksum>
-            <datadir zip="true">https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips/</datadir>
-        </dir>
-    </extension>
-    <extension point="xbmc.addon.metadata">
-        <summary>Breezyslasher's Kodi Addon Repository</summary>
-        <description>Install addons from Breezyslasher's repository</description>
-        <platform>all</platform>
-    </extension>
-</addon>
 <addon id="context.plexkodiconnect.download" version="2025.12.12" name="PlexKodiConnect Download" provider-name="Breezyslasher">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
