@@ -407,6 +407,9 @@ def get_params():
     params = {}
     if len(sys.argv) > 2:
         params = dict(parse_qsl(sys.argv[2][1:]))
+        # Note: Audiobookshelf URIs use spaces between podcast_id and episode_id
+        # Format: audiobookshelf--ID://podcast_episode/podcast_id episode_id
+        # The MA server expects the space - do NOT convert to +
     return params
 
 
@@ -450,6 +453,7 @@ class MusicAssistantAddon:
                 'podcasts': self.show_podcasts,
                 'podcast': self.show_podcast,
                 'audiobooks': self.show_audiobooks,
+                'audiobook': self.show_audiobook,
                 'search': self.show_search,
                 'search_results': self.show_search_results,
                 'play_track': self.play_track,
@@ -458,6 +462,12 @@ class MusicAssistantAddon:
                 'play_playlist': self.play_playlist,
                 'play_radio': self.play_radio,
                 'queue': self.show_queue,
+                'queue_items': self.show_queue_items,
+                'queue_play_index': self.queue_play_index,
+                'queue_move_up': self.queue_move_up,
+                'queue_move_down': self.queue_move_down,
+                'queue_play_next': self.queue_play_next,
+                'queue_remove': self.queue_remove,
                 'players': self.show_players,
                 'favorites': self.show_favorites,
                 'recent': self.show_recent,
@@ -469,9 +479,16 @@ class MusicAssistantAddon:
                 'play_next': self.play_next,
                 'add_to_queue': self.add_to_queue,
                 'play_on_player': self.play_on_player,
+                'play_uri': self.play_uri,
                 # Player management
                 'hide_player': self.hide_player,
                 'unhide_player': self.unhide_player,
+                'transfer_queue_to': self.transfer_queue_to,
+                'sync_with_player': self.sync_with_player,
+                'unsync_player': self.unsync_player,
+                # Favorites
+                'add_favorite': self.add_favorite,
+                'remove_favorite': self.remove_favorite,
                 # Player controls
                 'player_controls': self.show_player_controls,
                 'ctrl_play_pause': self.ctrl_play_pause,
@@ -485,6 +502,9 @@ class MusicAssistantAddon:
                 'ctrl_sync_player': self.ctrl_sync_player,
                 'ctrl_unsync_player': self.ctrl_unsync_player,
                 'ctrl_transfer_queue': self.ctrl_transfer_queue,
+                # New actions
+                'unhide_all_players': self.unhide_all_players,
+                'queue_next': self.queue_next,
             }
             
             handler = actions.get(action, self.show_main_menu)
@@ -514,21 +534,35 @@ class MusicAssistantAddon:
     
     def show_main_menu(self):
         """Show main menu."""
+        # Check display settings
+        hide_podcasts = get_setting('hide_podcasts') == 'true'
+        hide_audiobooks = get_setting('hide_audiobooks') == 'true'
+        
         items = [
             (get_localized_string(30001), 'artists', 'DefaultMusicArtists.png'),
             (get_localized_string(30002), 'albums', 'DefaultMusicAlbums.png'),
             (get_localized_string(30003), 'tracks', 'DefaultMusicSongs.png'),
             (get_localized_string(30004), 'playlists', 'DefaultMusicPlaylists.png'),
             (get_localized_string(30005), 'radios', 'DefaultMusicGenres.png'),
-            (get_localized_string(30011), 'podcasts', 'DefaultMusicGenres.png'),
-            (get_localized_string(30012), 'audiobooks', 'DefaultMusicAlbums.png'),
+        ]
+        
+        # Add podcasts if not hidden
+        if not hide_podcasts:
+            items.append((get_localized_string(30011), 'podcasts', 'DefaultMusicGenres.png'))
+        
+        # Add audiobooks if not hidden
+        if not hide_audiobooks:
+            items.append((get_localized_string(30012), 'audiobooks', 'DefaultMusicAlbums.png'))
+        
+        # Add remaining items
+        items.extend([
             (get_localized_string(30006), 'search', 'DefaultAddonsSearch.png'),
             (get_localized_string(30013), 'favorites', 'DefaultFavourites.png'),
             (get_localized_string(30010), 'recent', 'DefaultMusicRecentlyPlayed.png'),
             ('Player Controls', 'player_controls', 'DefaultAddonMusic.png'),
             (get_localized_string(30008), 'queue', 'DefaultMusicPlaylists.png'),
             (get_localized_string(30007), 'players', 'DefaultAddonMusic.png'),
-        ]
+        ])
         
         for label, action, icon in items:
             li = xbmcgui.ListItem(label=label)
@@ -573,6 +607,16 @@ class MusicAssistantAddon:
         info_tag = li.getMusicInfoTag()
         info_tag.setArtist(name)
         info_tag.setMediaType('artist')
+        
+        # Check if artist is favorite
+        is_favorite = artist.get('favorite', False)
+        if is_favorite:
+            fav_action = ("Remove from Favorites", f'RunPlugin({build_url({"action": "remove_favorite", "id": item_id, "type": "artist", "provider": provider})})')
+        else:
+            fav_action = ("Add to Favorites", f'RunPlugin({build_url({"action": "add_favorite", "id": item_id, "type": "artist", "provider": provider})})')
+        
+        context_menu = [fav_action]
+        li.addContextMenuItems(context_menu)
         
         url = build_url({'action': 'artist', 'id': item_id, 'provider': provider})
         xbmcplugin.addDirectoryItem(handle=self.handle, url=url, listitem=li, isFolder=True)
@@ -649,12 +693,20 @@ class MusicAssistantAddon:
             except (ValueError, TypeError):
                 pass
         
+        # Check if album is favorite
+        is_favorite = album.get('favorite', False)
+        if is_favorite:
+            fav_action = ("Remove from Favorites", f'RunPlugin({build_url({"action": "remove_favorite", "id": item_id, "type": "album", "provider": provider})})')
+        else:
+            fav_action = ("Add to Favorites", f'RunPlugin({build_url({"action": "add_favorite", "id": item_id, "type": "album", "provider": provider})})')
+        
         context_menu = [
             ("Play Album", f'RunPlugin({build_url({"action": "play_now", "id": item_id, "provider": provider, "type": "album"})})'),
             ("Play Album (Clear Queue)", f'RunPlugin({build_url({"action": "play_replace", "id": item_id, "provider": provider, "type": "album"})})'),
             ("Play Album Next", f'RunPlugin({build_url({"action": "play_next", "id": item_id, "provider": provider, "type": "album"})})'),
             ("Add Album to Queue", f'RunPlugin({build_url({"action": "add_to_queue", "id": item_id, "provider": provider, "type": "album"})})'),
             ("Play on Different Player", f'RunPlugin({build_url({"action": "play_on_player", "id": item_id, "provider": provider, "type": "album"})})'),
+            fav_action,
         ]
         li.addContextMenuItems(context_menu)
         
@@ -741,12 +793,20 @@ class MusicAssistantAddon:
         # Don't set IsPlayable - we handle playback via MA player
         # li.setProperty('IsPlayable', 'true')
         
+        # Check if track is favorite
+        is_favorite = track.get('favorite', False)
+        if is_favorite:
+            fav_action = ("Remove from Favorites", f'RunPlugin({build_url({"action": "remove_favorite", "id": item_id, "type": "track", "provider": provider})})')
+        else:
+            fav_action = ("Add to Favorites", f'RunPlugin({build_url({"action": "add_favorite", "id": item_id, "type": "track", "provider": provider})})')
+        
         context_menu = [
             ("Play Now", f'RunPlugin({build_url({"action": "play_now", "id": item_id, "provider": provider})})'),
             ("Play Now (Clear Queue)", f'RunPlugin({build_url({"action": "play_replace", "id": item_id, "provider": provider})})'),
             ("Play Next", f'RunPlugin({build_url({"action": "play_next", "id": item_id, "provider": provider})})'),
             ("Add to Queue", f'RunPlugin({build_url({"action": "add_to_queue", "id": item_id, "provider": provider})})'),
             ("Play on Different Player", f'RunPlugin({build_url({"action": "play_on_player", "id": item_id, "provider": provider})})'),
+            fav_action,
         ]
         li.addContextMenuItems(context_menu)
         
@@ -897,17 +957,23 @@ class MusicAssistantAddon:
         for episode in (episodes or []):
             name = episode.get('name', 'Unknown Episode')
             ep_id = episode.get('item_id', '')
-            ep_provider = episode.get('provider', 'library')
+            ep_provider = episode.get('provider', provider)
+            uri = episode.get('uri', '')
             
             li = xbmcgui.ListItem(label=name)
             image_url = self.client.get_media_item_image_url(episode) or self.client.get_media_item_image_url(podcast)
             if image_url:
                 li.setArt({'thumb': image_url, 'icon': image_url})
             
-            li.setProperty('IsPlayable', 'true')
+            # Context menu
+            context_menu = [
+                ("Play Episode", f'RunPlugin({build_url({"action": "play_uri", "uri": uri, "name": name})})'),
+            ]
+            li.addContextMenuItems(context_menu)
             
-            url = build_url({'action': 'play_track', 'id': ep_id, 'provider': ep_provider, 'type': 'podcast_episode'})
-            xbmcplugin.addDirectoryItem(handle=self.handle, url=url, listitem=li, isFolder=False)
+            # Click to play - use direct URI
+            url = build_url({'action': 'play_uri', 'uri': uri, 'name': name})
+            xbmcplugin.addDirectoryItem(handle=self.handle, url=url, listitem=li, isFolder=True)
         
         xbmcplugin.setContent(self.handle, 'songs')
         xbmcplugin.endOfDirectory(self.handle)
@@ -931,6 +997,12 @@ class MusicAssistantAddon:
             else:
                 li.setArt({'icon': 'DefaultMusicAlbums.png'})
             
+            # Context menu to play audiobook
+            context_menu = [
+                ("Play Audiobook", f'RunPlugin({build_url({"action": "play_now", "id": item_id, "provider": provider, "type": "audiobook"})})'),
+            ]
+            li.addContextMenuItems(context_menu)
+            
             url = build_url({'action': 'audiobook', 'id': item_id, 'provider': provider})
             xbmcplugin.addDirectoryItem(handle=self.handle, url=url, listitem=li, isFolder=True)
         
@@ -939,6 +1011,33 @@ class MusicAssistantAddon:
         
         xbmcplugin.setContent(self.handle, 'albums')
         xbmcplugin.endOfDirectory(self.handle)
+    
+    def show_audiobook(self):
+        """Show audiobook details and play."""
+        item_id = self.params.get('id')
+        provider = self.params.get('provider', 'library')
+        
+        try:
+            audiobook = self.client.music.get_audiobook(item_id, provider)
+            uri = audiobook.get('uri', f"library://audiobook/{item_id}")
+            name = audiobook.get('name', 'Unknown Audiobook')
+            
+            # Get or select a player
+            player_id = self._get_player_id()
+            if not player_id:
+                xbmcplugin.endOfDirectory(self.handle, succeeded=False)
+                return
+            
+            # Play the audiobook (MA handles resume automatically)
+            log(f"Playing audiobook on MA player {player_id}: {uri}")
+            self.client.player_queues.play_media(player_id, uri)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Playing: {name}", xbmcgui.NOTIFICATION_INFO, 3000)
+            
+        except Exception as e:
+            log(f"Error playing audiobook: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
+        
+        xbmcplugin.endOfDirectory(self.handle, succeeded=False)
     
     def show_favorites(self):
         """Show favorites menu."""
@@ -961,24 +1060,77 @@ class MusicAssistantAddon:
     
     def show_recent(self):
         """Show recently played items."""
-        items = self.client.music.recently_played(limit=50)
+        try:
+            items = self.client.music.get_recently_played(limit=50)
+            log(f"Recently played items: {len(items) if items else 0}")
+        except Exception as e:
+            log(f"Error getting recently played: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
+            xbmcplugin.endOfDirectory(self.handle, succeeded=False)
+            return
         
-        for item in (items or []):
+        if not items:
+            li = xbmcgui.ListItem(label="[I]No recently played items[/I]")
+            li.setArt({'icon': 'DefaultMusicSongs.png'})
+            xbmcplugin.addDirectoryItem(handle=self.handle, url='', listitem=li, isFolder=False)
+            xbmcplugin.endOfDirectory(self.handle)
+            return
+        
+        for item in items:
             media_type = item.get('media_type', '')
-            if media_type == MediaType.TRACK:
+            log(f"Recent item type: {media_type}")
+            
+            # Handle different media type formats
+            if media_type in (MediaType.TRACK, 'track'):
                 self._add_track_item(item)
-            elif media_type == MediaType.ALBUM:
+            elif media_type in (MediaType.ALBUM, 'album'):
                 self._add_album_item(item)
-            elif media_type == MediaType.ARTIST:
+            elif media_type in (MediaType.ARTIST, 'artist'):
                 self._add_artist_item(item)
-            elif media_type == MediaType.RADIO:
+            elif media_type in (MediaType.RADIO, 'radio'):
                 self._add_radio_item(item)
+            elif media_type in (MediaType.PLAYLIST, 'playlist'):
+                self._add_playlist_item(item)
+            else:
+                # Unknown type - try to display it as a generic item
+                name = item.get('name', 'Unknown')
+                li = xbmcgui.ListItem(label=f"{name} ({media_type})")
+                li.setArt({'icon': 'DefaultMusicSongs.png'})
+                xbmcplugin.addDirectoryItem(handle=self.handle, url='', listitem=li, isFolder=False)
         
         xbmcplugin.setContent(self.handle, 'songs')
         xbmcplugin.endOfDirectory(self.handle)
     
     def show_search(self):
-        """Show search dialog."""
+        """Show search dialog with filter options."""
+        # First ask for filter type
+        filter_options = [
+            "All",
+            "Artists Only",
+            "Albums Only", 
+            "Tracks Only",
+            "Playlists Only",
+            "Radio Only",
+            "Library Only (All Types)",
+        ]
+        
+        selected_filter = xbmcgui.Dialog().select("Search Filter", filter_options)
+        if selected_filter < 0:
+            xbmcplugin.endOfDirectory(self.handle, succeeded=False)
+            return
+        
+        # Map selection to media types
+        filter_map = {
+            0: None,  # All
+            1: [MediaType.ARTIST],
+            2: [MediaType.ALBUM],
+            3: [MediaType.TRACK],
+            4: [MediaType.PLAYLIST],
+            5: [MediaType.RADIO],
+            6: 'library',  # Special case for library only
+        }
+        media_filter = filter_map.get(selected_filter)
+        
         keyboard = xbmc.Keyboard('', get_localized_string(30701))
         keyboard.doModal()
         
@@ -986,16 +1138,24 @@ class MusicAssistantAddon:
             query = keyboard.getText()
             if query:
                 # Show search results
-                self._do_search(query)
+                self._do_search(query, media_filter)
                 return
         
         # User cancelled - just end directory
         xbmcplugin.endOfDirectory(self.handle, succeeded=False)
     
-    def _do_search(self, query):
+    def _do_search(self, query, media_filter=None):
         """Perform search and show results."""
         try:
-            results = self.client.music.search(query, limit=50)
+            if media_filter == 'library':
+                # Search library only
+                results = self._search_library(query)
+            elif media_filter:
+                # Search with specific media types
+                results = self.client.music.search(query, media_types=media_filter, limit=50)
+            else:
+                # Search all
+                results = self.client.music.search(query, limit=50)
             log(f"Search results for '{query}': {list(results.keys()) if results else 'None'}")
         except Exception as e:
             log(f"Search error: {e}", xbmc.LOGERROR)
@@ -1033,6 +1193,47 @@ class MusicAssistantAddon:
         
         xbmcplugin.setContent(self.handle, 'songs')
         xbmcplugin.endOfDirectory(self.handle, succeeded=has_results)
+    
+    def _search_library(self, query):
+        """Search library only."""
+        results = {}
+        
+        try:
+            artists = self.client.music.get_library_artists(search=query, limit=25)
+            if artists:
+                results['artists'] = artists
+        except Exception:
+            pass
+        
+        try:
+            albums = self.client.music.get_library_albums(search=query, limit=25)
+            if albums:
+                results['albums'] = albums
+        except Exception:
+            pass
+        
+        try:
+            tracks = self.client.music.get_library_tracks(search=query, limit=25)
+            if tracks:
+                results['tracks'] = tracks
+        except Exception:
+            pass
+        
+        try:
+            playlists = self.client.music.get_library_playlists(search=query, limit=25)
+            if playlists:
+                results['playlists'] = playlists
+        except Exception:
+            pass
+        
+        try:
+            radios = self.client.music.get_library_radios(search=query, limit=25)
+            if radios:
+                results['radio'] = radios
+        except Exception:
+            pass
+        
+        return results
     
     def show_search_results(self):
         """Show search results (for backwards compatibility)."""
@@ -1281,6 +1482,36 @@ class MusicAssistantAddon:
         media_type = self.params.get('type', 'track')
         
         self._play_on_different_player(item_id, provider, media_type)
+    
+    def play_uri(self):
+        """Play a URI directly without fetching item info."""
+        uri = self.params.get('uri', '')
+        name = self.params.get('name', 'Unknown')
+        
+        if not uri:
+            log("play_uri called without URI", xbmc.LOGERROR)
+            return
+        
+        # Note: Audiobookshelf podcast URIs use format:
+        # audiobookshelf--ID://podcast_episode/podcast_id episode_id (space separated)
+        # The URI should already be in the correct format from the API
+        
+        # Get or select a player
+        player_id = self._get_player_id()
+        if not player_id:
+            return
+        
+        # Play on MA player - try with list format and explicit play option
+        try:
+            log(f"Playing URI on MA player {player_id}: {uri}")
+            # Pass as list with explicit play option for better compatibility
+            self.client.player_queues.play_media(player_id, [uri], option='play')
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Playing: {name}", xbmcgui.NOTIFICATION_INFO, 3000)
+        except Exception as e:
+            error_msg = str(e)
+            log(f"Playback error: {error_msg}", xbmc.LOGERROR)
+            short_error = error_msg[:100] if len(error_msg) > 100 else error_msg
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Playback failed: {short_error}", xbmcgui.NOTIFICATION_ERROR, 5000)
     
     def _get_player_id(self):
         """Get configured player ID or prompt user to select one."""
@@ -1592,6 +1823,7 @@ class MusicAssistantAddon:
         """Increase volume."""
         player_id = self.params.get('player_id') or self._get_player_id()
         if not player_id:
+            xbmcplugin.endOfDirectory(self.handle, succeeded=False)
             return
         try:
             self.client.players.volume_up(player_id)
@@ -1599,12 +1831,14 @@ class MusicAssistantAddon:
         except Exception as e:
             log(f"Volume up error: {e}", xbmc.LOGERROR)
             xbmcgui.Dialog().notification(ADDON_NAME, f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
-        xbmc.executebuiltin(f'Container.Update({build_url({"action": "player_controls"})})')
+        xbmcplugin.endOfDirectory(self.handle, succeeded=False)
+        xbmc.executebuiltin(f'Container.Update({build_url({"action": "player_controls"})}, replace)')
     
     def ctrl_volume_down(self):
         """Decrease volume."""
         player_id = self.params.get('player_id') or self._get_player_id()
         if not player_id:
+            xbmcplugin.endOfDirectory(self.handle, succeeded=False)
             return
         try:
             self.client.players.volume_down(player_id)
@@ -1612,7 +1846,8 @@ class MusicAssistantAddon:
         except Exception as e:
             log(f"Volume down error: {e}", xbmc.LOGERROR)
             xbmcgui.Dialog().notification(ADDON_NAME, f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
-        xbmc.executebuiltin(f'Container.Update({build_url({"action": "player_controls"})})')
+        xbmcplugin.endOfDirectory(self.handle, succeeded=False)
+        xbmc.executebuiltin(f'Container.Update({build_url({"action": "player_controls"})}, replace)')
     
     def ctrl_sync_player(self):
         """Sync current player with another player."""
@@ -1698,21 +1933,273 @@ class MusicAssistantAddon:
         xbmc.executebuiltin(f'Container.Update({build_url({"action": "player_controls"})})')
     
     def show_queue(self):
-        """Show player queues."""
-        queues = self.client.player_queues.player_queues
+        """Show player queue - redirect to current player's queue."""
+        player_id = self._get_player_id()
+        if not player_id:
+            xbmcplugin.endOfDirectory(self.handle, succeeded=False)
+            return
         
-        for queue in (queues or []):
-            queue_id = queue.get('queue_id', '')
-            name = queue.get('display_name', queue.get('name', queue_id))
+        # Show queue items for the current player
+        self._show_queue_items(player_id)
+    
+    def show_queue_items(self):
+        """Show queue items for a specific queue."""
+        queue_id = self.params.get('queue_id', '')
+        if not queue_id:
+            queue_id = self._get_player_id()
+        if not queue_id:
+            xbmcplugin.endOfDirectory(self.handle, succeeded=False)
+            return
+        
+        self._show_queue_items(queue_id)
+    
+    def _show_queue_items(self, queue_id):
+        """Display queue items with options."""
+        try:
+            queue = self.client.player_queues.get(queue_id)
+            if not queue:
+                li = xbmcgui.ListItem(label="[I]No active queue for this player[/I]")
+                li.setArt({'icon': 'DefaultMusicSongs.png'})
+                xbmcplugin.addDirectoryItem(handle=self.handle, url='', listitem=li, isFolder=False)
+                xbmcplugin.endOfDirectory(self.handle)
+                return
             
-            li = xbmcgui.ListItem(label=name)
-            li.setArt({'icon': 'DefaultMusicPlaylists.png'})
+            items = self.client.player_queues.get_queue_items(queue_id, limit=100)
+            current_index = queue.get('current_index', 0) or 0
+            log(f"Queue {queue_id}: {len(items) if items else 0} items, current_index={current_index}")
+        except Exception as e:
+            log(f"Error getting queue: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
+            xbmcplugin.endOfDirectory(self.handle, succeeded=False)
+            return
+        
+        if not items:
+            li = xbmcgui.ListItem(label="[I]Queue is empty[/I]")
+            li.setArt({'icon': 'DefaultMusicSongs.png'})
+            xbmcplugin.addDirectoryItem(handle=self.handle, url='', listitem=li, isFolder=False)
+            xbmcplugin.endOfDirectory(self.handle)
+            return
+        
+        for idx, item in enumerate(items):
+            name = item.get('name', 'Unknown')
             
-            url = build_url({'action': 'queue_items', 'queue_id': queue_id})
+            # Log first item to see structure
+            if idx == 0:
+                log(f"Queue item structure: {list(item.keys())}")
+            
+            # Get artist name
+            artists = item.get('artists', [])
+            if artists and isinstance(artists, list):
+                if isinstance(artists[0], dict):
+                    artist_name = artists[0].get('name', '')
+                else:
+                    artist_name = str(artists[0])
+            else:
+                artist_name = ''
+            
+            # Mark current track
+            if idx == current_index:
+                label = f"▶ {name}"
+                if artist_name:
+                    label += f" - {artist_name}"
+                label = f"[B]{label}[/B]"
+            else:
+                label = name
+                if artist_name:
+                    label += f" - {artist_name}"
+            
+            li = xbmcgui.ListItem(label=label)
+            
+            # Get image - try multiple fields
+            image_url = None
+            for img_field in ['image', 'thumb', 'artwork']:
+                img = item.get(img_field)
+                if img:
+                    if isinstance(img, dict):
+                        image_url = img.get('path') or img.get('url')
+                    else:
+                        image_url = str(img)
+                    if image_url:
+                        break
+            
+            if image_url:
+                li.setArt({'thumb': image_url, 'icon': image_url})
+            else:
+                li.setArt({'icon': 'DefaultMusicSongs.png'})
+            
+            # Get queue_item_id for operations - try different field names
+            queue_item_id = item.get('queue_item_id') or item.get('item_id') or item.get('uri') or str(idx)
+            log(f"Queue item {idx}: queue_item_id={queue_item_id}")
+            
+            # Context menu options - use RunPlugin for all
+            context_menu = [
+                ("Play Now", f'RunPlugin({build_url({"action": "queue_play_index", "queue_id": queue_id, "index": str(idx)})})'),
+                ("Play Next", f'RunPlugin({build_url({"action": "queue_play_next", "queue_id": queue_id, "item_id": str(queue_item_id), "index": str(idx)})})'),
+                ("Move Up", f'RunPlugin({build_url({"action": "queue_move_up", "queue_id": queue_id, "item_id": str(queue_item_id), "index": str(idx)})})'),
+                ("Move Down", f'RunPlugin({build_url({"action": "queue_move_down", "queue_id": queue_id, "item_id": str(queue_item_id), "index": str(idx)})})'),
+                ("Remove from Queue", f'RunPlugin({build_url({"action": "queue_remove", "queue_id": queue_id, "item_id": str(queue_item_id)})})'),
+            ]
+            li.addContextMenuItems(context_menu)
+            
+            # Click to play - use folder to prevent "unplayable" error
+            url = build_url({'action': 'queue_play_index', 'queue_id': queue_id, 'index': str(idx)})
             xbmcplugin.addDirectoryItem(handle=self.handle, url=url, listitem=li, isFolder=True)
         
-        xbmcplugin.setContent(self.handle, 'files')
+        xbmcplugin.setContent(self.handle, 'songs')
         xbmcplugin.endOfDirectory(self.handle)
+    
+    def queue_play_index(self):
+        """Play item at index in queue."""
+        queue_id = self.params.get('queue_id', '')
+        index_str = self.params.get('index', '0')
+        
+        try:
+            index = int(index_str)
+        except ValueError:
+            index = 0
+        
+        if not queue_id:
+            xbmc.executebuiltin(f'Container.Update({build_url({"action": "queue"})})')
+            return
+        
+        try:
+            self.client.player_queues.play_index(queue_id, index)
+            xbmcgui.Dialog().notification(ADDON_NAME, "Playing", xbmcgui.NOTIFICATION_INFO, 1000)
+        except Exception as e:
+            log(f"Queue play error: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
+        
+        xbmc.executebuiltin(f'Container.Update({build_url({"action": "queue"})})')
+    
+    def queue_move_up(self):
+        """Move item up in queue."""
+        queue_id = self.params.get('queue_id', '')
+        item_id = self.params.get('item_id', '')
+        index_str = self.params.get('index', '0')
+        
+        try:
+            index = int(index_str)
+        except ValueError:
+            index = 0
+        
+        if not queue_id or index <= 0:
+            xbmcgui.Dialog().notification(ADDON_NAME, "Cannot move first item up", xbmcgui.NOTIFICATION_INFO, 1000)
+            return
+        
+        try:
+            log(f"Moving queue item: queue={queue_id}, item_id={item_id}, from index {index} to {index - 1}")
+            self.client.player_queues.move_item(queue_id, item_id, index - 1)
+            xbmcgui.Dialog().notification(ADDON_NAME, "Moved up", xbmcgui.NOTIFICATION_INFO, 1000)
+            xbmc.executebuiltin('Container.Refresh')
+        except Exception as e:
+            log(f"Queue move error: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Move failed", xbmcgui.NOTIFICATION_ERROR, 2000)
+    
+    def queue_move_down(self):
+        """Move item down in queue."""
+        queue_id = self.params.get('queue_id', '')
+        item_id = self.params.get('item_id', '')
+        index_str = self.params.get('index', '0')
+        
+        try:
+            index = int(index_str)
+        except ValueError:
+            index = 0
+        
+        if not queue_id:
+            return
+        
+        try:
+            log(f"Moving queue item: queue={queue_id}, item_id={item_id}, from index {index} to {index + 1}")
+            self.client.player_queues.move_item(queue_id, item_id, index + 1)
+            xbmcgui.Dialog().notification(ADDON_NAME, "Moved down", xbmcgui.NOTIFICATION_INFO, 1000)
+            xbmc.executebuiltin('Container.Refresh')
+        except Exception as e:
+            log(f"Queue move error: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Move failed", xbmcgui.NOTIFICATION_ERROR, 2000)
+    
+    def queue_play_next(self):
+        """Move item to play next (right after currently playing track)."""
+        queue_id = self.params.get('queue_id', '')
+        item_id = self.params.get('item_id', '')
+        index_str = self.params.get('index', '0')
+        
+        try:
+            index = int(index_str)
+        except ValueError:
+            index = 0
+        
+        if not queue_id or not item_id:
+            return
+        
+        try:
+            # Get current queue state to find current_index
+            queue = self.client.player_queues.get(queue_id)
+            current_index = queue.get('current_index', 0) or 0
+            
+            # Calculate target position (right after currently playing)
+            # When moving an item, if it's AFTER the target position, 
+            # removing it doesn't shift the target. If it's BEFORE, it does.
+            target_position = current_index + 1
+            
+            # If item is already at or before target, no adjustment needed
+            # If item is after target, when we remove it, positions don't shift for items before it
+            # But the API might expect the final position, so we use current_index + 1
+            
+            # Special case: if item is already right after current
+            if index == current_index + 1:
+                xbmcgui.Dialog().notification(ADDON_NAME, "Already playing next", xbmcgui.NOTIFICATION_INFO, 1000)
+                return
+            
+            # If item is before target position, after removal everything shifts down by 1
+            # So we need to target one less
+            if index < target_position:
+                target_position = current_index  # Will end up at current_index after shift
+            
+            log(f"Moving queue item to play next: queue={queue_id}, item_id={item_id}, from index {index} to {target_position} (current={current_index})")
+            self.client.player_queues.move_item(queue_id, item_id, target_position)
+            xbmcgui.Dialog().notification(ADDON_NAME, "Will play next", xbmcgui.NOTIFICATION_INFO, 1000)
+            xbmc.executebuiltin('Container.Refresh')
+        except Exception as e:
+            log(f"Queue play next error: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Move failed: {e}", xbmcgui.NOTIFICATION_ERROR, 2000)
+    
+    def queue_remove(self):
+        """Remove item from queue."""
+        queue_id = self.params.get('queue_id', '')
+        item_id = self.params.get('item_id', '')
+        
+        if not queue_id or not item_id:
+            return
+        
+        try:
+            self.client.player_queues.delete_item(queue_id, item_id)
+            xbmcgui.Dialog().notification(ADDON_NAME, "Removed", xbmcgui.NOTIFICATION_INFO, 1000)
+        except Exception as e:
+            log(f"Queue remove error: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
+        
+        xbmc.executebuiltin(f'Container.Update({build_url({"action": "queue"})})')
+    
+    def queue_next(self):
+        """Skip to next track in queue."""
+        queue_id = self.params.get('queue_id', '')
+        if not queue_id:
+            queue_id = self._get_player_id()
+        if not queue_id:
+            xbmcplugin.endOfDirectory(self.handle, succeeded=False)
+            return
+        
+        try:
+            self.client.player_queues.next(queue_id)
+            xbmcgui.Dialog().notification(ADDON_NAME, "Next Track", xbmcgui.NOTIFICATION_INFO, 1000)
+        except Exception as e:
+            log(f"Queue next error: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
+        
+        # End directory and refresh
+        xbmcplugin.endOfDirectory(self.handle, succeeded=False)
+        xbmc.executebuiltin(f'Container.Update({build_url({"action": "queue"})}, replace)')
     
     def show_players(self):
         """Show available players."""
@@ -1725,7 +2212,7 @@ class MusicAssistantAddon:
         # Check if we should show hidden players
         show_hidden = self.params.get('show_hidden') == 'true'
         
-        # Add show/hide toggle at top
+        # Add show/hide toggle at top (with context menu for unhide all)
         if hidden_list:
             if show_hidden:
                 toggle_label = "Hide Hidden Players"
@@ -1736,6 +2223,11 @@ class MusicAssistantAddon:
             
             li = xbmcgui.ListItem(label=f"[I]{toggle_label}[/I]")
             li.setArt({'icon': 'DefaultAddonMusic.png'})
+            # Add context menu with Unhide All option
+            toggle_context_menu = [
+                ("Unhide All Players", f'RunPlugin({build_url({"action": "unhide_all_players"})})'),
+            ]
+            li.addContextMenuItems(toggle_context_menu)
             xbmcplugin.addDirectoryItem(handle=self.handle, url=toggle_url, listitem=li, isFolder=True)
         
         for player in (players or []):
@@ -1767,8 +2259,14 @@ class MusicAssistantAddon:
             
             context_menu = [
                 (get_localized_string(30608), f'RunPlugin({build_url({"action": "set_default_player", "player_id": player_id})})'),
+                ("Transfer Queue Here", f'RunPlugin({build_url({"action": "transfer_queue_to", "player_id": player_id})})'),
+                ("Sync With This Player", f'RunPlugin({build_url({"action": "sync_with_player", "player_id": player_id})})'),
+                ("Unsync This Player", f'RunPlugin({build_url({"action": "unsync_player", "player_id": player_id})})'),
                 hide_action,
             ]
+            # Add Unhide All option for hidden players
+            if is_hidden:
+                context_menu.append(("Unhide All Players", f'RunPlugin({build_url({"action": "unhide_all_players"})})'))
             li.addContextMenuItems(context_menu)
             
             url = build_url({'action': 'player_info', 'player_id': player_id})
@@ -1810,6 +2308,138 @@ class MusicAssistantAddon:
         
         # Refresh players list
         xbmc.executebuiltin(f'Container.Update({build_url({"action": "players", "show_hidden": "true"})})')
+    
+    def unhide_all_players(self):
+        """Unhide all hidden players."""
+        hidden_players = get_setting('hidden_players') or ''
+        hidden_list = [p.strip() for p in hidden_players.split(',') if p.strip()]
+        
+        if hidden_list:
+            count = len(hidden_list)
+            set_setting('hidden_players', '')
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Unhid {count} player(s)", xbmcgui.NOTIFICATION_INFO, 1500)
+        else:
+            xbmcgui.Dialog().notification(ADDON_NAME, "No hidden players", xbmcgui.NOTIFICATION_INFO, 1500)
+        
+        # End directory and refresh players list
+        xbmcplugin.endOfDirectory(self.handle, succeeded=False)
+        xbmc.executebuiltin(f'Container.Update({build_url({"action": "players"})}, replace)')
+    
+    def transfer_queue_to(self):
+        """Transfer queue from current player to selected player."""
+        target_player_id = self.params.get('player_id', '')
+        if not target_player_id:
+            return
+        
+        # Get current default player
+        source_player_id = get_setting('ma_player_id')
+        if not source_player_id:
+            xbmcgui.Dialog().notification(ADDON_NAME, "No default player set", xbmcgui.NOTIFICATION_ERROR)
+            return
+        
+        if source_player_id == target_player_id:
+            xbmcgui.Dialog().notification(ADDON_NAME, "Cannot transfer to same player", xbmcgui.NOTIFICATION_ERROR)
+            return
+        
+        try:
+            self.client.player_queues.transfer(source_player_id, target_player_id)
+            # Get player name for notification
+            try:
+                player = self.client.players.get(target_player_id)
+                name = player.get('name', target_player_id)
+            except Exception:
+                name = target_player_id
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Queue transferred to {name}", xbmcgui.NOTIFICATION_INFO, 2000)
+        except Exception as e:
+            log(f"Transfer error: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
+    
+    def sync_with_player(self):
+        """Sync default player with selected player."""
+        target_player_id = self.params.get('player_id', '')
+        if not target_player_id:
+            return
+        
+        # Get current default player
+        source_player_id = get_setting('ma_player_id')
+        if not source_player_id:
+            xbmcgui.Dialog().notification(ADDON_NAME, "No default player set", xbmcgui.NOTIFICATION_ERROR)
+            return
+        
+        if source_player_id == target_player_id:
+            xbmcgui.Dialog().notification(ADDON_NAME, "Cannot sync with same player", xbmcgui.NOTIFICATION_ERROR)
+            return
+        
+        try:
+            self.client.players.group(source_player_id, target_player_id)
+            # Get player name for notification
+            try:
+                player = self.client.players.get(target_player_id)
+                name = player.get('name', target_player_id)
+            except Exception:
+                name = target_player_id
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Synced with {name}", xbmcgui.NOTIFICATION_INFO, 2000)
+        except Exception as e:
+            log(f"Sync error: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
+    
+    def unsync_player(self):
+        """Unsync selected player from its group."""
+        player_id = self.params.get('player_id', '')
+        if not player_id:
+            return
+        
+        try:
+            self.client.players.ungroup(player_id)
+            # Get player name for notification
+            try:
+                player = self.client.players.get(player_id)
+                name = player.get('name', player_id)
+            except Exception:
+                name = player_id
+            xbmcgui.Dialog().notification(ADDON_NAME, f"{name} unsynced", xbmcgui.NOTIFICATION_INFO, 1500)
+        except Exception as e:
+            log(f"Unsync error: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, f"Error: {e}", xbmcgui.NOTIFICATION_ERROR)
+    
+    def add_favorite(self):
+        """Add item to favorites."""
+        item_id = self.params.get('id', '')
+        media_type = self.params.get('type', 'track')
+        provider = self.params.get('provider', 'library')
+        
+        if not item_id:
+            return
+        
+        log(f"Adding favorite: item_id={item_id}, type={media_type}, provider={provider}")
+        
+        try:
+            self.client.music.add_to_favorites(item_id, media_type, provider)
+            xbmcgui.Dialog().notification(ADDON_NAME, "Added to favorites", xbmcgui.NOTIFICATION_INFO, 1500)
+            xbmc.executebuiltin('Container.Refresh')
+        except Exception as e:
+            log(f"Add favorite error: {e}", xbmc.LOGERROR)
+            # Show user-friendly error
+            xbmcgui.Dialog().notification(ADDON_NAME, "Could not add to favorites", xbmcgui.NOTIFICATION_ERROR, 2000)
+    
+    def remove_favorite(self):
+        """Remove item from favorites."""
+        item_id = self.params.get('id', '')
+        media_type = self.params.get('type', 'track')
+        provider = self.params.get('provider', 'library')
+        
+        if not item_id:
+            return
+        
+        log(f"Removing favorite: item_id={item_id}, type={media_type}, provider={provider}")
+        
+        try:
+            self.client.music.remove_from_favorites(item_id, media_type, provider)
+            xbmcgui.Dialog().notification(ADDON_NAME, "Removed from favorites", xbmcgui.NOTIFICATION_INFO, 1500)
+            xbmc.executebuiltin('Container.Refresh')
+        except Exception as e:
+            log(f"Remove favorite error: {e}", xbmc.LOGERROR)
+            xbmcgui.Dialog().notification(ADDON_NAME, "Could not remove from favorites", xbmcgui.NOTIFICATION_ERROR, 2000)
     
     def set_default_player(self):
         """Set a player as the default."""
