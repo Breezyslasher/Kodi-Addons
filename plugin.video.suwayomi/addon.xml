@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.suwayomi" name="Suwayomi" version="1.2.5" provider-name="Claude">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="default.py">
+        <provides>video image</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Suwayomi Manga Reader Client</summary>
+        <description lang="en_GB">A Kodi addon to browse and read manga from your Suwayomi-Server instance. Features include browsing your library, searching sources, reading chapters, tracking progress, and managing downloads.</description>
+        <disclaimer lang="en_GB">This addon requires a running Suwayomi-Server instance.</disclaimer>
+        <platform>all</platform>
+        <license>MIT</license>
+        <website>https://github.com/Suwayomi/Suwayomi-Server</website>
+        <news>v1.2.5 - Fixed page loading regression. Added fetchChapters to initialize manga from search/browse. Added extensive logging for debugging categories and pages.</news>
+        <assets>
+            <icon>resources/icon.png</icon>
+            <fanart>resources/fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon>
