@@ -1,5 +1,5 @@
 a<?xml version="1.0" encoding="UTF-8"?>
-<addon id="repository.breezyslasher" name="Breezyslasher Beta Repository" version="2025.12.25" provider-name="Breezyslasher">
+<addon id="repository.breezyslasher-beta" name="Breezyslasher Beta Repository" version="2025.12.25" provider-name="Breezyslasher">
     <requires>
         <import addon="xbmc.addon" version="12.0.0"/>
     </requires>
