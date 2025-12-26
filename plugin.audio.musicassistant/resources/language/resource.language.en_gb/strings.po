@@ -1,0 +1,294 @@
+# Language file for Music Assistant Kodi addon v2.0
+
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+
+# Main menu items
+msgctxt "#30001"
+msgid "Artists"
+msgstr ""
+
+msgctxt "#30002"
+msgid "Albums"
+msgstr ""
+
+msgctxt "#30003"
+msgid "Tracks"
+msgstr ""
+
+msgctxt "#30004"
+msgid "Playlists"
+msgstr ""
+
+msgctxt "#30005"
+msgid "Radio Stations"
+msgstr ""
+
+msgctxt "#30006"
+msgid "Search"
+msgstr ""
+
+msgctxt "#30007"
+msgid "Players"
+msgstr ""
+
+msgctxt "#30008"
+msgid "Queue"
+msgstr ""
+
+msgctxt "#30009"
+msgid "Browse Library"
+msgstr ""
+
+msgctxt "#30010"
+msgid "Recently Played"
+msgstr ""
+
+msgctxt "#30011"
+msgid "Podcasts"
+msgstr ""
+
+msgctxt "#30012"
+msgid "Audiobooks"
+msgstr ""
+
+msgctxt "#30013"
+msgid "Favorites"
+msgstr ""
+
+# Settings - Connection section
+msgctxt "#30100"
+msgid "Server Connection"
+msgstr ""
+
+msgctxt "#30101"
+msgid "Server URL"
+msgstr ""
+
+msgctxt "#30102"
+msgid "URL of your Music Assistant server (e.g., http://192.168.1.100:8095)"
+msgstr ""
+
+msgctxt "#30103"
+msgid "Authentication Token"
+msgstr ""
+
+msgctxt "#30104"
+msgid "Long-lived token for authentication. Create one in Music Assistant web UI Profile settings."
+msgstr ""
+
+msgctxt "#30105"
+msgid "Username"
+msgstr ""
+
+msgctxt "#30106"
+msgid "Username for Music Assistant (used to generate token if no token provided)"
+msgstr ""
+
+msgctxt "#30107"
+msgid "Password"
+msgstr ""
+
+msgctxt "#30108"
+msgid "Password for Music Assistant"
+msgstr ""
+
+# Settings - Playback section
+msgctxt "#30200"
+msgid "Playback Options"
+msgstr ""
+
+msgctxt "#30201"
+msgid "Playback Mode"
+msgstr ""
+
+msgctxt "#30202"
+msgid "Choose where to play audio"
+msgstr ""
+
+msgctxt "#30203"
+msgid "Play in Kodi"
+msgstr ""
+
+msgctxt "#30204"
+msgid "Play on Music Assistant Player"
+msgstr ""
+
+msgctxt "#30205"
+msgid "Music Assistant Player ID"
+msgstr ""
+
+msgctxt "#30206"
+msgid "ID of the Music Assistant player/queue to use for playback (find in Players menu)"
+msgstr ""
+
+msgctxt "#30207"
+msgid "Items per page"
+msgstr ""
+
+msgctxt "#30208"
+msgid "Number of items to load per page"
+msgstr ""
+
+msgctxt "#30209"
+msgid "Player ID for audio playback. Leave empty to select on first play. Install sendspin-cli for local playback."
+msgstr ""
+
+msgctxt "#30210"
+msgid "Auto-start Sendspin Player"
+msgstr ""
+
+msgctxt "#30211"
+msgid "Automatically start sendspin for local playback when addon opens (requires sendspin-cli installed)"
+msgstr ""
+
+msgctxt "#30212"
+msgid "Sendspin Player Name"
+msgstr ""
+
+msgctxt "#30213"
+msgid "Name for this device in Music Assistant (leave empty for auto-detect)"
+msgstr ""
+
+msgctxt "#30214"
+msgid "Sendspin Path (Advanced)"
+msgstr ""
+
+msgctxt "#30215"
+msgid "Full path to sendspin executable (e.g., /home/user/.local/bin/sendspin). Leave empty for auto-detect."
+msgstr ""
+
+msgctxt "#30216"
+msgid "Auto-install Sendspin"
+msgstr ""
+
+msgctxt "#30217"
+msgid "Automatically install sendspin if not found (requires pip)"
+msgstr ""
+
+# Error messages
+msgctxt "#30500"
+msgid "Connection Error"
+msgstr ""
+
+msgctxt "#30501"
+msgid "Failed to connect to Music Assistant server"
+msgstr ""
+
+msgctxt "#30502"
+msgid "Authentication Required"
+msgstr ""
+
+msgctxt "#30503"
+msgid "Please configure your server settings"
+msgstr ""
+
+msgctxt "#30504"
+msgid "Authentication Failed"
+msgstr ""
+
+msgctxt "#30505"
+msgid "Invalid credentials or token"
+msgstr ""
+
+msgctxt "#30506"
+msgid "No Results"
+msgstr ""
+
+msgctxt "#30507"
+msgid "No items found"
+msgstr ""
+
+msgctxt "#30508"
+msgid "Server Error"
+msgstr ""
+
+msgctxt "#30509"
+msgid "Please provide an authentication token or username/password"
+msgstr ""
+
+# Context menu items
+msgctxt "#30600"
+msgid "Play Now"
+msgstr ""
+
+msgctxt "#30601"
+msgid "Add to Queue"
+msgstr ""
+
+msgctxt "#30602"
+msgid "Play Next"
+msgstr ""
+
+msgctxt "#30603"
+msgid "Add to Playlist"
+msgstr ""
+
+msgctxt "#30604"
+msgid "View Artist"
+msgstr ""
+
+msgctxt "#30605"
+msgid "View Album"
+msgstr ""
+
+msgctxt "#30606"
+msgid "Add to Favorites"
+msgstr ""
+
+msgctxt "#30607"
+msgid "Remove from Favorites"
+msgstr ""
+
+msgctxt "#30608"
+msgid "Set as Default Player"
+msgstr ""
+
+# Search
+msgctxt "#30700"
+msgid "Search Music Assistant"
+msgstr ""
+
+msgctxt "#30701"
+msgid "Enter search query"
+msgstr ""
+
+msgctxt "#30702"
+msgid "Search Artists"
+msgstr ""
+
+msgctxt "#30703"
+msgid "Search Albums"
+msgstr ""
+
+msgctxt "#30704"
+msgid "Search Tracks"
+msgstr ""
+
+msgctxt "#30705"
+msgid "Search Playlists"
+msgstr ""
+
+# Info messages
+msgctxt "#30800"
+msgid "Loading..."
+msgstr ""
+
+msgctxt "#30801"
+msgid "Added to queue"
+msgstr ""
+
+msgctxt "#30802"
+msgid "Now playing"
+msgstr ""
+
+msgctxt "#30803"
+msgid "Added to favorites"
+msgstr ""
+
+msgctxt "#30804"
+msgid "Removed from favorites"
+msgstr ""
