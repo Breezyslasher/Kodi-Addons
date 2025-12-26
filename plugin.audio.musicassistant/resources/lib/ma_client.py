@@ -238,20 +238,25 @@ class MusicAssistantClient:
         if not isinstance(item, dict):
             return None
         
-        # Check for image in item
-        image = item.get('image')
-        if image:
-            return self._build_image_url(image, size)
+        # Check for direct image fields
+        for key in ['image', 'thumb', 'thumb_url', 'artwork', 'cover']:
+            img = item.get(key)
+            if img:
+                url = self._build_image_url(img, size)
+                if url:
+                    return url
         
         # Check metadata for images
         metadata = item.get('metadata', {})
         if metadata:
-            for key in ['images', 'image', 'thumb']:
+            for key in ['images', 'image', 'thumb', 'artwork', 'cover']:
                 if key in metadata and metadata[key]:
                     img = metadata[key]
                     if isinstance(img, list) and img:
                         img = img[0]
-                    return self._build_image_url(img, size)
+                    url = self._build_image_url(img, size)
+                    if url:
+                        return url
         
         # Check for images list
         images = item.get('images', [])
@@ -259,9 +264,24 @@ class MusicAssistantClient:
             # Find matching type or use first
             for img in images:
                 if isinstance(img, dict) and img.get('type') == image_type:
-                    return self._build_image_url(img, size)
+                    url = self._build_image_url(img, size)
+                    if url:
+                        return url
             # Fallback to first image
-            return self._build_image_url(images[0], size)
+            url = self._build_image_url(images[0], size)
+            if url:
+                return url
+        
+        # Try MA image proxy endpoint as last resort
+        item_id = item.get('item_id')
+        media_type = item.get('media_type')
+        provider = item.get('provider', 'library')
+        if item_id and media_type:
+            # Build MA image proxy URL
+            proxy_url = f"{self.server_url}/api/image?item_id={item_id}&provider={provider}&media_type={media_type}"
+            if self.token:
+                proxy_url += f"&token={self.token}"
+            return proxy_url
         
         return None
     
@@ -270,19 +290,46 @@ class MusicAssistantClient:
         if isinstance(image, str):
             url = image
         elif isinstance(image, dict):
-            url = image.get('path') or image.get('url') or image.get('thumb')
+            # Check for remotely_accessible flag
+            if image.get('remotely_accessible') == False:
+                # This image needs to be proxied through MA
+                path = image.get('path') or image.get('url')
+                if path and path.startswith('http'):
+                    from urllib.parse import quote
+                    proxy_url = f"{self.server_url}/imageproxy?url={quote(path, safe='')}"
+                    if self.token:
+                        proxy_url += f"&token={self.token}"
+                    return proxy_url
+                # For relative paths, we can't proxy them - return None
+                return None
+            url = image.get('path') or image.get('url') or image.get('thumb') or image.get('uri')
         else:
             return None
         
         if not url:
             return None
         
-        # Make relative URLs absolute
+        # Skip placeholder/empty URLs
+        if url in ('', 'null', 'None') or url.startswith('data:'):
+            return None
+        
+        # Handle Plex/Jellyfin relative URLs - these cannot be proxied without server info
+        # Skip them to avoid 500 errors
+        if url.startswith('/library/') or url.startswith('/Items/'):
+            # These are provider-relative paths that we can't use directly
+            # Return None - the fallback in get_media_item_image_url may find an alternative
+            return None
+        
+        # Make other relative URLs absolute (MA server paths)
         if url.startswith('/'):
             url = f"{self.server_url}{url}"
         
-        # Add token if needed
-        if self.token and 'token=' not in url:
+        # For non-HTTP URLs without protocol, skip (these are local paths we can't use)
+        if not url.startswith('http') and '://' not in url:
+            return None
+        
+        # Add token if needed and URL is from our server
+        if self.token and url.startswith('http') and self.server_url in url and 'token=' not in url:
             separator = '&' if '?' in url else '?'
             url = f"{url}{separator}token={self.token}"
         
@@ -602,21 +649,66 @@ class MusicController:
             args['media_types'] = media_types
         return self.client.send_command('music/recently_played_items', **args)
     
-    def add_to_favorites(self, item_id, media_type):
+    def add_to_favorites(self, item_id, media_type, provider='library'):
         """Add item to favorites."""
-        return self.client.send_command(
-            'music/favorites/add_item',
-            item_id=str(item_id),
-            media_type=media_type
-        )
+        # Build the item URI
+        uri = f"{provider}://{media_type}/{item_id}"
+        
+        # Use the correct API endpoint: music/favorites/add_item with 'item' parameter
+        try:
+            return self.client.send_command(
+                'music/favorites/add_item',
+                item=uri
+            )
+        except Exception as e1:
+            # Fallback: try set_favorite on the specific media type
+            try:
+                return self.client.send_command(
+                    f'music/{media_type}s/set_favorite',
+                    item_id=str(item_id),
+                    provider_instance_id_or_domain=provider,
+                    favorite=True
+                )
+            except Exception as e2:
+                # Last resort: library/add_item_to_favorites
+                return self.client.send_command(
+                    'music/library/add_item_to_favorites',
+                    uri=uri
+                )
     
-    def remove_from_favorites(self, item_id, media_type):
+    def remove_from_favorites(self, item_id, media_type, provider='library'):
         """Remove item from favorites."""
-        return self.client.send_command(
-            'music/favorites/remove_item',
-            item_id=str(item_id),
-            media_type=media_type
-        )
+        uri = f"{provider}://{media_type}/{item_id}"
+        
+        # Try music/favorites/remove_item first (documented API)
+        try:
+            return self.client.send_command(
+                'music/favorites/remove_item',
+                item=uri
+            )
+        except Exception as e1:
+            # Fallback: try set_favorite with favorite=False
+            try:
+                return self.client.send_command(
+                    f'music/{media_type}s/set_favorite',
+                    item_id=str(item_id),
+                    provider_instance_id_or_domain=provider,
+                    favorite=False
+                )
+            except Exception as e2:
+                # Try with db_item_id format (some APIs use this)
+                try:
+                    return self.client.send_command(
+                        f'music/{media_type}s/set_favorite',
+                        db_item_id=str(item_id),
+                        favorite=False
+                    )
+                except Exception as e3:
+                    # Last resort: library/remove_item_from_favorites
+                    return self.client.send_command(
+                        'music/library/remove_item_from_favorites',
+                        uri=uri
+                    )
     
     # Library management
     def add_to_library(self, item_id, media_type):
@@ -853,13 +945,13 @@ class PlayerQueuesController:
             item_id_or_index=item_id_or_index
         )
     
-    def move_item(self, queue_id, item_id, target_index):
+    def move_item(self, queue_id, queue_item_id, position):
         """Move item to target position."""
         return self.client.send_command(
             'player_queues/move_item',
             queue_id=queue_id,
-            item_id=item_id,
-            target_index=target_index
+            queue_item_id=queue_item_id,
+            position=position
         )
     
     def transfer(self, source_queue_id, target_queue_id):
