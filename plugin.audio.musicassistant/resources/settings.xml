@@ -14,5 +14,7 @@
     </category>
     <category label="Display">
         <setting id="items_per_page" type="number" label="Items per page" default="50" />
+        <setting id="hide_podcasts" type="bool" label="Hide Podcasts" default="true" />
+        <setting id="hide_audiobooks" type="bool" label="Hide Audiobooks" default="false" />
     </category>
 </settings>
