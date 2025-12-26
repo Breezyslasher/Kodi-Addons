@@ -1,4 +1,4 @@
-# Kodi Addons Repository
+# Kodi Addons Repository Beta
 
 Welcome to my personal Kodi addon repository! This collection includes various addons I've developed to enhance the Kodi media center experience.
 
