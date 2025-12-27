@@ -2,6 +2,8 @@
 
 Stream your Android device screen to Kodi using scrcpy. Supports USB and WiFi connections on LibreELEC, OSMC, and desktop Linux with Flatpak Kodi.
 
+https://github.com/user-attachments/assets/5d711656-cce1-4eb5-8446-dbc04ccc1aab
+
 ## Features
 
 - **USB Streaming** - Connect via USB cable for lowest latency
@@ -124,10 +126,6 @@ cat /storage/.kodi/temp/scrcpy.log
 
 - [scrcpy](https://github.com/Genymobile/scrcpy) by Genymobile
 - [ADB](https://developer.android.com/studio/command-line/adb) by Google
-
-
-https://github.com/user-attachments/assets/5d711656-cce1-4eb5-8446-dbc04ccc1aab
-
 
 ## License
 
