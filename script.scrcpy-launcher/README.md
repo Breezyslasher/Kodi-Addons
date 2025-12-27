@@ -125,6 +125,10 @@ cat /storage/.kodi/temp/scrcpy.log
 - [scrcpy](https://github.com/Genymobile/scrcpy) by Genymobile
 - [ADB](https://developer.android.com/studio/command-line/adb) by Google
 
+
+https://github.com/user-attachments/assets/5d711656-cce1-4eb5-8446-dbc04ccc1aab
+
+
 ## License
 
 MIT License
