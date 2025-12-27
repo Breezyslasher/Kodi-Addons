@@ -4,6 +4,7 @@ Welcome to my personal Kodi addon repository! This collection includes various a
 
 ## 📦 Available Addons
 
+
 ### 🎧 [Audiobookshelf](plugin.audio.audiobookshelf/)
 Stream audiobooks and podcasts from your Audiobookshelf server directly in Kodi.
 
@@ -33,6 +34,23 @@ Context menu addon for downloading Plex media for offline viewing.
 - Hide/restore Plex versions
 
 **Requirements:** Kodi 19+, PlexKodiConnect addon
+
+---
+
+
+### 📱 [scrcpy Launcher](script.scrcpy-launcher/)
+Stream your Android device screen to Kodi using scrcpy.
+
+**Features:**
+- USB and WiFi streaming modes
+- LibreELEC/OSMC support with auto Kodi stop/restart
+- Flatpak Kodi support on desktop Linux
+- Audio forwarding (Android 11+)
+- Configurable video settings (FPS, bitrate, codec, resolution)
+- Keyboard shortcuts with configurable quit key
+- Fullscreen streaming
+
+**Requirements:** Kodi 19+, Android device with USB debugging enabled
 
 ---
 
@@ -84,6 +102,7 @@ This repository uses automated workflows to build and distribute addons:
 Kodi-Addons/
 ├── plugin.audio.audiobookshelf/     # Audiobookshelf addon
 ├── context.plexkodiconnect.download/ # Plex download addon  
+├── script.scrcpy-launcher/          # scrcpy launcher addon
 ├── script.webhook.runner/           # Webhook runner addon
 ├── repository.breezyslasher/        # Repository metadata
 ├── zips/                           # Generated ZIP files
@@ -104,6 +123,7 @@ While these are personal projects, I welcome feedback and suggestions:
 Each addon has its own license:
 - **Audiobookshelf**: GPL-3.0-or-later
 - **PlexKodiConnect Download**: MIT
+- **scrcpy Launcher**: MIT
 - **Webhook Runner**: MIT
 
 ## 🔗 Links
