@@ -124,4 +124,25 @@ v1.0.0 - Initial release
     <platform>all</platform>
   </extension>
 </addon>
+<addon id="script.scrcpy-launcher" name="scrcpy Launcher" version="2025.12.27" provider-name="Breezyslasher">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="xbmc.python.script" library="main.py">
+        <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.service" library="service.py" start="startup"/>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Android USB device streaming with auto-detect</summary>
+        <description lang="en_GB">Stream your Android device screen on Kodi using scrcpy.Works with LibreELEC and desktop Linux.</description>
+        <platform>linux</platform>
+        <license>MIT</license>
+        <website>https://github.com/Schlumpf7/scrcpy-launcher-matrix-</website>
+        <source>https://github.com/Schlumpf7/scrcpy-launcher-matrix-</source>
+        <disclaimer>Requires USB debugging enabled on your Android device.</disclaimer>
+        <assets>
+            <icon>resources/Android_Robot.png</icon>
+        </assets>
+    </extension>
+</addon>
 </addons>
