@@ -27,7 +27,7 @@ A Kodi context menu addon that allows you to download movies, TV shows, and musi
 
 ## Installation
 
-1. Download the `context.plexkodiconnect.download-1.0.0.zip` file
+1. Download the `context.plexkodiconnect.download-2025.12.12.zip` file
 2. In Kodi: Settings → Add-ons → Install from zip file
 3. Select the downloaded ZIP file
 4. The addon will add a "Download from Plex" option to context menus
