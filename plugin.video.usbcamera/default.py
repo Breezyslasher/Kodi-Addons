@@ -286,8 +286,9 @@ def get_friendly_device_name(device_info):
 
 def play_device(device_path, input_num=None):
     """
-    Play video from a V4L2 device using ffplay.
-    ffplay has native V4L2 support and is the most reliable method.
+    Play video from a V4L2 device.
+    Uses ffmpeg to capture and stream via UDP to Kodi's player.
+    This works on LibreELEC which doesn't have ffplay.
     """
     log(f'Playing device: {device_path}, input: {input_num}')
 
@@ -305,7 +306,7 @@ def play_device(device_path, input_num=None):
         try:
             width, height = resolution.split('x')
         except:
-            width, height = '1280', '720'
+            pass
 
     # Set input if specified (for capture cards)
     if input_num is not None:
@@ -318,115 +319,268 @@ def play_device(device_path, input_num=None):
         except Exception as e:
             log(f'Error setting input: {e}', xbmc.LOGWARNING)
 
-    # Build ffplay command - it has native V4L2 support
-    cmd = [
-        'ffplay',
-        '-f', 'v4l2',
+    # Use a random port for UDP streaming
+    import random
+    udp_port = random.randint(12000, 13000)
+    udp_url = f'udp://127.0.0.1:{udp_port}'
+
+    # Build ffmpeg command to capture from V4L2 and stream via UDP
+    ffmpeg_cmd = [
+        'ffmpeg',
+        '-hide_banner',
+        '-loglevel', 'error',
     ]
+
+    # Low latency input options
+    if low_latency:
+        ffmpeg_cmd.extend(['-fflags', 'nobuffer', '-flags', 'low_delay'])
+
+    # V4L2 input
+    ffmpeg_cmd.extend(['-f', 'v4l2'])
 
     # Add pixel format if not auto
     if pixel_format != 'auto':
-        cmd.extend(['-input_format', pixel_format])
+        ffmpeg_cmd.extend(['-input_format', pixel_format])
 
-    # Add resolution only if not auto (let device decide)
-    if resolution != 'auto':
-        cmd.extend(['-video_size', f'{width}x{height}'])
+    # Add resolution only if not auto
+    if resolution != 'auto' and width and height:
+        ffmpeg_cmd.extend(['-video_size', f'{width}x{height}'])
 
-    # Add framerate only if not auto (let device decide)
+    # Add framerate only if not auto
     if framerate != 'auto':
-        cmd.extend(['-framerate', framerate])
+        ffmpeg_cmd.extend(['-framerate', framerate])
 
-    # Add input device and display options
-    cmd.extend([
-        '-i', device_path,
-        '-fs',  # Fullscreen
-        '-noborder',
-        '-loglevel', 'error',
-        '-window_title', 'USB Camera - Press Q or ESC to exit'
-    ])
+    # Input device
+    ffmpeg_cmd.extend(['-i', device_path])
 
-    # Low latency options
+    # Output encoding - use fast encoding for low latency
     if low_latency:
-        cmd.extend([
-            '-fflags', 'nobuffer',
-            '-flags', 'low_delay',
-            '-framedrop',
-            '-sync', 'video'
+        ffmpeg_cmd.extend([
+            '-c:v', 'rawvideo',  # No encoding for lowest latency
+            '-f', 'avi',
+            '-'
+        ])
+    else:
+        ffmpeg_cmd.extend([
+            '-c:v', 'mpeg2video',  # Fast, widely compatible
+            '-q:v', '3',
+            '-f', 'mpegts',
+            udp_url + '?pkt_size=1316'
         ])
 
-    log(f'Running: {" ".join(cmd)}')
+    log(f'FFmpeg command: {" ".join(ffmpeg_cmd)}')
 
-    # Run ffplay - it will take over the screen
+    # For low latency, use pipe method; otherwise use UDP
+    if low_latency:
+        _play_with_pipe(ffmpeg_cmd, device_path)
+    else:
+        _play_with_udp(ffmpeg_cmd, udp_url, device_path)
+
+
+def _play_with_pipe(ffmpeg_cmd, device_path):
+    """Play using named pipe - lower latency but may be less stable"""
+    # Create a named pipe for streaming
+    pipe_path = os.path.join(ADDON_PROFILE, 'camera_pipe.avi')
+
+    # Ensure profile directory exists
+    if not os.path.exists(ADDON_PROFILE):
+        os.makedirs(ADDON_PROFILE)
+
+    # Remove old pipe if exists
+    if os.path.exists(pipe_path):
+        try:
+            os.remove(pipe_path)
+        except:
+            pass
+
     try:
-        # Show brief notification
-        xbmcgui.Dialog().notification(
-            ADDON_NAME,
-            'Starting camera... Press Q or ESC to exit',
-            xbmcgui.NOTIFICATION_INFO,
-            2000
-        )
+        # Create FIFO pipe
+        os.mkfifo(pipe_path)
+        log(f'Created pipe: {pipe_path}')
 
-        # Small delay to let notification show
-        xbmc.sleep(500)
+        # Modify ffmpeg command to output to pipe
+        ffmpeg_cmd[-1] = pipe_path
 
-        # Start ffplay
+        # Start FFmpeg process in background
+        log(f'Starting FFmpeg: {" ".join(ffmpeg_cmd)}')
         process = subprocess.Popen(
-            cmd,
+            ffmpeg_cmd,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE
         )
 
-        # Wait for ffplay to exit
-        process.wait()
+        # Give ffmpeg a moment to start
+        xbmc.sleep(500)
 
-        # Check for errors
-        if process.returncode != 0:
+        # Check if ffmpeg started OK
+        if process.poll() is not None:
             stderr = process.stderr.read().decode('utf-8', errors='ignore')
-            if stderr:
-                log(f'ffplay error: {stderr}', xbmc.LOGERROR)
-                # Show user-friendly error message
-                if 'No such file or directory' in stderr:
-                    xbmcgui.Dialog().notification(
-                        ADDON_NAME,
-                        'Device not found. Is it still connected?',
-                        xbmcgui.NOTIFICATION_ERROR,
-                        5000
-                    )
-                elif 'Permission denied' in stderr:
-                    xbmcgui.Dialog().notification(
-                        ADDON_NAME,
-                        'Permission denied. Try running: sudo chmod 666 ' + device_path,
-                        xbmcgui.NOTIFICATION_ERROR,
-                        5000
-                    )
-                elif 'Invalid argument' in stderr or 'not supported' in stderr.lower():
-                    xbmcgui.Dialog().notification(
-                        ADDON_NAME,
-                        'Try different resolution or pixel format in settings',
-                        xbmcgui.NOTIFICATION_WARNING,
-                        5000
-                    )
-                else:
-                    xbmcgui.Dialog().notification(
-                        ADDON_NAME,
-                        'Playback error. Check Kodi log for details.',
-                        xbmcgui.NOTIFICATION_ERROR,
-                        5000
-                    )
+            log(f'FFmpeg failed to start: {stderr}', xbmc.LOGERROR)
+            _show_ffmpeg_error(stderr, device_path)
+            if os.path.exists(pipe_path):
+                os.remove(pipe_path)
+            return
 
-    except FileNotFoundError:
-        log('ffplay not found', xbmc.LOGERROR)
-        xbmcgui.Dialog().notification(
-            ADDON_NAME,
-            'ffplay not found. Please install FFmpeg.',
-            xbmcgui.NOTIFICATION_ERROR,
-            5000
-        )
+        # Play from the pipe using Kodi's player
+        li = xbmcgui.ListItem(path=pipe_path)
+        li.setInfo('video', {'title': 'USB Camera'})
+
+        log('Starting Kodi playback from pipe')
+        xbmc.Player().play(pipe_path, li)
+
+        # Monitor playback
+        monitor = xbmc.Monitor()
+        player = xbmc.Player()
+
+        # Wait for playback to start
+        for _ in range(20):  # Wait up to 10 seconds
+            if player.isPlaying():
+                break
+            if process.poll() is not None:
+                break
+            xbmc.sleep(500)
+
+        # Keep FFmpeg running while playing
+        while player.isPlaying() and not monitor.abortRequested():
+            if process.poll() is not None:
+                stderr = process.stderr.read().decode('utf-8', errors='ignore')
+                if stderr:
+                    log(f'FFmpeg exited: {stderr}', xbmc.LOGWARNING)
+                break
+            xbmc.sleep(500)
+
+        log('Playback ended, cleaning up')
+
     except Exception as e:
-        log(f'Error launching ffplay: {e}', xbmc.LOGERROR)
+        log(f'Pipe playback error: {e}', xbmc.LOGERROR)
         xbmcgui.Dialog().notification(
             ADDON_NAME,
             f'Error: {str(e)}',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    finally:
+        # Cleanup
+        try:
+            if 'process' in dir() and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except:
+                    process.kill()
+        except:
+            pass
+        if os.path.exists(pipe_path):
+            try:
+                os.remove(pipe_path)
+            except:
+                pass
+
+
+def _play_with_udp(ffmpeg_cmd, udp_url, device_path):
+    """Play using UDP streaming - more stable but slightly higher latency"""
+    process = None
+    try:
+        # Start FFmpeg streaming to UDP
+        log(f'Starting FFmpeg UDP stream: {" ".join(ffmpeg_cmd)}')
+        process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE
+        )
+
+        # Wait for stream to initialize
+        xbmc.sleep(1000)
+
+        # Check if ffmpeg started OK
+        if process.poll() is not None:
+            stderr = process.stderr.read().decode('utf-8', errors='ignore')
+            log(f'FFmpeg failed: {stderr}', xbmc.LOGERROR)
+            _show_ffmpeg_error(stderr, device_path)
+            return
+
+        # Play UDP stream in Kodi
+        li = xbmcgui.ListItem(path=udp_url)
+        li.setInfo('video', {'title': 'USB Camera'})
+
+        log(f'Starting Kodi playback from {udp_url}')
+        xbmc.Player().play(udp_url, li)
+
+        # Monitor playback
+        monitor = xbmc.Monitor()
+        player = xbmc.Player()
+
+        # Wait for playback to start
+        for _ in range(20):
+            if player.isPlaying():
+                break
+            if process.poll() is not None:
+                break
+            xbmc.sleep(500)
+
+        # Keep FFmpeg running while playing
+        while player.isPlaying() and not monitor.abortRequested():
+            if process.poll() is not None:
+                stderr = process.stderr.read().decode('utf-8', errors='ignore')
+                if stderr:
+                    log(f'FFmpeg exited: {stderr}', xbmc.LOGWARNING)
+                break
+            xbmc.sleep(500)
+
+        log('Playback ended')
+
+    except Exception as e:
+        log(f'UDP playback error: {e}', xbmc.LOGERROR)
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            f'Error: {str(e)}',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    finally:
+        # Cleanup
+        if process and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except:
+                process.kill()
+
+
+def _show_ffmpeg_error(stderr, device_path):
+    """Show user-friendly error message based on ffmpeg stderr"""
+    if 'No such file or directory' in stderr:
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Device not found. Is it connected?',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    elif 'Permission denied' in stderr:
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Permission denied accessing device',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    elif 'Invalid argument' in stderr or 'not supported' in stderr.lower():
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Try Auto resolution in settings',
+            xbmcgui.NOTIFICATION_WARNING,
+            5000
+        )
+    elif 'Device or resource busy' in stderr:
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Device busy. Close other apps using it.',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    else:
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Playback error. Check log.',
             xbmcgui.NOTIFICATION_ERROR,
             5000
         )
@@ -434,79 +588,10 @@ def play_device(device_path, input_num=None):
 
 def play_device_external(device_path, input_num=None):
     """
-    Play device using external player (ffplay) in a window.
-    Used as fallback or when requested.
+    Play device - now just calls play_device since we use ffmpeg streaming.
+    Kept for backward compatibility with context menu.
     """
-    log(f'Playing device externally: {device_path}')
-
-    resolution = get_resolution()
-    framerate = get_framerate()
-
-    # Set input if specified
-    if input_num is not None:
-        try:
-            subprocess.run(
-                ['v4l2-ctl', '--device', device_path, '--set-input', str(input_num)],
-                timeout=5
-            )
-        except:
-            pass
-
-    # Build ffplay command
-    cmd = [
-        'ffplay',
-        '-f', 'v4l2',
-    ]
-
-    # Add resolution only if not auto
-    if resolution != 'auto':
-        try:
-            width, height = resolution.split('x')
-            cmd.extend(['-video_size', f'{width}x{height}'])
-        except:
-            pass
-
-    # Add framerate only if not auto
-    if framerate != 'auto':
-        cmd.extend(['-framerate', framerate])
-
-    cmd.extend([
-        '-i', device_path,
-        '-fs',  # Fullscreen
-        '-noborder',
-        '-loglevel', 'error'
-    ])
-
-    low_latency = get_setting_bool('low_latency')
-    if low_latency:
-        cmd.extend(['-fflags', 'nobuffer', '-flags', 'low_delay', '-framedrop'])
-
-    log(f'Running: {" ".join(cmd)}')
-
-    # Run ffplay - it will take over the screen
-    try:
-        subprocess.Popen(cmd)
-        xbmcgui.Dialog().notification(
-            ADDON_NAME,
-            'Press Q or ESC to exit camera view',
-            xbmcgui.NOTIFICATION_INFO,
-            3000
-        )
-    except FileNotFoundError:
-        xbmcgui.Dialog().notification(
-            ADDON_NAME,
-            'ffplay not found. Please install FFmpeg.',
-            xbmcgui.NOTIFICATION_ERROR,
-            5000
-        )
-    except Exception as e:
-        log(f'Error launching ffplay: {e}', xbmc.LOGERROR)
-        xbmcgui.Dialog().notification(
-            ADDON_NAME,
-            f'Error: {str(e)}',
-            xbmcgui.NOTIFICATION_ERROR,
-            5000
-        )
+    play_device(device_path, input_num)
 
 
 def show_device_menu(device_info):
