@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings version="2">
+    <section id="video">
+        <category id="video_settings" label="Video Settings">
+            <group id="resolution_group" label="Resolution &amp; Framerate">
+                <setting id="resolution" type="string" label="Resolution" default="1280x720">
+                    <level>0</level>
+                    <constraints>
+                        <options>
+                            <option label="1920x1080 (Full HD)">1920x1080</option>
+                            <option label="1280x720 (HD)">1280x720</option>
+                            <option label="1024x768 (XGA)">1024x768</option>
+                            <option label="800x600 (SVGA)">800x600</option>
+                            <option label="640x480 (VGA)">640x480</option>
+                            <option label="320x240 (QVGA)">320x240</option>
+                        </options>
+                    </constraints>
+                    <control type="list" format="string"/>
+                </setting>
+                <setting id="framerate" type="string" label="Framerate" default="30">
+                    <level>0</level>
+                    <constraints>
+                        <options>
+                            <option label="60 fps">60</option>
+                            <option label="30 fps">30</option>
+                            <option label="25 fps">25</option>
+                            <option label="24 fps">24</option>
+                            <option label="15 fps">15</option>
+                        </options>
+                    </constraints>
+                    <control type="list" format="string"/>
+                </setting>
+                <setting id="pixel_format" type="string" label="Pixel Format" default="auto">
+                    <level>1</level>
+                    <constraints>
+                        <options>
+                            <option label="Auto">auto</option>
+                            <option label="MJPEG (most compatible)">mjpeg</option>
+                            <option label="YUYV (raw)">yuyv422</option>
+                            <option label="NV12">nv12</option>
+                            <option label="H.264 (if supported)">h264</option>
+                        </options>
+                    </constraints>
+                    <control type="list" format="string"/>
+                    <help>Pixel format to request from the camera. Use Auto for best compatibility.</help>
+                </setting>
+            </group>
+        </category>
+        <category id="playback_settings" label="Playback">
+            <group id="performance_group" label="Performance">
+                <setting id="low_latency" type="boolean" label="Low Latency Mode" default="true">
+                    <level>0</level>
+                    <help>Minimize delay for real-time viewing. Recommended for game capture and live monitoring.</help>
+                    <control type="toggle"/>
+                </setting>
+                <setting id="use_external_player" type="boolean" label="Always Use External Player" default="false">
+                    <level>1</level>
+                    <help>Use ffplay instead of Kodi's built-in player. May provide better compatibility on some systems.</help>
+                    <control type="toggle"/>
+                </setting>
+            </group>
+        </category>
+        <category id="capture_card" label="Capture Card">
+            <group id="input_group" label="Input Selection">
+                <setting id="default_input" type="integer" label="Default Input" default="0">
+                    <level>1</level>
+                    <constraints>
+                        <minimum>0</minimum>
+                        <maximum>9</maximum>
+                    </constraints>
+                    <help>Default video input for capture cards with multiple inputs (0 = first input)</help>
+                    <control type="spinner" format="integer"/>
+                </setting>
+            </group>
+            <group id="signal_group" label="Signal Settings">
+                <setting id="video_standard" type="string" label="Video Standard" default="auto">
+                    <level>2</level>
+                    <constraints>
+                        <options>
+                            <option label="Auto Detect">auto</option>
+                            <option label="NTSC">ntsc</option>
+                            <option label="PAL">pal</option>
+                            <option label="SECAM">secam</option>
+                        </options>
+                    </constraints>
+                    <control type="list" format="string"/>
+                    <help>Video standard for composite/S-Video capture. Usually auto-detected.</help>
+                </setting>
+            </group>
+        </category>
+    </section>
+    <section id="advanced">
+        <category id="advanced_settings" label="Advanced">
+            <group id="debug_group" label="Debugging">
+                <setting id="debug_logging" type="boolean" label="Enable Debug Logging" default="false">
+                    <level>2</level>
+                    <help>Log detailed information for troubleshooting. Check Kodi log for output.</help>
+                    <control type="toggle"/>
+                </setting>
+            </group>
+        </category>
+    </section>
+</settings>
