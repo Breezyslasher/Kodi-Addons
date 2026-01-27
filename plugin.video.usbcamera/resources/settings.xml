@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <settings>
     <category label="Video Settings">
-        <setting id="resolution" type="select" label="Resolution" default="1" values="1920x1080|1280x720|1024x768|800x600|640x480|320x240"/>
-        <setting id="framerate" type="select" label="Framerate" default="1" values="60|30|25|24|15"/>
+        <setting id="resolution" type="select" label="Resolution" default="0" values="Auto (detect)|1920x1080|1280x720|960x544 (PS Vita)|864x488 (PS Vita alt)|800x600|640x480|480x272|320x240"/>
+        <setting id="framerate" type="select" label="Framerate" default="0" values="Auto|60|30|25|24|20|15"/>
         <setting id="pixel_format" type="select" label="Pixel Format" default="0" values="auto|mjpeg|yuyv422|nv12|h264"/>
     </category>
     <category label="Playback">

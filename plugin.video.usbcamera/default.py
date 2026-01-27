@@ -28,8 +28,9 @@ def log(msg, level=xbmc.LOGINFO):
 
 
 # Settings lookup tables for select-type settings
-RESOLUTION_OPTIONS = ['1920x1080', '1280x720', '1024x768', '800x600', '640x480', '320x240']
-FRAMERATE_OPTIONS = ['60', '30', '25', '24', '15']
+# 'auto' means let ffplay detect the best settings
+RESOLUTION_OPTIONS = ['auto', '1920x1080', '1280x720', '960x544', '864x488', '800x600', '640x480', '480x272', '320x240']
+FRAMERATE_OPTIONS = ['auto', '60', '30', '25', '24', '20', '15']
 PIXEL_FORMAT_OPTIONS = ['auto', 'mjpeg', 'yuyv422', 'nv12', 'h264']
 VIDEO_STANDARD_OPTIONS = ['auto', 'ntsc', 'pal', 'secam']
 
@@ -55,25 +56,25 @@ def get_setting_int(key):
 
 
 def get_resolution():
-    """Get resolution setting value"""
+    """Get resolution setting value. Returns 'auto' or a resolution string like '1280x720'"""
     try:
         index = int(ADDON.getSetting('resolution'))
         if 0 <= index < len(RESOLUTION_OPTIONS):
             return RESOLUTION_OPTIONS[index]
     except (ValueError, TypeError):
         pass
-    return '1280x720'
+    return 'auto'  # Default to auto for best compatibility
 
 
 def get_framerate():
-    """Get framerate setting value"""
+    """Get framerate setting value. Returns 'auto' or a framerate string like '30'"""
     try:
         index = int(ADDON.getSetting('framerate'))
         if 0 <= index < len(FRAMERATE_OPTIONS):
             return FRAMERATE_OPTIONS[index]
     except (ValueError, TypeError):
         pass
-    return '30'
+    return 'auto'  # Default to auto for best compatibility
 
 
 def get_pixel_format():
@@ -298,11 +299,13 @@ def play_device(device_path, input_num=None):
 
     log(f'Settings - Resolution: {resolution}, Framerate: {framerate}, Low Latency: {low_latency}, Pixel Format: {pixel_format}')
 
-    # Parse resolution
-    try:
-        width, height = resolution.split('x')
-    except:
-        width, height = '1280', '720'
+    # Parse resolution (only needed if not auto)
+    width, height = None, None
+    if resolution != 'auto':
+        try:
+            width, height = resolution.split('x')
+        except:
+            width, height = '1280', '720'
 
     # Set input if specified (for capture cards)
     if input_num is not None:
@@ -325,10 +328,16 @@ def play_device(device_path, input_num=None):
     if pixel_format != 'auto':
         cmd.extend(['-input_format', pixel_format])
 
-    # Add resolution and framerate
+    # Add resolution only if not auto (let device decide)
+    if resolution != 'auto':
+        cmd.extend(['-video_size', f'{width}x{height}'])
+
+    # Add framerate only if not auto (let device decide)
+    if framerate != 'auto':
+        cmd.extend(['-framerate', framerate])
+
+    # Add input device and display options
     cmd.extend([
-        '-video_size', f'{width}x{height}',
-        '-framerate', framerate,
         '-i', device_path,
         '-fs',  # Fullscreen
         '-noborder',
@@ -433,11 +442,6 @@ def play_device_external(device_path, input_num=None):
     resolution = get_resolution()
     framerate = get_framerate()
 
-    try:
-        width, height = resolution.split('x')
-    except:
-        width, height = '1280', '720'
-
     # Set input if specified
     if input_num is not None:
         try:
@@ -452,13 +456,26 @@ def play_device_external(device_path, input_num=None):
     cmd = [
         'ffplay',
         '-f', 'v4l2',
-        '-video_size', f'{width}x{height}',
-        '-framerate', framerate,
+    ]
+
+    # Add resolution only if not auto
+    if resolution != 'auto':
+        try:
+            width, height = resolution.split('x')
+            cmd.extend(['-video_size', f'{width}x{height}'])
+        except:
+            pass
+
+    # Add framerate only if not auto
+    if framerate != 'auto':
+        cmd.extend(['-framerate', framerate])
+
+    cmd.extend([
         '-i', device_path,
         '-fs',  # Fullscreen
         '-noborder',
         '-loglevel', 'error'
-    ]
+    ])
 
     low_latency = get_setting_bool('low_latency')
     if low_latency:
@@ -549,14 +566,19 @@ def configure_resolution(device_path):
     """Allow user to select resolution for a device"""
     resolutions = get_device_resolutions(device_path)
 
-    # Add common resolutions if not already present
-    common = ['1920x1080', '1280x720', '640x480']
+    # Add common resolutions if not already present (including PS Vita)
+    common = ['auto', '1920x1080', '1280x720', '960x544', '864x488', '640x480']
     for res in common:
         if res not in resolutions:
             resolutions.append(res)
 
-    # Sort by resolution (width)
-    resolutions.sort(key=lambda x: int(x.split('x')[0]), reverse=True)
+    # Sort by resolution (width), but keep 'auto' at the top
+    auto_present = 'auto' in resolutions
+    if auto_present:
+        resolutions.remove('auto')
+    resolutions.sort(key=lambda x: int(x.split('x')[0]) if 'x' in x else 0, reverse=True)
+    if auto_present:
+        resolutions.insert(0, 'auto')
 
     current = get_resolution()
 
@@ -573,8 +595,8 @@ def configure_resolution(device_path):
         if selected_res in RESOLUTION_OPTIONS:
             ADDON.setSetting('resolution', str(RESOLUTION_OPTIONS.index(selected_res)))
         else:
-            # If it's a custom resolution not in options, set to 720p as fallback
-            ADDON.setSetting('resolution', '1')
+            # If it's a custom resolution not in options, set to auto as fallback
+            ADDON.setSetting('resolution', '0')
         xbmcgui.Dialog().notification(
             ADDON_NAME,
             f'Resolution set to {selected_res}',
