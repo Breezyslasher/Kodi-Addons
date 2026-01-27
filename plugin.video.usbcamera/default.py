@@ -27,19 +27,64 @@ def log(msg, level=xbmc.LOGINFO):
     xbmc.log(f'{ADDON_ID}: {msg}', level)
 
 
+# Settings lookup tables for select-type settings
+RESOLUTION_OPTIONS = ['1920x1080', '1280x720', '1024x768', '800x600', '640x480', '320x240']
+FRAMERATE_OPTIONS = ['60', '30', '25', '24', '15']
+PIXEL_FORMAT_OPTIONS = ['auto', 'mjpeg', 'yuyv422', 'nv12', 'h264']
+VIDEO_STANDARD_OPTIONS = ['auto', 'ntsc', 'pal', 'secam']
+
+
 def get_setting(key):
-    """Get addon setting"""
+    """Get addon setting as string"""
     return ADDON.getSetting(key)
 
 
 def get_setting_bool(key):
     """Get boolean addon setting"""
-    return ADDON.getSettingBool(key)
+    value = ADDON.getSetting(key)
+    return value.lower() == 'true'
 
 
 def get_setting_int(key):
     """Get integer addon setting"""
-    return ADDON.getSettingInt(key)
+    value = ADDON.getSetting(key)
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return 0
+
+
+def get_resolution():
+    """Get resolution setting value"""
+    try:
+        index = int(ADDON.getSetting('resolution'))
+        if 0 <= index < len(RESOLUTION_OPTIONS):
+            return RESOLUTION_OPTIONS[index]
+    except (ValueError, TypeError):
+        pass
+    return '1280x720'
+
+
+def get_framerate():
+    """Get framerate setting value"""
+    try:
+        index = int(ADDON.getSetting('framerate'))
+        if 0 <= index < len(FRAMERATE_OPTIONS):
+            return FRAMERATE_OPTIONS[index]
+    except (ValueError, TypeError):
+        pass
+    return '30'
+
+
+def get_pixel_format():
+    """Get pixel format setting value"""
+    try:
+        index = int(ADDON.getSetting('pixel_format'))
+        if 0 <= index < len(PIXEL_FORMAT_OPTIONS):
+            return PIXEL_FORMAT_OPTIONS[index]
+    except (ValueError, TypeError):
+        pass
+    return 'auto'
 
 
 def build_url(query):
@@ -245,10 +290,12 @@ def play_device(device_path, input_num=None):
     log(f'Playing device: {device_path}, input: {input_num}')
 
     # Get settings
-    resolution = get_setting('resolution') or '1280x720'
-    framerate = get_setting('framerate') or '30'
+    resolution = get_resolution()
+    framerate = get_framerate()
     low_latency = get_setting_bool('low_latency')
-    pixel_format = get_setting('pixel_format') or 'auto'
+    pixel_format = get_pixel_format()
+
+    log(f'Settings - Resolution: {resolution}, Framerate: {framerate}, Low Latency: {low_latency}, Pixel Format: {pixel_format}')
 
     # Parse resolution
     try:
@@ -422,8 +469,8 @@ def play_device_external(device_path, input_num=None):
     """
     log(f'Playing device externally: {device_path}')
 
-    resolution = get_setting('resolution') or '1280x720'
-    framerate = get_setting('framerate') or '30'
+    resolution = get_resolution()
+    framerate = get_framerate()
 
     try:
         width, height = resolution.split('x')
@@ -550,7 +597,7 @@ def configure_resolution(device_path):
     # Sort by resolution (width)
     resolutions.sort(key=lambda x: int(x.split('x')[0]), reverse=True)
 
-    current = get_setting('resolution') or '1280x720'
+    current = get_resolution()
 
     dialog = xbmcgui.Dialog()
     selection = dialog.select(
@@ -560,10 +607,16 @@ def configure_resolution(device_path):
     )
 
     if selection >= 0:
-        ADDON.setSetting('resolution', resolutions[selection])
+        # Find the index in our RESOLUTION_OPTIONS to store
+        selected_res = resolutions[selection]
+        if selected_res in RESOLUTION_OPTIONS:
+            ADDON.setSetting('resolution', str(RESOLUTION_OPTIONS.index(selected_res)))
+        else:
+            # If it's a custom resolution not in options, set to 720p as fallback
+            ADDON.setSetting('resolution', '1')
         xbmcgui.Dialog().notification(
             ADDON_NAME,
-            f'Resolution set to {resolutions[selection]}',
+            f'Resolution set to {selected_res}',
             xbmcgui.NOTIFICATION_INFO,
             2000
         )
