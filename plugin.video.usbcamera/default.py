@@ -6,6 +6,7 @@ import sys
 import os
 import subprocess
 import re
+import time
 import urllib.parse
 import xbmc
 import xbmcgui
@@ -91,6 +92,65 @@ def get_pixel_format():
 def build_url(query):
     """Build plugin URL with query parameters"""
     return f'{BASE_URL}?{urllib.parse.urlencode(query)}'
+
+
+def get_thumbnail_path(device_path):
+    """Get the path where a device thumbnail should be stored"""
+    device_name = os.path.basename(device_path)
+    return os.path.join(ADDON_PROFILE, f'thumb_{device_name}.jpg')
+
+
+def capture_thumbnail(device_path, force=False):
+    """
+    Capture a single frame from a device to use as a thumbnail.
+    Returns the path to the thumbnail image, or None if capture failed.
+    """
+    thumb_path = get_thumbnail_path(device_path)
+
+    # Check if thumbnail already exists and is recent (less than 60 seconds old)
+    if not force and os.path.exists(thumb_path):
+        try:
+            age = time.time() - os.path.getmtime(thumb_path)
+            if age < 60:  # Use cached thumbnail if less than 60 seconds old
+                return thumb_path
+        except:
+            pass
+
+    # Ensure profile directory exists
+    if not os.path.exists(ADDON_PROFILE):
+        os.makedirs(ADDON_PROFILE)
+
+    # Capture a single frame using ffmpeg
+    ffmpeg_cmd = [
+        'ffmpeg',
+        '-y',  # Overwrite
+        '-hide_banner',
+        '-loglevel', 'error',
+        '-f', 'v4l2',
+        '-i', device_path,
+        '-vframes', '1',  # Capture only 1 frame
+        '-s', '320x240',  # Thumbnail size
+        '-q:v', '5',  # JPEG quality
+        thumb_path
+    ]
+
+    try:
+        result = subprocess.run(
+            ffmpeg_cmd,
+            capture_output=True,
+            timeout=5  # 5 second timeout
+        )
+        if result.returncode == 0 and os.path.exists(thumb_path):
+            log(f'Captured thumbnail for {device_path}')
+            return thumb_path
+        else:
+            log(f'Failed to capture thumbnail for {device_path}', xbmc.LOGWARNING)
+    except subprocess.TimeoutExpired:
+        log(f'Thumbnail capture timeout for {device_path}', xbmc.LOGWARNING)
+    except Exception as e:
+        log(f'Thumbnail capture error for {device_path}: {e}', xbmc.LOGWARNING)
+
+    return None
 
 
 def get_video_devices():
@@ -309,15 +369,26 @@ def play_device(device_path, input_num=None):
             pass
 
     # Set input if specified (for capture cards)
+    # Skip for UVC devices like PS Vita which don't support input selection
     if input_num is not None:
         try:
-            subprocess.run(
-                ['v4l2-ctl', '--device', device_path, '--set-input', str(input_num)],
+            # Check if device supports input selection
+            result = subprocess.run(
+                ['v4l2-ctl', '--device', device_path, '--get-input'],
+                capture_output=True,
+                text=True,
                 timeout=5
             )
-            log(f'Set input to {input_num}')
+            if result.returncode == 0:
+                subprocess.run(
+                    ['v4l2-ctl', '--device', device_path, '--set-input', str(input_num)],
+                    timeout=5
+                )
+                log(f'Set input to {input_num}')
+            else:
+                log(f'Device does not support input selection, skipping')
         except Exception as e:
-            log(f'Error setting input: {e}', xbmc.LOGWARNING)
+            log(f'Error setting input (device may not support it): {e}', xbmc.LOGWARNING)
 
     # Use a random port for UDP streaming
     import random
@@ -327,6 +398,7 @@ def play_device(device_path, input_num=None):
     # Build ffmpeg command to capture from V4L2 and stream via UDP
     ffmpeg_cmd = [
         'ffmpeg',
+        '-y',  # Auto-overwrite output files
         '-hide_banner',
         '-loglevel', 'error',
     ]
@@ -379,6 +451,8 @@ def play_device(device_path, input_num=None):
 
 def _play_with_pipe(ffmpeg_cmd, device_path):
     """Play using named pipe - lower latency but may be less stable"""
+    import stat
+
     # Create a named pipe for streaming
     pipe_path = os.path.join(ADDON_PROFILE, 'camera_pipe.avi')
 
@@ -386,12 +460,15 @@ def _play_with_pipe(ffmpeg_cmd, device_path):
     if not os.path.exists(ADDON_PROFILE):
         os.makedirs(ADDON_PROFILE)
 
-    # Remove old pipe if exists
+    # Force remove old pipe if exists (handle both regular files and FIFOs)
     if os.path.exists(pipe_path):
         try:
-            os.remove(pipe_path)
-        except:
-            pass
+            os.unlink(pipe_path)
+            log(f'Removed old pipe: {pipe_path}')
+        except Exception as e:
+            log(f'Failed to remove old pipe: {e}', xbmc.LOGWARNING)
+            # Try alternate path
+            pipe_path = os.path.join(ADDON_PROFILE, f'camera_pipe_{os.getpid()}.avi')
 
     try:
         # Create FIFO pipe
@@ -720,9 +797,14 @@ def list_devices():
             })
             li.setProperty('IsPlayable', 'true')
 
-            # Set icon based on device type
-            icon_path = os.path.join(ADDON_PATH, 'resources', 'icon.png')
-            li.setArt({'icon': icon_path, 'thumb': icon_path})
+            # Try to get a live thumbnail from the camera
+            thumb_path = capture_thumbnail(device['path'])
+            if thumb_path and os.path.exists(thumb_path):
+                li.setArt({'icon': thumb_path, 'thumb': thumb_path, 'poster': thumb_path})
+            else:
+                # Fallback to default icon
+                icon_path = os.path.join(ADDON_PATH, 'resources', 'icon.png')
+                li.setArt({'icon': icon_path, 'thumb': icon_path})
 
             # Build URL for this device
             url = build_url({
@@ -734,6 +816,7 @@ def list_devices():
             # Add context menu
             context_menu = [
                 ('Play with External Player', f'RunPlugin({build_url({"action": "play_external", "device": device["path"]})})'),
+                ('Refresh Preview', f'RunPlugin({build_url({"action": "refresh_thumb", "device": device["path"]})})'),
                 ('Device Information', f'RunPlugin({build_url({"action": "info", "device": device["path"]})})'),
                 ('Configure Resolution', f'RunPlugin({build_url({"action": "configure", "device": device["path"]})})')
             ]
@@ -846,6 +929,17 @@ def router(paramstring):
             configure_resolution(device)
     elif action == 'refresh':
         xbmc.executebuiltin('Container.Refresh')
+    elif action == 'refresh_thumb':
+        device = params.get('device')
+        if device:
+            capture_thumbnail(device, force=True)
+            xbmcgui.Dialog().notification(
+                ADDON_NAME,
+                'Preview refreshed',
+                xbmcgui.NOTIFICATION_INFO,
+                2000
+            )
+            xbmc.executebuiltin('Container.Refresh')
     elif action == 'settings':
         ADDON.openSettings()
     elif action == 'help':
