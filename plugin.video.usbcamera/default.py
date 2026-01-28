@@ -100,10 +100,50 @@ def get_thumbnail_path(device_path):
     return os.path.join(ADDON_PROFILE, f'thumb_{device_name}.jpg')
 
 
+def check_device_available(device_path, timeout=3):
+    """
+    Check if a device is available and can be opened.
+    Returns True if available, False otherwise.
+    """
+    if not os.path.exists(device_path):
+        log(f'Device {device_path} does not exist', xbmc.LOGWARNING)
+        return False
+
+    # Try to open the device briefly to check availability
+    try:
+        result = subprocess.run(
+            ['v4l2-ctl', '--device', device_path, '--get-fmt-video'],
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        return result.returncode == 0
+    except subprocess.TimeoutExpired:
+        log(f'Timeout checking device {device_path}', xbmc.LOGWARNING)
+        return False
+    except Exception as e:
+        log(f'Error checking device {device_path}: {e}', xbmc.LOGWARNING)
+        return False
+
+
+def wait_for_device(device_path, max_retries=5, delay=0.5):
+    """
+    Wait for a device to become available with retries.
+    Returns True if device becomes available, False if timeout.
+    """
+    for attempt in range(max_retries):
+        if check_device_available(device_path):
+            return True
+        log(f'Device {device_path} not ready, attempt {attempt + 1}/{max_retries}')
+        time.sleep(delay)
+    return False
+
+
 def capture_thumbnail(device_path, force=False):
     """
     Capture a single frame from a device to use as a thumbnail.
     Returns the path to the thumbnail image, or None if capture failed.
+    Ensures the device is properly released after capture.
     """
     thumb_path = get_thumbnail_path(device_path)
 
@@ -116,16 +156,22 @@ def capture_thumbnail(device_path, force=False):
         except:
             pass
 
+    # Check if device is available before attempting capture
+    if not os.path.exists(device_path):
+        log(f'Device {device_path} not found for thumbnail', xbmc.LOGWARNING)
+        return None
+
     # Ensure profile directory exists
     if not os.path.exists(ADDON_PROFILE):
         os.makedirs(ADDON_PROFILE)
 
-    # Capture a single frame using ffmpeg
+    # Capture a single frame using ffmpeg with timeout and proper cleanup
     ffmpeg_cmd = [
         'ffmpeg',
         '-y',  # Overwrite
         '-hide_banner',
         '-loglevel', 'error',
+        '-t', '1',  # Max 1 second capture time
         '-f', 'v4l2',
         '-i', device_path,
         '-vframes', '1',  # Capture only 1 frame
@@ -134,21 +180,42 @@ def capture_thumbnail(device_path, force=False):
         thumb_path
     ]
 
+    process = None
     try:
-        result = subprocess.run(
+        process = subprocess.Popen(
             ffmpeg_cmd,
-            capture_output=True,
-            timeout=5  # 5 second timeout
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE
         )
-        if result.returncode == 0 and os.path.exists(thumb_path):
+        # Wait for completion with timeout
+        try:
+            _, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            log(f'Thumbnail capture timeout for {device_path}', xbmc.LOGWARNING)
+            return None
+
+        if process.returncode == 0 and os.path.exists(thumb_path):
             log(f'Captured thumbnail for {device_path}')
+            # Small delay to ensure device is fully released
+            time.sleep(0.2)
             return thumb_path
         else:
-            log(f'Failed to capture thumbnail for {device_path}', xbmc.LOGWARNING)
-    except subprocess.TimeoutExpired:
-        log(f'Thumbnail capture timeout for {device_path}', xbmc.LOGWARNING)
+            stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+            log(f'Failed to capture thumbnail for {device_path}: {stderr_text}', xbmc.LOGWARNING)
     except Exception as e:
         log(f'Thumbnail capture error for {device_path}: {e}', xbmc.LOGWARNING)
+    finally:
+        # Ensure process is terminated and device released
+        if process and process.poll() is None:
+            try:
+                process.terminate()
+                process.wait(timeout=2)
+            except:
+                process.kill()
+        # Give the device time to be released
+        time.sleep(0.3)
 
     return None
 
@@ -352,6 +419,27 @@ def play_device(device_path, input_num=None):
     """
     log(f'Playing device: {device_path}, input: {input_num}')
 
+    # First check if device exists and is accessible
+    if not os.path.exists(device_path):
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Device not found. Is it connected?',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+        return
+
+    # Wait for device to be available (may be busy from thumbnail capture)
+    log(f'Waiting for device {device_path} to be available...')
+    if not wait_for_device(device_path, max_retries=6, delay=0.5):
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Device busy. Please try again.',
+            xbmcgui.NOTIFICATION_WARNING,
+            5000
+        )
+        return
+
     # Get settings
     resolution = get_resolution()
     framerate = get_framerate()
@@ -467,8 +555,9 @@ def play_device(device_path, input_num=None):
 
 
 def _play_with_pipe(ffmpeg_cmd, device_path):
-    """Play using named pipe - optimized for smooth gaming"""
+    """Play using named pipe - optimized for smooth gaming on LibreELEC"""
     import stat
+    process = None
 
     # Create a named pipe for streaming (use .ts extension for mpegts)
     pipe_path = os.path.join(ADDON_PROFILE, 'camera_pipe.ts')
@@ -482,10 +571,11 @@ def _play_with_pipe(ffmpeg_cmd, device_path):
         try:
             os.unlink(pipe_path)
             log(f'Removed old pipe: {pipe_path}')
+            time.sleep(0.2)  # Brief delay after removal
         except Exception as e:
             log(f'Failed to remove old pipe: {e}', xbmc.LOGWARNING)
-            # Try alternate path
-            pipe_path = os.path.join(ADDON_PROFILE, f'camera_pipe_{os.getpid()}.avi')
+            # Try alternate path with unique name
+            pipe_path = os.path.join(ADDON_PROFILE, f'camera_pipe_{os.getpid()}_{int(time.time())}.ts')
 
     try:
         # Create FIFO pipe
@@ -495,25 +585,38 @@ def _play_with_pipe(ffmpeg_cmd, device_path):
         # Modify ffmpeg command to output to pipe
         ffmpeg_cmd[-1] = pipe_path
 
-        # Start FFmpeg process in background
+        # Start FFmpeg process in background with retry
         log(f'Starting FFmpeg: {" ".join(ffmpeg_cmd)}')
-        process = subprocess.Popen(
-            ffmpeg_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE
-        )
 
-        # Give ffmpeg a moment to start
-        xbmc.sleep(500)
+        max_retries = 3
+        for attempt in range(max_retries):
+            process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE
+            )
 
-        # Check if ffmpeg started OK
-        if process.poll() is not None:
-            stderr = process.stderr.read().decode('utf-8', errors='ignore')
-            log(f'FFmpeg failed to start: {stderr}', xbmc.LOGERROR)
-            _show_ffmpeg_error(stderr, device_path)
-            if os.path.exists(pipe_path):
-                os.remove(pipe_path)
-            return
+            # Give ffmpeg time to start and open the device
+            xbmc.sleep(800)
+
+            # Check if ffmpeg started OK
+            if process.poll() is None:
+                log(f'FFmpeg started successfully on attempt {attempt + 1}')
+                break
+            else:
+                stderr = process.stderr.read().decode('utf-8', errors='ignore')
+                log(f'FFmpeg attempt {attempt + 1} failed: {stderr}', xbmc.LOGWARNING)
+
+                if attempt < max_retries - 1:
+                    # Wait before retry, device might be busy
+                    xbmc.sleep(1000)
+                else:
+                    # Final attempt failed
+                    log(f'FFmpeg failed after {max_retries} attempts', xbmc.LOGERROR)
+                    _show_ffmpeg_error(stderr, device_path)
+                    if os.path.exists(pipe_path):
+                        os.remove(pipe_path)
+                    return
 
         # Play from the pipe using Kodi's player with optimized settings
         li = xbmcgui.ListItem(path=pipe_path)
@@ -534,7 +637,8 @@ def _play_with_pipe(ffmpeg_cmd, device_path):
             xbmcaddon.Addon('inputstream.ffmpegdirect')
             xbmc.Player().play(pipe_path, li)
         except:
-            # Fallback without inputstream
+            # Fallback without inputstream - works on LibreELEC
+            log('inputstream.ffmpegdirect not available, using direct playback')
             li2 = xbmcgui.ListItem(path=pipe_path)
             li2.setInfo('video', {'title': 'USB Camera'})
             li2.setMimeType('video/mp2t')
@@ -547,6 +651,7 @@ def _play_with_pipe(ffmpeg_cmd, device_path):
         # Wait for playback to start
         for _ in range(20):  # Wait up to 10 seconds
             if player.isPlaying():
+                log('Playback started')
                 break
             if process.poll() is not None:
                 break
@@ -572,16 +677,18 @@ def _play_with_pipe(ffmpeg_cmd, device_path):
             5000
         )
     finally:
-        # Cleanup
-        try:
-            if 'process' in dir() and process.poll() is None:
+        # Cleanup - ensure proper process termination
+        if process is not None and process.poll() is None:
+            try:
                 process.terminate()
                 try:
                     process.wait(timeout=3)
-                except:
+                except subprocess.TimeoutExpired:
                     process.kill()
-        except:
-            pass
+                    process.wait(timeout=2)
+            except:
+                pass
+
         if os.path.exists(pipe_path):
             try:
                 os.remove(pipe_path)
@@ -590,26 +697,37 @@ def _play_with_pipe(ffmpeg_cmd, device_path):
 
 
 def _play_with_udp(ffmpeg_cmd, udp_url, device_path):
-    """Play using UDP streaming - more stable but slightly higher latency"""
+    """Play using UDP streaming - more stable but slightly higher latency, good for LibreELEC"""
     process = None
     try:
-        # Start FFmpeg streaming to UDP
+        # Start FFmpeg streaming to UDP with retry
         log(f'Starting FFmpeg UDP stream: {" ".join(ffmpeg_cmd)}')
-        process = subprocess.Popen(
-            ffmpeg_cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE
-        )
 
-        # Wait for stream to initialize
-        xbmc.sleep(1000)
+        max_retries = 3
+        for attempt in range(max_retries):
+            process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE
+            )
 
-        # Check if ffmpeg started OK
-        if process.poll() is not None:
-            stderr = process.stderr.read().decode('utf-8', errors='ignore')
-            log(f'FFmpeg failed: {stderr}', xbmc.LOGERROR)
-            _show_ffmpeg_error(stderr, device_path)
-            return
+            # Wait for stream to initialize
+            xbmc.sleep(1000)
+
+            # Check if ffmpeg started OK
+            if process.poll() is None:
+                log(f'FFmpeg UDP stream started successfully on attempt {attempt + 1}')
+                break
+            else:
+                stderr = process.stderr.read().decode('utf-8', errors='ignore')
+                log(f'FFmpeg UDP attempt {attempt + 1} failed: {stderr}', xbmc.LOGWARNING)
+
+                if attempt < max_retries - 1:
+                    xbmc.sleep(1000)
+                else:
+                    log(f'FFmpeg UDP failed after {max_retries} attempts', xbmc.LOGERROR)
+                    _show_ffmpeg_error(stderr, device_path)
+                    return
 
         # Play UDP stream in Kodi with optimized settings
         li = xbmcgui.ListItem(path=udp_url)
@@ -624,7 +742,7 @@ def _play_with_udp(ffmpeg_cmd, udp_url, device_path):
             li.setProperty('inputstream.ffmpegdirect.is_realtime_stream', 'true')
             li.setProperty('inputstream.ffmpegdirect.stream_mode', 'catchup')
         except:
-            pass
+            log('inputstream.ffmpegdirect not available, using direct UDP playback')
 
         log(f'Starting Kodi playback from {udp_url}')
         xbmc.Player().play(udp_url, li)
@@ -636,6 +754,7 @@ def _play_with_udp(ffmpeg_cmd, udp_url, device_path):
         # Wait for playback to start
         for _ in range(20):
             if player.isPlaying():
+                log('Playback started')
                 break
             if process.poll() is not None:
                 break
@@ -661,13 +780,17 @@ def _play_with_udp(ffmpeg_cmd, udp_url, device_path):
             5000
         )
     finally:
-        # Cleanup
-        if process and process.poll() is None:
-            process.terminate()
+        # Cleanup - ensure proper process termination
+        if process is not None and process.poll() is None:
             try:
-                process.wait(timeout=3)
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=2)
             except:
-                process.kill()
+                pass
 
 
 def _show_ffmpeg_error(stderr, device_path):
@@ -697,6 +820,20 @@ def _show_ffmpeg_error(stderr, device_path):
         xbmcgui.Dialog().notification(
             ADDON_NAME,
             'Device busy. Close other apps using it.',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    elif 'Input/output error' in stderr:
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Device I/O error. Try reconnecting.',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    elif 'cannot open' in stderr.lower() or 'failed to open' in stderr.lower():
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Cannot open device. Try again.',
             xbmcgui.NOTIFICATION_ERROR,
             5000
         )

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="plugin.video.usbcamera"
        name="USB Camera Viewer"
-       version="2026.01.27"
+       version="2026.01.28"
        provider-name="Breezyslasher">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
@@ -54,6 +54,12 @@ Features:
             <fanart>resources/fanart.jpg</fanart>
         </assets>
         <news>
+v2026.01.28
+- Improved device access reliability with retry logic
+- Better error handling for device busy/unavailable states
+- Fixed thumbnail capture releasing device properly
+- Improved LibreELEC compatibility
+
 v2026.01.27
 - Initial release
 - Support for USB cameras and webcams
