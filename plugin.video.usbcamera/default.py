@@ -476,42 +476,42 @@ def play_device(device_path, input_num=None):
             return
 
         # Get settings
-    resolution = get_resolution()
-    framerate = get_framerate()
-    low_latency = get_setting_bool('low_latency')
-    pixel_format = get_pixel_format()
+        resolution = get_resolution()
+        framerate = get_framerate()
+        low_latency = get_setting_bool('low_latency')
+        pixel_format = get_pixel_format()
 
-    log(f'Settings - Resolution: {resolution}, Framerate: {framerate}, Low Latency: {low_latency}, Pixel Format: {pixel_format}')
+        log(f'Settings - Resolution: {resolution}, Framerate: {framerate}, Low Latency: {low_latency}, Pixel Format: {pixel_format}')
 
-    # Parse resolution (only needed if not auto)
-    width, height = None, None
-    if resolution != 'auto':
-        try:
-            width, height = resolution.split('x')
-        except:
-            pass
+        # Parse resolution (only needed if not auto)
+        width, height = None, None
+        if resolution != 'auto':
+            try:
+                width, height = resolution.split('x')
+            except:
+                pass
 
-    # Set input if specified (for capture cards)
-    # Skip for UVC devices like PS Vita which don't support input selection
-    if input_num is not None:
-        try:
-            # Check if device supports input selection
-            result = subprocess.run(
-                ['v4l2-ctl', '--device', device_path, '--get-input'],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            if result.returncode == 0:
-                subprocess.run(
-                    ['v4l2-ctl', '--device', device_path, '--set-input', str(input_num)],
+        # Set input if specified (for capture cards)
+        # Skip for UVC devices like PS Vita which don't support input selection
+        if input_num is not None:
+            try:
+                # Check if device supports input selection
+                result = subprocess.run(
+                    ['v4l2-ctl', '--device', device_path, '--get-input'],
+                    capture_output=True,
+                    text=True,
                     timeout=5
                 )
-                log(f'Set input to {input_num}')
-            else:
-                log(f'Device does not support input selection, skipping')
-        except Exception as e:
-            log(f'Error setting input (device may not support it): {e}', xbmc.LOGWARNING)
+                if result.returncode == 0:
+                    subprocess.run(
+                        ['v4l2-ctl', '--device', device_path, '--set-input', str(input_num)],
+                        timeout=5
+                    )
+                    log(f'Set input to {input_num}')
+                else:
+                    log(f'Device does not support input selection, skipping')
+            except Exception as e:
+                log(f'Error setting input (device may not support it): {e}', xbmc.LOGWARNING)
 
         # Use a random port for UDP streaming
         import random
