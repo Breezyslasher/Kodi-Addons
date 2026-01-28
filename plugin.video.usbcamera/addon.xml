@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="plugin.video.usbcamera"
        name="USB Camera Viewer"
-       version="2026.01.28"
+       version="2026.01.28.1"
        provider-name="Breezyslasher">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
@@ -54,6 +54,12 @@ Features:
             <fanart>resources/fanart.jpg</fanart>
         </assets>
         <news>
+v2026.01.28.1
+- Fixed playback not starting (codec detection issue)
+- Switched to UDP streaming for reliable playback
+- Added playback lock to prevent duplicate attempts
+- Increased buffer time for stable stream initialization
+
 v2026.01.28
 - Improved device access reliability with retry logic
 - Better error handling for device busy/unavailable states

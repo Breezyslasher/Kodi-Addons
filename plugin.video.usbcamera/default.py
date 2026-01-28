@@ -8,6 +8,7 @@ import subprocess
 import re
 import time
 import urllib.parse
+import threading
 import xbmc
 import xbmcgui
 import xbmcplugin
@@ -21,6 +22,10 @@ ADDON_PATH = xbmcvfs.translatePath(ADDON.getAddonInfo('path'))
 ADDON_PROFILE = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
+
+# Global lock to prevent multiple simultaneous playback attempts
+_playback_lock = threading.Lock()
+_current_ffmpeg_process = None
 
 
 def log(msg, level=xbmc.LOGINFO):
@@ -411,36 +416,66 @@ def get_friendly_device_name(device_info):
     return f'{card} ({device_type})'
 
 
+def _kill_existing_ffmpeg():
+    """Kill any existing FFmpeg process from previous playback"""
+    global _current_ffmpeg_process
+    if _current_ffmpeg_process is not None:
+        try:
+            if _current_ffmpeg_process.poll() is None:
+                log('Killing existing FFmpeg process')
+                _current_ffmpeg_process.terminate()
+                try:
+                    _current_ffmpeg_process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    _current_ffmpeg_process.kill()
+                    _current_ffmpeg_process.wait(timeout=1)
+        except Exception as e:
+            log(f'Error killing FFmpeg: {e}', xbmc.LOGWARNING)
+        _current_ffmpeg_process = None
+        time.sleep(0.5)  # Give device time to be released
+
+
 def play_device(device_path, input_num=None):
     """
     Play video from a V4L2 device.
     Uses ffmpeg to capture and stream via UDP to Kodi's player.
     This works on LibreELEC which doesn't have ffplay.
     """
-    log(f'Playing device: {device_path}, input: {input_num}')
+    global _current_ffmpeg_process
 
-    # First check if device exists and is accessible
-    if not os.path.exists(device_path):
-        xbmcgui.Dialog().notification(
-            ADDON_NAME,
-            'Device not found. Is it connected?',
-            xbmcgui.NOTIFICATION_ERROR,
-            5000
-        )
+    # Use lock to prevent multiple simultaneous playback attempts
+    if not _playback_lock.acquire(blocking=False):
+        log('Playback already in progress, ignoring duplicate request')
         return
 
-    # Wait for device to be available (may be busy from thumbnail capture)
-    log(f'Waiting for device {device_path} to be available...')
-    if not wait_for_device(device_path, max_retries=6, delay=0.5):
-        xbmcgui.Dialog().notification(
-            ADDON_NAME,
-            'Device busy. Please try again.',
-            xbmcgui.NOTIFICATION_WARNING,
-            5000
-        )
-        return
+    try:
+        log(f'Playing device: {device_path}, input: {input_num}')
 
-    # Get settings
+        # Kill any existing FFmpeg process first
+        _kill_existing_ffmpeg()
+
+        # First check if device exists and is accessible
+        if not os.path.exists(device_path):
+            xbmcgui.Dialog().notification(
+                ADDON_NAME,
+                'Device not found. Is it connected?',
+                xbmcgui.NOTIFICATION_ERROR,
+                5000
+            )
+            return
+
+        # Wait for device to be available (may be busy from thumbnail capture)
+        log(f'Waiting for device {device_path} to be available...')
+        if not wait_for_device(device_path, max_retries=10, delay=0.5):
+            xbmcgui.Dialog().notification(
+                ADDON_NAME,
+                'Device busy. Please try again.',
+                xbmcgui.NOTIFICATION_WARNING,
+                5000
+            )
+            return
+
+        # Get settings
     resolution = get_resolution()
     framerate = get_framerate()
     low_latency = get_setting_bool('low_latency')
@@ -478,80 +513,80 @@ def play_device(device_path, input_num=None):
         except Exception as e:
             log(f'Error setting input (device may not support it): {e}', xbmc.LOGWARNING)
 
-    # Use a random port for UDP streaming
-    import random
-    udp_port = random.randint(12000, 13000)
-    udp_url = f'udp://127.0.0.1:{udp_port}'
+        # Use a random port for UDP streaming
+        import random
+        udp_port = random.randint(12000, 13000)
+        udp_url = f'udp://127.0.0.1:{udp_port}'
 
-    # Build ffmpeg command to capture from V4L2 and stream via UDP
-    ffmpeg_cmd = [
-        'ffmpeg',
-        '-y',  # Auto-overwrite output files
-        '-hide_banner',
-        '-loglevel', 'error',
-    ]
+        # Build ffmpeg command to capture from V4L2 and stream via UDP
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-y',  # Auto-overwrite output files
+            '-hide_banner',
+            '-loglevel', 'error',
+        ]
 
-    # Low latency input options - optimized for gaming
-    if low_latency:
-        ffmpeg_cmd.extend([
-            '-fflags', 'nobuffer+genpts',
-            '-flags', 'low_delay',
-            '-avioflags', 'direct',
-            '-probesize', '32',
-            '-analyzeduration', '0',
-        ])
+        # Low latency input options - optimized for gaming
+        # Note: probesize needs to be large enough for codec detection
+        if low_latency:
+            ffmpeg_cmd.extend([
+                '-fflags', 'nobuffer+genpts',
+                '-flags', 'low_delay',
+                '-probesize', '5000000',  # 5MB - enough for codec detection
+                '-analyzeduration', '1000000',  # 1 second
+            ])
 
-    # V4L2 input
-    ffmpeg_cmd.extend(['-f', 'v4l2'])
+        # V4L2 input
+        ffmpeg_cmd.extend(['-f', 'v4l2'])
 
-    # Add pixel format if not auto
-    if pixel_format != 'auto':
-        ffmpeg_cmd.extend(['-input_format', pixel_format])
+        # Add pixel format if not auto
+        if pixel_format != 'auto':
+            ffmpeg_cmd.extend(['-input_format', pixel_format])
 
-    # Add resolution only if not auto
-    if resolution != 'auto' and width and height:
-        ffmpeg_cmd.extend(['-video_size', f'{width}x{height}'])
+        # Add resolution only if not auto
+        if resolution != 'auto' and width and height:
+            ffmpeg_cmd.extend(['-video_size', f'{width}x{height}'])
 
-    # Add framerate only if not auto
-    if framerate != 'auto':
-        ffmpeg_cmd.extend(['-framerate', framerate])
+        # Add framerate only if not auto
+        if framerate != 'auto':
+            ffmpeg_cmd.extend(['-framerate', framerate])
 
-    # Thread queue size for smooth capture
-    ffmpeg_cmd.extend(['-thread_queue_size', '512'])
+        # Thread queue size for smooth capture
+        ffmpeg_cmd.extend(['-thread_queue_size', '512'])
 
-    # Input device
-    ffmpeg_cmd.extend(['-i', device_path])
+        # Input device
+        ffmpeg_cmd.extend(['-i', device_path])
 
-    # Output encoding - optimized for smooth gaming
-    if low_latency:
-        ffmpeg_cmd.extend([
-            '-c:v', 'mpeg2video',  # Use mpeg2 for better Kodi compatibility
-            '-q:v', '2',  # High quality
-            '-g', '1',  # Every frame is keyframe for instant seeking
-            '-bf', '0',  # No B-frames for lower latency
-            '-flags', '+cgop',
-            '-sc_threshold', '0',
-            '-f', 'mpegts',
-            '-flush_packets', '1',
-            '-'
-        ])
-    else:
-        ffmpeg_cmd.extend([
-            '-c:v', 'mpeg2video',  # Fast, widely compatible
-            '-q:v', '3',
-            '-g', '15',  # GOP size
-            '-bf', '0',
-            '-f', 'mpegts',
-            udp_url + '?pkt_size=1316'
-        ])
+        # Output encoding - use UDP for all modes (pipes don't work reliably with Kodi)
+        if low_latency:
+            ffmpeg_cmd.extend([
+                '-c:v', 'mpeg2video',  # Use mpeg2 for better Kodi compatibility
+                '-q:v', '2',  # High quality
+                '-g', '1',  # Every frame is keyframe for instant seeking
+                '-bf', '0',  # No B-frames for lower latency
+                '-flags', '+cgop',
+                '-sc_threshold', '0',
+                '-f', 'mpegts',
+                '-flush_packets', '1',
+                udp_url + '?pkt_size=1316'
+            ])
+        else:
+            ffmpeg_cmd.extend([
+                '-c:v', 'mpeg2video',  # Fast, widely compatible
+                '-q:v', '3',
+                '-g', '15',  # GOP size
+                '-bf', '0',
+                '-f', 'mpegts',
+                udp_url + '?pkt_size=1316'
+            ])
 
-    log(f'FFmpeg command: {" ".join(ffmpeg_cmd)}')
+        log(f'FFmpeg command: {" ".join(ffmpeg_cmd)}')
 
-    # For low latency, use pipe method; otherwise use UDP
-    if low_latency:
-        _play_with_pipe(ffmpeg_cmd, device_path)
-    else:
+        # Always use UDP streaming (more reliable than pipes with Kodi)
         _play_with_udp(ffmpeg_cmd, udp_url, device_path)
+
+    finally:
+        _playback_lock.release()
 
 
 def _play_with_pipe(ffmpeg_cmd, device_path):
@@ -697,37 +732,33 @@ def _play_with_pipe(ffmpeg_cmd, device_path):
 
 
 def _play_with_udp(ffmpeg_cmd, udp_url, device_path):
-    """Play using UDP streaming - more stable but slightly higher latency, good for LibreELEC"""
+    """Play using UDP streaming - reliable method for Kodi/LibreELEC"""
+    global _current_ffmpeg_process
     process = None
     try:
-        # Start FFmpeg streaming to UDP with retry
+        # Start FFmpeg streaming to UDP
         log(f'Starting FFmpeg UDP stream: {" ".join(ffmpeg_cmd)}')
 
-        max_retries = 3
-        for attempt in range(max_retries):
-            process = subprocess.Popen(
-                ffmpeg_cmd,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE
-            )
+        process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE
+        )
+        _current_ffmpeg_process = process
 
-            # Wait for stream to initialize
-            xbmc.sleep(1000)
+        # Wait longer for FFmpeg to initialize and buffer data
+        # This is crucial for codec detection on the player side
+        log('Waiting for FFmpeg to buffer...')
+        xbmc.sleep(2000)
 
-            # Check if ffmpeg started OK
-            if process.poll() is None:
-                log(f'FFmpeg UDP stream started successfully on attempt {attempt + 1}')
-                break
-            else:
-                stderr = process.stderr.read().decode('utf-8', errors='ignore')
-                log(f'FFmpeg UDP attempt {attempt + 1} failed: {stderr}', xbmc.LOGWARNING)
+        # Check if ffmpeg started OK
+        if process.poll() is not None:
+            stderr = process.stderr.read().decode('utf-8', errors='ignore')
+            log(f'FFmpeg failed to start: {stderr}', xbmc.LOGERROR)
+            _show_ffmpeg_error(stderr, device_path)
+            return
 
-                if attempt < max_retries - 1:
-                    xbmc.sleep(1000)
-                else:
-                    log(f'FFmpeg UDP failed after {max_retries} attempts', xbmc.LOGERROR)
-                    _show_ffmpeg_error(stderr, device_path)
-                    return
+        log('FFmpeg streaming started successfully')
 
         # Play UDP stream in Kodi with optimized settings
         li = xbmcgui.ListItem(path=udp_url)
@@ -741,6 +772,7 @@ def _play_with_udp(ffmpeg_cmd, udp_url, device_path):
             li.setProperty('inputstream', 'inputstream.ffmpegdirect')
             li.setProperty('inputstream.ffmpegdirect.is_realtime_stream', 'true')
             li.setProperty('inputstream.ffmpegdirect.stream_mode', 'catchup')
+            log('Using inputstream.ffmpegdirect for playback')
         except:
             log('inputstream.ffmpegdirect not available, using direct UDP playback')
 
@@ -752,13 +784,21 @@ def _play_with_udp(ffmpeg_cmd, udp_url, device_path):
         player = xbmc.Player()
 
         # Wait for playback to start
-        for _ in range(20):
+        playback_started = False
+        for _ in range(30):  # Wait up to 15 seconds
             if player.isPlaying():
-                log('Playback started')
+                log('Playback started successfully')
+                playback_started = True
                 break
             if process.poll() is not None:
+                stderr = process.stderr.read().decode('utf-8', errors='ignore')
+                log(f'FFmpeg exited unexpectedly: {stderr}', xbmc.LOGWARNING)
                 break
             xbmc.sleep(500)
+
+        if not playback_started:
+            log('Playback did not start', xbmc.LOGWARNING)
+            return
 
         # Keep FFmpeg running while playing
         while player.isPlaying() and not monitor.abortRequested():
