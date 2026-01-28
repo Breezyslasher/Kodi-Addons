@@ -403,9 +403,15 @@ def play_device(device_path, input_num=None):
         '-loglevel', 'error',
     ]
 
-    # Low latency input options
+    # Low latency input options - optimized for gaming
     if low_latency:
-        ffmpeg_cmd.extend(['-fflags', 'nobuffer', '-flags', 'low_delay'])
+        ffmpeg_cmd.extend([
+            '-fflags', 'nobuffer+genpts',
+            '-flags', 'low_delay',
+            '-avioflags', 'direct',
+            '-probesize', '32',
+            '-analyzeduration', '0',
+        ])
 
     # V4L2 input
     ffmpeg_cmd.extend(['-f', 'v4l2'])
@@ -422,20 +428,31 @@ def play_device(device_path, input_num=None):
     if framerate != 'auto':
         ffmpeg_cmd.extend(['-framerate', framerate])
 
+    # Thread queue size for smooth capture
+    ffmpeg_cmd.extend(['-thread_queue_size', '512'])
+
     # Input device
     ffmpeg_cmd.extend(['-i', device_path])
 
-    # Output encoding - use fast encoding for low latency
+    # Output encoding - optimized for smooth gaming
     if low_latency:
         ffmpeg_cmd.extend([
-            '-c:v', 'rawvideo',  # No encoding for lowest latency
-            '-f', 'avi',
+            '-c:v', 'mpeg2video',  # Use mpeg2 for better Kodi compatibility
+            '-q:v', '2',  # High quality
+            '-g', '1',  # Every frame is keyframe for instant seeking
+            '-bf', '0',  # No B-frames for lower latency
+            '-flags', '+cgop',
+            '-sc_threshold', '0',
+            '-f', 'mpegts',
+            '-flush_packets', '1',
             '-'
         ])
     else:
         ffmpeg_cmd.extend([
             '-c:v', 'mpeg2video',  # Fast, widely compatible
             '-q:v', '3',
+            '-g', '15',  # GOP size
+            '-bf', '0',
             '-f', 'mpegts',
             udp_url + '?pkt_size=1316'
         ])
@@ -450,11 +467,11 @@ def play_device(device_path, input_num=None):
 
 
 def _play_with_pipe(ffmpeg_cmd, device_path):
-    """Play using named pipe - lower latency but may be less stable"""
+    """Play using named pipe - optimized for smooth gaming"""
     import stat
 
-    # Create a named pipe for streaming
-    pipe_path = os.path.join(ADDON_PROFILE, 'camera_pipe.avi')
+    # Create a named pipe for streaming (use .ts extension for mpegts)
+    pipe_path = os.path.join(ADDON_PROFILE, 'camera_pipe.ts')
 
     # Ensure profile directory exists
     if not os.path.exists(ADDON_PROFILE):
@@ -498,12 +515,30 @@ def _play_with_pipe(ffmpeg_cmd, device_path):
                 os.remove(pipe_path)
             return
 
-        # Play from the pipe using Kodi's player
+        # Play from the pipe using Kodi's player with optimized settings
         li = xbmcgui.ListItem(path=pipe_path)
         li.setInfo('video', {'title': 'USB Camera'})
 
+        # Set properties for smooth live playback
+        li.setProperty('inputstream', 'inputstream.ffmpegdirect')
+        li.setProperty('inputstream.ffmpegdirect.is_realtime_stream', 'true')
+        li.setProperty('inputstream.ffmpegdirect.manifest_type', 'ts')
+        li.setProperty('inputstream.ffmpegdirect.stream_mode', 'catchup')
+        li.setMimeType('video/mp2t')
+        li.setContentLookup(False)
+
         log('Starting Kodi playback from pipe')
-        xbmc.Player().play(pipe_path, li)
+
+        # Try with inputstream first, fallback to direct play
+        try:
+            xbmcaddon.Addon('inputstream.ffmpegdirect')
+            xbmc.Player().play(pipe_path, li)
+        except:
+            # Fallback without inputstream
+            li2 = xbmcgui.ListItem(path=pipe_path)
+            li2.setInfo('video', {'title': 'USB Camera'})
+            li2.setMimeType('video/mp2t')
+            xbmc.Player().play(pipe_path, li2)
 
         # Monitor playback
         monitor = xbmc.Monitor()
@@ -576,9 +611,20 @@ def _play_with_udp(ffmpeg_cmd, udp_url, device_path):
             _show_ffmpeg_error(stderr, device_path)
             return
 
-        # Play UDP stream in Kodi
+        # Play UDP stream in Kodi with optimized settings
         li = xbmcgui.ListItem(path=udp_url)
         li.setInfo('video', {'title': 'USB Camera'})
+        li.setMimeType('video/mp2t')
+        li.setContentLookup(False)
+
+        # Try to use inputstream for better performance
+        try:
+            xbmcaddon.Addon('inputstream.ffmpegdirect')
+            li.setProperty('inputstream', 'inputstream.ffmpegdirect')
+            li.setProperty('inputstream.ffmpegdirect.is_realtime_stream', 'true')
+            li.setProperty('inputstream.ffmpegdirect.stream_mode', 'catchup')
+        except:
+            pass
 
         log(f'Starting Kodi playback from {udp_url}')
         xbmc.Player().play(udp_url, li)
