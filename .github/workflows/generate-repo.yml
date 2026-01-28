@@ -27,8 +27,9 @@ jobs:
         # Addon folders to process
         addon_folders = [
             'repository.breezyslasher',
-            'context.plexkodiconnect.download', 
+            'context.plexkodiconnect.download',
             'plugin.audio.audiobookshelf',
+            'plugin.video.usbcamera',
             'script.webhook.runner',
             'script.scrcpy-launcher'
         ]
