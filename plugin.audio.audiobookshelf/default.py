@@ -42,7 +42,7 @@ def load_token_cache():
                 return json.load(f)
     except:
         pass
-    return {'token': None, 'url': None, 'expires': 0}
+    return {'access_token': None, 'refresh_token': None, 'url': None, 'expires': 0}
 
 
 def save_token_cache(cache):
@@ -55,7 +55,8 @@ def save_token_cache(cache):
         pass
 
 
-TOKEN_CACHE_DURATION = 600
+# Access tokens expire after 1 hour on the server; refresh slightly early.
+TOKEN_CACHE_DURATION = 3300
 
 
 def build_url(**kwargs):
@@ -142,12 +143,12 @@ def get_library_service():
     
     token_cache = load_token_cache()
     current_time = time.time()
-    
-    if (token_cache.get('token') and token_cache.get('url') == url and 
+
+    if (token_cache.get('access_token') and token_cache.get('url') == url and
         token_cache.get('expires', 0) > current_time):
-        xbmc.log("Using cached token", xbmc.LOGINFO)
-        lib_service = AudioBookShelfLibraryService(url, token_cache['token'])
-        
+        xbmc.log("Using cached access token", xbmc.LOGINFO)
+        lib_service = AudioBookShelfLibraryService(url, token_cache['access_token'])
+
         # Run startup sync with the library service
         try:
             sync_mgr = get_sync_manager()
@@ -156,28 +157,48 @@ def get_library_service():
             sync_mgr.start_background_sync()
         except Exception as e:
             xbmc.log(f"Sync manager setup error: {e}", xbmc.LOGDEBUG)
-        
-        return lib_service, url, token_cache['token'], False
-    
+
+        return lib_service, url, token_cache['access_token'], False
+
     try:
-        username = get_setting('username')
-        password = get_setting('password')
-        if not username or not password:
-            xbmcgui.Dialog().ok('Credentials Required', 'Please enter username and password')
-            ADDON.openSettings()
-            return None, None, None, False
-        
         from login_service import AudioBookShelfService
         service = AudioBookShelfService(url)
-        response = service.login(username, password)
-        token = response.get('token')
-        if not token:
-            raise ValueError("No token received")
-        
-        new_cache = {'token': token, 'url': url, 'expires': current_time + TOKEN_CACHE_DURATION}
+
+        access_token = None
+        refresh_token = None
+
+        # Try refresh first if we have a refresh token for this server
+        cached_refresh = token_cache.get('refresh_token') if token_cache.get('url') == url else None
+        if cached_refresh:
+            try:
+                xbmc.log("Refreshing access token", xbmc.LOGINFO)
+                refreshed = service.refresh(cached_refresh)
+                access_token = refreshed['accessToken']
+                refresh_token = refreshed['refreshToken']
+            except Exception as e:
+                xbmc.log(f"Refresh failed, falling back to login: {e}", xbmc.LOGWARNING)
+
+        if not access_token:
+            username = get_setting('username')
+            password = get_setting('password')
+            if not username or not password:
+                xbmcgui.Dialog().ok('Credentials Required', 'Please enter username and password')
+                ADDON.openSettings()
+                return None, None, None, False
+
+            response = service.login(username, password)
+            access_token = response['accessToken']
+            refresh_token = response['refreshToken']
+
+        new_cache = {
+            'access_token': access_token,
+            'refresh_token': refresh_token,
+            'url': url,
+            'expires': current_time + TOKEN_CACHE_DURATION,
+        }
         save_token_cache(new_cache)
-        
-        lib_service = AudioBookShelfLibraryService(url, token)
+
+        lib_service = AudioBookShelfLibraryService(url, access_token)
         
         # Perform startup sync - uploads pending local progress, downloads newer server progress
         if get_setting_bool('offline_sync_on_connect', True):
@@ -190,19 +211,19 @@ def get_library_service():
             except Exception as e:
                 xbmc.log(f"Startup sync error: {e}", xbmc.LOGERROR)
         
-        return lib_service, url, token, False
-        
+        return lib_service, url, access_token, False
+
     except Exception as e:
         error_msg = str(e)
         xbmc.log(f"Auth failed: {error_msg}", xbmc.LOGERROR)
-        
+
         if '429' in error_msg:
             token_cache = load_token_cache()
-            if token_cache.get('token') and token_cache.get('url') == url:
+            if token_cache.get('access_token') and token_cache.get('url') == url:
                 xbmc.log("Rate limited, using cached token", xbmc.LOGWARNING)
                 xbmcgui.Dialog().notification('Rate Limited', 'Using cached session', xbmcgui.NOTIFICATION_WARNING)
-                lib_service = AudioBookShelfLibraryService(url, token_cache['token'])
-                return lib_service, url, token_cache['token'], False
+                lib_service = AudioBookShelfLibraryService(url, token_cache['access_token'])
+                return lib_service, url, token_cache['access_token'], False
         
         if get_setting_bool('enable_downloads') and has_downloads():
             if xbmcgui.Dialog().yesno('Connection Failed', 
