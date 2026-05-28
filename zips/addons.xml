@@ -77,6 +77,12 @@
 			<icon>resources/icon.png</icon>
 		</assets>
 		<news>
+v1.0.6 (2026-05-27) - New JWT Authentication
+- CHANGED: Use new Audiobookshelf JWT auth flow (requires server v2.26.0+)
+- NEW: Short-lived access tokens (1h) with automatic refresh
+- NEW: Refresh token stored locally; no more re-login on every cache miss
+- REMOVED: Legacy single-token login fallback
+
 v1.0.5 (2025-12-09) - Comprehensive Sync Overhaul
 - NEW: Bidirectional sync - pulls progress from server if ahead
 - NEW: Automatic sync when opening app (startup sync)
