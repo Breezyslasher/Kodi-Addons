@@ -628,9 +628,10 @@ def add_webhook_dialog():
     name = dialog.input('Webhook Name')
     if not name:
         return
-    
-    url = dialog.input('Webhook URL', defaultt='http://')
-    if not url or url == 'http://':
+
+    prefix = ADDON.getSetting('default_url_prefix') or 'http://'
+    url = dialog.input('Webhook URL', defaultt=prefix)
+    if not url or url == prefix:
         return
     
     new_id = add_webhook(name, url)

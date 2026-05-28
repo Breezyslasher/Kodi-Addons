@@ -2,5 +2,6 @@
     <category label="General">
         <setting id="show_notifications" type="bool" label="Show notifications" default="true" />
         <setting id="enable_event_triggers" type="bool" label="Enable event triggers (playback / system)" default="true" />
+        <setting id="default_url_prefix" type="text" label="Default URL prefix" default="" />
     </category>
 </settings>
