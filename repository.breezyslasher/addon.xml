@@ -15,7 +15,7 @@
         <description>Install addons from Breezyslasher's repository</description>
         <platform>all</platform>
         <assets>
-            <icon>resources/icon.png</icon>
+            <icon>icon.png</icon>
         </assets>
     </extension>
 </addon>

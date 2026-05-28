@@ -14,5 +14,8 @@
         <summary>Breezyslasher's Kodi Addon Repository</summary>
         <description>Install addons from Breezyslasher's repository</description>
         <platform>all</platform>
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
     </extension>
 </addon>
