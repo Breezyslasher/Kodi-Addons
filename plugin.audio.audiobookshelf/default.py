@@ -2058,6 +2058,15 @@ def play_audio(play_url, title, duration, library_service, item_id, episode_id=N
     
     list_item = xbmcgui.ListItem(path=play_url)
     set_music_info(list_item, title=title, duration=duration)
+
+    # Set cover art so Kodi's now-playing screen has something to render.
+    if library_service and item_id:
+        cover_url = f"{library_service.base_url}/api/items/{item_id}/cover?token={library_service.token}"
+        local_cover = download_cover(cover_url, item_id)
+        art_source = local_cover or cover_url
+        list_item.setArt({'thumb': art_source, 'poster': art_source,
+                          'fanart': art_source, 'icon': art_source})
+
     xbmcplugin.setResolvedUrl(ADDON_HANDLE, True, list_item)
     
     sync_enabled = get_setting_bool('sync_podcast_progress' if is_podcast else 'sync_audiobook_progress', True)
@@ -2279,6 +2288,16 @@ def play_offline_item(item_id, episode_id=None, seek_position=None):
     
     list_item = xbmcgui.ListItem(path=file_path)
     set_music_info(list_item, title=download_info['title'], duration=duration)
+
+    # Set cover art for the now-playing screen. Prefer the locally
+    # downloaded cover; fall back to server URL if we're back online.
+    art_source = download_info.get('cover_path')
+    if (not art_source or not os.path.exists(art_source)) and library_service and item_id:
+        art_source = f"{library_service.base_url}/api/items/{item_id}/cover?token={library_service.token}"
+    if art_source:
+        list_item.setArt({'thumb': art_source, 'poster': art_source,
+                          'fanart': art_source, 'icon': art_source})
+
     xbmcplugin.setResolvedUrl(ADDON_HANDLE, True, list_item)
     
     # Use PlaybackMonitor with library_service if available (for server sync)
