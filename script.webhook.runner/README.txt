@@ -5,6 +5,9 @@ mapped remote/keyboard button, or automatically when a Kodi event fires.
 
 Features:
  - Configurable webhooks, each with a name and URL
+ - Optional default URL prefix in settings - prefilled when adding
+   a webhook so you only type the webhook name at the end (e.g.
+   http://homeassistant.local:8123/api/webhook/)
  - Optional notification toggle
  - Two ways to fire a webhook:
      1. Button mapping via Keymap Editor (one button per webhook)
