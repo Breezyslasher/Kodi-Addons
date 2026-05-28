@@ -28,8 +28,10 @@
 			<icon>resources/icon.png</icon>
 		</assets>
 		<news>
-v1.0.7 (2026-05-28) - Now-playing cover art
+v1.0.7 (2026-05-28) - Now-playing cover art &amp; author
 - FIXED: Audiobook/podcast covers now show on the Kodi now-playing screen
+- NEW: Author shown on now-playing screen for audiobooks
+- NEW: Podcast creator (or show name) shown on now-playing screen for episodes
 - IMPROVED: Streaming uses cached cover when available, falls back to server URL
 - IMPROVED: Offline playback uses the downloaded cover file
 

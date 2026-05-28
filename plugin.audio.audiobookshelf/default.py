@@ -2024,8 +2024,8 @@ def list_downloads():
 
 # === PLAYBACK FUNCTIONS ===
 
-def play_audio(play_url, title, duration, library_service, item_id, episode_id=None, 
-               start_position=0, is_podcast=False, file_offset=0):
+def play_audio(play_url, title, duration, library_service, item_id, episode_id=None,
+               start_position=0, is_podcast=False, file_offset=0, artist=''):
     """
     Start audio playback with progress monitoring.
     
@@ -2057,7 +2057,7 @@ def play_audio(play_url, title, duration, library_service, item_id, episode_id=N
             pass
     
     list_item = xbmcgui.ListItem(path=play_url)
-    set_music_info(list_item, title=title, duration=duration)
+    set_music_info(list_item, title=title, artist=artist, duration=duration)
 
     # Set cover art so Kodi's now-playing screen has something to render.
     if library_service and item_id:
@@ -2120,8 +2120,10 @@ def play_at_position(item_id, file_ino, seek_time, overall_time=None):
             tracks = media.get('tracks', [])
             duration = sum(t.get('duration', 0) for t in tracks)
         
-        title = media.get('metadata', {}).get('title', 'Unknown')
-        
+        metadata = media.get('metadata', {})
+        title = metadata.get('title', 'Unknown')
+        author = metadata.get('authorName', '')
+
         # Calculate file offset (difference between overall_time and seek_time)
         # This is where the file starts in the overall audiobook
         if overall_time is not None:
@@ -2142,8 +2144,8 @@ def play_at_position(item_id, file_ino, seek_time, overall_time=None):
                 f"overall={overall_time}, file_offset={file_offset}", xbmc.LOGINFO)
         
         play_url = f"{url}/api/items/{item_id}/file/{file_ino}?token={token}"
-        play_audio(play_url, title, duration, library_service, item_id, 
-                  start_position=seek_time, file_offset=file_offset)
+        play_audio(play_url, title, duration, library_service, item_id,
+                  start_position=seek_time, file_offset=file_offset, artist=author)
         
     except Exception as e:
         xbmc.log(f"[PLAY] Error: {str(e)}", xbmc.LOGERROR)
@@ -2173,8 +2175,10 @@ def play_item(item_id):
             tracks = media.get('tracks', [])
             duration = sum(t.get('duration', 0) for t in tracks)
         
-        title = media.get('metadata', {}).get('title', 'Unknown')
-        
+        metadata = media.get('metadata', {})
+        title = metadata.get('title', 'Unknown')
+        author = metadata.get('authorName', '')
+
         xbmc.log(f"[PLAY] play_item: item={item_id}, duration={duration}", xbmc.LOGINFO)
         
         # Use unified progress
@@ -2188,7 +2192,8 @@ def play_item(item_id):
         start_position = current_time if current_time > 10 and not is_finished and ask_resume(current_time, duration) else 0
         
         play_url = library_service.get_file_url(item_id)
-        play_audio(play_url, title, duration, library_service, item_id, start_position=start_position)
+        play_audio(play_url, title, duration, library_service, item_id,
+                  start_position=start_position, artist=author)
         
     except Exception as e:
         xbmc.log(f"[PLAY] Error: {str(e)}", xbmc.LOGERROR)
@@ -2219,15 +2224,20 @@ def play_episode(item_id, episode_id):
         
         title = episode.get('title', 'Unknown')
         duration = episode.get('duration', 0)
-        
+
+        # Show the podcast creator (or fall back to the podcast title) as the artist.
+        podcast_metadata = item.get('media', {}).get('metadata', {})
+        creator = podcast_metadata.get('author') or podcast_metadata.get('title', '')
+
         # Use unified progress
         current_time, is_finished, _ = get_best_resume_position(library_service, item_id, episode_id)
-        
+
         start_position = current_time if current_time > 10 and not is_finished and ask_resume(current_time, duration) else 0
-        
+
         play_url = library_service.get_file_url(item_id, episode_id=episode_id)
-        play_audio(play_url, title, duration, library_service, item_id, 
-                  episode_id=episode_id, start_position=start_position, is_podcast=True)
+        play_audio(play_url, title, duration, library_service, item_id,
+                  episode_id=episode_id, start_position=start_position, is_podcast=True,
+                  artist=creator)
         
     except Exception as e:
         xbmcgui.Dialog().notification('Error', str(e)[:50], xbmcgui.NOTIFICATION_ERROR)
@@ -2287,7 +2297,9 @@ def play_offline_item(item_id, episode_id=None, seek_position=None):
         return
     
     list_item = xbmcgui.ListItem(path=file_path)
-    set_music_info(list_item, title=download_info['title'], duration=duration)
+    # For audiobooks 'author' is set; for podcast episodes fall back to the show title.
+    artist = download_info.get('author') or download_info.get('podcast_title', '')
+    set_music_info(list_item, title=download_info['title'], artist=artist, duration=duration)
 
     # Set cover art for the now-playing screen. Prefer the locally
     # downloaded cover; fall back to server URL if we're back online.
