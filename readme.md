@@ -6,64 +6,46 @@ Welcome to my personal Kodi addon repository! This collection includes various a
 
 
 ### 🎧 [Audiobookshelf](plugin.audio.audiobookshelf/)
-Stream audiobooks and podcasts from your Audiobookshelf server directly in Kodi.
+Stream audiobooks and podcasts from your Audiobookshelf server.
 
-**Features:**
-- Stream audiobooks (M4B, MP3, multi-file) with chapter navigation
-- Browse and stream podcast episodes
-- Progress sync with server (bidirectional)
-- Download for offline playback
-- Resume playback support
-- Search and add new podcasts from iTunes
-- Find new episodes from RSS feeds
-- API Key or Username/Password authentication
+**Recent updates:**
+- New JWT auth flow with automatic token refresh (requires server v2.26.0+)
+- Cover art, author, and podcast creator now show on the Kodi now-playing screen
 
-**Requirements:** Kodi 19+, Audiobookshelf server 2.0+
+See the [addon README](plugin.audio.audiobookshelf/README.md) for the full feature list.
+
+**Requirements:** Kodi 19+, Audiobookshelf server 2.26+
 
 ---
 
 ### ⬇️ [PlexKodiConnect Download](context.plexkodiconnect.download/)
-Context menu addon for downloading Plex media for offline viewing.
+Context-menu addon for downloading Plex media (movies, shows, music) for offline viewing, including bulk and smart-unwatched downloads.
 
-**Features:**
-- Download movies, TV shows, and music from PlexKodiConnect
-- Bulk downloads (seasons, albums, artists, shows)
-- Smart downloads (unwatched episodes with limits)
-- Organized folder structure with metadata
-- Auto-play after download option
-- Hide/restore Plex versions
+See the [addon README](context.plexkodiconnect.download/README.md) for details.
 
 **Requirements:** Kodi 19+, PlexKodiConnect addon
 
 ---
 
-
 ### 📱 [scrcpy Launcher](script.scrcpy-launcher/)
-Stream your Android device screen to Kodi using scrcpy.
+Stream your Android device screen to Kodi using scrcpy (USB or Wi-Fi, with LibreELEC/OSMC/Flatpak handling).
 
-**Features:**
-- USB and WiFi streaming modes
-- LibreELEC/OSMC support with auto Kodi stop/restart
-- Flatpak Kodi support on desktop Linux
-- Audio forwarding (Android 11+)
-- Configurable video settings (FPS, bitrate, codec, resolution)
-- Keyboard shortcuts with configurable quit key
-- Fullscreen streaming
+See the [addon README](script.scrcpy-launcher/README.md) for details.
 
 **Requirements:** Kodi 19+, Android device with USB debugging enabled
 
 ---
 
 ### 🔗 [Webhook Runner](script.webhook.runner/)
-Execute up to 10 Home Assistant webhooks from Kodi.
+Fire Home Assistant (or any) webhooks from Kodi — either by remote-button press or automatically on Kodi events.
 
-**Features:**
-- Configure up to 10 webhook URLs and names
-- Launch from remote buttons or GUI interface
-- Perfect for Home Assistant automation
-- Simple configuration through addon settings
+**Recent updates:**
+- Event triggers (playback start/stop/pause/resume, screensaver on/off, Kodi start/stop) with per-event webhook mapping
+- Optional default URL prefix so adding new webhooks is one-field paste
 
-**Requirements:** Kodi 19+, Home Assistant instance
+See the [addon README](script.webhook.runner/README.txt) for details.
+
+**Requirements:** Kodi 19+, Home Assistant instance (or any HTTP webhook target)
 
 ---
 
@@ -72,7 +54,7 @@ Execute up to 10 Home Assistant webhooks from Kodi.
 ### Method 1: Repository Installation (Recommended)
 
 1. In Kodi: Settings → Add-ons → Install from repository
-2. Add my repository URL: `https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips/repository.breezyslasher/repository.breezyslasher-2025.12.27.zip`
+2. Add my repository URL: `https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips/repository.breezyslasher/repository.breezyslasher-2026.5.28.zip`
 3. Install "Breezyslasher Repository"
 4. Browse and install addons from the repository
 
