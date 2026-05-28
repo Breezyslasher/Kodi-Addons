@@ -17,6 +17,19 @@ ADDON = xbmcaddon.Addon()
 ADDON_ID = ADDON.getAddonInfo('id')
 ADDON_DATA = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
 WEBHOOKS_FILE = os.path.join(ADDON_DATA, 'webhooks.json')
+EVENTS_FILE = os.path.join(ADDON_DATA, 'events.json')
+
+# Events the background service can fire webhooks on. Order = menu order.
+EVENT_NAMES = [
+    ('playback_start',  'Playback started'),
+    ('playback_stop',   'Playback stopped'),
+    ('playback_pause',  'Playback paused'),
+    ('playback_resume', 'Playback resumed'),
+    ('screensaver_on',  'Screensaver activated'),
+    ('screensaver_off', 'Screensaver deactivated'),
+    ('kodi_start',      'Kodi started'),
+    ('kodi_stop',       'Kodi stopping'),
+]
 
 # Keymap Editor's file
 KEYMAPS_DIR = xbmcvfs.translatePath('special://userdata/keymaps/')
@@ -377,6 +390,68 @@ def run_webhook(webhook_id):
 
 
 # ============================================================================
+# EVENT TRIGGERS
+# ============================================================================
+
+def load_event_map():
+    ensure_data_dir()
+    if os.path.exists(EVENTS_FILE):
+        try:
+            with open(EVENTS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f) or {}
+        except:
+            pass
+    return {}
+
+
+def save_event_map(mapping):
+    ensure_data_dir()
+    try:
+        with open(EVENTS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(mapping, f, indent=2)
+        return True
+    except:
+        return False
+
+
+def show_event_triggers_menu():
+    dialog = xbmcgui.Dialog()
+    while True:
+        mapping = load_event_map()
+        webhooks = {wh['id']: wh for wh in get_all_webhooks()}
+
+        items = []
+        for event_key, label in EVENT_NAMES:
+            wh_id = mapping.get(event_key)
+            wh_name = webhooks.get(wh_id, {}).get('name') if wh_id else None
+            if wh_name:
+                items.append(f"{label} → [COLOR cyan]{wh_name}[/COLOR]")
+            else:
+                items.append(f"{label} → [COLOR grey](none)[/COLOR]")
+        items.append('Back')
+
+        choice = dialog.select('Event Triggers', items)
+        if choice < 0 or choice == len(items) - 1:
+            return
+
+        event_key, event_label = EVENT_NAMES[choice]
+        wh_list = get_all_webhooks()
+        if not wh_list:
+            dialog.ok('Event Triggers', 'Add a webhook first.')
+            continue
+
+        options = ['(none)'] + [wh['name'] for wh in wh_list]
+        pick = dialog.select(f'Webhook for "{event_label}"', options)
+        if pick < 0:
+            continue
+        if pick == 0:
+            mapping.pop(event_key, None)
+        else:
+            mapping[event_key] = wh_list[pick - 1]['id']
+        save_event_map(mapping)
+
+
+# ============================================================================
 # KEY CAPTURE
 # ============================================================================
 
@@ -527,19 +602,22 @@ def show_main_menu():
         items.append('─' * 30)
         items.append('[COLOR lime]+ Add Webhook[/COLOR]')
         items.append('[COLOR yellow]Run Webhook[/COLOR]')
+        items.append('[COLOR orange]Event Triggers[/COLOR]')
         items.append('Exit')
-        
+
         choice = dialog.select('Webhook Runner', items)
-        
+
         if choice < 0 or 'Exit' in items[choice]:
             return
-        
+
         if items[choice].startswith('─'):
             continue
         elif 'Add Webhook' in items[choice]:
             add_webhook_dialog()
         elif 'Run Webhook' in items[choice]:
             run_webhook_dialog()
+        elif 'Event Triggers' in items[choice]:
+            show_event_triggers_menu()
         elif choice < len(webhooks):
             edit_webhook_dialog(webhooks[choice]['id'])
 
