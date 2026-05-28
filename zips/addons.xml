@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addons>
-<addon id="repository.breezyslasher" name="Breezyslasher Repository" version="2026.5.27" provider-name="Breezyslasher">
+<addon id="repository.breezyslasher" name="Breezyslasher Repository" version="2026.5.28" provider-name="Breezyslasher">
     <requires>
         <import addon="xbmc.addon" version="12.0.0"/>
     </requires>
@@ -51,7 +51,7 @@
         <license>MIT</license>
     </extension>
 </addon>
-<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.5.27" provider-name="Breezyslasher">
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.5.28" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0" />
@@ -80,6 +80,13 @@
 			<icon>resources/icon.png</icon>
 		</assets>
 		<news>
+v1.0.7 (2026-05-28) - Now-playing cover art &amp; author
+- FIXED: Audiobook/podcast covers now show on the Kodi now-playing screen
+- NEW: Author shown on now-playing screen for audiobooks
+- NEW: Podcast creator (or show name) shown on now-playing screen for episodes
+- IMPROVED: Streaming uses cached cover when available, falls back to server URL
+- IMPROVED: Offline playback uses the downloaded cover file
+
 v1.0.6 (2026-05-27) - New JWT Authentication
 - CHANGED: Use new Audiobookshelf JWT auth flow (requires server v2.26.0+)
 - NEW: Short-lived access tokens (1h) with automatic refresh
