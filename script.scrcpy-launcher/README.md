@@ -1,6 +1,6 @@
 # scrcpy Launcher for Kodi
 
-Stream your Android device screen to Kodi using scrcpy. Supports USB and WiFi connections on LibreELEC, OSMC, and desktop Linux with Flatpak Kodi.
+Stream your Android device screen — or the **Samsung DeX desktop** — to Kodi using scrcpy. Supports USB and WiFi connections on LibreELEC, OSMC, and desktop Linux with Flatpak Kodi.
 
 https://github.com/user-attachments/assets/5d711656-cce1-4eb5-8446-dbc04ccc1aab
 
@@ -8,12 +8,33 @@ https://github.com/user-attachments/assets/5d711656-cce1-4eb5-8446-dbc04ccc1aab
 
 - **USB Streaming** - Connect via USB cable for lowest latency
 - **WiFi Streaming** - Connect via ADB over WiFi
+- **Samsung DeX** - Mirror the DeX desktop (display id auto-detected)
+- **Virtual Desktop** - Desktop-style windowing without a DeX session (`--new-display`, One UI 7 / Android 15+)
 - **LibreELEC/OSMC Support** - Automatically stops/restarts Kodi for fullscreen streaming
 - **Flatpak Support** - Works with Flatpak Kodi on desktop Linux
 - **Audio Forwarding** - Stream device audio (Android 11+)
 - **Configurable Video** - FPS, bitrate, codec, resolution settings
 - **Keyboard Shortcuts** - Configurable quit key and device controls
 
+## Samsung DeX
+
+Samsung phones expose the DeX desktop as a second display (usually id 2)
+whenever a DeX session is active. The addon connects adb, finds the DeX
+display via `scrcpy --list-displays` (or a fixed id in Settings → Samsung
+DeX), and mirrors it fullscreen with right-click forwarding.
+
+Inspired by [TuxDex](https://github.com/semarainc/TuxDex), but with no
+miraclecast, no root, and no network reconfiguration.
+
+The DeX display only exists while DeX is running — start it via a DeX
+dock/HDMI adapter or wireless DeX, or use **Virtual Desktop** mode which
+needs no DeX session at all.
+
+> **Note on DRM apps (Netflix, Disney+, etc.):** DRM apps mark their
+> video surface as protected, so any screen capture — scrcpy included —
+> shows a black/blank video area. This is enforced by Android/Widevine
+> and cannot be fixed in scrcpy. It works on a real DeX dock because the
+> HDMI link is HDCP-protected. 
 ## Requirements
 
 - Android device with USB debugging enabled
@@ -28,21 +49,46 @@ https://github.com/user-attachments/assets/5d711656-cce1-4eb5-8446-dbc04ccc1aab
 
 ## Usage
 
-### USB Streaming
+### Streaming the phone screen
 
-1. Enable USB debugging on your Android device
-2. Connect device via USB cable
-3. Launch the addon
-4. Select **Stream USB Device**
+1. Enable USB debugging on the device
+2. *(WiFi only)* Run `adb tcpip 5555` over USB once, or enable Wireless
+   debugging (Android 11+), then set the device IP in
+   **Settings → WiFi Connection**
+3. Launch the addon → **Stream Device**
+4. If an IP is set you'll be asked USB or WiFi; otherwise it goes
+   straight over USB
 
-### WiFi Streaming
+### Samsung DeX vs Virtual Desktop
 
-1. Enable USB debugging on your Android device
-2. Connect via USB first and run `adb tcpip 5555` OR enable Wireless debugging (Android 11+)
-3. Go to addon **Settings → WiFi Connection**
-4. Enter your device's IP address
-5. Launch the addon
-6. Select **Stream WiFi Device**
+Both put a desktop-style Android screen on Kodi, but they get there
+differently:
+
+| | Samsung DeX | Virtual Desktop |
+|---|---|---|
+| What it shows | Samsung's real DeX desktop (taskbar, windowed apps) | A scrcpy-created virtual display |
+| Needs a DeX session running? | **Yes** (dock, HDMI adapter, or wireless DeX) | **No** — scrcpy makes the display |
+| Works on non-Samsung phones? | No | Yes (Android 14+, best on 15 / One UI 7) |
+| Use when | You already have DeX active and want the full Samsung UI | You have no dock / no DeX session, or a non-Samsung phone |
+
+So you keep both: **DeX** mirrors a session you've already started;
+**Virtual Desktop** conjures one when you can't. If you mostly use a dock,
+DeX is your button; if you just want a desktop with nothing plugged in,
+Virtual Desktop is the one that works.
+
+**Samsung DeX:**
+1. Start a DeX session on the phone (dock, HDMI adapter, or wireless DeX)
+2. Launch the addon → **Samsung DeX**
+3. Pick USB or WiFi (only asked if an IP is set in Settings)
+4. The DeX display is auto-detected; set a fixed id in **Settings → Samsung DeX** if needed
+
+**Virtual Desktop (no DeX session needed):**
+1. Launch the addon → **Virtual Desktop**
+2. A virtual display is created at the resolution from **Settings → Samsung DeX** (default 1920x1080)
+3. On One UI 7 / Android 15+ this gives desktop-style windowing; older versions show an app launcher
+
+**Detect Displays** in the menu lists every display id the phone reports —
+handy for setting a fixed DeX display id.
 
 ## Exiting scrcpy
 

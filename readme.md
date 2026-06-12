@@ -28,7 +28,12 @@ See the [addon README](context.plexkodiconnect.download/README.md) for details.
 ---
 
 ### 📱 [scrcpy Launcher](script.scrcpy-launcher/)
-Stream your Android device screen to Kodi using scrcpy (USB or Wi-Fi, with LibreELEC/OSMC/Flatpak handling).
+Stream your Android device screen — or the Samsung DeX desktop — to Kodi using scrcpy (USB or Wi-Fi, with LibreELEC/OSMC/Flatpak handling).
+
+**Recent updates:**
+- Samsung DeX mirroring with auto-detected display id (no root, no miraclecast)
+- Virtual Desktop mode (`--new-display`) for phones without an active DeX session
+- Bundled scrcpy updated to v4.0 on x86_64 (SDL3, self-contained binary)
 
 See the [addon README](script.scrcpy-launcher/README.md) for details.
 
