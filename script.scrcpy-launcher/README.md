@@ -34,9 +34,7 @@ needs no DeX session at all.
 > video surface as protected, so any screen capture — scrcpy included —
 > shows a black/blank video area. This is enforced by Android/Widevine
 > and cannot be fixed in scrcpy. It works on a real DeX dock because the
-> HDMI link is HDCP-protected. For Netflix on the Kodi box, use a Kodi
-> Netflix addon instead.
-
+> HDMI link is HDCP-protected. 
 ## Requirements
 
 - Android device with USB debugging enabled
