@@ -16,6 +16,31 @@
 
     </category>
 
+    <!-- SAMSUNG DEX -->
+    <category id="dex" label="Samsung DeX">
+
+        <setting id="display_id"
+                 label="DeX Display ID (0 = auto-detect)"
+                 type="number"
+                 default="0" />
+
+        <setting id="virtual_resolution"
+                 label="Virtual Desktop Resolution (e.g. 1920x1080)"
+                 type="text"
+                 default="1920x1080" />
+
+        <setting id="virtual_dpi"
+                 label="Virtual Desktop DPI (0 = device default)"
+                 type="number"
+                 default="0" />
+
+        <setting id="forward_all_clicks"
+                 label="Forward All Mouse Clicks (right-click etc.)"
+                 type="bool"
+                 default="true" />
+
+    </category>
+
     <!-- VIDEO -->
     <category id="video" label="Video">
 
