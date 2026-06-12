@@ -20,10 +20,13 @@
         </assets>
         <news>
 v2026.6.12 - Samsung DeX support
-- NEW: Samsung DeX mirroring (USB/WiFi) with auto-detected display id
+- NEW: Samsung DeX mirroring with auto-detected display id
 - NEW: Virtual Desktop mode (--new-display) - desktop windowing
   without an active DeX session (One UI 7 / Android 15+)
 - NEW: Detect Displays menu action
+- DeX/Virtual Desktop ask USB vs WiFi only when an IP is configured
+- FIXED: dropped removed --forward-all-clicks flag; uses
+  --mouse-bind for scrcpy 2.0+ (forwards right/middle clicks)
 - UPDATED: bundled scrcpy 3.3.4 to 4.0 on x86_64 (SDL3,
   self-contained); aarch64 stays on 3.3.4 (no official arm64 build)
 - Inspired by TuxDex, without miraclecast/root/network changes

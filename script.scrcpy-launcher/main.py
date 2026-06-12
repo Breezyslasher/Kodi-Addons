@@ -467,6 +467,18 @@ def launch_dex_desktop(cmd, env):
         log(f"scrcpy exited: {e}")
 
 
+def ask_connection():
+    """Return True for WiFi, False for USB.
+
+    Only prompts when an IP is configured; otherwise defaults to USB so
+    the common single-cable case is one click.
+    """
+    if not get_setting('ip_address'):
+        return False
+    return xbmcgui.Dialog().yesno(ADDON_NAME, 'Connect over which transport?',
+                                  nolabel='USB', yeslabel='WiFi')
+
+
 def launch_dex(mode, use_wifi):
     """
     mode: 'dex' (mirror DeX display) or 'virtual' (scrcpy virtual desktop)
@@ -510,7 +522,9 @@ def launch_dex(mode, use_wifi):
         cmd.append('-d')
     cmd.extend(mode_args)
     if get_setting('forward_all_clicks', 'bool'):
-        cmd.append('--forward-all-clicks')
+        # scrcpy 2.0+ replaced --forward-all-clicks with --mouse-bind;
+        # "++++" forwards right/middle/4th/5th clicks to the device.
+        cmd.append('--mouse-bind=++++')
     extra = get_extra_args()
     if extra:
         cmd.extend(extra.split())
@@ -562,8 +576,7 @@ def main():
         return
 
     menu = ['Stream USB Device', 'Stream WiFi Device',
-            'Samsung DeX (USB)', 'Samsung DeX (WiFi)',
-            'Virtual Desktop (USB)', 'Virtual Desktop (WiFi)',
+            'Samsung DeX', 'Virtual Desktop',
             'Detect Displays', 'Settings']
     sel = xbmcgui.Dialog().contextmenu(menu)
 
@@ -578,16 +591,12 @@ def main():
         else:
             stream_wifi_desktop()
     elif sel == 2:
-        launch_dex('dex', use_wifi=False)
+        launch_dex('dex', use_wifi=ask_connection())
     elif sel == 3:
-        launch_dex('dex', use_wifi=True)
+        launch_dex('virtual', use_wifi=ask_connection())
     elif sel == 4:
-        launch_dex('virtual', use_wifi=False)
-    elif sel == 5:
-        launch_dex('virtual', use_wifi=True)
-    elif sel == 6:
         detect_displays_dialog()
-    elif sel == 7:
+    elif sel == 5:
         ADDON.openSettings()
 
 

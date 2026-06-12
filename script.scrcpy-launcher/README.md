@@ -67,20 +67,36 @@ needs no DeX session at all.
 5. Launch the addon
 6. Select **Stream WiFi Device**
 
-### Samsung DeX
+### Samsung DeX vs Virtual Desktop
 
+Both put a desktop-style Android screen on Kodi, but they get there
+differently:
+
+| | Samsung DeX | Virtual Desktop |
+|---|---|---|
+| What it shows | Samsung's real DeX desktop (taskbar, windowed apps) | A scrcpy-created virtual display |
+| Needs a DeX session running? | **Yes** (dock, HDMI adapter, or wireless DeX) | **No** — scrcpy makes the display |
+| Works on non-Samsung phones? | No | Yes (Android 14+, best on 15 / One UI 7) |
+| Use when | You already have DeX active and want the full Samsung UI | You have no dock / no DeX session, or a non-Samsung phone |
+
+So you keep both: **DeX** mirrors a session you've already started;
+**Virtual Desktop** conjures one when you can't. If you mostly use a dock,
+DeX is your button; if you just want a desktop with nothing plugged in,
+Virtual Desktop is the one that works.
+
+**Samsung DeX:**
 1. Start a DeX session on the phone (dock, HDMI adapter, or wireless DeX)
-2. Launch the addon → **Samsung DeX (USB)** or **Samsung DeX (WiFi)**
-3. The DeX display is auto-detected; set a fixed id in **Settings → Samsung DeX** if needed
-4. **Detect Displays** in the menu lists all display ids the phone reports
+2. Launch the addon → **Samsung DeX**
+3. Pick USB or WiFi (only asked if an IP is set in Settings)
+4. The DeX display is auto-detected; set a fixed id in **Settings → Samsung DeX** if needed
 
-### Virtual Desktop (no DeX session needed)
+**Virtual Desktop (no DeX session needed):**
+1. Launch the addon → **Virtual Desktop**
+2. A virtual display is created at the resolution from **Settings → Samsung DeX** (default 1920x1080)
+3. On One UI 7 / Android 15+ this gives desktop-style windowing; older versions show an app launcher
 
-1. Launch the addon → **Virtual Desktop (USB/WiFi)**
-2. A virtual display is created on the phone at the resolution from
-   **Settings → Samsung DeX** (default 1920x1080)
-3. On One UI 7 / Android 15+ this gives desktop-style windowing; older
-   versions show an app launcher
+**Detect Displays** in the menu lists every display id the phone reports —
+handy for setting a fixed DeX display id.
 
 ## Exiting scrcpy
 
