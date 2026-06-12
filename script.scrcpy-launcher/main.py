@@ -114,219 +114,8 @@ def get_extra_args():
     return ' '.join(args)
 
 
-def stream_usb_libreelec():
-    """Stream USB device on LibreELEC"""
-    log("=== LibreELEC USB Stream ===")
-    
-    os.chmod(ADB_PATH, 0o755)
-    os.chmod(SCRCPY_PATH, 0o755)
-    
-    render = get_render()
-    extra = get_extra_args()
-    
-    # Build scrcpy command
-    scrcpy_cmd = SCRCPY_PATH
-    if render:
-        scrcpy_cmd += f" --render-driver {render}"
-    scrcpy_cmd += " -d"
-    if extra:
-        scrcpy_cmd += f" {extra}"
-    
-    log(f"scrcpy cmd: {scrcpy_cmd}")
-    
-    launcher = "/storage/.kodi/temp/scrcpy_launch.sh"
-    
-    script = f'''#!/bin/sh
-LOG="/storage/.kodi/temp/scrcpy.log"
-echo "=== USB START ===" > $LOG
-date >> $LOG
-
-systemctl stop kodi
-sleep 1
-
-{ADB_PATH} kill-server >> $LOG 2>&1
-{ADB_PATH} start-server >> $LOG 2>&1
-sleep 1
-
-echo "Running: {scrcpy_cmd}" >> $LOG
-{scrcpy_cmd} >> $LOG 2>&1
-echo "Exit: $?" >> $LOG
-
-systemctl start kodi
-'''
-    
-    with open(launcher, 'w') as f:
-        f.write(script)
-    os.chmod(launcher, 0o755)
-    
-    xbmcgui.Dialog().notification(ADDON_NAME, "Starting...", time=1000)
-    
-    os.system(f'systemd-run /bin/sh {launcher}')
-
-
-def stream_wifi_libreelec():
-    """Stream WiFi device on LibreELEC"""
-    ip = get_setting('ip_address')
-    port = get_setting('port', 'int') or 5555
-    
-    if not ip:
-        xbmcgui.Dialog().ok("Error", "Set IP address in Settings")
-        return
-    
-    log(f"=== LibreELEC WiFi Stream to {ip}:{port} ===")
-    
-    os.chmod(ADB_PATH, 0o755)
-    os.chmod(SCRCPY_PATH, 0o755)
-    
-    render = get_render()
-    extra = get_extra_args()
-    
-    scrcpy_cmd = SCRCPY_PATH
-    if render:
-        scrcpy_cmd += f" --render-driver {render}"
-    scrcpy_cmd += f" -s {ip}:{port}"
-    if extra:
-        scrcpy_cmd += f" {extra}"
-    
-    log(f"scrcpy cmd: {scrcpy_cmd}")
-    
-    launcher = "/storage/.kodi/temp/scrcpy_launch.sh"
-    
-    script = f'''#!/bin/sh
-LOG="/storage/.kodi/temp/scrcpy.log"
-echo "=== WIFI START ===" > $LOG
-date >> $LOG
-
-systemctl stop kodi
-sleep 1
-
-{ADB_PATH} kill-server >> $LOG 2>&1
-{ADB_PATH} start-server >> $LOG 2>&1
-sleep 1
-
-{ADB_PATH} connect {ip}:{port} >> $LOG 2>&1
-sleep 1
-
-echo "Running: {scrcpy_cmd}" >> $LOG
-{scrcpy_cmd} >> $LOG 2>&1
-echo "Exit: $?" >> $LOG
-
-systemctl start kodi
-'''
-    
-    with open(launcher, 'w') as f:
-        f.write(script)
-    os.chmod(launcher, 0o755)
-    
-    xbmcgui.Dialog().notification(ADDON_NAME, f"Connecting to {ip}...", time=1000)
-    
-    os.system(f'systemd-run /bin/sh {launcher}')
-
-
-def stream_usb_desktop():
-    """Stream USB device on desktop Linux"""
-    log("=== Desktop USB Stream ===")
-    
-    os.chmod(ADB_PATH, 0o755)
-    os.chmod(SCRCPY_PATH, 0o755)
-    
-    env = os.environ.copy()
-    env['PATH'] = f"{BIN_PATH}:{env.get('PATH', '')}"
-    env['LD_LIBRARY_PATH'] = BIN_PATH
-    env['SCRCPY_SERVER_PATH'] = SCRCPY_SERVER
-    env['ADB'] = ADB_PATH
-    
-    os.system(f'{ADB_PATH} kill-server')
-    subprocess.run([ADB_PATH, 'start-server'], env=env, capture_output=True, timeout=10)
-    time.sleep(1)
-    
-    cmd = [SCRCPY_PATH]
-    
-    render = get_render()
-    if render:
-        cmd.extend(['--render-driver', render])
-    
-    cmd.append('-d')
-    
-    extra = get_extra_args()
-    if extra:
-        cmd.extend(extra.split())
-    
-    log(f"Running: {' '.join(cmd)}")
-    
-    try:
-        if is_flatpak():
-            fcmd = ["flatpak-spawn", "--host"]
-            fcmd.append(f'--env=PATH={env["PATH"]}')
-            fcmd.append(f'--env=LD_LIBRARY_PATH={BIN_PATH}')
-            fcmd.append(f'--env=SCRCPY_SERVER_PATH={SCRCPY_SERVER}')
-            fcmd.append(f'--env=ADB={ADB_PATH}')
-            fcmd.extend(cmd)
-            subprocess.run(fcmd, timeout=3600)
-        else:
-            subprocess.run(cmd, env=env, timeout=3600)
-    except:
-        pass
-
-
-def stream_wifi_desktop():
-    """Stream WiFi device on desktop Linux"""
-    ip = get_setting('ip_address')
-    port = get_setting('port', 'int') or 5555
-    
-    if not ip:
-        xbmcgui.Dialog().ok("Error", "Set IP address in Settings")
-        return
-    
-    log(f"=== Desktop WiFi Stream to {ip}:{port} ===")
-    
-    os.chmod(ADB_PATH, 0o755)
-    os.chmod(SCRCPY_PATH, 0o755)
-    
-    env = os.environ.copy()
-    env['PATH'] = f"{BIN_PATH}:{env.get('PATH', '')}"
-    env['LD_LIBRARY_PATH'] = BIN_PATH
-    env['SCRCPY_SERVER_PATH'] = SCRCPY_SERVER
-    env['ADB'] = ADB_PATH
-    
-    os.system(f'{ADB_PATH} kill-server')
-    subprocess.run([ADB_PATH, 'start-server'], env=env, capture_output=True, timeout=10)
-    time.sleep(1)
-    
-    subprocess.run([ADB_PATH, 'connect', f'{ip}:{port}'], env=env, capture_output=True, timeout=10)
-    time.sleep(1)
-    
-    cmd = [SCRCPY_PATH]
-    
-    render = get_render()
-    if render:
-        cmd.extend(['--render-driver', render])
-    
-    cmd.extend(['-s', f'{ip}:{port}'])
-    
-    extra = get_extra_args()
-    if extra:
-        cmd.extend(extra.split())
-    
-    log(f"Running: {' '.join(cmd)}")
-    
-    try:
-        if is_flatpak():
-            fcmd = ["flatpak-spawn", "--host"]
-            fcmd.append(f'--env=PATH={env["PATH"]}')
-            fcmd.append(f'--env=LD_LIBRARY_PATH={BIN_PATH}')
-            fcmd.append(f'--env=SCRCPY_SERVER_PATH={SCRCPY_SERVER}')
-            fcmd.append(f'--env=ADB={ADB_PATH}')
-            fcmd.extend(cmd)
-            subprocess.run(fcmd, timeout=3600)
-        else:
-            subprocess.run(cmd, env=env, timeout=3600)
-    except:
-        pass
-
-
 # ============================================================================
-# SAMSUNG DEX / VIRTUAL DESKTOP
+# SCRCPY LAUNCHERS (phone screen, Samsung DeX, virtual desktop)
 # ============================================================================
 
 def build_env():
@@ -418,16 +207,16 @@ def get_virtual_display_arg():
     return '--new-display'
 
 
-def launch_dex_libreelec(scrcpy_cmd, ip=None, port=None):
+def launch_libreelec(scrcpy_cmd, ip=None, port=None):
     """LibreELEC: stop Kodi, run scrcpy via systemd, restart Kodi after."""
-    log(f"LibreELEC DeX cmd: {scrcpy_cmd}")
+    log(f"LibreELEC scrcpy cmd: {scrcpy_cmd}")
 
     connect_line = f'{ADB_PATH} connect {ip}:{port} >> $LOG 2>&1\nsleep 1\n' if ip else ''
 
     launcher = "/storage/.kodi/temp/scrcpy_launch.sh"
     script = f'''#!/bin/sh
 LOG="/storage/.kodi/temp/scrcpy.log"
-echo "=== DEX START ===" > $LOG
+echo "=== SCRCPY START ===" > $LOG
 date >> $LOG
 
 systemctl stop kodi
@@ -447,12 +236,12 @@ systemctl start kodi
         f.write(script)
     os.chmod(launcher, 0o755)
 
-    xbmcgui.Dialog().notification(ADDON_NAME, "Starting DeX...", time=1000)
+    xbmcgui.Dialog().notification(ADDON_NAME, "Starting scrcpy...", time=1000)
     os.system(f'systemd-run /bin/sh {launcher}')
 
 
-def launch_dex_desktop(cmd, env):
-    log(f"Desktop DeX cmd: {' '.join(cmd)}")
+def launch_desktop(cmd, env):
+    log(f"Desktop scrcpy cmd: {' '.join(cmd)}")
     try:
         if is_flatpak():
             fcmd = ['flatpak-spawn', '--host',
@@ -479,9 +268,11 @@ def ask_connection():
                                   nolabel='USB', yeslabel='WiFi')
 
 
-def launch_dex(mode, use_wifi):
+def launch_scrcpy(mode, use_wifi):
     """
-    mode: 'dex' (mirror DeX display) or 'virtual' (scrcpy virtual desktop)
+    mode: 'phone'   - mirror the default phone screen
+          'dex'     - mirror the existing DeX desktop display
+          'virtual' - create a scrcpy virtual desktop
     """
     os.chmod(ADB_PATH, 0o755)
     os.chmod(SCRCPY_PATH, 0o755)
@@ -497,10 +288,9 @@ def launch_dex(mode, use_wifi):
             return
         serial = f'{ip}:{port}'
 
-    # adb prep + display detection happen while Kodi is still running
-    # (works on LibreELEC too: listing displays does not open a window).
     if not adb_prepare(env, ip, port):
-        xbmcgui.Dialog().ok(ADDON_NAME, f"Could not connect to {serial}.\n"
+        target = serial or 'USB device'
+        xbmcgui.Dialog().ok(ADDON_NAME, f"Could not connect to {target}.\n"
                             "Check wireless debugging / `adb tcpip 5555`.")
         return
 
@@ -509,8 +299,10 @@ def launch_dex(mode, use_wifi):
         if display_id is None:
             return
         mode_args = [f'--display-id={display_id}']
-    else:
+    elif mode == 'virtual':
         mode_args = [get_virtual_display_arg()]
+    else:  # 'phone'
+        mode_args = []
 
     cmd = [SCRCPY_PATH]
     render = get_render()
@@ -530,9 +322,9 @@ def launch_dex(mode, use_wifi):
         cmd.extend(extra.split())
 
     if IS_LIBREELEC:
-        launch_dex_libreelec(' '.join(cmd), ip, port)
+        launch_libreelec(' '.join(cmd), ip, port)
     else:
-        launch_dex_desktop(cmd, env)
+        launch_desktop(cmd, env)
 
 
 def detect_displays_dialog():
@@ -575,28 +367,22 @@ def main():
         xbmcgui.Dialog().ok("Error", f"scrcpy not found:\n{SCRCPY_PATH}")
         return
 
-    menu = ['Stream USB Device', 'Stream WiFi Device',
-            'Samsung DeX', 'Virtual Desktop',
-            'Detect Displays', 'Settings']
+    menu = ['Stream Device',
+            'Samsung DeX',
+            'Virtual Desktop',
+            'Detect Displays',
+            'Settings']
     sel = xbmcgui.Dialog().contextmenu(menu)
 
     if sel == 0:
-        if IS_LIBREELEC:
-            stream_usb_libreelec()
-        else:
-            stream_usb_desktop()
+        launch_scrcpy('phone', use_wifi=ask_connection())
     elif sel == 1:
-        if IS_LIBREELEC:
-            stream_wifi_libreelec()
-        else:
-            stream_wifi_desktop()
+        launch_scrcpy('dex', use_wifi=ask_connection())
     elif sel == 2:
-        launch_dex('dex', use_wifi=ask_connection())
+        launch_scrcpy('virtual', use_wifi=ask_connection())
     elif sel == 3:
-        launch_dex('virtual', use_wifi=ask_connection())
-    elif sel == 4:
         detect_displays_dialog()
-    elif sel == 5:
+    elif sel == 4:
         ADDON.openSettings()
 
 

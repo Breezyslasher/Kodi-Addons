@@ -51,21 +51,15 @@ needs no DeX session at all.
 
 ## Usage
 
-### USB Streaming
+### Streaming the phone screen
 
-1. Enable USB debugging on your Android device
-2. Connect device via USB cable
-3. Launch the addon
-4. Select **Stream USB Device**
-
-### WiFi Streaming
-
-1. Enable USB debugging on your Android device
-2. Connect via USB first and run `adb tcpip 5555` OR enable Wireless debugging (Android 11+)
-3. Go to addon **Settings → WiFi Connection**
-4. Enter your device's IP address
-5. Launch the addon
-6. Select **Stream WiFi Device**
+1. Enable USB debugging on the device
+2. *(WiFi only)* Run `adb tcpip 5555` over USB once, or enable Wireless
+   debugging (Android 11+), then set the device IP in
+   **Settings → WiFi Connection**
+3. Launch the addon → **Stream Device**
+4. If an IP is set you'll be asked USB or WiFi; otherwise it goes
+   straight over USB
 
 ### Samsung DeX vs Virtual Desktop
 

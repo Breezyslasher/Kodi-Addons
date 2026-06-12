@@ -19,12 +19,14 @@
             <icon>resources/Android_Robot.png</icon>
         </assets>
         <news>
-v2026.6.12 - Samsung DeX support
+v2026.6.12 - Samsung DeX + simpler menu
 - NEW: Samsung DeX mirroring with auto-detected display id
 - NEW: Virtual Desktop mode (--new-display) - desktop windowing
   without an active DeX session (One UI 7 / Android 15+)
 - NEW: Detect Displays menu action
-- DeX/Virtual Desktop ask USB vs WiFi only when an IP is configured
+- CHANGED: menu collapsed to Stream Device / Samsung DeX /
+  Virtual Desktop / Detect Displays / Settings - each asks USB vs
+  WiFi only if an IP is configured, otherwise defaults to USB
 - FIXED: dropped removed --forward-all-clicks flag; uses
   --mouse-bind for scrcpy 2.0+ (forwards right/middle clicks)
 - UPDATED: bundled scrcpy 3.3.4 to 4.0 on x86_64 (SDL3,
