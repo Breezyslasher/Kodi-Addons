@@ -36,6 +36,15 @@ See the [addon README](script.scrcpy-launcher/README.md) for details.
 
 ---
 
+### 🖥️ [Samsung DeX Launcher](script.samsungdex-launcher/)
+Stream the Samsung DeX desktop to Kodi over USB or WiFi — no root, no miraclecast. Auto-detects the DeX display, or creates a scrcpy virtual desktop on phones without an active DeX session.
+
+See the [addon README](script.samsungdex-launcher/README.md) for details.
+
+**Requirements:** Kodi 19+ on Linux, Samsung device with DeX, scrcpy Launcher addon (dependency)
+
+---
+
 ### 🔗 [Webhook Runner](script.webhook.runner/)
 Fire Home Assistant (or any) webhooks from Kodi — either by remote-button press or automatically on Kodi events.
 

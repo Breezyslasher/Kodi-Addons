@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+
+    <!-- WIFI CONNECTION -->
+    <category id="wifi" label="WiFi Connection">
+
+        <setting id="ip_address"
+                 label="Device IP Address"
+                 type="text"
+                 default="" />
+
+        <setting id="port"
+                 label="ADB Port"
+                 type="number"
+                 default="5555" />
+
+    </category>
+
+    <!-- DEX -->
+    <category id="dex" label="DeX">
+
+        <setting id="display_id"
+                 label="DeX Display ID (0 = auto-detect)"
+                 type="number"
+                 default="0" />
+
+        <setting id="virtual_resolution"
+                 label="Virtual Desktop Resolution (e.g. 1920x1080)"
+                 type="text"
+                 default="1920x1080" />
+
+        <setting id="virtual_dpi"
+                 label="Virtual Desktop DPI (0 = device default)"
+                 type="number"
+                 default="0" />
+
+    </category>
+
+    <!-- VIDEO -->
+    <category id="video" label="Video">
+
+        <setting id="render_driver"
+                 label="Render Driver (0=Auto, 1=OpenGLES2, 2=OpenGL, 3=Software)"
+                 type="number"
+                 default="1" />
+
+        <setting id="fps"
+                 label="Max FPS (0 = no limit)"
+                 type="number"
+                 default="60" />
+
+        <setting id="size"
+                 label="Max Size (0 = original)"
+                 type="number"
+                 default="0" />
+
+        <setting id="bitrate"
+                 label="Video Bitrate (e.g. 8M, 16M)"
+                 type="text"
+                 default="8M" />
+
+        <setting id="video_codec"
+                 label="Video Codec (0=H264, 1=H265, 2=AV1)"
+                 type="number"
+                 default="0" />
+
+        <setting id="fullscreen"
+                 label="Fullscreen"
+                 type="bool"
+                 default="true" />
+
+    </category>
+
+    <!-- AUDIO -->
+    <category id="audio" label="Audio">
+
+        <setting id="audio_enabled"
+                 label="Enable Audio (Android 11+)"
+                 type="bool"
+                 default="true" />
+
+        <setting id="audio_codec"
+                 label="Audio Codec (0=Opus, 1=AAC, 2=FLAC, 3=Raw)"
+                 type="number"
+                 default="0" />
+
+    </category>
+
+    <!-- DEVICE -->
+    <category id="device" label="Device">
+
+        <setting id="stay_awake"
+                 label="Keep Device Awake"
+                 type="bool"
+                 default="true" />
+
+        <setting id="turn_screen_off"
+                 label="Turn Phone Screen Off While Streaming"
+                 type="bool"
+                 default="true" />
+
+    </category>
+
+    <!-- CONTROLS -->
+    <category id="controls" label="Controls">
+
+        <setting id="forward_all_clicks"
+                 label="Forward All Mouse Clicks (right-click etc.)"
+                 type="bool"
+                 default="true" />
+
+        <setting id="shortcut_mod"
+                 label="Quit Key Modifier (0=Default, 1=LAlt, 2=LSuper, 3=RAlt, 4=RSuper)"
+                 type="number"
+                 default="0" />
+
+    </category>
+
+    <!-- ADVANCED -->
+    <category id="advanced" label="Advanced">
+
+        <setting id="extra_args"
+                 label="Extra scrcpy Arguments"
+                 type="text"
+                 default="" />
+
+    </category>
+
+</settings>

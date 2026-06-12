@@ -30,7 +30,8 @@ jobs:
             'context.plexkodiconnect.download', 
             'plugin.audio.audiobookshelf',
             'script.webhook.runner',
-            'script.scrcpy-launcher'
+            'script.scrcpy-launcher',
+            'script.samsungdex-launcher'
         ]
         
         addons_xml_content = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<addons>\n'
