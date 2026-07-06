@@ -51,7 +51,7 @@
         <license>MIT</license>
     </extension>
 </addon>
-<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.5.28" provider-name="Breezyslasher">
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.7.6" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0" />
@@ -80,6 +80,12 @@
 			<icon>resources/icon.png</icon>
 		</assets>
 		<news>
+v1.0.8 (2026-07-06) - Progress sync fix
+- FIXED: Progress upload no longer loops forever. Audiobookshelf
+  returns an empty body on a successful progress save; the client
+  was mis-parsing that as an error and retrying endlessly.
+- FIXED: Empty/non-JSON 2xx responses now treated as success.
+
 v1.0.7 (2026-05-28) - Now-playing cover art &amp; author
 - FIXED: Audiobook/podcast covers now show on the Kodi now-playing screen
 - NEW: Author shown on now-playing screen for audiobooks
@@ -144,7 +150,7 @@ v1.0.0 - Initial release
     </assets>
   </extension>
 </addon>
-<addon id="script.scrcpy-launcher" name="scrcpy Launcher" version="2025.12.27" provider-name="Breezyslasher">
+<addon id="script.scrcpy-launcher" name="scrcpy Launcher" version="2026.6.12" provider-name="Breezyslasher">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
@@ -153,8 +159,8 @@ v1.0.0 - Initial release
     </extension>
     <extension point="xbmc.service" library="service.py" start="startup"/>
     <extension point="xbmc.addon.metadata">
-        <summary lang="en_GB">Android USB device streaming with auto-detect</summary>
-        <description lang="en_GB">Stream your Android device screen on Kodi using scrcpy.Works with LibreELEC and desktop Linux.</description>
+        <summary lang="en_GB">Android device and Samsung DeX streaming with auto-detect</summary>
+        <description lang="en_GB">Stream your Android device screen or the Samsung DeX desktop on Kodi using scrcpy. DeX display id is auto-detected; Virtual Desktop mode (--new-display) works without an active DeX session. Works with LibreELEC and desktop Linux.</description>
         <platform>linux</platform>
         <license>MIT</license>
         <website>https://github.com/Schlumpf7/scrcpy-launcher-matrix-</website>
@@ -163,6 +169,21 @@ v1.0.0 - Initial release
         <assets>
             <icon>resources/Android_Robot.png</icon>
         </assets>
+        <news>
+v2026.6.12 - Samsung DeX + simpler menu
+- NEW: Samsung DeX mirroring with auto-detected display id
+- NEW: Virtual Desktop mode (--new-display) - desktop windowing
+  without an active DeX session (One UI 7 / Android 15+)
+- NEW: Detect Displays menu action
+- CHANGED: menu collapsed to Stream Device / Samsung DeX /
+  Virtual Desktop / Detect Displays / Settings - each asks USB vs
+  WiFi only if an IP is configured, otherwise defaults to USB
+- FIXED: dropped removed --forward-all-clicks flag; uses
+  --mouse-bind for scrcpy 2.0+ (forwards right/middle clicks)
+- UPDATED: bundled scrcpy 3.3.4 to 4.0 on x86_64 (SDL3,
+  self-contained); aarch64 stays on 3.3.4 (no official arm64 build)
+- Inspired by TuxDex, without miraclecast/root/network changes
+        </news>
     </extension>
 </addon>
 </addons>
