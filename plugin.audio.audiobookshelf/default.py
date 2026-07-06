@@ -809,7 +809,8 @@ def list_offline_episodes(item_id):
     
     _, podcasts = get_downloaded_structure()
     show_markers = get_setting_bool('show_progress_markers', True)
-    
+    autoplay_next = get_setting_bool('autoplay_next_episode', False)
+
     if item_id not in podcasts:
         xbmcgui.Dialog().notification('Not Found', 'Podcast not found', xbmcgui.NOTIFICATION_ERROR)
         xbmcplugin.endOfDirectory(ADDON_HANDLE, succeeded=False)
@@ -834,8 +835,10 @@ def list_offline_episodes(item_id):
                 prefix = f'[{int(progress_pct)}%] '
         
         list_item = xbmcgui.ListItem(label=f"{prefix}{ep['title']}")
-        list_item.setProperty('IsPlayable', 'true')
-        
+        # With auto-play-next on, the click starts an offline queue (a
+        # non-resolving play_queue action); otherwise it's a resolvable item.
+        list_item.setProperty('IsPlayable', 'false' if autoplay_next else 'true')
+
         # Try to use cached cover first for consistency with streaming version
         cover_url = ep.get('cover_url') or ep.get('cover_path')
         if cover_url:
@@ -861,10 +864,12 @@ def list_offline_episodes(item_id):
         context_items.append(('Delete Download', f'RunPlugin({build_url(action="delete_download", item_id=item_id, episode_id=episode_id)})'))
         list_item.addContextMenuItems(context_items)
         
-        xbmcplugin.addDirectoryItem(ADDON_HANDLE, 
-                                   build_url(action='play_offline', key=ep['key']),
-                                   list_item, isFolder=False)
-    
+        if autoplay_next:
+            ep_url = build_url(action='play_queue', item_id=item_id, episode_id=episode_id)
+        else:
+            ep_url = build_url(action='play_offline', key=ep['key'])
+        xbmcplugin.addDirectoryItem(ADDON_HANDLE, ep_url, list_item, isFolder=False)
+
     xbmcplugin.endOfDirectory(ADDON_HANDLE)
 
 
@@ -1194,6 +1199,7 @@ def list_episodes(item_id, sort_by='date'):
         
         show_markers = get_setting_bool('show_progress_markers', True)
         min_for_sort = get_setting_int('min_episodes_for_sort', 10)
+        autoplay_next = get_setting_bool('autoplay_next_episode', False)
         finished_threshold = get_finished_threshold()
         
         # Find New Episodes option
@@ -1288,7 +1294,12 @@ def list_episodes(item_id, sort_by='date'):
                 ep_info = f'E{ep_num} '
             
             list_item = xbmcgui.ListItem(label=f'{prefix}{ep_info}{title}')
-            list_item.setProperty('IsPlayable', 'true' if has_audio or is_downloaded else 'false')
+            playable = has_audio or is_downloaded
+            # With auto-play-next on, the click triggers play_queue - a
+            # non-resolving action that starts a Kodi playlist - so it must NOT
+            # be flagged IsPlayable (Kodi would otherwise wait for a resolve).
+            # Otherwise it's a normal single-play resolvable item.
+            list_item.setProperty('IsPlayable', 'true' if (playable and not autoplay_next) else 'false')
             # Add episode description
             if description:
                 # Clean up HTML tags and truncate if too long
@@ -1325,11 +1336,13 @@ def list_episodes(item_id, sort_by='date'):
             if context_items:
                 list_item.addContextMenuItems(context_items)
             
-            if has_audio or is_downloaded:
+            if playable and autoplay_next:
+                url_params = build_url(action='play_queue', item_id=item_id, episode_id=episode_id)
+            elif playable:
                 url_params = build_url(action='play_episode', item_id=item_id, episode_id=episode_id)
             else:
                 url_params = build_url(action='download_to_server', item_id=item_id, episode_id=episode_id)
-            
+
             xbmcplugin.addDirectoryItem(ADDON_HANDLE, url_params, list_item, isFolder=False)
         
         xbmcplugin.endOfDirectory(ADDON_HANDLE)
@@ -2200,28 +2213,150 @@ def play_item(item_id):
         xbmcgui.Dialog().notification('Error', str(e)[:50], xbmcgui.NOTIFICATION_ERROR)
 
 
-def play_episode(item_id, episode_id):
+def play_podcast_queue(item_id, start_episode_id):
+    """Build a native Kodi playlist of podcast episodes from the selected one
+    onward (chronological) and start it, so Kodi auto-advances episode to
+    episode. Each entry re-enters play_episode(queued=1), which resolves and
+    attaches its own progress monitor - so item identity and sync are handled
+    per episode for free.
+    """
     library_service, url, token, offline = get_library_service()
-    
-    if download_manager.is_downloaded(item_id, episode_id):
-        play_offline_item(item_id, episode_id)
-        return
-    
+
+    # Fully offline: build the queue from downloaded episodes only.
     if not library_service:
+        if not _play_offline_podcast_queue(item_id, start_episode_id):
+            play_offline_item(item_id, start_episode_id, queued=True)
         return
-    
+
     try:
         item = library_service.get_library_item_by_id(item_id, expanded=1)
-        episode = next((ep for ep in item.get('media', {}).get('episodes', []) 
+        episodes = item.get('media', {}).get('episodes', [])
+        # An episode is queueable if it can stream from the server OR we have a
+        # local download of it (downloaded ones play from disk in the queue).
+        playable = [ep for ep in episodes
+                    if ep.get('audioFile') or download_manager.is_downloaded(item_id, ep.get('id'))]
+        # Chronological (oldest -> newest) so "next" moves forward in time.
+        playable.sort(key=lambda x: x.get('publishedAt') or 0)
+        ids = [ep.get('id') for ep in playable]
+
+        if start_episode_id not in ids:
+            # Selected episode has no server audio and no download - play single.
+            play_episode(item_id, start_episode_id, queued=True)
+            return
+
+        start_idx = ids.index(start_episode_id)
+        queue = playable[start_idx:start_idx + 100]  # cap runaway feeds
+
+        if len(queue) <= 1:
+            # Nothing to advance into - just play the one episode.
+            play_episode(item_id, start_episode_id, queued=True)
+            return
+
+        metadata = item.get('media', {}).get('metadata', {})
+        creator = metadata.get('author') or metadata.get('title', '')
+        cover_url = f"{library_service.base_url}/api/items/{item_id}/cover?token={library_service.token}"
+        art = download_cover(cover_url, item_id) or cover_url
+
+        pl = xbmc.PlayList(xbmc.PLAYLIST_MUSIC)
+        pl.clear()
+        dl_count = 0
+        for ep in queue:
+            ep_id = ep.get('id')
+            is_dl = download_manager.is_downloaded(item_id, ep_id)
+            if is_dl:
+                dl_count += 1
+            li = xbmcgui.ListItem(label=ep.get('title', 'Unknown'))
+            set_music_info(li, title=ep.get('title', 'Unknown'), artist=creator,
+                           duration=ep.get('duration', 0))
+            if art:
+                li.setArt({'thumb': art, 'poster': art, 'fanart': art, 'icon': art})
+            li.setProperty('IsPlayable', 'true')
+            # Every entry re-enters play_episode(queued=1); that function plays
+            # from the local file when downloaded, else streams. So a single
+            # queue transparently mixes downloaded and streamed episodes.
+            ep_url = build_url(action='play_episode', item_id=item_id,
+                               episode_id=ep_id, queued=1)
+            pl.add(ep_url, li)
+
+        xbmc.log(f"[QUEUE] Auto-play queue: {len(queue)} episodes from {start_episode_id} "
+                 f"({dl_count} downloaded, {len(queue) - dl_count} streamed)", xbmc.LOGINFO)
+        xbmc.Player().play(pl)
+
+    except Exception as e:
+        xbmc.log(f"[QUEUE] Failed to build podcast queue: {e}", xbmc.LOGERROR)
+        # Fall back to single play so the click still does something.
+        play_episode(item_id, start_episode_id, queued=True)
+
+
+def _play_offline_podcast_queue(item_id, start_episode_id):
+    """Build an auto-advance queue from the DOWNLOADED episodes of a podcast,
+    for use when there is no server connection. Returns True if a multi-episode
+    queue was started, False otherwise (caller then plays the single episode).
+    """
+    try:
+        downloads = download_manager.get_all_downloads()
+        eps = [info for info in downloads.values()
+               if info.get('item_id') == item_id and info.get('episode_id')]
+        if len(eps) <= 1:
+            return False
+        # Order chronologically by the stored publish time (matches the online
+        # queue). Older downloads predating this field have published_at=0, so
+        # fall back to download time to keep them sensibly ordered.
+        eps.sort(key=lambda x: (x.get('published_at') or 0, x.get('downloaded_at') or ''))
+        ep_ids = [e.get('episode_id') for e in eps]
+        if start_episode_id not in ep_ids:
+            return False
+        start_idx = ep_ids.index(start_episode_id)
+        queue = eps[start_idx:start_idx + 100]
+        if len(queue) <= 1:
+            return False
+
+        pl = xbmc.PlayList(xbmc.PLAYLIST_MUSIC)
+        pl.clear()
+        for info in queue:
+            li = xbmcgui.ListItem(label=info.get('title', 'Unknown'))
+            set_music_info(li, title=info.get('title', 'Unknown'),
+                           artist=info.get('author', ''), duration=info.get('duration', 0))
+            cover = info.get('cover_path')
+            if cover and os.path.exists(cover):
+                li.setArt({'thumb': cover, 'poster': cover, 'fanart': cover, 'icon': cover})
+            li.setProperty('IsPlayable', 'true')
+            ep_url = build_url(action='play_episode', item_id=item_id,
+                               episode_id=info.get('episode_id'), queued=1)
+            pl.add(ep_url, li)
+
+        xbmc.log(f"[QUEUE] Offline auto-play queue: {len(queue)} downloaded episodes", xbmc.LOGINFO)
+        xbmc.Player().play(pl)
+        return True
+    except Exception as e:
+        xbmc.log(f"[QUEUE] Offline queue build failed: {e}", xbmc.LOGERROR)
+        return False
+
+
+def play_episode(item_id, episode_id, queued=False):
+    library_service, url, token, offline = get_library_service()
+
+    # Prefer the local copy when the episode is downloaded (works both as a
+    # standalone play and as an entry in an auto-play-next queue).
+    if download_manager.is_downloaded(item_id, episode_id):
+        play_offline_item(item_id, episode_id, queued=queued)
+        return
+
+    if not library_service:
+        return
+
+    try:
+        item = library_service.get_library_item_by_id(item_id, expanded=1)
+        episode = next((ep for ep in item.get('media', {}).get('episodes', [])
                        if ep.get('id') == episode_id), None)
-        
+
         if not episode:
             raise ValueError("Episode not found")
-        
+
         if not episode.get('audioFile'):
             xbmcgui.Dialog().notification('Not Available', 'Not on server', xbmcgui.NOTIFICATION_WARNING)
             return
-        
+
         title = episode.get('title', 'Unknown')
         duration = episode.get('duration', 0)
 
@@ -2232,19 +2367,29 @@ def play_episode(item_id, episode_id):
         # Use unified progress
         current_time, is_finished, _ = get_best_resume_position(library_service, item_id, episode_id)
 
-        start_position = current_time if current_time > 10 and not is_finished and ask_resume(current_time, duration) else 0
+        if queued:
+            # Part of an auto-advance queue: never pop a modal resume dialog
+            # between episodes (it would block playback). Silently resume if
+            # this episode was partially heard, otherwise start at 0.
+            start_position = current_time if current_time > 10 and not is_finished else 0
+        else:
+            start_position = current_time if current_time > 10 and not is_finished and ask_resume(current_time, duration) else 0
 
         play_url = library_service.get_file_url(item_id, episode_id=episode_id)
         play_audio(play_url, title, duration, library_service, item_id,
                   episode_id=episode_id, start_position=start_position, is_podcast=True,
                   artist=creator)
-        
+
     except Exception as e:
         xbmcgui.Dialog().notification('Error', str(e)[:50], xbmcgui.NOTIFICATION_ERROR)
 
 
-def play_offline_item(item_id, episode_id=None, seek_position=None):
-    """Play downloaded item using unified progress - syncs with server when online"""
+def play_offline_item(item_id, episode_id=None, seek_position=None, queued=False):
+    """Play downloaded item using unified progress - syncs with server when online.
+
+    queued=True means this is an entry in an auto-play-next playlist: never pop
+    a modal resume dialog (it would block the queue), just resume silently.
+    """
     download_info = download_manager.get_download_info(item_id, episode_id)
     if not download_info:
         xbmcgui.Dialog().notification('Error', 'Not found', xbmcgui.NOTIFICATION_ERROR)
@@ -2278,9 +2423,12 @@ def play_offline_item(item_id, episode_id=None, seek_position=None):
         overall_pos, is_finished, server_duration = get_best_resume_position(library_service, item_id, episode_id)
         if server_duration > duration:
             duration = server_duration
-        
+
         if overall_pos > 10 and not is_finished:
-            if not ask_resume(overall_pos, duration):
+            if queued:
+                # Auto-advance queue: resume silently, no blocking dialog.
+                pass
+            elif not ask_resume(overall_pos, duration):
                 overall_pos = 0
     
     # For multi-file downloads, get the right file and calculate offsets
@@ -2382,8 +2530,9 @@ def download_podcast(item_id):
     
     try:
         item = library_service.get_library_item_by_id(item_id, expanded=1)
+        podcast_title = item.get('media', {}).get('metadata', {}).get('title', 'Unknown Podcast')
         all_episodes = [ep for ep in item.get('media', {}).get('episodes', []) if ep.get('audioFile')]
-        
+
         if not all_episodes:
             xbmcgui.Dialog().notification('No Episodes', 'Nothing to download', xbmcgui.NOTIFICATION_WARNING)
             return
@@ -2455,7 +2604,9 @@ def download_podcast(item_id):
                 ep_id = ep.get('id')
                 item_data = {
                     'title': ep.get('title', 'Unknown'),
+                    'podcast_title': podcast_title,
                     'duration': ep.get('duration', 0),
+                    'publishedAt': ep.get('publishedAt', 0),
                     'cover_url': f"{url}/api/items/{item_id}/cover?token={token}"
                 }
                 download_manager.download_item(item_id, item_data, library_service, episode_id=ep_id, show_progress=False)
@@ -2492,9 +2643,10 @@ def download_episode(item_id, episode_id):
             'title': episode.get('title', 'Unknown'),
             'podcast_title': podcast_title,
             'duration': episode.get('duration', 0),
+            'publishedAt': episode.get('publishedAt', 0),
             'cover_url': f"{url}/api/items/{item_id}/cover?token={token}"
         }
-        
+
         download_manager.download_item(item_id, item_data, library_service, episode_id=episode_id)
         
     except Exception as e:
@@ -2610,7 +2762,9 @@ def router(paramstring):
         overall_time = int(params.get('overall_time')) if params.get('overall_time') else None
         play_at_position(params['item_id'], params['file_ino'], int(params.get('seek_time', 0)), overall_time)
     elif action == 'play_episode':
-        play_episode(params['item_id'], params['episode_id'])
+        play_episode(params['item_id'], params['episode_id'], queued=params.get('queued') == '1')
+    elif action == 'play_queue':
+        play_podcast_queue(params['item_id'], params['episode_id'])
     elif action == 'downloads':
         list_downloads()
     elif action == 'play_offline':

@@ -29,6 +29,7 @@
         <setting id="podcast_sync_on_stop" type="bool" label="Sync when playback stops" default="true" />
 
         <setting id="mark_podcast_finished_threshold" type="select" label="Mark finished when" default="1" values="90% complete|95% complete|Last 30 seconds|Last 60 seconds" />
+        <setting id="autoplay_next_episode" type="bool" label="Auto-play next episode (oldest to newest)" default="false" />
     </category>
     <category label="Offline">
 
