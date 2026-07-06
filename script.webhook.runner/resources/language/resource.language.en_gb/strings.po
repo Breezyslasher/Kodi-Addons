@@ -27,3 +27,20 @@ msgstr ""
 msgctxt "#32003"
 msgid "Default URL prefix"
 msgstr ""
+
+# --- Keymap permission (opt-in gate) ---
+msgctxt "#32004"
+msgid "Keymap Permission"
+msgstr ""
+
+msgctxt "#32005"
+msgid "To map a webhook to a remote button, this add-on needs to write Kodi's keymap file (userdata/keymaps/gen.xml), which is outside the add-on's own folder. Allow this? Event triggers do not require it."
+msgstr ""
+
+msgctxt "#32006"
+msgid "Allow"
+msgstr ""
+
+msgctxt "#32007"
+msgid "Deny"
+msgstr ""

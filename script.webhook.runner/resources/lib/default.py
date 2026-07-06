@@ -35,14 +35,53 @@ EVENT_NAMES = [
 KEYMAPS_DIR = xbmcvfs.translatePath('special://userdata/keymaps/')
 GEN_XML_FILE = os.path.join(KEYMAPS_DIR, 'gen.xml')
 
-# Clean up old keymap files
-for old_file in ['webhook_runner.xml', 'zzz_webhook_runner.xml']:
-    old_path = os.path.join(KEYMAPS_DIR, old_file)
-    if os.path.exists(old_path):
-        try:
-            os.remove(old_path)
-        except:
-            pass
+# The button-mapping feature writes/deletes the shared Kodi keymap file
+# (special://userdata/keymaps/gen.xml), which lives outside this addon's
+# profile folder. Kodi repo policy requires explicit user opt-in before an
+# addon touches files elsewhere, so we ask once and remember the answer.
+# (Event triggers do NOT need this - they only use events.json in profile.)
+KEYMAP_CONSENT_FILE = os.path.join(ADDON_DATA, 'keymap_consent')
+
+
+def L(string_id):
+    """Shorthand for a localized string from resources/language/*/strings.po."""
+    return ADDON.getLocalizedString(string_id)
+
+
+def has_keymap_consent():
+    return os.path.exists(KEYMAP_CONSENT_FILE)
+
+
+def ensure_keymap_consent():
+    """Ask the user (once) to allow writing the shared Kodi keymap file.
+
+    Returns True if allowed. The consent is remembered in the addon profile
+    so the prompt only appears the first time a button mapping is created.
+    """
+    if has_keymap_consent():
+        return True
+    allowed = xbmcgui.Dialog().yesno(
+        L(32004),  # "Keymap Permission"
+        L(32005),  # explanation of what will be written and where
+        yeslabel=L(32006), nolabel=L(32007))
+    if not allowed:
+        return False
+    ensure_data_dir()
+    try:
+        with open(KEYMAP_CONSENT_FILE, 'w', encoding='utf-8') as f:
+            f.write('1')
+    except Exception:
+        pass
+    # Clean up any leftover keymap files from older versions now that we're
+    # permitted to touch the keymaps directory.
+    for old_file in ['webhook_runner.xml', 'zzz_webhook_runner.xml']:
+        old_path = os.path.join(KEYMAPS_DIR, old_file)
+        if os.path.exists(old_path):
+            try:
+                os.remove(old_path)
+            except Exception:
+                pass
+    return True
 
 # Action ID to key name (for auto-detect)
 ACTION_TO_KEY = {
@@ -225,6 +264,9 @@ def get_or_create(parent, tag):
 
 
 def add_to_keymap(button, button_type, webhook_id, longpress=False):
+    # Writing gen.xml is outside our profile - requires explicit user opt-in.
+    if not ensure_keymap_consent():
+        return None
     root = load_gen_xml()
     action = f'RunScript({ADDON_ID},{webhook_id})'
     
