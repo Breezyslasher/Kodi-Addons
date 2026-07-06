@@ -1,9 +1,29 @@
+# Kodi Media Center language file
+# Addon Name: Webhook Runner
+# Addon id: script.webhook.runner
+# Addon Provider: Breezyslasher
 msgid ""
 msgstr ""
+"Project-Id-Version: script.webhook.runner\n"
+"Report-Msgid-Bugs-To: https://github.com/Breezyslasher/Kodi-Addons\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 "Language: en_GB\n"
 
-msgid "Show notification when webhook is sent"
-msgstr "Show notification when webhook is sent"
+# --- Settings ---
+msgctxt "#32000"
+msgid "General"
+msgstr ""
 
-msgid "Enable Action 1"
-msgstr "Enable Action 1"
+msgctxt "#32001"
+msgid "Show notifications"
+msgstr ""
+
+msgctxt "#32002"
+msgid "Enable event triggers (playback / system)"
+msgstr ""
+
+msgctxt "#32003"
+msgid "Default URL prefix"
+msgstr ""

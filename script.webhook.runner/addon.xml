@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.webhook.runner" version="2026.5.29" name="Webhook Runner" provider-name="Breezyslasher">
+<addon id="script.webhook.runner" version="2026.7.7" name="Webhook Runner" provider-name="Breezyslasher">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
   </requires>
@@ -8,11 +8,13 @@
   </extension>
   <extension point="xbmc.service" library="resources/lib/service.py" start="login"/>
   <extension point="xbmc.addon.metadata">
-    <summary>Run Home Assistant webhooks from Kodi</summary>
-    <description>Create webhooks and trigger them via Keymap Editor or Kodi events. Each webhook gets a unique ID that can be mapped to any button using Keymap Editor, or fired automatically on playback/system events (playback start/stop/pause, screensaver, Kodi start/stop).</description>
+    <summary lang="en_GB">Run Home Assistant webhooks from Kodi</summary>
+    <description lang="en_GB">Create webhooks and trigger them via Keymap Editor or Kodi events. Each webhook gets a unique ID that can be mapped to any button using Keymap Editor, or fired automatically on playback/system events (playback start/stop/pause, screensaver, Kodi start/stop).</description>
     <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
     <assets>
-      <icon>webhook.png</icon>
+      <icon>resources/icon.png</icon>
     </assets>
   </extension>
 </addon>
