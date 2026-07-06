@@ -199,8 +199,12 @@ class AudioBookShelfLibraryService:
 				return None
 			
 			response.raise_for_status()
+			if not response.content:
+				return None
 			return response.json()
-		except json.JSONDecodeError:
+		except ValueError:
+			# Kodi's bundled requests raises its own JSONDecodeError
+			# (ValueError subclass), not stdlib json.JSONDecodeError.
 			xbmc.log("Failed to decode JSON response for media progress", xbmc.LOGERROR)
 			xbmc.log(response.text, xbmc.LOGDEBUG)
 			return None
@@ -227,14 +231,23 @@ class AudioBookShelfLibraryService:
 			response = requests.patch(self.base_url + endpoint, headers=self.headers, json=data)
 			xbmc.log(f"[SYNC] Response status: {response.status_code}", xbmc.LOGINFO)
 			response.raise_for_status()
-			
+
+			# A 2xx means the progress was saved. Audiobookshelf returns an
+			# empty body here, and the Kodi-bundled requests raises its own
+			# JSONDecodeError (a ValueError subclass, NOT the stdlib
+			# json.JSONDecodeError) when parsing an empty body - so we must
+			# catch ValueError, and short-circuit when there is no content.
+			# Returning None on an empty-but-successful reply made SYNC_MGR
+			# think the upload failed and retry it forever.
+			if not response.content:
+				xbmc.log(f"[SYNC] Success (empty response)", xbmc.LOGINFO)
+				return {"success": True}
 			try:
 				result = response.json()
 				xbmc.log(f"[SYNC] Success: Progress saved to server", xbmc.LOGINFO)
 				return result
-			except json.JSONDecodeError:
-				# Some servers return empty response on success
-				xbmc.log(f"[SYNC] Success (no JSON response)", xbmc.LOGINFO)
+			except ValueError:
+				xbmc.log(f"[SYNC] Success (non-JSON response)", xbmc.LOGINFO)
 				return {"success": True}
 				
 		except requests.exceptions.HTTPError as e:
