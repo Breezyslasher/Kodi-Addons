@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.7.6.2" provider-name="Breezyslasher">
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.7.6.3" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0" />
@@ -28,6 +28,11 @@
 			<icon>resources/icon.png</icon>
 		</assets>
 		<news>
+v1.0.11 (2026-07-06) - Chronological offline queues
+- Downloads now store the episode publish date, so offline auto-play
+  queues order episodes chronologically (matching the online queue)
+  instead of by download time.
+
 v1.0.10 (2026-07-06) - Auto-play: mixed streamed/downloaded
 - NEW: Auto-play queues now mix streamed and downloaded episodes -
   downloaded ones play from disk, the rest stream, in one queue.

@@ -2299,8 +2299,10 @@ def _play_offline_podcast_queue(item_id, start_episode_id):
                if info.get('item_id') == item_id and info.get('episode_id')]
         if len(eps) <= 1:
             return False
-        # No publish date offline; order by download time as the best proxy.
-        eps.sort(key=lambda x: x.get('downloaded_at') or '')
+        # Order chronologically by the stored publish time (matches the online
+        # queue). Older downloads predating this field have published_at=0, so
+        # fall back to download time to keep them sensibly ordered.
+        eps.sort(key=lambda x: (x.get('published_at') or 0, x.get('downloaded_at') or ''))
         ep_ids = [e.get('episode_id') for e in eps]
         if start_episode_id not in ep_ids:
             return False
@@ -2528,8 +2530,9 @@ def download_podcast(item_id):
     
     try:
         item = library_service.get_library_item_by_id(item_id, expanded=1)
+        podcast_title = item.get('media', {}).get('metadata', {}).get('title', 'Unknown Podcast')
         all_episodes = [ep for ep in item.get('media', {}).get('episodes', []) if ep.get('audioFile')]
-        
+
         if not all_episodes:
             xbmcgui.Dialog().notification('No Episodes', 'Nothing to download', xbmcgui.NOTIFICATION_WARNING)
             return
@@ -2601,7 +2604,9 @@ def download_podcast(item_id):
                 ep_id = ep.get('id')
                 item_data = {
                     'title': ep.get('title', 'Unknown'),
+                    'podcast_title': podcast_title,
                     'duration': ep.get('duration', 0),
+                    'publishedAt': ep.get('publishedAt', 0),
                     'cover_url': f"{url}/api/items/{item_id}/cover?token={token}"
                 }
                 download_manager.download_item(item_id, item_data, library_service, episode_id=ep_id, show_progress=False)
@@ -2638,9 +2643,10 @@ def download_episode(item_id, episode_id):
             'title': episode.get('title', 'Unknown'),
             'podcast_title': podcast_title,
             'duration': episode.get('duration', 0),
+            'publishedAt': episode.get('publishedAt', 0),
             'cover_url': f"{url}/api/items/{item_id}/cover?token={token}"
         }
-        
+
         download_manager.download_item(item_id, item_data, library_service, episode_id=episode_id)
         
     except Exception as e:

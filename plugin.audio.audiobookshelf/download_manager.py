@@ -233,12 +233,16 @@ class DownloadManager:
                 'item_id': item_id,
                 'episode_id': episode_id,
                 'title': item_data['title'],
+                'podcast_title': item_data.get('podcast_title', ''),
                 'file_path': file_path,
                 'cover_path': cover_path,
                 'duration': item_data.get('duration', 0),
                 'description': item_data.get('description', ''),
                 'author': item_data.get('author', ''),
                 'narrator': item_data.get('narrator', ''),
+                # Podcast episode publish time (epoch ms) so offline auto-play
+                # can order episodes chronologically, matching the online queue.
+                'published_at': item_data.get('publishedAt', 0),
                 'downloaded_at': datetime.now().isoformat(),
                 'file_size': os.path.getsize(file_path),
                 'is_multifile': False
@@ -700,12 +704,16 @@ class DownloadManager:
                 'item_id': item_id,
                 'episode_id': episode_id,
                 'title': item_data['title'],
+                'podcast_title': item_data.get('podcast_title', ''),
                 'file_path': file_path,
                 'cover_path': cover_path,
                 'duration': item_data.get('duration', 0),
                 'description': item_data.get('description', ''),
                 'author': item_data.get('author', ''),
                 'narrator': item_data.get('narrator', ''),
+                # Podcast episode publish time (epoch ms) so offline auto-play
+                # can order episodes chronologically, matching the online queue.
+                'published_at': item_data.get('publishedAt', 0),
                 'downloaded_at': datetime.now().isoformat(),
                 'file_size': os.path.getsize(file_path),
                 'is_multifile': False
