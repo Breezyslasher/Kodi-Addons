@@ -52,6 +52,11 @@ class PlaybackMonitor:
         self.last_position = 0
         self.last_synced_position = 0
         self.is_finished = False
+        # The media file this monitor is bound to. In an auto-play-next
+        # playlist Kodi advances to the next episode in the SAME player; if we
+        # kept reading getTime() we'd save the next track's position onto this
+        # episode. We record the file and stop cleanly when it changes.
+        self.playing_file = None
         
         # Initialize sync manager with library service
         self.sync_mgr = get_sync_manager()
@@ -115,17 +120,35 @@ class PlaybackMonitor:
                 except Exception as e:
                     xbmc.log(f"[MONITOR] Session start error: {str(e)}", xbmc.LOGDEBUG)
             
+            # Bind this monitor to the file that is now playing.
+            try:
+                self.playing_file = self.player.getPlayingFile()
+            except Exception:
+                self.playing_file = None
+
             last_sync_time = time.time()
             self.last_position = self.start_position
             self.last_synced_position = self.start_position
-            
+
             # Main monitoring loop
             while self.is_monitoring:
                 try:
                     if not self.player.isPlayingAudio():
                         xbmc.log("[MONITOR] Audio playback stopped", xbmc.LOGINFO)
                         break
-                    
+
+                    # Auto-play-next: the playlist advanced to a different item.
+                    # Stop now so we keep THIS episode's last good position
+                    # instead of overwriting it with the next episode's time.
+                    if self.playing_file:
+                        try:
+                            current_file = self.player.getPlayingFile()
+                        except Exception:
+                            current_file = self.playing_file
+                        if current_file and current_file != self.playing_file:
+                            xbmc.log("[MONITOR] Playing file changed (playlist advanced); stopping monitor", xbmc.LOGINFO)
+                            break
+
                     current_time = self.player.getTime()
                     self.last_position = current_time
                     
