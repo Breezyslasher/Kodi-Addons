@@ -59,7 +59,7 @@ See the [addon README](script.webhook.runner/README.txt) for details.
 ### Method 1: Repository Installation (Recommended)
 
 1. In Kodi: Settings → Add-ons → Install from repository
-2. Add my repository URL: `https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips/repository.breezyslasher/repository.breezyslasher-2026.7.6.zip`
+2. Add my repository URL: `https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips/repository.breezyslasher/repository.breezyslasher-2026.7.11.zip`
 3. Install "Breezyslasher Repository"
 4. Browse and install addons from the repository
 
