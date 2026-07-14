@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="Video Settings">
+        <setting id="resolution" type="select" label="Resolution" default="0" values="Auto (detect)|1920x1080|1280x720|960x544 (PS Vita)|864x488 (PS Vita alt)|800x600|640x480|480x272|320x240"/>
+        <setting id="framerate" type="select" label="Framerate" default="0" values="Auto|60|30|25|24|20|15"/>
+        <setting id="pixel_format" type="select" label="Pixel Format" default="0" values="auto|mjpeg|yuyv422|nv12|h264"/>
+    </category>
+    <category label="Playback">
+        <setting id="low_latency" type="bool" label="Low Latency Mode" default="true"/>
+        <setting id="use_external_player" type="bool" label="Always Use External Player (ffplay)" default="false"/>
+    </category>
+    <category label="Capture Card">
+        <setting id="default_input" type="number" label="Default Input (0-9)" default="0"/>
+        <setting id="video_standard" type="select" label="Video Standard" default="0" values="auto|ntsc|pal|secam"/>
+    </category>
+    <category label="Advanced">
+        <setting id="debug_logging" type="bool" label="Enable Debug Logging" default="false"/>
+    </category>
+</settings>

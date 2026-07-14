@@ -1,0 +1,1173 @@
+"""
+USB Camera Viewer for Kodi
+View USB cameras, capture cards, and V4L2 video devices
+"""
+import sys
+import os
+import subprocess
+import re
+import time
+import urllib.parse
+import threading
+import xbmc
+import xbmcgui
+import xbmcplugin
+import xbmcaddon
+import xbmcvfs
+
+ADDON = xbmcaddon.Addon()
+ADDON_ID = ADDON.getAddonInfo('id')
+ADDON_NAME = ADDON.getAddonInfo('name')
+ADDON_PATH = xbmcvfs.translatePath(ADDON.getAddonInfo('path'))
+ADDON_PROFILE = xbmcvfs.translatePath(ADDON.getAddonInfo('profile'))
+HANDLE = int(sys.argv[1])
+BASE_URL = sys.argv[0]
+
+# Global lock to prevent multiple simultaneous playback attempts
+_playback_lock = threading.Lock()
+_current_ffmpeg_process = None
+
+
+def log(msg, level=xbmc.LOGINFO):
+    """Log message to Kodi log"""
+    xbmc.log(f'{ADDON_ID}: {msg}', level)
+
+
+# Settings lookup tables for select-type settings
+# 'auto' means let ffplay detect the best settings
+RESOLUTION_OPTIONS = ['auto', '1920x1080', '1280x720', '960x544', '864x488', '800x600', '640x480', '480x272', '320x240']
+FRAMERATE_OPTIONS = ['auto', '60', '30', '25', '24', '20', '15']
+PIXEL_FORMAT_OPTIONS = ['auto', 'mjpeg', 'yuyv422', 'nv12', 'h264']
+VIDEO_STANDARD_OPTIONS = ['auto', 'ntsc', 'pal', 'secam']
+
+
+def get_setting(key):
+    """Get addon setting as string"""
+    return ADDON.getSetting(key)
+
+
+def get_setting_bool(key):
+    """Get boolean addon setting"""
+    value = ADDON.getSetting(key)
+    return value.lower() == 'true'
+
+
+def get_setting_int(key):
+    """Get integer addon setting"""
+    value = ADDON.getSetting(key)
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return 0
+
+
+def get_resolution():
+    """Get resolution setting value. Returns 'auto' or a resolution string like '1280x720'"""
+    try:
+        index = int(ADDON.getSetting('resolution'))
+        if 0 <= index < len(RESOLUTION_OPTIONS):
+            return RESOLUTION_OPTIONS[index]
+    except (ValueError, TypeError):
+        pass
+    return 'auto'  # Default to auto for best compatibility
+
+
+def get_framerate():
+    """Get framerate setting value. Returns 'auto' or a framerate string like '30'"""
+    try:
+        index = int(ADDON.getSetting('framerate'))
+        if 0 <= index < len(FRAMERATE_OPTIONS):
+            return FRAMERATE_OPTIONS[index]
+    except (ValueError, TypeError):
+        pass
+    return 'auto'  # Default to auto for best compatibility
+
+
+def get_pixel_format():
+    """Get pixel format setting value"""
+    try:
+        index = int(ADDON.getSetting('pixel_format'))
+        if 0 <= index < len(PIXEL_FORMAT_OPTIONS):
+            return PIXEL_FORMAT_OPTIONS[index]
+    except (ValueError, TypeError):
+        pass
+    return 'auto'
+
+
+def build_url(query):
+    """Build plugin URL with query parameters"""
+    return f'{BASE_URL}?{urllib.parse.urlencode(query)}'
+
+
+def get_thumbnail_path(device_path):
+    """Get the path where a device thumbnail should be stored"""
+    device_name = os.path.basename(device_path)
+    return os.path.join(ADDON_PROFILE, f'thumb_{device_name}.jpg')
+
+
+def check_device_available(device_path, timeout=3):
+    """
+    Check if a device is available and can be opened.
+    Returns True if available, False otherwise.
+    """
+    if not os.path.exists(device_path):
+        log(f'Device {device_path} does not exist', xbmc.LOGWARNING)
+        return False
+
+    # Try to open the device briefly to check availability
+    try:
+        result = subprocess.run(
+            ['v4l2-ctl', '--device', device_path, '--get-fmt-video'],
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        return result.returncode == 0
+    except subprocess.TimeoutExpired:
+        log(f'Timeout checking device {device_path}', xbmc.LOGWARNING)
+        return False
+    except Exception as e:
+        log(f'Error checking device {device_path}: {e}', xbmc.LOGWARNING)
+        return False
+
+
+def wait_for_device(device_path, max_retries=5, delay=0.5):
+    """
+    Wait for a device to become available with retries.
+    Returns True if device becomes available, False if timeout.
+    """
+    for attempt in range(max_retries):
+        if check_device_available(device_path):
+            return True
+        log(f'Device {device_path} not ready, attempt {attempt + 1}/{max_retries}')
+        time.sleep(delay)
+    return False
+
+
+def capture_thumbnail(device_path, force=False):
+    """
+    Capture a single frame from a device to use as a thumbnail.
+    Returns the path to the thumbnail image, or None if capture failed.
+    Ensures the device is properly released after capture.
+    """
+    thumb_path = get_thumbnail_path(device_path)
+
+    # Check if thumbnail already exists and is recent (less than 60 seconds old)
+    if not force and os.path.exists(thumb_path):
+        try:
+            age = time.time() - os.path.getmtime(thumb_path)
+            if age < 60:  # Use cached thumbnail if less than 60 seconds old
+                return thumb_path
+        except:
+            pass
+
+    # Check if device is available before attempting capture
+    if not os.path.exists(device_path):
+        log(f'Device {device_path} not found for thumbnail', xbmc.LOGWARNING)
+        return None
+
+    # Ensure profile directory exists
+    if not os.path.exists(ADDON_PROFILE):
+        os.makedirs(ADDON_PROFILE)
+
+    # Capture a single frame using ffmpeg with timeout and proper cleanup
+    ffmpeg_cmd = [
+        'ffmpeg',
+        '-y',  # Overwrite
+        '-hide_banner',
+        '-loglevel', 'error',
+        '-t', '1',  # Max 1 second capture time
+        '-f', 'v4l2',
+        '-i', device_path,
+        '-vframes', '1',  # Capture only 1 frame
+        '-s', '320x240',  # Thumbnail size
+        '-q:v', '5',  # JPEG quality
+        thumb_path
+    ]
+
+    process = None
+    try:
+        process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE
+        )
+        # Wait for completion with timeout
+        try:
+            _, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            log(f'Thumbnail capture timeout for {device_path}', xbmc.LOGWARNING)
+            return None
+
+        if process.returncode == 0 and os.path.exists(thumb_path):
+            log(f'Captured thumbnail for {device_path}')
+            # Small delay to ensure device is fully released
+            time.sleep(0.2)
+            return thumb_path
+        else:
+            stderr_text = stderr.decode('utf-8', errors='ignore') if stderr else ''
+            log(f'Failed to capture thumbnail for {device_path}: {stderr_text}', xbmc.LOGWARNING)
+    except Exception as e:
+        log(f'Thumbnail capture error for {device_path}: {e}', xbmc.LOGWARNING)
+    finally:
+        # Ensure process is terminated and device released
+        if process and process.poll() is None:
+            try:
+                process.terminate()
+                process.wait(timeout=2)
+            except:
+                process.kill()
+        # Give the device time to be released
+        time.sleep(0.3)
+
+    return None
+
+
+def get_video_devices():
+    """
+    Detect all V4L2 video devices on the system.
+    Returns list of dicts with device info.
+    """
+    devices = []
+
+    # Find all /dev/video* devices
+    dev_path = '/dev'
+    try:
+        for entry in os.listdir(dev_path):
+            if entry.startswith('video'):
+                device_path = os.path.join(dev_path, entry)
+                device_info = get_device_info(device_path)
+                if device_info:
+                    devices.append(device_info)
+    except Exception as e:
+        log(f'Error scanning /dev: {e}', xbmc.LOGERROR)
+
+    # Sort by device number
+    devices.sort(key=lambda x: x.get('device_num', 999))
+
+    return devices
+
+
+def get_device_info(device_path):
+    """
+    Get detailed information about a V4L2 device.
+    Uses v4l2-ctl if available, falls back to basic detection.
+    """
+    device_info = {
+        'path': device_path,
+        'name': os.path.basename(device_path),
+        'device_num': int(re.search(r'\d+', os.path.basename(device_path)).group()) if re.search(r'\d+', os.path.basename(device_path)) else 0,
+        'driver': 'unknown',
+        'card': f'Video Device {os.path.basename(device_path)}',
+        'capabilities': [],
+        'formats': [],
+        'inputs': []
+    }
+
+    # Check if device is accessible
+    if not os.path.exists(device_path):
+        return None
+
+    # Try to get device info using v4l2-ctl
+    try:
+        result = subprocess.run(
+            ['v4l2-ctl', '--device', device_path, '--all'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0:
+            output = result.stdout
+
+            # Parse driver name
+            driver_match = re.search(r'Driver name\s*:\s*(.+)', output)
+            if driver_match:
+                device_info['driver'] = driver_match.group(1).strip()
+
+            # Parse card name
+            card_match = re.search(r'Card type\s*:\s*(.+)', output)
+            if card_match:
+                device_info['card'] = card_match.group(1).strip()
+
+            # Parse capabilities
+            if 'Video Capture' in output:
+                device_info['capabilities'].append('capture')
+            if 'Video Output' in output:
+                device_info['capabilities'].append('output')
+
+            # Check for video inputs (for capture cards)
+            input_matches = re.findall(r'Input\s+:\s+(\d+)\s+\(([^)]+)\)', output)
+            for inp_num, inp_name in input_matches:
+                device_info['inputs'].append({'num': int(inp_num), 'name': inp_name})
+
+    except FileNotFoundError:
+        log('v4l2-ctl not found, using basic detection', xbmc.LOGWARNING)
+    except subprocess.TimeoutExpired:
+        log(f'Timeout getting info for {device_path}', xbmc.LOGWARNING)
+    except Exception as e:
+        log(f'Error getting device info: {e}', xbmc.LOGWARNING)
+
+    # Only return devices that appear to be capture devices
+    # Filter out metadata/output-only devices
+    try:
+        # Try to check if device can capture
+        result = subprocess.run(
+            ['v4l2-ctl', '--device', device_path, '--list-formats'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0 and ('YUYV' in result.stdout or 'MJPG' in result.stdout or
+                                        'H264' in result.stdout or 'NV12' in result.stdout or
+                                        'RGB' in result.stdout or 'YUV' in result.stdout):
+            # Parse formats
+            format_matches = re.findall(r"'(\w+)'", result.stdout)
+            device_info['formats'] = list(set(format_matches))
+            return device_info
+        elif 'capture' in device_info['capabilities']:
+            return device_info
+    except:
+        pass
+
+    # Fallback: try to open the device to check if it's valid
+    try:
+        import fcntl
+        import struct
+
+        VIDIOC_QUERYCAP = 0x80685600
+
+        with open(device_path, 'rb') as f:
+            buf = bytearray(104)
+            try:
+                fcntl.ioctl(f, VIDIOC_QUERYCAP, buf)
+                # Device responded, likely valid
+                return device_info
+            except:
+                return None
+    except:
+        # If we can't verify, still return it and let playback fail gracefully
+        return device_info
+
+
+def get_device_resolutions(device_path):
+    """Get supported resolutions for a device"""
+    resolutions = []
+
+    try:
+        result = subprocess.run(
+            ['v4l2-ctl', '--device', device_path, '--list-framesizes', 'MJPG'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0:
+            # Parse discrete resolutions
+            matches = re.findall(r'(\d+)x(\d+)', result.stdout)
+            for w, h in matches:
+                resolutions.append(f'{w}x{h}')
+
+        # Also try YUYV format
+        result = subprocess.run(
+            ['v4l2-ctl', '--device', device_path, '--list-framesizes', 'YUYV'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        if result.returncode == 0:
+            matches = re.findall(r'(\d+)x(\d+)', result.stdout)
+            for w, h in matches:
+                res = f'{w}x{h}'
+                if res not in resolutions:
+                    resolutions.append(res)
+
+    except Exception as e:
+        log(f'Error getting resolutions: {e}', xbmc.LOGWARNING)
+
+    # Fallback common resolutions
+    if not resolutions:
+        resolutions = ['1920x1080', '1280x720', '640x480', '320x240']
+
+    return resolutions
+
+
+def get_friendly_device_name(device_info):
+    """Get a user-friendly name for the device"""
+    card = device_info.get('card', 'Unknown Device')
+
+    # Detect device type based on common patterns
+    card_lower = card.lower()
+
+    if any(x in card_lower for x in ['hdmi', 'capture', 'grabber', 'elgato', 'avermedia', 'magewell']):
+        device_type = 'HDMI Capture'
+    elif any(x in card_lower for x in ['composite', 's-video', 'easycap', 'usbtv']):
+        device_type = 'Composite Capture'
+    elif any(x in card_lower for x in ['webcam', 'camera', 'cam', 'logitech', 'microsoft']):
+        device_type = 'USB Camera'
+    elif 'uvc' in card_lower:
+        device_type = 'USB Video Device'
+    else:
+        device_type = 'Video Device'
+
+    return f'{card} ({device_type})'
+
+
+def _kill_existing_ffmpeg():
+    """Kill any existing FFmpeg process from previous playback"""
+    global _current_ffmpeg_process
+    if _current_ffmpeg_process is not None:
+        try:
+            if _current_ffmpeg_process.poll() is None:
+                log('Killing existing FFmpeg process')
+                _current_ffmpeg_process.terminate()
+                try:
+                    _current_ffmpeg_process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    _current_ffmpeg_process.kill()
+                    _current_ffmpeg_process.wait(timeout=1)
+        except Exception as e:
+            log(f'Error killing FFmpeg: {e}', xbmc.LOGWARNING)
+        _current_ffmpeg_process = None
+        time.sleep(0.5)  # Give device time to be released
+
+
+def play_device(device_path, input_num=None):
+    """
+    Play video from a V4L2 device.
+    Uses ffmpeg to capture and stream via UDP to Kodi's player.
+    This works on LibreELEC which doesn't have ffplay.
+    """
+    global _current_ffmpeg_process
+
+    # Use lock to prevent multiple simultaneous playback attempts
+    if not _playback_lock.acquire(blocking=False):
+        log('Playback already in progress, ignoring duplicate request')
+        return
+
+    try:
+        log(f'Playing device: {device_path}, input: {input_num}')
+
+        # Kill any existing FFmpeg process first
+        _kill_existing_ffmpeg()
+
+        # First check if device exists and is accessible
+        if not os.path.exists(device_path):
+            xbmcgui.Dialog().notification(
+                ADDON_NAME,
+                'Device not found. Is it connected?',
+                xbmcgui.NOTIFICATION_ERROR,
+                5000
+            )
+            return
+
+        # Wait for device to be available (may be busy from thumbnail capture)
+        log(f'Waiting for device {device_path} to be available...')
+        if not wait_for_device(device_path, max_retries=10, delay=0.5):
+            xbmcgui.Dialog().notification(
+                ADDON_NAME,
+                'Device busy. Please try again.',
+                xbmcgui.NOTIFICATION_WARNING,
+                5000
+            )
+            return
+
+        # Get settings
+        resolution = get_resolution()
+        framerate = get_framerate()
+        low_latency = get_setting_bool('low_latency')
+        pixel_format = get_pixel_format()
+
+        log(f'Settings - Resolution: {resolution}, Framerate: {framerate}, Low Latency: {low_latency}, Pixel Format: {pixel_format}')
+
+        # Parse resolution (only needed if not auto)
+        width, height = None, None
+        if resolution != 'auto':
+            try:
+                width, height = resolution.split('x')
+            except:
+                pass
+
+        # Set input if specified (for capture cards)
+        # Skip for UVC devices like PS Vita which don't support input selection
+        if input_num is not None:
+            try:
+                # Check if device supports input selection
+                result = subprocess.run(
+                    ['v4l2-ctl', '--device', device_path, '--get-input'],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    subprocess.run(
+                        ['v4l2-ctl', '--device', device_path, '--set-input', str(input_num)],
+                        timeout=5
+                    )
+                    log(f'Set input to {input_num}')
+                else:
+                    log(f'Device does not support input selection, skipping')
+            except Exception as e:
+                log(f'Error setting input (device may not support it): {e}', xbmc.LOGWARNING)
+
+        # Use a random port for UDP streaming
+        import random
+        udp_port = random.randint(12000, 13000)
+        udp_url = f'udp://127.0.0.1:{udp_port}'
+
+        # Build ffmpeg command to capture from V4L2 and stream via UDP
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-y',  # Auto-overwrite output files
+            '-hide_banner',
+            '-loglevel', 'error',
+        ]
+
+        # Low latency input options - optimized for gaming
+        # Note: probesize needs to be large enough for codec detection
+        if low_latency:
+            ffmpeg_cmd.extend([
+                '-fflags', 'nobuffer+genpts',
+                '-flags', 'low_delay',
+                '-probesize', '5000000',  # 5MB - enough for codec detection
+                '-analyzeduration', '1000000',  # 1 second
+            ])
+
+        # V4L2 input
+        ffmpeg_cmd.extend(['-f', 'v4l2'])
+
+        # Add pixel format if not auto
+        if pixel_format != 'auto':
+            ffmpeg_cmd.extend(['-input_format', pixel_format])
+
+        # Add resolution only if not auto
+        if resolution != 'auto' and width and height:
+            ffmpeg_cmd.extend(['-video_size', f'{width}x{height}'])
+
+        # Add framerate only if not auto
+        if framerate != 'auto':
+            ffmpeg_cmd.extend(['-framerate', framerate])
+
+        # Thread queue size for smooth capture
+        ffmpeg_cmd.extend(['-thread_queue_size', '512'])
+
+        # Input device
+        ffmpeg_cmd.extend(['-i', device_path])
+
+        # Output encoding - use UDP for all modes (pipes don't work reliably with Kodi)
+        if low_latency:
+            ffmpeg_cmd.extend([
+                '-c:v', 'mpeg2video',  # Use mpeg2 for better Kodi compatibility
+                '-q:v', '2',  # High quality
+                '-g', '1',  # Every frame is keyframe for instant seeking
+                '-bf', '0',  # No B-frames for lower latency
+                '-flags', '+cgop',
+                '-sc_threshold', '0',
+                '-f', 'mpegts',
+                '-flush_packets', '1',
+                udp_url + '?pkt_size=1316'
+            ])
+        else:
+            ffmpeg_cmd.extend([
+                '-c:v', 'mpeg2video',  # Fast, widely compatible
+                '-q:v', '3',
+                '-g', '15',  # GOP size
+                '-bf', '0',
+                '-f', 'mpegts',
+                udp_url + '?pkt_size=1316'
+            ])
+
+        log(f'FFmpeg command: {" ".join(ffmpeg_cmd)}')
+
+        # Always use UDP streaming (more reliable than pipes with Kodi)
+        _play_with_udp(ffmpeg_cmd, udp_url, device_path)
+
+    finally:
+        _playback_lock.release()
+
+
+def _play_with_pipe(ffmpeg_cmd, device_path):
+    """Play using named pipe - optimized for smooth gaming on LibreELEC"""
+    import stat
+    process = None
+
+    # Create a named pipe for streaming (use .ts extension for mpegts)
+    pipe_path = os.path.join(ADDON_PROFILE, 'camera_pipe.ts')
+
+    # Ensure profile directory exists
+    if not os.path.exists(ADDON_PROFILE):
+        os.makedirs(ADDON_PROFILE)
+
+    # Force remove old pipe if exists (handle both regular files and FIFOs)
+    if os.path.exists(pipe_path):
+        try:
+            os.unlink(pipe_path)
+            log(f'Removed old pipe: {pipe_path}')
+            time.sleep(0.2)  # Brief delay after removal
+        except Exception as e:
+            log(f'Failed to remove old pipe: {e}', xbmc.LOGWARNING)
+            # Try alternate path with unique name
+            pipe_path = os.path.join(ADDON_PROFILE, f'camera_pipe_{os.getpid()}_{int(time.time())}.ts')
+
+    try:
+        # Create FIFO pipe
+        os.mkfifo(pipe_path)
+        log(f'Created pipe: {pipe_path}')
+
+        # Modify ffmpeg command to output to pipe
+        ffmpeg_cmd[-1] = pipe_path
+
+        # Start FFmpeg process in background with retry
+        log(f'Starting FFmpeg: {" ".join(ffmpeg_cmd)}')
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            process = subprocess.Popen(
+                ffmpeg_cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE
+            )
+
+            # Give ffmpeg time to start and open the device
+            xbmc.sleep(800)
+
+            # Check if ffmpeg started OK
+            if process.poll() is None:
+                log(f'FFmpeg started successfully on attempt {attempt + 1}')
+                break
+            else:
+                stderr = process.stderr.read().decode('utf-8', errors='ignore')
+                log(f'FFmpeg attempt {attempt + 1} failed: {stderr}', xbmc.LOGWARNING)
+
+                if attempt < max_retries - 1:
+                    # Wait before retry, device might be busy
+                    xbmc.sleep(1000)
+                else:
+                    # Final attempt failed
+                    log(f'FFmpeg failed after {max_retries} attempts', xbmc.LOGERROR)
+                    _show_ffmpeg_error(stderr, device_path)
+                    if os.path.exists(pipe_path):
+                        os.remove(pipe_path)
+                    return
+
+        # Play from the pipe using Kodi's player with optimized settings
+        li = xbmcgui.ListItem(path=pipe_path)
+        li.setInfo('video', {'title': 'USB Camera'})
+
+        # Set properties for smooth live playback
+        li.setProperty('inputstream', 'inputstream.ffmpegdirect')
+        li.setProperty('inputstream.ffmpegdirect.is_realtime_stream', 'true')
+        li.setProperty('inputstream.ffmpegdirect.manifest_type', 'ts')
+        li.setProperty('inputstream.ffmpegdirect.stream_mode', 'catchup')
+        li.setMimeType('video/mp2t')
+        li.setContentLookup(False)
+
+        log('Starting Kodi playback from pipe')
+
+        # Try with inputstream first, fallback to direct play
+        try:
+            xbmcaddon.Addon('inputstream.ffmpegdirect')
+            xbmc.Player().play(pipe_path, li)
+        except:
+            # Fallback without inputstream - works on LibreELEC
+            log('inputstream.ffmpegdirect not available, using direct playback')
+            li2 = xbmcgui.ListItem(path=pipe_path)
+            li2.setInfo('video', {'title': 'USB Camera'})
+            li2.setMimeType('video/mp2t')
+            xbmc.Player().play(pipe_path, li2)
+
+        # Monitor playback
+        monitor = xbmc.Monitor()
+        player = xbmc.Player()
+
+        # Wait for playback to start
+        for _ in range(20):  # Wait up to 10 seconds
+            if player.isPlaying():
+                log('Playback started')
+                break
+            if process.poll() is not None:
+                break
+            xbmc.sleep(500)
+
+        # Keep FFmpeg running while playing
+        while player.isPlaying() and not monitor.abortRequested():
+            if process.poll() is not None:
+                stderr = process.stderr.read().decode('utf-8', errors='ignore')
+                if stderr:
+                    log(f'FFmpeg exited: {stderr}', xbmc.LOGWARNING)
+                break
+            xbmc.sleep(500)
+
+        log('Playback ended, cleaning up')
+
+    except Exception as e:
+        log(f'Pipe playback error: {e}', xbmc.LOGERROR)
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            f'Error: {str(e)}',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    finally:
+        # Cleanup - ensure proper process termination
+        if process is not None and process.poll() is None:
+            try:
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=2)
+            except:
+                pass
+
+        if os.path.exists(pipe_path):
+            try:
+                os.remove(pipe_path)
+            except:
+                pass
+
+
+def _play_with_udp(ffmpeg_cmd, udp_url, device_path):
+    """Play using UDP streaming - reliable method for Kodi/LibreELEC"""
+    global _current_ffmpeg_process
+    process = None
+    try:
+        # Start FFmpeg streaming to UDP
+        log(f'Starting FFmpeg UDP stream: {" ".join(ffmpeg_cmd)}')
+
+        process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE
+        )
+        _current_ffmpeg_process = process
+
+        # Wait longer for FFmpeg to initialize and buffer data
+        # This is crucial for codec detection on the player side
+        log('Waiting for FFmpeg to buffer...')
+        xbmc.sleep(2000)
+
+        # Check if ffmpeg started OK
+        if process.poll() is not None:
+            stderr = process.stderr.read().decode('utf-8', errors='ignore')
+            log(f'FFmpeg failed to start: {stderr}', xbmc.LOGERROR)
+            _show_ffmpeg_error(stderr, device_path)
+            return
+
+        log('FFmpeg streaming started successfully')
+
+        # Play UDP stream in Kodi with optimized settings
+        li = xbmcgui.ListItem(path=udp_url)
+        li.setInfo('video', {'title': 'USB Camera'})
+        li.setMimeType('video/mp2t')
+        li.setContentLookup(False)
+
+        # Try to use inputstream for better performance
+        try:
+            xbmcaddon.Addon('inputstream.ffmpegdirect')
+            li.setProperty('inputstream', 'inputstream.ffmpegdirect')
+            li.setProperty('inputstream.ffmpegdirect.is_realtime_stream', 'true')
+            li.setProperty('inputstream.ffmpegdirect.stream_mode', 'catchup')
+            log('Using inputstream.ffmpegdirect for playback')
+        except:
+            log('inputstream.ffmpegdirect not available, using direct UDP playback')
+
+        log(f'Starting Kodi playback from {udp_url}')
+        xbmc.Player().play(udp_url, li)
+
+        # Monitor playback
+        monitor = xbmc.Monitor()
+        player = xbmc.Player()
+
+        # Wait for playback to start
+        playback_started = False
+        for _ in range(30):  # Wait up to 15 seconds
+            if player.isPlaying():
+                log('Playback started successfully')
+                playback_started = True
+                break
+            if process.poll() is not None:
+                stderr = process.stderr.read().decode('utf-8', errors='ignore')
+                log(f'FFmpeg exited unexpectedly: {stderr}', xbmc.LOGWARNING)
+                break
+            xbmc.sleep(500)
+
+        if not playback_started:
+            log('Playback did not start', xbmc.LOGWARNING)
+            return
+
+        # Keep FFmpeg running while playing
+        while player.isPlaying() and not monitor.abortRequested():
+            if process.poll() is not None:
+                stderr = process.stderr.read().decode('utf-8', errors='ignore')
+                if stderr:
+                    log(f'FFmpeg exited: {stderr}', xbmc.LOGWARNING)
+                break
+            xbmc.sleep(500)
+
+        log('Playback ended')
+
+    except Exception as e:
+        log(f'UDP playback error: {e}', xbmc.LOGERROR)
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            f'Error: {str(e)}',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    finally:
+        # Cleanup - ensure proper process termination
+        if process is not None and process.poll() is None:
+            try:
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=2)
+            except:
+                pass
+
+
+def _show_ffmpeg_error(stderr, device_path):
+    """Show user-friendly error message based on ffmpeg stderr"""
+    if 'No such file or directory' in stderr:
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Device not found. Is it connected?',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    elif 'Permission denied' in stderr:
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Permission denied accessing device',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    elif 'Invalid argument' in stderr or 'not supported' in stderr.lower():
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Try Auto resolution in settings',
+            xbmcgui.NOTIFICATION_WARNING,
+            5000
+        )
+    elif 'Device or resource busy' in stderr:
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Device busy. Close other apps using it.',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    elif 'Input/output error' in stderr:
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Device I/O error. Try reconnecting.',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    elif 'cannot open' in stderr.lower() or 'failed to open' in stderr.lower():
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Cannot open device. Try again.',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+    else:
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            'Playback error. Check log.',
+            xbmcgui.NOTIFICATION_ERROR,
+            5000
+        )
+
+
+def play_device_external(device_path, input_num=None):
+    """
+    Play device - now just calls play_device since we use ffmpeg streaming.
+    Kept for backward compatibility with context menu.
+    """
+    play_device(device_path, input_num)
+
+
+def show_device_menu(device_info):
+    """Show menu for a specific device with options"""
+    device_path = device_info['path']
+
+    options = ['Play Video']
+
+    # Add input selection if device has multiple inputs
+    if device_info.get('inputs'):
+        for inp in device_info['inputs']:
+            options.append(f"Play Input: {inp['name']}")
+
+    options.extend([
+        'Play with External Player (ffplay)',
+        'Device Information',
+        'Configure Resolution'
+    ])
+
+    dialog = xbmcgui.Dialog()
+    selection = dialog.select(device_info['card'], options)
+
+    if selection == 0:
+        # Play video
+        play_device(device_path)
+    elif selection > 0 and selection <= len(device_info.get('inputs', [])):
+        # Play specific input
+        input_num = device_info['inputs'][selection - 1]['num']
+        play_device(device_path, input_num)
+    elif selection == len(device_info.get('inputs', [])) + 1:
+        # External player
+        play_device_external(device_path)
+    elif selection == len(device_info.get('inputs', [])) + 2:
+        # Device info
+        show_device_info(device_info)
+    elif selection == len(device_info.get('inputs', [])) + 3:
+        # Configure resolution
+        configure_resolution(device_path)
+
+
+def show_device_info(device_info):
+    """Show detailed device information"""
+    info_text = f"""Device: {device_info['card']}
+Path: {device_info['path']}
+Driver: {device_info['driver']}
+Capabilities: {', '.join(device_info.get('capabilities', ['Unknown']))}
+Formats: {', '.join(device_info.get('formats', ['Unknown']))}
+Inputs: {len(device_info.get('inputs', []))}"""
+
+    for inp in device_info.get('inputs', []):
+        info_text += f"\n  - Input {inp['num']}: {inp['name']}"
+
+    xbmcgui.Dialog().textviewer('Device Information', info_text)
+
+
+def configure_resolution(device_path):
+    """Allow user to select resolution for a device"""
+    resolutions = get_device_resolutions(device_path)
+
+    # Add common resolutions if not already present (including PS Vita)
+    common = ['auto', '1920x1080', '1280x720', '960x544', '864x488', '640x480']
+    for res in common:
+        if res not in resolutions:
+            resolutions.append(res)
+
+    # Sort by resolution (width), but keep 'auto' at the top
+    auto_present = 'auto' in resolutions
+    if auto_present:
+        resolutions.remove('auto')
+    resolutions.sort(key=lambda x: int(x.split('x')[0]) if 'x' in x else 0, reverse=True)
+    if auto_present:
+        resolutions.insert(0, 'auto')
+
+    current = get_resolution()
+
+    dialog = xbmcgui.Dialog()
+    selection = dialog.select(
+        'Select Resolution',
+        resolutions,
+        preselect=resolutions.index(current) if current in resolutions else 0
+    )
+
+    if selection >= 0:
+        # Find the index in our RESOLUTION_OPTIONS to store
+        selected_res = resolutions[selection]
+        if selected_res in RESOLUTION_OPTIONS:
+            ADDON.setSetting('resolution', str(RESOLUTION_OPTIONS.index(selected_res)))
+        else:
+            # If it's a custom resolution not in options, set to auto as fallback
+            ADDON.setSetting('resolution', '0')
+        xbmcgui.Dialog().notification(
+            ADDON_NAME,
+            f'Resolution set to {selected_res}',
+            xbmcgui.NOTIFICATION_INFO,
+            2000
+        )
+
+
+def list_devices():
+    """List all detected video devices in Kodi menu"""
+    devices = get_video_devices()
+
+    if not devices:
+        # No devices found - show helpful message
+        li = xbmcgui.ListItem(label='[No video devices detected]')
+        li.setInfo('video', {'plot': 'No USB cameras or capture cards were detected. Make sure your device is connected and recognized by the system.'})
+        xbmcplugin.addDirectoryItem(HANDLE, '', li, False)
+
+        # Add refresh option
+        li = xbmcgui.ListItem(label='[Refresh Device List]')
+        url = build_url({'action': 'refresh'})
+        xbmcplugin.addDirectoryItem(HANDLE, url, li, False)
+
+        # Add help
+        li = xbmcgui.ListItem(label='[Help & Troubleshooting]')
+        url = build_url({'action': 'help'})
+        xbmcplugin.addDirectoryItem(HANDLE, url, li, False)
+    else:
+        for device in devices:
+            friendly_name = get_friendly_device_name(device)
+
+            li = xbmcgui.ListItem(label=friendly_name)
+            li.setInfo('video', {
+                'title': friendly_name,
+                'plot': f"Path: {device['path']}\nDriver: {device['driver']}\nFormats: {', '.join(device.get('formats', ['Unknown']))}"
+            })
+            li.setProperty('IsPlayable', 'true')
+
+            # Try to get a live thumbnail from the camera
+            thumb_path = capture_thumbnail(device['path'])
+            if thumb_path and os.path.exists(thumb_path):
+                li.setArt({'icon': thumb_path, 'thumb': thumb_path, 'poster': thumb_path})
+            else:
+                # Fallback to default icon
+                icon_path = os.path.join(ADDON_PATH, 'resources', 'icon.png')
+                li.setArt({'icon': icon_path, 'thumb': icon_path})
+
+            # Build URL for this device
+            url = build_url({
+                'action': 'play',
+                'device': device['path'],
+                'name': device['card']
+            })
+
+            # Add context menu
+            context_menu = [
+                ('Play with External Player', f'RunPlugin({build_url({"action": "play_external", "device": device["path"]})})'),
+                ('Refresh Preview', f'RunPlugin({build_url({"action": "refresh_thumb", "device": device["path"]})})'),
+                ('Device Information', f'RunPlugin({build_url({"action": "info", "device": device["path"]})})'),
+                ('Configure Resolution', f'RunPlugin({build_url({"action": "configure", "device": device["path"]})})')
+            ]
+
+            # Add input selection if multiple inputs
+            if device.get('inputs'):
+                for inp in device['inputs']:
+                    context_menu.append((
+                        f"Play Input: {inp['name']}",
+                        f'RunPlugin({build_url({"action": "play", "device": device["path"], "input": inp["num"]})})'
+                    ))
+
+            li.addContextMenuItems(context_menu)
+
+            xbmcplugin.addDirectoryItem(HANDLE, url, li, False)
+
+        # Add refresh option at the end
+        li = xbmcgui.ListItem(label='[Refresh Device List]')
+        url = build_url({'action': 'refresh'})
+        xbmcplugin.addDirectoryItem(HANDLE, url, li, False)
+
+    # Add settings shortcut
+    li = xbmcgui.ListItem(label='[Settings]')
+    url = build_url({'action': 'settings'})
+    xbmcplugin.addDirectoryItem(HANDLE, url, li, False)
+
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def show_help():
+    """Show help and troubleshooting information"""
+    help_text = """USB Camera Viewer - Help & Troubleshooting
+
+SUPPORTED DEVICES:
+- USB webcams and cameras
+- HDMI capture cards (Elgato, AVerMedia, generic USB capture)
+- Composite/S-Video capture cards
+- Game capture devices (via HDMI/composite capture card)
+- Any V4L2 compatible video device
+
+PS VITA / GAME CONSOLES:
+To view your PS Vita or game console, you need an HDMI or composite capture card:
+1. Connect your console's video output to the capture card
+2. Connect the capture card to a USB port on your device
+3. The capture card should appear in the device list
+
+TROUBLESHOOTING:
+
+1. No devices detected:
+   - Ensure device is properly connected via USB
+   - Try a different USB port
+   - Check if device is recognized: 'ls -la /dev/video*'
+   - LibreELEC may need a reboot after connecting new devices
+
+2. Video won't play:
+   - Try lowering the resolution in settings
+   - Try "Play with External Player" option
+   - Install inputstream.ffmpegdirect addon for better compatibility
+
+3. Low framerate or stuttering:
+   - Enable "Low Latency Mode" in settings
+   - Lower the resolution
+   - Try a different pixel format in settings
+
+4. No audio from capture card:
+   - This addon focuses on video only
+   - For audio, use a separate audio capture/passthrough
+
+5. Capture card shows wrong input:
+   - Use the context menu to select specific inputs
+   - Some capture cards have multiple inputs (HDMI, composite, etc.)
+
+For LibreELEC users:
+- All V4L2 drivers are built into LibreELEC
+- Most USB capture cards work out of the box
+- If a device doesn't work, it may not have V4L2 driver support"""
+
+    xbmcgui.Dialog().textviewer('Help & Troubleshooting', help_text)
+
+
+def router(paramstring):
+    """Route plugin calls to appropriate functions"""
+    params = dict(urllib.parse.parse_qsl(paramstring))
+    action = params.get('action')
+
+    if action is None:
+        # Main menu - list devices
+        list_devices()
+    elif action == 'play':
+        device = params.get('device')
+        input_num = params.get('input')
+        if device:
+            play_device(device, int(input_num) if input_num else None)
+    elif action == 'play_external':
+        device = params.get('device')
+        input_num = params.get('input')
+        if device:
+            play_device_external(device, int(input_num) if input_num else None)
+    elif action == 'info':
+        device = params.get('device')
+        if device:
+            devices = get_video_devices()
+            for d in devices:
+                if d['path'] == device:
+                    show_device_info(d)
+                    break
+    elif action == 'configure':
+        device = params.get('device')
+        if device:
+            configure_resolution(device)
+    elif action == 'refresh':
+        xbmc.executebuiltin('Container.Refresh')
+    elif action == 'refresh_thumb':
+        device = params.get('device')
+        if device:
+            capture_thumbnail(device, force=True)
+            xbmcgui.Dialog().notification(
+                ADDON_NAME,
+                'Preview refreshed',
+                xbmcgui.NOTIFICATION_INFO,
+                2000
+            )
+            xbmc.executebuiltin('Container.Refresh')
+    elif action == 'settings':
+        ADDON.openSettings()
+    elif action == 'help':
+        show_help()
+
+
+if __name__ == '__main__':
+    router(sys.argv[2][1:])
