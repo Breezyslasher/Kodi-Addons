@@ -220,6 +220,11 @@ class MusicAssistantClient:
         try:
             info = self.get_server_info()
             return True
+        except (AuthenticationRequired, AuthenticationFailed):
+            # Let authentication errors propagate so the caller can
+            # re-authenticate (e.g. refresh an expired token) instead of
+            # treating a rejected token as a generic connection failure.
+            raise
         except Exception as e:
             raise CannotConnect(f"Connection test failed: {e}")
     
@@ -536,14 +541,16 @@ class MusicController:
             provider_instance_id_or_domain=provider_instance_id_or_domain
         )
     
-    def get_playlist_tracks(self, item_id, provider_instance_id_or_domain='library', limit=500, offset=0):
-        """Get tracks for a playlist."""
+    def get_playlist_tracks(self, item_id, provider_instance_id_or_domain='library'):
+        """Get tracks for a playlist.
+
+        Note: music/playlists/playlist_tracks does not accept limit/offset;
+        the server paginates internally and returns the full track list.
+        """
         return self.client.send_command(
             'music/playlists/playlist_tracks',
             item_id=str(item_id),
-            provider_instance_id_or_domain=provider_instance_id_or_domain,
-            limit=limit,
-            offset=offset
+            provider_instance_id_or_domain=provider_instance_id_or_domain
         )
     
     # Radios
@@ -677,38 +684,17 @@ class MusicController:
                 )
     
     def remove_from_favorites(self, item_id, media_type, provider='library'):
-        """Remove item from favorites."""
-        uri = f"{provider}://{media_type}/{item_id}"
-        
-        # Try music/favorites/remove_item first (documented API)
-        try:
-            return self.client.send_command(
-                'music/favorites/remove_item',
-                item=uri
-            )
-        except Exception as e1:
-            # Fallback: try set_favorite with favorite=False
-            try:
-                return self.client.send_command(
-                    f'music/{media_type}s/set_favorite',
-                    item_id=str(item_id),
-                    provider_instance_id_or_domain=provider,
-                    favorite=False
-                )
-            except Exception as e2:
-                # Try with db_item_id format (some APIs use this)
-                try:
-                    return self.client.send_command(
-                        f'music/{media_type}s/set_favorite',
-                        db_item_id=str(item_id),
-                        favorite=False
-                    )
-                except Exception as e3:
-                    # Last resort: library/remove_item_from_favorites
-                    return self.client.send_command(
-                        'music/library/remove_item_from_favorites',
-                        uri=uri
-                    )
+        """Remove item from favorites.
+
+        The server command signature is:
+            music/favorites/remove_item(media_type, library_item_id)
+        For library items, item_id IS the library_item_id.
+        """
+        return self.client.send_command(
+            'music/favorites/remove_item',
+            media_type=media_type,
+            library_item_id=str(item_id)
+        )
     
     # Library management
     def add_to_library(self, item_id, media_type):
@@ -945,13 +931,17 @@ class PlayerQueuesController:
             item_id_or_index=item_id_or_index
         )
     
-    def move_item(self, queue_id, queue_item_id, position):
-        """Move item to target position."""
+    def move_item(self, queue_id, queue_item_id, pos_shift):
+        """Move item up/down the queue by a relative number of positions.
+
+        pos_shift is relative: negative moves the item towards the front
+        (e.g. -1 = up one), positive moves it towards the back (+1 = down one).
+        """
         return self.client.send_command(
             'player_queues/move_item',
             queue_id=queue_id,
             queue_item_id=queue_item_id,
-            position=position
+            pos_shift=pos_shift
         )
     
     def transfer(self, source_queue_id, target_queue_id):
