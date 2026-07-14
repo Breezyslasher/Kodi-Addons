@@ -598,8 +598,7 @@ class MusicAssistantAddon:
         for artist in (items or []):
             self._add_artist_item(artist)
         
-        if len(items or []) >= limit:
-            self._add_load_more('artists', offset + limit, favorite=favorite)
+        self._add_load_more_if_more('artists', offset, limit, len(items or []), favorite=favorite)
         
         xbmcplugin.setContent(self.handle, 'artists')
         xbmcplugin.addSortMethod(self.handle, xbmcplugin.SORT_METHOD_LABEL)
@@ -670,8 +669,7 @@ class MusicAssistantAddon:
         for album in (items or []):
             self._add_album_item(album)
         
-        if len(items or []) >= limit:
-            self._add_load_more('albums', offset + limit, favorite=favorite)
+        self._add_load_more_if_more('albums', offset, limit, len(items or []), favorite=favorite)
         
         xbmcplugin.setContent(self.handle, 'albums')
         xbmcplugin.addSortMethod(self.handle, xbmcplugin.SORT_METHOD_ALBUM)
@@ -754,8 +752,7 @@ class MusicAssistantAddon:
         for track in (items or []):
             self._add_track_item(track)
         
-        if len(items or []) >= limit:
-            self._add_load_more('tracks', offset + limit, favorite=favorite)
+        self._add_load_more_if_more('tracks', offset, limit, len(items or []), favorite=favorite)
         
         xbmcplugin.setContent(self.handle, 'songs')
         xbmcplugin.addSortMethod(self.handle, xbmcplugin.SORT_METHOD_TITLE)
@@ -842,8 +839,7 @@ class MusicAssistantAddon:
         for playlist in (items or []):
             self._add_playlist_item(playlist)
         
-        if len(items or []) >= limit:
-            self._add_load_more('playlists', offset + limit)
+        self._add_load_more_if_more('playlists', offset, limit, len(items or []))
         
         xbmcplugin.setContent(self.handle, 'albums')
         xbmcplugin.addSortMethod(self.handle, xbmcplugin.SORT_METHOD_LABEL)
@@ -902,8 +898,7 @@ class MusicAssistantAddon:
         for radio in (items or []):
             self._add_radio_item(radio)
         
-        if len(items or []) >= limit:
-            self._add_load_more('radios', offset + limit)
+        self._add_load_more_if_more('radios', offset, limit, len(items or []))
         
         xbmcplugin.setContent(self.handle, 'files')
         xbmcplugin.addSortMethod(self.handle, xbmcplugin.SORT_METHOD_LABEL)
@@ -954,8 +949,7 @@ class MusicAssistantAddon:
             url = build_url({'action': 'podcast', 'id': item_id, 'provider': provider})
             xbmcplugin.addDirectoryItem(handle=self.handle, url=url, listitem=li, isFolder=True)
         
-        if len(items or []) >= limit:
-            self._add_load_more('podcasts', offset + limit)
+        self._add_load_more_if_more('podcasts', offset, limit, len(items or []))
         
         xbmcplugin.setContent(self.handle, 'albums')
         xbmcplugin.endOfDirectory(self.handle)
@@ -1020,8 +1014,7 @@ class MusicAssistantAddon:
             url = build_url({'action': 'audiobook', 'id': item_id, 'provider': provider})
             xbmcplugin.addDirectoryItem(handle=self.handle, url=url, listitem=li, isFolder=True)
         
-        if len(items or []) >= limit:
-            self._add_load_more('audiobooks', offset + limit)
+        self._add_load_more_if_more('audiobooks', offset, limit, len(items or []))
         
         xbmcplugin.setContent(self.handle, 'albums')
         xbmcplugin.endOfDirectory(self.handle)
@@ -1032,10 +1025,8 @@ class MusicAssistantAddon:
         provider = self.params.get('provider', 'library')
         
         try:
-            audiobook = self.client.music.get_audiobook(item_id, provider)
-            uri = audiobook.get('uri', f"library://audiobook/{item_id}")
-            name = audiobook.get('name', 'Unknown Audiobook')
-            
+            uri, name = self._resolve_media(item_id, provider, 'audiobook')
+
             # Get or select a player
             player_id = self._get_player_id()
             if not player_id:
@@ -1162,8 +1153,8 @@ class MusicAssistantAddon:
         """Perform search and show results."""
         try:
             if media_filter == 'library':
-                # Search library only
-                results = self._search_library(query)
+                # Search library only - single server-side call
+                results = self.client.music.search(query, library_only=True, limit=50)
             elif media_filter:
                 # Search with specific media types
                 results = self.client.music.search(query, media_types=media_filter, limit=50)
@@ -1208,47 +1199,6 @@ class MusicAssistantAddon:
         xbmcplugin.setContent(self.handle, 'songs')
         xbmcplugin.endOfDirectory(self.handle, succeeded=has_results)
     
-    def _search_library(self, query):
-        """Search library only."""
-        results = {}
-        
-        try:
-            artists = self.client.music.get_library_artists(search=query, limit=25)
-            if artists:
-                results['artists'] = artists
-        except Exception:
-            pass
-        
-        try:
-            albums = self.client.music.get_library_albums(search=query, limit=25)
-            if albums:
-                results['albums'] = albums
-        except Exception:
-            pass
-        
-        try:
-            tracks = self.client.music.get_library_tracks(search=query, limit=25)
-            if tracks:
-                results['tracks'] = tracks
-        except Exception:
-            pass
-        
-        try:
-            playlists = self.client.music.get_library_playlists(search=query, limit=25)
-            if playlists:
-                results['playlists'] = playlists
-        except Exception:
-            pass
-        
-        try:
-            radios = self.client.music.get_library_radios(search=query, limit=25)
-            if radios:
-                results['radio'] = radios
-        except Exception:
-            pass
-        
-        return results
-    
     def show_search_results(self):
         """Show search results (for backwards compatibility)."""
         query = self.params.get('query', '')
@@ -1259,36 +1209,39 @@ class MusicAssistantAddon:
         
         self._do_search(query)
     
+    def _resolve_media(self, item_id, provider, media_type):
+        """Return (uri, name) for a media item.
+
+        Builds the canonical Music Assistant URI and resolves it with
+        music/item_by_uri, which works uniformly for every media type without
+        per-type 'get' commands or fragile pluralisation. Falls back to the
+        constructed URI (which play_media also accepts) if resolution fails.
+        """
+        uri = f"{provider}://{media_type}/{item_id}"
+        try:
+            item = self.client.music.get_item_by_uri(uri)
+            if item:
+                return item.get('uri', uri) or uri, item.get('name', 'Unknown')
+        except Exception as e:
+            log(f"Could not resolve {uri}: {e}")
+        return uri, 'Unknown'
+
     def play_track(self):
         """Play a track via Music Assistant player."""
         item_id = self.params.get('id')
         provider = self.params.get('provider', 'library')
         media_type = self.params.get('type', 'track')
-        
+
         # Get or select a player
         player_id = self._get_player_id()
         if not player_id:
             # Tell Kodi we failed to resolve
             xbmcplugin.setResolvedUrl(self.handle, False, xbmcgui.ListItem())
             return
-        
-        # Get track info and URI
-        try:
-            if media_type == 'track':
-                item = self.client.music.get_track(item_id, provider)
-            else:
-                item = self.client.send_command(
-                    f'music/{media_type}s/get',
-                    item_id=str(item_id),
-                    provider_instance_id_or_domain=provider
-                )
-            uri = item.get('uri', f"library://{media_type}/{item_id}")
-            name = item.get('name', 'Unknown')
-        except Exception as e:
-            log(f"Error getting item: {e}")
-            uri = f"library://{media_type}/{item_id}"
-            name = 'Unknown'
-        
+
+        # Resolve the item's URI and display name
+        uri, name = self._resolve_media(item_id, provider, media_type)
+
         # Play on MA player
         try:
             log(f"Playing on MA player {player_id}: {uri}")
@@ -1349,23 +1302,9 @@ class MusicAssistantAddon:
     
     def _play_item(self, item_id, provider, media_type, player_id, queue_option=None):
         """Play an item with the specified queue option."""
-        # Get item info and URI
-        try:
-            if media_type == 'track':
-                item = self.client.music.get_track(item_id, provider)
-            else:
-                item = self.client.send_command(
-                    f'music/{media_type}s/get',
-                    item_id=str(item_id),
-                    provider_instance_id_or_domain=provider
-                )
-            uri = item.get('uri', f"library://{media_type}/{item_id}")
-            name = item.get('name', 'Unknown')
-        except Exception as e:
-            log(f"Error getting item: {e}")
-            uri = f"library://{media_type}/{item_id}"
-            name = 'Unknown'
-        
+        # Resolve the item's URI and display name
+        uri, name = self._resolve_media(item_id, provider, media_type)
+
         # Play on MA player
         try:
             log(f"Playing on MA player {player_id}: {uri} (option: {queue_option})")
@@ -1616,16 +1555,9 @@ class MusicAssistantAddon:
         if not player_id:
             return
         
-        # Get album info and URI
-        try:
-            album = self.client.music.get_album(item_id, provider)
-            uri = album.get('uri', f"library://album/{item_id}")
-            name = album.get('name', 'Unknown Album')
-        except Exception as e:
-            log(f"Error getting album: {e}")
-            uri = f"library://album/{item_id}"
-            name = 'Album'
-        
+        # Resolve the album's URI and display name
+        uri, name = self._resolve_media(item_id, provider, 'album')
+
         # Play on MA player
         try:
             log(f"Playing album on MA player {player_id}: {uri}")
@@ -1645,16 +1577,9 @@ class MusicAssistantAddon:
         if not player_id:
             return
         
-        # Get playlist info and URI
-        try:
-            playlist = self.client.music.get_playlist(item_id, provider)
-            uri = playlist.get('uri', f"library://playlist/{item_id}")
-            name = playlist.get('name', 'Unknown Playlist')
-        except Exception as e:
-            log(f"Error getting playlist: {e}")
-            uri = f"library://playlist/{item_id}"
-            name = 'Playlist'
-        
+        # Resolve the playlist's URI and display name
+        uri, name = self._resolve_media(item_id, provider, 'playlist')
+
         # Play on MA player
         try:
             log(f"Playing playlist on MA player {player_id}: {uri}")
@@ -1674,16 +1599,9 @@ class MusicAssistantAddon:
         if not player_id:
             return
         
-        # Get radio info and URI
-        try:
-            radio = self.client.music.get_radio(item_id, provider)
-            uri = radio.get('uri', f"library://radio/{item_id}")
-            name = radio.get('name', 'Unknown Station')
-        except Exception as e:
-            log(f"Error getting radio: {e}")
-            uri = f"library://radio/{item_id}"
-            name = 'Radio'
-        
+        # Resolve the radio station's URI and display name
+        uri, name = self._resolve_media(item_id, provider, 'radio')
+
         # Play on MA player
         try:
             log(f"Playing radio on MA player {player_id}: {uri}")
@@ -2503,12 +2421,39 @@ class MusicAssistantAddon:
         """Add a 'Load More' item."""
         li = xbmcgui.ListItem(label="[Load More...]")
         li.setArt({'icon': 'DefaultFolder.png'})
-        
+
         params = {'action': action, 'offset': offset}
         params.update(extra_params)
-        
+
         url = build_url(params)
         xbmcplugin.addDirectoryItem(handle=self.handle, url=url, listitem=li, isFolder=True)
+
+    def _add_load_more_if_more(self, action, offset, limit, num_returned, favorite=False):
+        """Add a 'Load More' entry only when more items actually remain.
+
+        Uses the server-side library count (music/{type}s/count) to decide,
+        which avoids the spurious 'Load More' the old len>=limit heuristic
+        showed on an exactly-full final page. Falls back to that heuristic if
+        the count can't be fetched. `action` is the plural list action
+        (e.g. 'artists'); the singular media type is derived from it.
+        """
+        next_offset = offset + limit
+        media_type = action[:-1]  # 'artists' -> 'artist'
+        # Pass favorite as the string 'true' so the paginated action re-reads
+        # it correctly (params.get('favorite') == 'true').
+        extra = {'favorite': 'true'} if favorite else {}
+
+        try:
+            total = self.client.music.get_library_count(media_type, favorite_only=favorite)
+        except Exception as e:
+            log(f"Count for {media_type} failed: {e}")
+            total = None
+
+        if total is not None:
+            if next_offset < total:
+                self._add_load_more(action, next_offset, **extra)
+        elif num_returned >= limit:
+            self._add_load_more(action, next_offset, **extra)
 
 
 if __name__ == '__main__':
