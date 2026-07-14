@@ -220,6 +220,11 @@ class MusicAssistantClient:
         try:
             info = self.get_server_info()
             return True
+        except (AuthenticationRequired, AuthenticationFailed):
+            # Let authentication errors propagate so the caller can
+            # re-authenticate (e.g. refresh an expired token) instead of
+            # treating a rejected token as a generic connection failure.
+            raise
         except Exception as e:
             raise CannotConnect(f"Connection test failed: {e}")
     

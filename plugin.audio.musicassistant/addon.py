@@ -435,9 +435,23 @@ class MusicAssistantAddon:
             self.client = get_client()
             if not self.client:
                 return
-            
-            self.client.test_connection()
-            
+
+            try:
+                self.client.test_connection()
+            except (AuthenticationRequired, AuthenticationFailed):
+                # Stored token was rejected (e.g. expired or server restarted).
+                # Clear it and rebuild the client, which re-logs in from the
+                # stored username/password. If that isn't possible, get_client
+                # returns None (after prompting) or the retry raises again and
+                # is handled by the outer handlers below.
+                log("Stored token rejected; attempting re-authentication")
+                set_setting('auth_token', '')
+                self.client.close()
+                self.client = get_client()
+                if not self.client:
+                    return
+                self.client.test_connection()
+
             action = self.params.get('action', 'main_menu')
             
             actions = {
