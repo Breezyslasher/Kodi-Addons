@@ -2087,8 +2087,8 @@ class MusicAssistantAddon:
             return
         
         try:
-            log(f"Moving queue item: queue={queue_id}, item_id={item_id}, from index {index} to {index - 1}")
-            self.client.player_queues.move_item(queue_id, item_id, index - 1)
+            log(f"Moving queue item up: queue={queue_id}, item_id={item_id}, from index {index}")
+            self.client.player_queues.move_item(queue_id, item_id, -1)
             xbmcgui.Dialog().notification(ADDON_NAME, "Moved up", xbmcgui.NOTIFICATION_INFO, 1000)
             xbmc.executebuiltin('Container.Refresh')
         except Exception as e:
@@ -2110,8 +2110,8 @@ class MusicAssistantAddon:
             return
         
         try:
-            log(f"Moving queue item: queue={queue_id}, item_id={item_id}, from index {index} to {index + 1}")
-            self.client.player_queues.move_item(queue_id, item_id, index + 1)
+            log(f"Moving queue item down: queue={queue_id}, item_id={item_id}, from index {index}")
+            self.client.player_queues.move_item(queue_id, item_id, 1)
             xbmcgui.Dialog().notification(ADDON_NAME, "Moved down", xbmcgui.NOTIFICATION_INFO, 1000)
             xbmc.executebuiltin('Container.Refresh')
         except Exception as e:
@@ -2136,28 +2136,20 @@ class MusicAssistantAddon:
             # Get current queue state to find current_index
             queue = self.client.player_queues.get(queue_id)
             current_index = queue.get('current_index', 0) or 0
-            
-            # Calculate target position (right after currently playing)
-            # When moving an item, if it's AFTER the target position, 
-            # removing it doesn't shift the target. If it's BEFORE, it does.
-            target_position = current_index + 1
-            
-            # If item is already at or before target, no adjustment needed
-            # If item is after target, when we remove it, positions don't shift for items before it
-            # But the API might expect the final position, so we use current_index + 1
-            
+
+            # Target is the slot right after the currently playing track.
+            target_index = current_index + 1
+
             # Special case: if item is already right after current
-            if index == current_index + 1:
+            if index == target_index:
                 xbmcgui.Dialog().notification(ADDON_NAME, "Already playing next", xbmcgui.NOTIFICATION_INFO, 1000)
                 return
-            
-            # If item is before target position, after removal everything shifts down by 1
-            # So we need to target one less
-            if index < target_position:
-                target_position = current_index  # Will end up at current_index after shift
-            
-            log(f"Moving queue item to play next: queue={queue_id}, item_id={item_id}, from index {index} to {target_position} (current={current_index})")
-            self.client.player_queues.move_item(queue_id, item_id, target_position)
+
+            # move_item expects a relative shift (negative = towards front).
+            pos_shift = target_index - index
+
+            log(f"Moving queue item to play next: queue={queue_id}, item_id={item_id}, from index {index} to {target_index} (shift {pos_shift}, current={current_index})")
+            self.client.player_queues.move_item(queue_id, item_id, pos_shift)
             xbmcgui.Dialog().notification(ADDON_NAME, "Will play next", xbmcgui.NOTIFICATION_INFO, 1000)
             xbmc.executebuiltin('Container.Refresh')
         except Exception as e:
