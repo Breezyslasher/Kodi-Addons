@@ -27,6 +27,58 @@ See the [addon README](context.plexkodiconnect.download/README.md) for details.
 
 ---
 
+### 🔗 [Webhook Runner](script.webhook.runner/)
+Fire Home Assistant (or any) webhooks from Kodi — either by remote-button press or automatically on Kodi events.
+
+**Recent updates:**
+- Expanded event triggers to 40+ Kodi events (playback, playlist, screensaver/DPMS, system power, library, input, volume) with per-event webhook mapping
+- Button mapping via Keymap Editor integration (long-press and raw button codes)
+- Optional default URL prefix so adding new webhooks is one-field paste
+
+See the [addon README](script.webhook.runner/README.md) for details.
+
+**Requirements:** Kodi 21+, Home Assistant instance (or any HTTP webhook target)
+
+---
+
+### 🎵 [Music Assistant](plugin.audio.musicassistant/)
+Browse and play music from your Music Assistant 2.7+ server — artists, albums, tracks, playlists, radio, podcasts and audiobooks — with search, favorites, queue management, and remote control of any Music Assistant player.
+
+**Recent updates:**
+- Podcasts & audiobooks support (new in Music Assistant 2.7)
+- Token-based authentication for MA 2.7+
+- Local playback on the Kodi device via Sendspin
+
+See the [addon README](plugin.audio.musicassistant/README.md) for setup (including Sendspin) and the full feature list.
+
+**Requirements:** Kodi 19+, Music Assistant server 2.7+ (Sendspin CLI for local playback)
+
+---
+
+### 📚 [Suwayomi](plugin.video.suwayomi/)
+Browse and read manga from your Suwayomi-Server instance — library and category management, source browsing and global search, a chapter reader with progress tracking, downloads, and extension management.
+
+See the [addon README](plugin.video.suwayomi/README.md) for details.
+
+**Requirements:** Kodi 19+, a running Suwayomi-Server instance
+
+---
+
+### 📷 [USB Camera Viewer](plugin.video.usbcamera/)
+View live video from USB cameras, HDMI/composite capture cards, and other V4L2 video devices directly in Kodi — great for LibreELEC users turning their TV into a monitor for cameras or game consoles via a capture card.
+
+**Features:**
+- Auto-detection of connected video devices
+- USB webcams, HDMI capture cards (Elgato, AVerMedia, Magewell), and composite/S-Video (EasyCap) capture
+- Game capture (Switch, PlayStation, Xbox, PS Vita) with a low-latency mode
+- Configurable resolution/framerate, multi-input selection, and optional external ffplay player
+
+See the [addon README](plugin.video.usbcamera/README.md) for details.
+
+**Requirements:** Kodi 19+, Linux with V4L2 support (e.g. LibreELEC), a USB video device
+
+---
+
 ### 📱 [scrcpy Launcher](script.scrcpy-launcher/)
 Stream your Android device screen — or the Samsung DeX desktop — to Kodi using scrcpy (USB or Wi-Fi, with LibreELEC/OSMC/Flatpak handling).
 
@@ -38,19 +90,6 @@ Stream your Android device screen — or the Samsung DeX desktop — to Kodi usi
 See the [addon README](script.scrcpy-launcher/README.md) for details.
 
 **Requirements:** Kodi 19+, Android device with USB debugging enabled
-
----
-
-### 🔗 [Webhook Runner](script.webhook.runner/)
-Fire Home Assistant (or any) webhooks from Kodi — either by remote-button press or automatically on Kodi events.
-
-**Recent updates:**
-- Event triggers (playback start/stop/pause/resume, screensaver on/off, Kodi start/stop) with per-event webhook mapping
-- Optional default URL prefix so adding new webhooks is one-field paste
-
-See the [addon README](script.webhook.runner/README.txt) for details.
-
-**Requirements:** Kodi 19+, Home Assistant instance (or any HTTP webhook target)
 
 ---
 
@@ -89,9 +128,12 @@ This repository uses automated workflows to build and distribute addons:
 Kodi-Addons/
 ├── plugin.audio.audiobookshelf/     # Audiobookshelf addon
 ├── context.plexkodiconnect.download/ # Plex download addon  
+├── plugin.audio.musicassistant/     # Music Assistant addon
+├── plugin.video.suwayomi/           # Suwayomi manga reader addon
+├── plugin.video.usbcamera/          # USB Camera Viewer addon
 ├── script.scrcpy-launcher/          # scrcpy launcher addon
 ├── script.webhook.runner/           # Webhook runner addon
-├── repository.breezyslasher/        # Repository metadata
+├── repository.breezyslasher-beta/   # Beta repository metadata
 ├── zips/                           # Generated ZIP files
 ├── .github/workflows/              # CI/CD workflows
 └── generate_repo.py               # Repository generator
@@ -110,6 +152,9 @@ While these are personal projects, I welcome feedback and suggestions:
 Each addon has its own license:
 - **Audiobookshelf**: GPL-3.0-or-later
 - **PlexKodiConnect Download**: MIT
+- **Music Assistant**: Apache-2.0
+- **Suwayomi**: MIT
+- **USB Camera Viewer**: GPL-3.0
 - **scrcpy Launcher**: MIT
 - **Webhook Runner**: MIT
 
