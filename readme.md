@@ -48,7 +48,7 @@ Fire Home Assistant (or any) webhooks from Kodi — either by remote-button pres
 - Event triggers (playback start/stop/pause/resume, screensaver on/off, Kodi start/stop) with per-event webhook mapping
 - Optional default URL prefix so adding new webhooks is one-field paste
 
-See the [addon README](script.webhook.runner/README.txt) for details.
+See the [addon README](script.webhook.runner/README.md) for details.
 
 **Requirements:** Kodi 19+, Home Assistant instance (or any HTTP webhook target)
 
