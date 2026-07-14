@@ -23,14 +23,35 @@ EVENTS_FILE = os.path.join(ADDON_DATA, 'events.json')
 
 
 SUPPORTED_EVENTS = [
-    'kodi_start',
-    'kodi_stop',
+    # Playback
     'playback_start',
     'playback_stop',
     'playback_pause',
     'playback_resume',
+    'playback_seek',
+    'playback_seek_chapter',
+    'playback_speed_changed',
+    'playback_av_change',
+    'playback_queue_next',
+    'playback_error',
+    # Screensaver / display power
     'screensaver_on',
     'screensaver_off',
+    'dpms_on',
+    'dpms_off',
+    # System / power
+    'system_sleep',
+    'system_wake',
+    'system_quit',
+    'kodi_start',
+    'kodi_stop',
+    # Library
+    'library_scan_start',
+    'library_scan_finish',
+    'library_clean_start',
+    'library_clean_finish',
+    # Misc
+    'settings_changed',
 ]
 
 
@@ -86,6 +107,35 @@ class _Player(xbmc.Player):
     def onPlayBackResumed(self):
         _fire('playback_resume')
 
+    def onPlayBackSeek(self, time, seekOffset):
+        _fire('playback_seek')
+
+    def onPlayBackSeekChapter(self, chapter):
+        _fire('playback_seek_chapter')
+
+    def onPlayBackSpeedChanged(self, speed):
+        _fire('playback_speed_changed')
+
+    def onAVChange(self):
+        _fire('playback_av_change')
+
+    def onQueueNextItem(self):
+        _fire('playback_queue_next')
+
+    def onPlayBackError(self):
+        _fire('playback_error')
+
+
+# System.* notifications have no dedicated xbmc.Monitor callback, so they are
+# picked up via onNotification. Other events (screensaver, library scan/clean,
+# DPMS) already have direct callbacks, so we don't map them here to avoid
+# firing a webhook twice for the same event.
+_NOTIFICATION_EVENTS = {
+    'System.OnSleep': 'system_sleep',
+    'System.OnWake': 'system_wake',
+    'System.OnQuit': 'system_quit',
+}
+
 
 class _Monitor(xbmc.Monitor):
     def onScreensaverActivated(self):
@@ -93,6 +143,32 @@ class _Monitor(xbmc.Monitor):
 
     def onScreensaverDeactivated(self):
         _fire('screensaver_off')
+
+    def onDPMSActivated(self):
+        _fire('dpms_on')
+
+    def onDPMSDeactivated(self):
+        _fire('dpms_off')
+
+    def onScanStarted(self, library):
+        _fire('library_scan_start')
+
+    def onScanFinished(self, library):
+        _fire('library_scan_finish')
+
+    def onCleanStarted(self, library):
+        _fire('library_clean_start')
+
+    def onCleanFinished(self, library):
+        _fire('library_clean_finish')
+
+    def onSettingsChanged(self):
+        _fire('settings_changed')
+
+    def onNotification(self, sender, method, data):
+        event_name = _NOTIFICATION_EVENTS.get(method)
+        if event_name:
+            _fire(event_name)
 
 
 def main():
