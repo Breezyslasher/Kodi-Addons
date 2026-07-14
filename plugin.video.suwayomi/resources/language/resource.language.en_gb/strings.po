@@ -1,0 +1,206 @@
+# Kodi Media Center language file
+# Addon Name: Suwayomi
+# Addon id: plugin.video.suwayomi
+# Addon Provider: Claude
+
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en\n"
+
+# Settings - Connection
+msgctxt "#30001"
+msgid "Server Settings"
+msgstr ""
+
+msgctxt "#30002"
+msgid "Server Connection"
+msgstr ""
+
+msgctxt "#30003"
+msgid "Server URL"
+msgstr ""
+
+msgctxt "#30004"
+msgid "Authentication"
+msgstr ""
+
+msgctxt "#30005"
+msgid "Enable Authentication"
+msgstr ""
+
+msgctxt "#30006"
+msgid "Username"
+msgstr ""
+
+msgctxt "#30007"
+msgid "Password"
+msgstr ""
+
+# Settings - Display
+msgctxt "#30010"
+msgid "Display Settings"
+msgstr ""
+
+msgctxt "#30011"
+msgid "Display Options"
+msgstr ""
+
+msgctxt "#30012"
+msgid "Items per page"
+msgstr ""
+
+msgctxt "#30013"
+msgid "Show NSFW content"
+msgstr ""
+
+msgctxt "#30014"
+msgid "Auto slideshow when reading"
+msgstr ""
+
+msgctxt "#30015"
+msgid "Slideshow delay (seconds)"
+msgstr ""
+
+# Main Menu
+msgctxt "#30100"
+msgid "Library"
+msgstr ""
+
+msgctxt "#30101"
+msgid "Browse Sources"
+msgstr ""
+
+msgctxt "#30102"
+msgid "Search"
+msgstr ""
+
+msgctxt "#30103"
+msgid "Recent Updates"
+msgstr ""
+
+msgctxt "#30104"
+msgid "Downloads"
+msgstr ""
+
+msgctxt "#30105"
+msgid "Categories"
+msgstr ""
+
+msgctxt "#30106"
+msgid "Extensions"
+msgstr ""
+
+# Source Browser
+msgctxt "#30200"
+msgid "Popular"
+msgstr ""
+
+msgctxt "#30201"
+msgid "Latest"
+msgstr ""
+
+msgctxt "#30202"
+msgid "Search Source"
+msgstr ""
+
+# Chapter Actions
+msgctxt "#30300"
+msgid "Read Chapter"
+msgstr ""
+
+msgctxt "#30301"
+msgid "Mark as Read"
+msgstr ""
+
+msgctxt "#30302"
+msgid "Mark as Unread"
+msgstr ""
+
+msgctxt "#30303"
+msgid "Download Chapter"
+msgstr ""
+
+msgctxt "#30304"
+msgid "Delete Download"
+msgstr ""
+
+# Manga Actions
+msgctxt "#30400"
+msgid "Add to Library"
+msgstr ""
+
+msgctxt "#30401"
+msgid "Remove from Library"
+msgstr ""
+
+msgctxt "#30402"
+msgid "Refresh Manga"
+msgstr ""
+
+msgctxt "#30403"
+msgid "Download All"
+msgstr ""
+
+msgctxt "#30404"
+msgid "Mark All Read"
+msgstr ""
+
+msgctxt "#30405"
+msgid "Mark All Unread"
+msgstr ""
+
+# Status Messages
+msgctxt "#30500"
+msgid "Loading..."
+msgstr ""
+
+msgctxt "#30501"
+msgid "No results found"
+msgstr ""
+
+msgctxt "#30502"
+msgid "Error connecting to server"
+msgstr ""
+
+msgctxt "#30503"
+msgid "Please configure server URL in settings"
+msgstr ""
+
+msgctxt "#30504"
+msgid "Next Page"
+msgstr ""
+
+msgctxt "#30505"
+msgid "Previous Page"
+msgstr ""
+
+msgctxt "#30506"
+msgid "Page {0} of {1}"
+msgstr ""
+
+# Info Labels
+msgctxt "#30600"
+msgid "Chapters: {0}"
+msgstr ""
+
+msgctxt "#30601"
+msgid "Unread: {0}"
+msgstr ""
+
+msgctxt "#30602"
+msgid "Status: {0}"
+msgstr ""
+
+msgctxt "#30603"
+msgid "Author: {0}"
+msgstr ""
+
+msgctxt "#30604"
+msgid "Artist: {0}"
+msgstr ""
+
+msgctxt "#30605"
+msgid "Genre: {0}"
+msgstr ""

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="Server Settings">
+        <setting id="server_url" type="text" label="Server URL" default="http://localhost:4567"/>
+        <setting id="auth_enabled" type="bool" label="Enable Authentication" default="false"/>
+        <setting id="username" type="text" label="Username" default="" enable="eq(-1,true)"/>
+        <setting id="password" type="text" label="Password" default="" option="hidden" enable="eq(-2,true)"/>
+    </category>
+    <category label="Display Settings">
+        <setting id="items_per_page" type="slider" label="Items per page" default="50" range="10,10,100" option="int"/>
+        <setting id="show_nsfw" type="bool" label="Show NSFW content" default="false"/>
+    </category>
+    <category label="Reading Settings">
+        <setting id="reading_direction" type="labelenum" label="Reading Direction" default="Left to Right" values="Left to Right|Right to Left"/>
+        <setting id="reading_mode" type="labelenum" label="Reading Mode" default="Paged" values="Paged|Webtoon"/>
+        <setting id="zoom_mode" type="labelenum" label="Zoom Mode" default="Fit Width" values="Fit Width|Fit Height|Fit Screen|Original"/>
+        <setting id="padding_percent" type="slider" label="Side Padding % (total, split both sides)" default="0" range="0,5,25" option="int"/>
+        <setting type="lsep" label="--- Paged Mode Options ---"/>
+        <setting id="two_page_mode" type="bool" label="Two-Page Spread Mode" default="false"/>
+        <setting id="two_page_start" type="labelenum" label="Two-Page Start" default="Single First" values="Single First|Paired First" enable="eq(-1,true)"/>
+        <setting type="lsep" label="Single First: Page 1 alone, then 2-3, 4-5..."/>
+        <setting type="lsep" label="Paired First: Pages 1-2, 3-4, 5-6..."/>
+        <setting type="lsep" label="--- Fallback Options ---"/>
+        <setting id="auto_play" type="bool" label="Auto-advance (slideshow fallback)" default="false"/>
+        <setting id="slideshow_speed" type="slider" label="Auto-advance Speed (seconds)" default="5" range="1,1,30" option="int" enable="eq(-1,true)"/>
+        <setting type="lsep" label=""/>
+        <setting type="lsep" label="Controls: OK=Zoom, C/Info=Background, Menu=Padding"/>
+    </category>
+    <category label="Source Filters">
+        <setting id="source_languages" type="text" label="Show languages (comma-separated, e.g. en,all)" default=""/>
+        <setting type="lsep" label="Leave empty to show all languages"/>
+        <setting type="lsep" label="Common: en, ja, ko, zh, all, localsourcelang"/>
+        <setting id="hidden_sources" type="text" label="Hidden sources for search (comma-separated)" default=""/>
+        <setting type="lsep" label="Enter source names to exclude from global search"/>
+        <setting id="manage_hidden_sources" type="action" label="Manage Hidden Sources..." action="RunPlugin(plugin://plugin.video.suwayomi/?action=manage_hidden_sources)"/>
+    </category>
+</settings>
