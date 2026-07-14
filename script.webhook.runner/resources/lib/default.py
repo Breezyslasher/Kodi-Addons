@@ -20,15 +20,37 @@ WEBHOOKS_FILE = os.path.join(ADDON_DATA, 'webhooks.json')
 EVENTS_FILE = os.path.join(ADDON_DATA, 'events.json')
 
 # Events the background service can fire webhooks on. Order = menu order.
+# Keep this list in sync with SUPPORTED_EVENTS in resources/lib/service.py.
 EVENT_NAMES = [
-    ('playback_start',  'Playback started'),
-    ('playback_stop',   'Playback stopped'),
-    ('playback_pause',  'Playback paused'),
-    ('playback_resume', 'Playback resumed'),
-    ('screensaver_on',  'Screensaver activated'),
-    ('screensaver_off', 'Screensaver deactivated'),
-    ('kodi_start',      'Kodi started'),
-    ('kodi_stop',       'Kodi stopping'),
+    # Playback
+    ('playback_start',          'Playback started'),
+    ('playback_stop',           'Playback stopped'),
+    ('playback_pause',          'Playback paused'),
+    ('playback_resume',         'Playback resumed'),
+    ('playback_seek',           'Playback seek'),
+    ('playback_seek_chapter',   'Playback seek chapter'),
+    ('playback_speed_changed',  'Playback speed changed'),
+    ('playback_av_change',      'Playback stream changed'),
+    ('playback_queue_next',     'Next item queued'),
+    ('playback_error',          'Playback error'),
+    # Screensaver / display power
+    ('screensaver_on',          'Screensaver activated'),
+    ('screensaver_off',         'Screensaver deactivated'),
+    ('dpms_on',                 'Display sleep activated'),
+    ('dpms_off',                'Display sleep deactivated'),
+    # System / power
+    ('system_sleep',            'System sleep'),
+    ('system_wake',             'System wake'),
+    ('system_quit',             'System quitting'),
+    ('kodi_start',              'Kodi started'),
+    ('kodi_stop',               'Kodi stopping'),
+    # Library
+    ('library_scan_start',      'Library scan started'),
+    ('library_scan_finish',     'Library scan finished'),
+    ('library_clean_start',     'Library clean started'),
+    ('library_clean_finish',    'Library clean finished'),
+    # Misc
+    ('settings_changed',        'Settings changed'),
 ]
 
 # Keymap Editor's file
