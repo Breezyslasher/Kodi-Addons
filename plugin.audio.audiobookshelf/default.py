@@ -140,7 +140,22 @@ def get_library_service():
         return None, None, None, False
     
     url = f"http://{ip}:{port}"
-    
+
+    # API key auth: an Audiobookshelf API key is a long-lived bearer token, so
+    # when one is set we use it directly and skip the whole login/refresh/cache
+    # flow. It takes precedence over username/password.
+    api_key = get_setting('api_key').strip()
+    if api_key:
+        xbmc.log("Using API key auth", xbmc.LOGINFO)
+        lib_service = AudioBookShelfLibraryService(url, api_key)
+        try:
+            sync_mgr = get_sync_manager()
+            sync_mgr.set_library_service(lib_service)
+            sync_mgr.start_background_sync()
+        except Exception as e:
+            xbmc.log(f"Sync manager setup error: {e}", xbmc.LOGDEBUG)
+        return lib_service, url, api_key, False
+
     token_cache = load_token_cache()
     current_time = time.time()
 
@@ -182,7 +197,7 @@ def get_library_service():
             username = get_setting('username')
             password = get_setting('password')
             if not username or not password:
-                xbmcgui.Dialog().ok('Credentials Required', 'Please enter username and password')
+                xbmcgui.Dialog().ok('Credentials Required', 'Enter a username and password, or an API key, in settings')
                 ADDON.openSettings()
                 return None, None, None, False
 
@@ -988,36 +1003,58 @@ def list_libraries():
     try:
         data = library_service.get_all_libraries()
         libraries = data.get('libraries', [])
-        
+
         book_libs = [l for l in libraries if l.get('mediaType') == 'book']
         podcast_libs = [l for l in libraries if l.get('mediaType') == 'podcast']
-        
-        # If only one type of library, go directly to it
-        if not book_libs and len(podcast_libs) == 1:
-            list_podcasts_combined(podcast_libs)
+
+        if get_setting_bool('group_libraries_by_type', False):
+            # Grouped view: all book libraries under one "Audiobooks" folder,
+            # all podcast libraries under one "Podcasts" folder.
+            if not book_libs and len(podcast_libs) == 1:
+                list_podcasts_combined(podcast_libs)
+                return
+            elif not podcast_libs and len(book_libs) == 1:
+                list_audiobooks_combined(book_libs)
+                return
+
+            if book_libs:
+                list_item = xbmcgui.ListItem(label='Audiobooks')
+                list_item.setArt({'icon': 'DefaultMusicAlbums.png'})
+                xbmcplugin.addDirectoryItem(ADDON_HANDLE,
+                                           build_url(action='audiobooks'),
+                                           list_item, isFolder=True)
+            if podcast_libs:
+                list_item = xbmcgui.ListItem(label='Podcasts')
+                list_item.setArt({'icon': 'DefaultMusicVideos.png'})
+                xbmcplugin.addDirectoryItem(ADDON_HANDLE,
+                                           build_url(action='podcasts'),
+                                           list_item, isFolder=True)
+            xbmcplugin.endOfDirectory(ADDON_HANDLE)
             return
-        elif not podcast_libs and len(book_libs) == 1:
-            list_audiobooks_combined(book_libs)
+
+        # Separate view (default): one folder per library, keeping each
+        # library distinct instead of merging by media type.
+        book_and_podcast = [l for l in libraries
+                            if l.get('mediaType') in ('book', 'podcast')]
+
+        # A single library opens directly, no extra folder level.
+        if len(book_and_podcast) == 1:
+            lib = book_and_podcast[0]
+            list_library_items(lib['id'], is_podcast=lib.get('mediaType') == 'podcast')
             return
-        
-        # Show Audiobooks folder
-        if book_libs:
-            list_item = xbmcgui.ListItem(label='Audiobooks')
-            list_item.setArt({'icon': 'DefaultMusicAlbums.png'})
-            xbmcplugin.addDirectoryItem(ADDON_HANDLE, 
-                                       build_url(action='audiobooks'),
-                                       list_item, isFolder=True)
-        
-        # Show Podcasts folder
-        if podcast_libs:
-            list_item = xbmcgui.ListItem(label='Podcasts')
-            list_item.setArt({'icon': 'DefaultMusicVideos.png'})
-            xbmcplugin.addDirectoryItem(ADDON_HANDLE, 
-                                       build_url(action='podcasts'),
-                                       list_item, isFolder=True)
-        
+
+        for lib in book_and_podcast:
+            is_pod = lib.get('mediaType') == 'podcast'
+            list_item = xbmcgui.ListItem(label=lib.get('name', 'Library'))
+            list_item.setArt({'icon': 'DefaultMusicVideos.png' if is_pod else 'DefaultMusicAlbums.png'})
+            xbmcplugin.addDirectoryItem(
+                ADDON_HANDLE,
+                build_url(action='library', library_id=lib['id'],
+                          is_podcast='1' if is_pod else '0'),
+                list_item, isFolder=True)
+
         xbmcplugin.endOfDirectory(ADDON_HANDLE)
-        
+
     except Exception as e:
         xbmc.log(f"Error: {str(e)}", xbmc.LOGERROR)
         xbmcplugin.endOfDirectory(ADDON_HANDLE, succeeded=False)
