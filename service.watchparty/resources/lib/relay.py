@@ -190,6 +190,17 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == '/ping':
             self._send(200, {'ok': True, 'app': 'watchparty',
                              'server_time': time.time()})
+        elif self.path == '/':
+            # friendly landing for humans checking the relay in a browser
+            self._send(200, {
+                'ok': True,
+                'app': 'watchparty',
+                'message': 'Watch Party relay is running. In the Kodi '
+                           'addon, choose "Join a party" and enter this '
+                           "server's address plus a room code.",
+                'health': '/ping',
+                'server_time': time.time(),
+            })
         else:
             self._send(404, {'ok': False, 'error': 'not found'})
 
