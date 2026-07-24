@@ -65,6 +65,10 @@ msgctxt "#30007"
 msgid "Min episodes to show sort option"
 msgstr ""
 
+msgctxt "#30034"
+msgid "Group libraries by type (Audiobooks/Podcasts) instead of listing each separately"
+msgstr ""
+
 msgctxt "#30009"
 msgid "Enable Local Downloads"
 msgstr ""

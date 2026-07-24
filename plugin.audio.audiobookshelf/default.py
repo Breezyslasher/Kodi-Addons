@@ -1003,36 +1003,58 @@ def list_libraries():
     try:
         data = library_service.get_all_libraries()
         libraries = data.get('libraries', [])
-        
+
         book_libs = [l for l in libraries if l.get('mediaType') == 'book']
         podcast_libs = [l for l in libraries if l.get('mediaType') == 'podcast']
-        
-        # If only one type of library, go directly to it
-        if not book_libs and len(podcast_libs) == 1:
-            list_podcasts_combined(podcast_libs)
+
+        if get_setting_bool('group_libraries_by_type', False):
+            # Grouped view: all book libraries under one "Audiobooks" folder,
+            # all podcast libraries under one "Podcasts" folder.
+            if not book_libs and len(podcast_libs) == 1:
+                list_podcasts_combined(podcast_libs)
+                return
+            elif not podcast_libs and len(book_libs) == 1:
+                list_audiobooks_combined(book_libs)
+                return
+
+            if book_libs:
+                list_item = xbmcgui.ListItem(label='Audiobooks')
+                list_item.setArt({'icon': 'DefaultMusicAlbums.png'})
+                xbmcplugin.addDirectoryItem(ADDON_HANDLE,
+                                           build_url(action='audiobooks'),
+                                           list_item, isFolder=True)
+            if podcast_libs:
+                list_item = xbmcgui.ListItem(label='Podcasts')
+                list_item.setArt({'icon': 'DefaultMusicVideos.png'})
+                xbmcplugin.addDirectoryItem(ADDON_HANDLE,
+                                           build_url(action='podcasts'),
+                                           list_item, isFolder=True)
+            xbmcplugin.endOfDirectory(ADDON_HANDLE)
             return
-        elif not podcast_libs and len(book_libs) == 1:
-            list_audiobooks_combined(book_libs)
+
+        # Separate view (default): one folder per library, keeping each
+        # library distinct instead of merging by media type.
+        book_and_podcast = [l for l in libraries
+                            if l.get('mediaType') in ('book', 'podcast')]
+
+        # A single library opens directly, no extra folder level.
+        if len(book_and_podcast) == 1:
+            lib = book_and_podcast[0]
+            list_library_items(lib['id'], is_podcast=lib.get('mediaType') == 'podcast')
             return
-        
-        # Show Audiobooks folder
-        if book_libs:
-            list_item = xbmcgui.ListItem(label='Audiobooks')
-            list_item.setArt({'icon': 'DefaultMusicAlbums.png'})
-            xbmcplugin.addDirectoryItem(ADDON_HANDLE, 
-                                       build_url(action='audiobooks'),
-                                       list_item, isFolder=True)
-        
-        # Show Podcasts folder
-        if podcast_libs:
-            list_item = xbmcgui.ListItem(label='Podcasts')
-            list_item.setArt({'icon': 'DefaultMusicVideos.png'})
-            xbmcplugin.addDirectoryItem(ADDON_HANDLE, 
-                                       build_url(action='podcasts'),
-                                       list_item, isFolder=True)
-        
+
+        for lib in book_and_podcast:
+            is_pod = lib.get('mediaType') == 'podcast'
+            list_item = xbmcgui.ListItem(label=lib.get('name', 'Library'))
+            list_item.setArt({'icon': 'DefaultMusicVideos.png' if is_pod else 'DefaultMusicAlbums.png'})
+            xbmcplugin.addDirectoryItem(
+                ADDON_HANDLE,
+                build_url(action='library', library_id=lib['id'],
+                          is_podcast='1' if is_pod else '0'),
+                list_item, isFolder=True)
+
         xbmcplugin.endOfDirectory(ADDON_HANDLE)
-        
+
     except Exception as e:
         xbmc.log(f"Error: {str(e)}", xbmc.LOGERROR)
         xbmcplugin.endOfDirectory(ADDON_HANDLE, succeeded=False)
