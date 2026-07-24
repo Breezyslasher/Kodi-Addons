@@ -51,6 +51,13 @@ Raspberry Pi or in Docker, so nobody has to port-forward anything.
   happen locally and stay smooth. Only the member who started the queue
   announces advances and its natural end; everyone else's player just
   moves with it.
+- **Repeat and shuffle**: the announcer's repeat mode (off/one/all) is
+  mirrored to everyone, so repeat-one loops and repeat-all wraps stay in
+  sync. Shuffle is the announcer's privilege — followers stay unshuffled
+  and play the announced order. Toggles propagate instantly (not at the
+  next track): followers realign their whole queue around the currently
+  playing track — Kodi's shuffle moves every slot, including the current
+  one — with no audible interruption.
 - **Buffer hold**: while any member watching the item is buffering, the
   party auto-pauses, and resumes when they catch up. A deliberate
   pause/play always overrides the hold.

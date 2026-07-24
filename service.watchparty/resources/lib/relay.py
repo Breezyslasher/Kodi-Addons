@@ -227,8 +227,26 @@ class RoomState:
     # queue the item is playing from
     ITEM_EXTRA_KEYS = ('type', 'ids', 'title', 'year', 'show', 'season',
                        'episode', 'artist', 'album', 'playlist',
-                       'playlist_pos')
+                       'playlist_pos', 'repeat', 'shuffled')
     MAX_PLAYLIST = 100
+
+    def _clean_playlist(self, value):
+        """Sanitized queue entries (file/label + identity), or []."""
+        if not isinstance(value, list):
+            return []
+        clean = []
+        for e in value[:self.MAX_PLAYLIST]:
+            if not isinstance(e, dict):
+                continue
+            entry = {'file': str(e.get('file') or ''),
+                     'label': str(e.get('label') or '')}
+            for field in ('type', 'ids', 'title', 'year', 'show',
+                          'season', 'episode', 'artist', 'album'):
+                v = e.get(field)
+                if v not in (None, '', {}):
+                    entry[field] = v
+            clean.append(entry)
+        return clean if len(clean) >= 2 else []
 
     def command(self, member_id, cmd, payload):
         """Apply a control command and bump the sequence number.
@@ -239,6 +257,29 @@ class RoomState:
                 return False
             if self.locked_by and member_id != self.locked_by:
                 return 'locked'
+            if cmd == 'modes':
+                # repeat/shuffle (and a re-shuffled queue) change without
+                # touching the playback anchor — position must not jump
+                if not self.item:
+                    return False
+                changes = payload.get('item') or {}
+                if 'repeat' in changes:
+                    self.item['repeat'] = str(changes.get('repeat')
+                                              or 'off')
+                if 'shuffled' in changes:
+                    if changes['shuffled']:
+                        self.item['shuffled'] = True
+                    else:
+                        self.item.pop('shuffled', None)
+                playlist = self._clean_playlist(changes.get('playlist'))
+                if playlist:
+                    self.item['playlist'] = playlist
+                    pos = changes.get('playlist_pos')
+                    if isinstance(pos, int) and 0 <= pos < len(playlist):
+                        self.item['playlist_pos'] = pos
+                self.set_by = member_id
+                self.seq += 1
+                return True
             position = float(payload.get('position') or 0.0)
             if cmd == 'open':
                 item = payload.get('item') or {}
@@ -252,25 +293,8 @@ class RoomState:
                     if value in (None, '', {}):
                         continue
                     if key == 'playlist':
-                        if not isinstance(value, list):
-                            continue
-                        clean = []
-                        for e in value[:self.MAX_PLAYLIST]:
-                            if not isinstance(e, dict):
-                                continue
-                            entry = {'file': str(e.get('file') or ''),
-                                     'label': str(e.get('label') or '')}
-                            # per-entry library identity, same fields
-                            # as the item itself
-                            for field in ('type', 'ids', 'title', 'year',
-                                          'show', 'season', 'episode',
-                                          'artist', 'album'):
-                                v = e.get(field)
-                                if v not in (None, '', {}):
-                                    entry[field] = v
-                            clean.append(entry)
-                        value = clean
-                        if len(value) < 2:
+                        value = self._clean_playlist(value)
+                        if not value:
                             continue
                     stored[key] = value
                 self.item = stored

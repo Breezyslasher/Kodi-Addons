@@ -111,6 +111,57 @@ class EmbeddedRelayTest(unittest.TestCase):
         self.assertEqual(stored[0]['album'], '=')
         self.assertEqual(state['item']['playlist_pos'], 2)
 
+    def test_modes_command_updates_without_moving_the_anchor(self):
+        self.host.command('open', position=100.0, item=ITEM)
+        before = self.guest.poll(0, False, '')
+        time.sleep(0.05)
+        self.host.command('modes', item={'repeat': 'all',
+                                         'shuffled': True})
+        state = self.guest.poll(0, False, '')
+        self.assertEqual(state['item']['repeat'], 'all')
+        self.assertTrue(state['item']['shuffled'])
+        # playback anchor untouched: no position jump for the party
+        self.assertEqual(state['position'], before['position'])
+        self.assertEqual(state['set_at'], before['set_at'])
+        self.assertGreater(state['seq'], before['seq'])
+        # shuffle off again removes the flag
+        self.host.command('modes', item={'shuffled': False})
+        state = self.guest.poll(0, False, '')
+        self.assertNotIn('shuffled', state['item'])
+
+    def test_modes_can_carry_a_reshuffled_queue(self):
+        entries = [{'file': f'smb://nas/t{i}.mp3', 'label': f't{i}'}
+                   for i in range(5)]
+        item = dict(ITEM, type='song', playlist=entries, playlist_pos=0)
+        self.host.command('open', position=0.0, item=item)
+        reshuffled = list(reversed(entries))
+        self.host.command('modes', item={'shuffled': True,
+                                         'playlist': reshuffled,
+                                         'playlist_pos': 4})
+        state = self.guest.poll(0, False, '')
+        stored = state['item']['playlist']
+        self.assertEqual(stored[0]['file'], 'smb://nas/t4.mp3')
+        self.assertEqual(state['item']['playlist_pos'], 4)
+
+    def test_modes_without_item_rejected(self):
+        self.host.command('open', position=0.0, item=ITEM)
+        self.host.command('stop')
+        with self.assertRaises(RelayError):
+            self.host.command('modes', item={'repeat': 'all'})
+
+    def test_repeat_and_shuffle_passthrough(self):
+        item = dict(ITEM, repeat='one', shuffled=True)
+        self.host.command('open', position=0.0, item=item)
+        state = self.guest.poll(0, False, '')
+        self.assertEqual(state['item']['repeat'], 'one')
+        self.assertTrue(state['item']['shuffled'])
+        # 'off' passes through too (guests reconcile back to off)
+        self.host.command('open', position=0.0,
+                          item=dict(ITEM, repeat='off'))
+        state = self.guest.poll(0, False, '')
+        self.assertEqual(state['item']['repeat'], 'off')
+        self.assertNotIn('shuffled', state['item'])
+
     def test_single_entry_playlist_dropped(self):
         item = dict(ITEM, playlist=[{'file': 'smb://nas/x.mkv',
                                      'label': 'x'}], playlist_pos=0)
