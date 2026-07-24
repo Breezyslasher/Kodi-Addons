@@ -10,6 +10,7 @@
     <category label="32010">
         <setting id="follow_item" type="bool" label="32011" default="true" />
         <setting id="allow_control" type="bool" label="32012" default="true" />
+        <setting id="host_control" type="bool" label="32014" default="false" />
         <setting id="drift_threshold" type="slider" label="32013" default="3" range="1,1,10" option="int" />
     </category>
 </settings>

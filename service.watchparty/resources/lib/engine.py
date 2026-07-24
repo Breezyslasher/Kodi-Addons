@@ -40,6 +40,7 @@ def _settings():
     return {
         'follow_item': a.getSettingBool('follow_item'),
         'allow_control': a.getSettingBool('allow_control'),
+        'host_control': a.getSettingBool('host_control'),
         'drift_threshold': max(1.0, float(a.getSettingInt('drift_threshold'))),
     }
 
@@ -79,12 +80,37 @@ def _now_playing_item(player):
             'label': xbmc.getInfoLabel('Player.Title') or ''}
     player_id = _active_player_id()
     if player_id is not None:
+        # Extended properties fail for some item types; fall back to the
+        # minimal query rather than losing the plugin path.
         result = _json_rpc('Player.GetItem',
                            {'playerid': player_id,
-                            'properties': ['file']}) or {}
-        jfile = (result.get('item') or {}).get('file') or ''
+                            'properties': ['file', 'uniqueid', 'title',
+                                           'year', 'showtitle', 'season',
+                                           'episode']})
+        if result is None:
+            result = _json_rpc('Player.GetItem',
+                               {'playerid': player_id,
+                                'properties': ['file']})
+        info = (result or {}).get('item') or {}
+        jfile = info.get('file') or ''
         if jfile.startswith('plugin://'):
             item['plugin'] = jfile
+        # Library identity, so guests can match their own copy of the
+        # same movie/episode even when file paths differ.
+        ids = {k: v for k, v in (info.get('uniqueid') or {}).items() if v}
+        if ids:
+            item['ids'] = ids
+        itype = info.get('type') or ''
+        if itype == 'episode' and info.get('showtitle'):
+            item['type'] = 'episode'
+            item['show'] = info['showtitle']
+            item['season'] = info.get('season')
+            item['episode'] = info.get('episode')
+        elif itype == 'movie' and info.get('title'):
+            item['type'] = 'movie'
+            item['title'] = info['title']
+            if info.get('year'):
+                item['year'] = info['year']
     return item
 
 
@@ -107,6 +133,54 @@ def _playable_url(item):
     if file.startswith(('http://', 'https://')):
         return ''
     return file
+
+
+def _find_in_library(item):
+    """This device's own copy of the shared item, or ''.
+
+    Matches by library identity (uniqueid like imdb/tvdb/tmdb, or
+    show/season/episode, or title+year) so a guest whose library has the
+    same movie under a different path can follow without a shared source.
+    """
+    if item.get('type') == 'episode' and item.get('show'):
+        season, ep = item.get('season'), item.get('episode')
+        if season in (None, '') or ep in (None, ''):
+            return ''
+        shows = (_json_rpc('VideoLibrary.GetTVShows',
+                           {'filter': {'field': 'title', 'operator': 'is',
+                                       'value': str(item['show'])}})
+                 or {}).get('tvshows') or []
+        for show in shows:
+            episodes = (_json_rpc('VideoLibrary.GetEpisodes',
+                                  {'tvshowid': show['tvshowid'],
+                                   'season': int(season),
+                                   'properties': ['file', 'episode']})
+                        or {}).get('episodes') or []
+            for episode in episodes:
+                if int(episode.get('episode') or -1) == int(ep):
+                    return episode.get('file') or ''
+        return ''
+
+    ids = item.get('ids') or {}
+    title = item.get('title') or ''
+    year = item.get('year')
+    if not ids and not (title and year):
+        return ''
+    params = {'properties': ['file', 'uniqueid', 'year']}
+    if title:
+        params['filter'] = {'field': 'title', 'operator': 'is',
+                            'value': title}
+    movies = (_json_rpc('VideoLibrary.GetMovies', params)
+              or {}).get('movies') or []
+    for movie in movies:
+        uid = movie.get('uniqueid') or {}
+        if any(v and uid.get(k) == v for k, v in ids.items()):
+            return movie.get('file') or ''
+    if title and year:
+        for movie in movies:
+            if int(movie.get('year') or 0) == int(year):
+                return movie.get('file') or ''
+    return ''
 
 
 class _Suppressor:
@@ -327,18 +401,22 @@ class SyncEngine:
     def push_command(self, cmd, position=0.0, item=None):
         """Queue a command for the push worker. Called from Kodi's player
         callback thread, so it must never block on the network."""
-        if not _settings()['allow_control'] or not self.connected:
+        settings = _settings()
+        if not settings['allow_control'] or not self.connected:
             return
-        self._cmd_q.put((cmd, position, item))
+        # Claim sole control of the party when opening, if configured.
+        lock = cmd == 'open' and settings['host_control']
+        self._cmd_q.put((cmd, position, item, lock))
 
     def _push_worker(self):
         while True:
             entry = self._cmd_q.get()
             if entry is None or self._stop_event.is_set():
                 break
-            cmd, position, item = entry
+            cmd, position, item, lock = entry
             try:
-                self.client.command(cmd, position=position, item=item)
+                self.client.command(cmd, position=position, item=item,
+                                    lock=lock)
                 common.log(f"pushed {cmd} @ {position:.1f}", xbmc.LOGDEBUG)
             except RelayError as e:
                 self._last_error = str(e)
@@ -350,10 +428,15 @@ class SyncEngine:
         failures = 0
         while not self._stop_event.wait(POLL_INTERVAL):
             try:
+                local_file = self._playing_file()
                 state = self.client.poll(
                     position=self.safe_time(),
                     paused=self._is_paused(),
-                    file=self._playing_file())
+                    file=local_file,
+                    caching=bool(local_file) and bool(
+                        xbmc.getCondVisibility('Player.Caching')),
+                    on_item=bool(self._local_key) and
+                    self._local_key == self._last_party_key)
                 failures = 0
                 self._last_error = ''
                 self._apply(state)
@@ -429,9 +512,11 @@ class SyncEngine:
                 return  # still waiting for a previous open to come up
             if key in self._failed_keys:
                 return  # it won't play here; user was told once already
-            url = _playable_url(item)
+            # Prefer, in order: plugin path (device resolves its own
+            # stream), this device's own library copy, the shared path.
+            url = item.get('plugin') or _find_in_library(item) \
+                or _playable_url(item)
             if not url:
-                # e.g. a host-local proxy URL with no plugin path shared
                 self._failed_keys.add(key)
                 common.log(f"party item not playable here: {item['file']}",
                            xbmc.LOGWARNING)

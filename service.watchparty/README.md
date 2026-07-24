@@ -37,6 +37,13 @@ Raspberry Pi or in Docker, so nobody has to port-forward anything.
   device resolves the stream with its own copy of the addon (own account,
   own session), the same way SyncLounge lets every Plex client fetch its
   own stream. Resolved playback URLs are never opened on other devices.
+- **Library items match by identity**: the party shares IMDb/TVDb/TMDb ids
+  (and show/season/episode or title+year), so a guest whose own library has
+  the same movie or episode — different NAS, different path — plays their
+  local copy automatically. No shared source needed.
+- **Buffer hold**: while any member watching the item is buffering, the
+  party auto-pauses, and resumes when they catch up. A deliberate
+  pause/play always overrides the hold.
 - Commands you triggered yourself are never re-applied to you (echo
   suppression), so pausing locally doesn't bounce back as a second pause.
 - All relay traffic runs off Kodi's UI and player threads, so a slow or
@@ -110,6 +117,7 @@ copy.
 | Saved room code | — | Pre-filled in the join dialog; updated automatically after each join |
 | Follow party item | on | Automatically open whatever the party plays |
 | Send my play/pause/seek | on | Off = follow-only mode (a "viewer" that can't drive the party) |
+| Lock control to me | off | Host mode: when this device starts an item, only it can play/pause/seek/stop until it stops — other members' controls are rejected |
 | Drift threshold | 3 s | How far out of sync before a corrective seek |
 
 ## Notes & limitations
