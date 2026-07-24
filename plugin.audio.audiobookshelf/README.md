@@ -19,7 +19,7 @@ Stream audiobooks and podcasts from your [Audiobookshelf](https://www.audiobooks
 - Episode progress tracking
 
 ### General
-- **Authentication**: Username/Password or API Key
+- **Authentication**: Username/Password 
 - **Progress Sync**: Automatic sync with configurable intervals
 - **Offline Mode**: Download content for offline playback
 - **View Modes**: List or Grid view with cover art
@@ -39,9 +39,9 @@ Stream audiobooks and podcasts from your [Audiobookshelf](https://www.audiobooks
 ### Server Settings
 - **Server IP Address**: Your Audiobookshelf server IP
 - **Port**: Default is 13378
-- **Authentication Method**: Choose Username/Password or API Key
+- **Authentication Method**: Choose Username/Password
 - **Username/Password**: Your Audiobookshelf credentials
-- **API Key**: Generate from Audiobookshelf settings → Users → Your user → API Key
+
 
 ### Display Settings
 - **View Mode**: List or Grid (covers)
