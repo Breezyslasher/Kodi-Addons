@@ -111,6 +111,19 @@ class EmbeddedRelayTest(unittest.TestCase):
         self.assertEqual(stored[0]['album'], '=')
         self.assertEqual(state['item']['playlist_pos'], 2)
 
+    def test_repeat_and_shuffle_passthrough(self):
+        item = dict(ITEM, repeat='one', shuffled=True)
+        self.host.command('open', position=0.0, item=item)
+        state = self.guest.poll(0, False, '')
+        self.assertEqual(state['item']['repeat'], 'one')
+        self.assertTrue(state['item']['shuffled'])
+        # 'off' passes through too (guests reconcile back to off)
+        self.host.command('open', position=0.0,
+                          item=dict(ITEM, repeat='off'))
+        state = self.guest.poll(0, False, '')
+        self.assertEqual(state['item']['repeat'], 'off')
+        self.assertNotIn('shuffled', state['item'])
+
     def test_single_entry_playlist_dropped(self):
         item = dict(ITEM, playlist=[{'file': 'smb://nas/x.mkv',
                                      'label': 'x'}], playlist_pos=0)

@@ -227,7 +227,7 @@ class RoomState:
     # queue the item is playing from
     ITEM_EXTRA_KEYS = ('type', 'ids', 'title', 'year', 'show', 'season',
                        'episode', 'artist', 'album', 'playlist',
-                       'playlist_pos')
+                       'playlist_pos', 'repeat', 'shuffled')
     MAX_PLAYLIST = 100
 
     def command(self, member_id, cmd, payload):

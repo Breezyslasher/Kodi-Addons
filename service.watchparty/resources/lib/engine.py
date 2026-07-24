@@ -143,9 +143,14 @@ def _now_playing_item(player):
         # can line up the same items and transition locally in sync.
         props = _json_rpc('Player.GetProperties',
                           {'playerid': player_id,
-                           'properties': ['playlistid', 'position']}) or {}
+                           'properties': ['playlistid', 'position',
+                                          'repeat', 'shuffled']}) or {}
         playlist_id = props.get('playlistid')
         playlist_pos = props.get('position')
+        # repeat/shuffle ride along so followers can mirror the mode
+        item['repeat'] = props.get('repeat') or 'off'
+        if props.get('shuffled'):
+            item['shuffled'] = True
         if isinstance(playlist_id, int) and playlist_id >= 0 \
                 and isinstance(playlist_pos, int) and playlist_pos >= 0:
             listing = _json_rpc('Playlist.GetItems',
@@ -421,6 +426,7 @@ class SyncEngine:
         self._party_keys = set()   # keys belonging to the shared queue
         self._queue_map = {}       # party entry key -> our local key
         self._queue_index = {}     # party entry key -> queue position
+        self._queue_order = []     # party entry keys in shared order
         self._queue_playlistid = 0
         self._queue_jump_pending = ''
         self._last_error = ''
@@ -691,6 +697,7 @@ class SyncEngine:
             self._party_keys = set()
             self._queue_map = {}
             self._queue_index = {}
+            self._queue_order = []
             self._queue_jump_pending = ''
             if cfg['follow_item'] and local_file \
                     and state.get('set_by') \
@@ -741,10 +748,19 @@ class SyncEngine:
             if key in self._failed_keys:
                 return  # it won't play here; user was told once already
 
+            # The shared queue order changed (e.g. the host toggled
+            # shuffle): rebuild instead of jumping, so our local queue
+            # follows the new order from here on.
+            shared_order = [e.get('file') or ''
+                            for e in item.get('playlist') or []]
+            order_changed = bool(shared_order) and self._queue_order \
+                and shared_order != self._queue_order
+
             # Our local queue already contains this item: jump to its
             # slot instead of rebuilding. Waiting one poll first gives
             # our own natural advance a moment to line up by itself.
-            if key in self._queue_index and local_file:
+            if key in self._queue_index and local_file \
+                    and not order_changed:
                 if self._queue_jump_pending != key:
                     self._queue_jump_pending = key
                     return
@@ -793,6 +809,7 @@ class SyncEngine:
                 self._queue_map = {ek: lk for ek, _, lk in refs}
                 self._queue_index = {ek: i
                                      for i, (ek, _, _) in enumerate(refs)}
+                self._queue_order = [ek for ek, _, _ in refs]
                 self._party_keys |= set(self._queue_map.values())
                 _json_rpc('Playlist.Clear', {'playlistid': playlist_id})
                 _json_rpc('Playlist.Add',
@@ -840,6 +857,28 @@ class SyncEngine:
         if bool(state['paused']) != local_paused and not own_change:
             self._set_paused(bool(state['paused']))
             local_paused = bool(state['paused'])
+
+        # Repeat mode follows the party (the item's announcer owns it);
+        # shuffle stays OFF while following a shared queue — the
+        # announcements are the order of truth, and two independent
+        # shuffles can never agree.
+        if 'repeat' in item and not self._i_opened_current \
+                and cfg['follow_item']:
+            player_id = _active_player_id()
+            if player_id is not None:
+                modes = _json_rpc('Player.GetProperties',
+                                  {'playerid': player_id,
+                                   'properties': ['repeat',
+                                                  'shuffled']}) or {}
+                party_repeat = item.get('repeat') or 'off'
+                if (modes.get('repeat') or 'off') != party_repeat:
+                    common.log(f"matching party repeat: {party_repeat}")
+                    _json_rpc('Player.SetRepeat',
+                              {'playerid': player_id,
+                               'repeat': party_repeat})
+                if modes.get('shuffled') and self._queue_map:
+                    _json_rpc('Player.SetShuffle',
+                              {'playerid': player_id, 'shuffle': False})
 
         # Drift correction (both while playing and while paused).
         expected = self._expected_position(state)

@@ -51,6 +51,11 @@ Raspberry Pi or in Docker, so nobody has to port-forward anything.
   happen locally and stay smooth. Only the member who started the queue
   announces advances and its natural end; everyone else's player just
   moves with it.
+- **Repeat and shuffle**: the announcer's repeat mode (off/one/all) is
+  mirrored to everyone, so repeat-one loops and repeat-all wraps stay in
+  sync. Shuffle is the announcer's privilege — followers stay unshuffled
+  and simply play the announced order; when the host toggles shuffle, the
+  reshuffled queue propagates at the next track change.
 - **Buffer hold**: while any member watching the item is buffering, the
   party auto-pauses, and resumes when they catch up. A deliberate
   pause/play always overrides the hold.
