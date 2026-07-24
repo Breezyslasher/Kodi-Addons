@@ -9,8 +9,8 @@ Welcome to my personal Kodi addon repository! This collection includes various a
 Stream audiobooks and podcasts from your Audiobookshelf server.
 
 **Recent updates:**
-- New JWT auth flow with automatic token refresh (requires server v2.26.0+)
-- Cover art, author, and podcast creator now show on the Kodi now-playing screen
+- API key login — use an Audiobookshelf API key instead of username/password (overrides it when set)
+- Each library is now listed separately instead of merged into single Audiobooks/Podcasts folders (toggle "Group libraries by type" to restore the old view)
 
 See the [addon README](plugin.audio.audiobookshelf/README.md) for the full feature list.
 
