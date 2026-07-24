@@ -20,7 +20,13 @@ class RelayError(Exception):
 
 class RelayClient:
     def __init__(self, host, port, room_code, timeout=5.0):
-        self.base = f"http://{host}:{port}"
+        # `host` may be a plain hostname/IP (paired with `port`) or a full
+        # base URL like https://party.example.com[/path] — the latter is
+        # how guests reach a standalone relay behind TLS or a tunnel.
+        if host.startswith(('http://', 'https://')):
+            self.base = host.rstrip('/')
+        else:
+            self.base = f"http://{host}:{port}"
         self.room = room_code
         self.timeout = timeout
         self.member_id = None

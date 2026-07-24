@@ -1,0 +1,11 @@
+# Watch Party standalone relay
+#   docker compose up -d
+services:
+  watchparty-relay:
+    build: .
+    container_name: watchparty-relay
+    ports:
+      - "8765:8765"
+    # environment:
+    #   WATCHPARTY_ROOMS: "MOVIE,SHOWS"   # omit for open mode
+    restart: unless-stopped

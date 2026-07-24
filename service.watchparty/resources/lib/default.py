@@ -56,12 +56,15 @@ def start_party():
 
 def join_party():
     dialog = xbmcgui.Dialog()
-    address = dialog.input('Host address (ip or ip:port)',
+    address = dialog.input('Host address (ip[:port] or https://relay.example.com)',
                            defaultt=ADDON.getSettingString('default_address'))
     if not address:
         return
     address = address.strip()
-    if ':' in address:
+    if address.startswith(('http://', 'https://')):
+        # Full base URL (standalone relay / tunnel) — port comes with it.
+        host, port = address.rstrip('/'), 0
+    elif ':' in address:
         host, _, port_s = address.partition(':')
         try:
             port = int(port_s)
