@@ -91,24 +91,20 @@ def _item_key(item):
     return item.get('plugin') or item.get('file') or ''
 
 
-def _host_local(url):
-    """True for URLs that only resolve on the device that made them."""
-    try:
-        from urllib.parse import urlparse
-        host = (urlparse(url).hostname or '').lower()
-    except Exception:
-        return False
-    return host in ('127.0.0.1', 'localhost', '::1')
-
-
 def _playable_url(item):
-    """Best URL for *this* device, or '' if the item can't play here."""
+    """URL for *this* device to open, or '' if the item can't play here.
+
+    Only the plugin:// path is used for addon content — resolved
+    playback URLs (http streams, local proxies, tokenized CDN links)
+    are host-specific and never opened on other devices. Plain file
+    paths (smb://, nfs://, library files) are shared as-is.
+    """
     if item.get('plugin'):
         return item['plugin']
     file = item.get('file') or ''
-    if file and not _host_local(file):
-        return file
-    return ''
+    if file.startswith(('http://', 'https://')):
+        return ''
+    return file
 
 
 class _Suppressor:
