@@ -66,7 +66,7 @@ Or with Docker — a prebuilt multi-arch image (amd64 / arm64 / armv7, so
 Raspberry Pi works) is published to GHCR by CI:
 
 ```
-docker run -d -p 8765:8765 --restart unless-stopped ghcr.io/breezyslasher/watchparty-relay:latest
+docker run -d -p 8765:8765 --restart unless-stopped ghcr.io/breezyslasher/kodi-watchparty-relay:latest
 ```
 
 Or build it yourself from this addon's folder:
@@ -74,7 +74,7 @@ Or build it yourself from this addon's folder:
 ```
 docker compose up -d
 # or
-docker build -t watchparty-relay . && docker run -d -p 8765:8765 --restart unless-stopped watchparty-relay
+docker build -t kodi-watchparty-relay . && docker run -d -p 8765:8765 --restart unless-stopped kodi-watchparty-relay
 ```
 
 - **Open mode** (default): any room code creates a room on first join —

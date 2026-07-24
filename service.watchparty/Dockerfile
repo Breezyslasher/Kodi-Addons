@@ -1,10 +1,10 @@
-# Watch Party standalone relay
+# Kodi Watch Party standalone relay
 #
-#   docker build -t watchparty-relay .
-#   docker run -d --restart unless-stopped -p 8765:8765 watchparty-relay
+#   docker build -t kodi-watchparty-relay .
+#   docker run -d --restart unless-stopped -p 8765:8765 kodi-watchparty-relay
 #
 # Fixed rooms instead of open mode:
-#   docker run -d -p 8765:8765 -e WATCHPARTY_ROOMS=MOVIE,SHOWS watchparty-relay
+#   docker run -d -p 8765:8765 -e WATCHPARTY_ROOMS=MOVIE,SHOWS kodi-watchparty-relay
 FROM python:3.12-alpine
 
 WORKDIR /app
