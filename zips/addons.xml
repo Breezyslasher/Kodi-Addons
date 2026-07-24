@@ -172,7 +172,7 @@ v2026.6.12 - Samsung DeX + simpler menu
         </news>
     </extension>
 </addon>
-<addon id="service.watchparty" version="2026.7.24.14" name="Watch Party" provider-name="Breezyslasher">
+<addon id="service.watchparty" version="2026.7.24.15" name="Watch Party" provider-name="Breezyslasher">
   <requires>
     <import addon="xbmc.python" version="3.0.1"/>
   </requires>
