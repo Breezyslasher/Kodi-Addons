@@ -41,38 +41,88 @@ def _port():
         return 8765
 
 
-def start_party():
-    room = ''.join(random.choice(CODE_ALPHABET) for _ in range(4))
+def _random_code():
+    return ''.join(random.choice(CODE_ALPHABET) for _ in range(4))
+
+
+def _ask_address(dialog, prompt):
+    """Prompt for a relay/host address; returns (address, host, port) or
+    None. Accepts ip, ip:port, or a full http(s):// base URL."""
+    address = dialog.input(prompt,
+                           defaultt=ADDON.getSettingString('default_address'))
+    if not address:
+        return None
+    address = address.strip()
+    if address.startswith(('http://', 'https://')):
+        # Full base URL (standalone relay / tunnel) — port comes with it.
+        return address.rstrip('/'), address.rstrip('/'), 0
+    if ':' in address:
+        host, _, port_s = address.partition(':')
+        try:
+            return address, host, int(port_s)
+        except ValueError:
+            dialog.ok('Watch Party', f"Invalid port in '{address}'")
+            return None
+    return address, address, _port()
+
+
+def start_party_here():
+    """Host on this device: Kodi runs the relay, friends connect to us."""
+    room = _random_code()
     port = _port()
     ip = xbmc.getIPAddress() or '?'
     _write_session({'mode': 'host', 'room': room, 'port': port})
     xbmcgui.Dialog().ok(
         'Watch Party',
-        f"Party started!\n\n"
+        f"Party started on this device!\n\n"
         f"Friends join with:\n"
         f"    Address:  [B]{ip}:{port}[/B]\n"
         f"    Room code:  [B]{room}[/B]")
 
 
+def start_party_on_relay():
+    """Open a new room on a standalone/Docker relay and join it."""
+    dialog = xbmcgui.Dialog()
+    parsed = _ask_address(
+        dialog, 'Relay server address (ip[:port] or https://...)')
+    if not parsed:
+        return
+    address, host, port = parsed
+    room = dialog.input('Room code for the new party (share with friends)',
+                        defaultt=ADDON.getSettingString('default_room')
+                        or _random_code())
+    if not room:
+        return
+    room = room.strip().upper()
+    # A quick reachability check beats a silent background failure.
+    try:
+        from client import RelayClient
+        if not RelayClient(host, port, room, timeout=4.0).ping():
+            raise IOError('not a Watch Party relay')
+    except Exception as e:
+        if not dialog.yesno('Watch Party',
+                            f"Relay not reachable ({e}).\nSave and keep "
+                            f"trying in the background anyway?"):
+            return
+    _write_session({'mode': 'guest', 'host': host, 'port': port,
+                    'room': room})
+    ADDON.setSettingString('default_address', address)
+    ADDON.setSettingString('default_room', room)
+    dialog.ok(
+        'Watch Party',
+        f"Party started on the relay!\n\n"
+        f"Friends join with:\n"
+        f"    Address:  [B]{address}[/B]\n"
+        f"    Room code:  [B]{room}[/B]")
+
+
 def join_party():
     dialog = xbmcgui.Dialog()
-    address = dialog.input('Host address (ip[:port] or https://relay.example.com)',
-                           defaultt=ADDON.getSettingString('default_address'))
-    if not address:
+    parsed = _ask_address(
+        dialog, 'Party address (ip[:port] or https://relay.example.com)')
+    if not parsed:
         return
-    address = address.strip()
-    if address.startswith(('http://', 'https://')):
-        # Full base URL (standalone relay / tunnel) — port comes with it.
-        host, port = address.rstrip('/'), 0
-    elif ':' in address:
-        host, _, port_s = address.partition(':')
-        try:
-            port = int(port_s)
-        except ValueError:
-            dialog.ok('Watch Party', f"Invalid port in '{address}'")
-            return
-    else:
-        host, port = address, _port()
+    address, host, port = parsed
     room = dialog.input('Room code',
                         defaultt=ADDON.getSettingString('default_room'))
     if not room:
@@ -143,8 +193,14 @@ def main():
         options = ['Party status', 'Leave party', 'Settings']
         actions = [show_status, leave_party, ADDON.openSettings]
     else:
-        options = ['Start a party (host)', 'Join a party', 'Settings']
-        actions = [start_party, join_party, ADDON.openSettings]
+        options = [
+            'Host a party on this device (friends connect to this Kodi)',
+            'Start a party on a relay server (Docker/VPS relay)',
+            'Join an existing party',
+            'Settings',
+        ]
+        actions = [start_party_here, start_party_on_relay, join_party,
+                   ADDON.openSettings]
     choice = xbmcgui.Dialog().select('Watch Party', options)
     if choice >= 0:
         actions[choice]()

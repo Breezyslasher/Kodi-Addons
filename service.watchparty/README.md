@@ -51,12 +51,18 @@ Raspberry Pi or in Docker, so nobody has to port-forward anything.
 
 ## Usage
 
-**Host:** Add-ons → Watch Party → *Start a party*. Kodi shows your address
-and a 4-letter room code.
+The main menu offers three ways in:
 
-**Guests:** Add-ons → Watch Party → *Join a party*, enter the host's
-`ip:port` (or a relay URL like `https://party.example.com`) and the room
-code. Both are remembered and pre-filled next time.
+- **Host a party on this device** — for the couch/LAN case. This Kodi
+  runs the relay; it shows your `ip:port` and a generated 4-letter room
+  code for friends to join with.
+- **Start a party on a relay server** — for remote parties. Point it at
+  your standalone/Docker relay (`ip:port` or `https://...`), pick a room
+  code to share, and the addon opens the room and joins it. The relay is
+  pinged first so a wrong address fails loudly, not silently.
+- **Join an existing party** — enter the address and room code someone
+  shared with you. Address and code are remembered and pre-filled next
+  time, so rejoining is just OK, OK.
 
 Then just play something — everyone follows. Any member can pause, seek or
 resume for the whole party (this can be turned off per device, see below).
