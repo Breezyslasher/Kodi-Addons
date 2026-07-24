@@ -1,0 +1,103 @@
+"""
+Watch Party relay client.
+
+Thin JSON-over-HTTP wrapper used by the sync engine to talk to a relay
+(the hosting Kodi's embedded server). Also maintains an estimate of the
+clock offset between this device and the relay, measured on every request
+using the request round-trip midpoint, and smoothed with an EMA so all
+party members can agree on "server time" positions.
+
+Pure standard library — no Kodi imports.
+"""
+import json
+import time
+import urllib.request
+
+
+class RelayError(Exception):
+    pass
+
+
+class RelayClient:
+    def __init__(self, host, port, room_code, timeout=5.0):
+        self.base = f"http://{host}:{port}"
+        self.room = room_code
+        self.timeout = timeout
+        self.member_id = None
+        self.clock_offset = 0.0   # server_time - local_time (EMA-smoothed)
+        self._offset_samples = 0
+
+    # -- transport ---------------------------------------------------------
+
+    def _post(self, path, payload):
+        payload = dict(payload)
+        payload['room'] = self.room
+        body = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(
+            self.base + path, data=body,
+            headers={'Content-Type': 'application/json'}, method='POST')
+        t0 = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+        except urllib.error.HTTPError as e:
+            try:
+                data = json.loads(e.read().decode('utf-8'))
+            except Exception:
+                data = {}
+            raise RelayError(data.get('error') or f"HTTP {e.code}")
+        except Exception as e:
+            raise RelayError(str(e))
+        t1 = time.time()
+        self._update_offset(data.get('server_time'), t0, t1)
+        if not data.get('ok'):
+            raise RelayError(data.get('error') or 'relay error')
+        return data
+
+    def _update_offset(self, server_time, t0, t1):
+        if not server_time:
+            return
+        # Assume the server stamped the response halfway through the RTT.
+        sample = float(server_time) - (t0 + t1) / 2.0
+        if self._offset_samples == 0:
+            self.clock_offset = sample
+        else:
+            self.clock_offset = 0.8 * self.clock_offset + 0.2 * sample
+        self._offset_samples += 1
+
+    def server_now(self):
+        return time.time() + self.clock_offset
+
+    # -- API ---------------------------------------------------------------
+
+    def ping(self):
+        req = urllib.request.Request(self.base + '/ping')
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        return data.get('app') == 'watchparty'
+
+    def join(self, name):
+        data = self._post('/join', {'name': name})
+        self.member_id = data['member_id']
+        return data['state']
+
+    def leave(self):
+        if self.member_id:
+            try:
+                self._post('/leave', {'member_id': self.member_id})
+            except RelayError:
+                pass
+            self.member_id = None
+
+    def command(self, cmd, position=0.0, item=None):
+        payload = {'member_id': self.member_id, 'cmd': cmd,
+                   'position': position}
+        if item:
+            payload['item'] = item
+        return self._post('/command', payload)['state']
+
+    def poll(self, position, paused, file):
+        data = self._post('/poll', {'member_id': self.member_id,
+                                    'position': position, 'paused': paused,
+                                    'file': file})
+        return data['state']

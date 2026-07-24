@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="32000">
+        <setting id="show_notifications" type="bool" label="32001" default="true" />
+        <setting id="device_name" type="text" label="32002" default="" />
+        <setting id="port" type="number" label="32003" default="8765" />
+        <setting id="default_address" type="text" label="32004" default="" />
+        <setting id="default_room" type="text" label="32005" default="" />
+    </category>
+    <category label="32010">
+        <setting id="follow_item" type="bool" label="32011" default="true" />
+        <setting id="allow_control" type="bool" label="32012" default="true" />
+        <setting id="drift_threshold" type="slider" label="32013" default="3" range="1,1,10" option="int" />
+    </category>
+</settings>
