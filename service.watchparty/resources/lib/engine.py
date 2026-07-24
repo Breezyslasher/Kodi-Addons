@@ -81,13 +81,20 @@ def _now_playing_item(player):
             'label': xbmc.getInfoLabel('Player.Title') or ''}
     player_id = _active_player_id()
     if player_id is not None:
-        # Extended properties fail for some item types; fall back to the
-        # minimal query rather than losing the plugin path.
+        # Extended properties fail for some item types / Kodi versions;
+        # fall back to leaner queries rather than losing the plugin path.
         result = _json_rpc('Player.GetItem',
                            {'playerid': player_id,
                             'properties': ['file', 'uniqueid', 'title',
                                            'year', 'showtitle', 'season',
-                                           'episode']})
+                                           'episode', 'artist', 'album',
+                                           'musicbrainztrackid']})
+        if result is None:
+            result = _json_rpc('Player.GetItem',
+                               {'playerid': player_id,
+                                'properties': ['file', 'uniqueid', 'title',
+                                               'year', 'showtitle',
+                                               'season', 'episode']})
         if result is None:
             result = _json_rpc('Player.GetItem',
                                {'playerid': player_id,
@@ -112,6 +119,16 @@ def _now_playing_item(player):
             item['title'] = info['title']
             if info.get('year'):
                 item['year'] = info['year']
+        elif itype == 'song' and info.get('title'):
+            item['type'] = 'song'
+            item['title'] = info['title']
+            if info.get('artist'):
+                item['artist'] = info['artist']  # Kodi gives a list
+            if info.get('album'):
+                item['album'] = info['album']
+            if info.get('musicbrainztrackid'):
+                item['ids'] = dict(item.get('ids') or {},
+                                   mbtrack=info['musicbrainztrackid'])
     return item
 
 
@@ -136,13 +153,51 @@ def _playable_url(item):
     return file
 
 
+def _find_song(item):
+    """This device's music-library copy of the shared song, or ''.
+
+    Filters by title (+ first artist, + album when known); a shared
+    MusicBrainz track id picks the exact recording among the results.
+    Retries without the album so compilations still match.
+    """
+    title = item.get('title') or ''
+    if not title:
+        return ''
+    artists = item.get('artist') or []
+    album = item.get('album') or ''
+    mb_track = (item.get('ids') or {}).get('mbtrack') or ''
+    conditions = [{'field': 'title', 'operator': 'is', 'value': title}]
+    if artists:
+        conditions.append({'field': 'artist', 'operator': 'is',
+                           'value': str(artists[0])})
+    for with_album in ([True, False] if album else [False]):
+        parts = list(conditions)
+        if with_album:
+            parts.append({'field': 'album', 'operator': 'is',
+                          'value': album})
+        params = {'properties': ['file', 'musicbrainztrackid'],
+                  'filter': {'and': parts} if len(parts) > 1 else parts[0]}
+        songs = (_json_rpc('AudioLibrary.GetSongs', params)
+                 or {}).get('songs') or []
+        if mb_track:
+            for song in songs:
+                if song.get('musicbrainztrackid') == mb_track:
+                    return song.get('file') or ''
+        if songs:
+            return songs[0].get('file') or ''
+    return ''
+
+
 def _find_in_library(item):
     """This device's own copy of the shared item, or ''.
 
-    Matches by library identity (uniqueid like imdb/tvdb/tmdb, or
-    show/season/episode, or title+year) so a guest whose library has the
-    same movie under a different path can follow without a shared source.
+    Matches by library identity (uniqueid like imdb/tvdb/tmdb,
+    show/season/episode, title+year for movies, or artist/album/title
+    and MusicBrainz id for songs) so a guest whose library has the same
+    content under a different path can follow without a shared source.
     """
+    if item.get('type') == 'song':
+        return _find_song(item)
     if item.get('type') == 'episode' and item.get('show'):
         season, ep = item.get('season'), item.get('episode')
         if season in (None, '') or ep in (None, ''):

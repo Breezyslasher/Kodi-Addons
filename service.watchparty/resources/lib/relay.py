@@ -224,7 +224,7 @@ class RoomState:
     # keys an 'open' command may attach beyond file/label/plugin —
     # library identity so guests can match their own copy
     ITEM_EXTRA_KEYS = ('type', 'ids', 'title', 'year',
-                       'show', 'season', 'episode')
+                       'show', 'season', 'episode', 'artist', 'album')
 
     def command(self, member_id, cmd, payload):
         """Apply a control command and bump the sequence number.

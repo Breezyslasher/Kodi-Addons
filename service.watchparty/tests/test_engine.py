@@ -30,6 +30,12 @@ LIBRARY = {
         {'episodeid': 71, 'episode': 4,
          'file': 'smb://guestnas/tv/severance/s02e04.mkv'},
     ]},
+    'AudioLibrary.GetSongs': {'songs': [
+        {'songid': 5, 'file': 'smb://guestnas/music/live/karma.mp3',
+         'musicbrainztrackid': 'mb-live-999'},
+        {'songid': 6, 'file': 'smb://guestnas/music/ok/karma.mp3',
+         'musicbrainztrackid': 'mb-studio-123'},
+    ]},
 }
 
 _, common = kodi_stubs.install(json_rpc_responses=LIBRARY)
@@ -76,6 +82,23 @@ class LibraryMatchTest(unittest.TestCase):
 
     def test_no_identity_no_match(self):
         self.assertEqual(engine._find_in_library({'file': 'x'}), '')
+
+    def test_song_by_musicbrainz_id_beats_first_result(self):
+        item = {'type': 'song', 'title': 'Karma Police',
+                'artist': ['Radiohead'], 'album': 'OK Computer',
+                'ids': {'mbtrack': 'mb-studio-123'}, 'file': 'x'}
+        self.assertEqual(engine._find_in_library(item),
+                         'smb://guestnas/music/ok/karma.mp3')
+
+    def test_song_without_mb_takes_first_filtered(self):
+        item = {'type': 'song', 'title': 'Karma Police',
+                'artist': ['Radiohead'], 'file': 'x'}
+        self.assertEqual(engine._find_in_library(item),
+                         'smb://guestnas/music/live/karma.mp3')
+
+    def test_song_without_title_no_match(self):
+        self.assertEqual(engine._find_in_library(
+            {'type': 'song', 'artist': ['X'], 'file': 'x'}), '')
 
 
 class BookkeepingTest(unittest.TestCase):

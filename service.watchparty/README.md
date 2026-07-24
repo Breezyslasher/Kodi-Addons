@@ -40,7 +40,9 @@ Raspberry Pi or in Docker, so nobody has to port-forward anything.
 - **Library items match by identity**: the party shares IMDb/TVDb/TMDb ids
   (and show/season/episode or title+year), so a guest whose own library has
   the same movie or episode — different NAS, different path — plays their
-  local copy automatically. No shared source needed.
+  local copy automatically. No shared source needed. Music too: songs match
+  by artist/album/title, with MusicBrainz track ids picking the exact
+  recording when both libraries have them.
 - **Buffer hold**: while any member watching the item is buffering, the
   party auto-pauses, and resumes when they catch up. A deliberate
   pause/play always overrides the hold.
