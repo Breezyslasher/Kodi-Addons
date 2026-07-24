@@ -33,8 +33,14 @@ Raspberry Pi or in Docker, so nobody has to port-forward anything.
 - If a member's position drifts past the threshold (default 3 s), the
   engine seeks them back into sync — corrections are rate-limited so
   playback isn't constantly jumping.
+- **Addon content follows by `plugin://` path**, not by stream URL: each
+  device resolves the stream with its own copy of the addon (own account,
+  own session), the same way SyncLounge lets every Plex client fetch its
+  own stream. Resolved playback URLs are never opened on other devices.
 - Commands you triggered yourself are never re-applied to you (echo
   suppression), so pausing locally doesn't bounce back as a second pause.
+- All relay traffic runs off Kodi's UI and player threads, so a slow or
+  distant relay never stalls the interface.
 
 ## Usage
 
@@ -100,18 +106,23 @@ copy.
 |---|---|---|
 | Device name | system name | How you appear in the member list |
 | Host port | 8765 | Port the embedded relay listens on when hosting |
+| Saved host address | — | Pre-filled in the join dialog; updated automatically after each join |
+| Saved room code | — | Pre-filled in the join dialog; updated automatically after each join |
 | Follow party item | on | Automatically open whatever the party plays |
 | Send my play/pause/seek | on | Off = follow-only mode (a "viewer" that can't drive the party) |
 | Drift threshold | 3 s | How far out of sync before a corrective seek |
 
 ## Notes & limitations
 
-- **File paths must be resolvable on every device.** Library items on a
-  network share (NFS/SMB), HTTP streams, and addon `plugin://` URLs that all
-  devices have installed work great. A file that only exists locally on the
-  host (`/home/me/movie.mkv`) won't open on guests — turn off *Follow party
-  item* on guests and start the same content manually; pause/seek sync still
-  applies once file playback has begun.
+- **Content must be resolvable on every device.** Addon streams (YouTube,
+  Disney+, debrid addons, …) work when every member has the same addon
+  installed and signed in — each device resolves its own stream from the
+  shared `plugin://` path. Library items on a network share (NFS/SMB) work
+  when the share is reachable from every device (a VPN covers remote
+  guests). A file that only exists locally on the host
+  (`/home/me/movie.mkv`) won't open on guests — turn off *Follow party
+  item* there and start the same content manually; pause/seek sync still
+  applies once playback has begun.
 - Stopping playback stops the party's shared item for everyone (like taking
   the disc out). Natural end-of-file does the same.
 - Members are pruned after 15 s without contact; guests reconnect by

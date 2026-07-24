@@ -41,6 +41,21 @@ See the [addon README](script.scrcpy-launcher/README.md) for details.
 
 ---
 
+### 🎬 [Watch Party](service.watchparty/)
+Synchronized playback across Kodi devices — a SyncLounge-style watch party, native to Kodi. Host a party on one device (or a standalone relay server), friends join with a room code, and play/pause/seek stay in sync everywhere with automatic drift correction.
+
+**Highlights:**
+- Works on the couch (embedded relay in Kodi) and over the internet (standalone relay on a VPS/Pi/Docker — nobody port-forwards)
+- Addon streams (YouTube, Disney+, …) follow by `plugin://` path, so every device resolves its own stream with its own account
+- Prebuilt multi-arch Docker image: `ghcr.io/breezyslasher/kodi-watchparty-relay` with a live `/status` dashboard of rooms and members
+- Saved relay address + room code — rejoining the usual party is just OK, OK
+
+See the [addon README](service.watchparty/README.md) for setup and details.
+
+**Requirements:** Kodi 19+ on all devices; for remote parties a reachable relay (Docker one-liner)
+
+---
+
 ### 🔗 [Webhook Runner](script.webhook.runner/)
 Fire Home Assistant (or any) webhooks from Kodi — either by remote-button press or automatically on Kodi events.
 
@@ -52,20 +67,6 @@ Fire Home Assistant (or any) webhooks from Kodi — either by remote-button pres
 See the [addon README](script.webhook.runner/README.md) for details.
 
 **Requirements:** Kodi 21+, Home Assistant instance (or any HTTP webhook target)
-
----
-
-### 🎬 [Watch Party](service.watchparty/)
-Synchronized playback across Kodi devices — a SyncLounge-style watch party. One device hosts, others join with a room code; play/pause/seek are mirrored to everyone with automatic drift correction.
-
-**Highlights:**
-- No external server — the hosting Kodi runs an embedded relay
-- Clock-offset compensation and rate-limited drift correction keep everyone within seconds
-- Follow mode auto-opens whatever the party plays (network shares, streams, plugin URLs)
-
-See the [addon README](service.watchparty/README.md) for details.
-
-**Requirements:** Kodi 19+ on all devices, network path between guests and host
 
 ---
 
@@ -127,8 +128,8 @@ Each addon has its own license:
 - **Audiobookshelf**: GPL-3.0-or-later
 - **PlexKodiConnect Download**: MIT
 - **scrcpy Launcher**: MIT
-- **Webhook Runner**: MIT
 - **Watch Party**: MIT
+- **Webhook Runner**: MIT
 
 ## 🔗 Links
 
