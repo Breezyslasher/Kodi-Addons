@@ -106,15 +106,18 @@ class RelayClient:
                 pass
             self.member_id = None
 
-    def command(self, cmd, position=0.0, item=None):
+    def command(self, cmd, position=0.0, item=None, lock=False):
         payload = {'member_id': self.member_id, 'cmd': cmd,
                    'position': position}
         if item:
             payload['item'] = item
+        if lock:
+            payload['lock'] = True
         return self._post('/command', payload)['state']
 
-    def poll(self, position, paused, file):
+    def poll(self, position, paused, file, caching=False, on_item=False):
         data = self._post('/poll', {'member_id': self.member_id,
                                     'position': position, 'paused': paused,
-                                    'file': file})
+                                    'file': file, 'caching': caching,
+                                    'on_item': on_item})
         return data['state']

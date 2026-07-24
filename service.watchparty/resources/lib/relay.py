@@ -39,12 +39,14 @@ class RoomState:
         self.room_code = room_code
         self.members = {}   # member_id -> dict
         self.seq = 0
-        self.item = None    # {'file': str, 'label': str, 'plugin': str} or None
+        self.item = None    # {'file', 'label', 'plugin', + library ids} or None
         self.position = 0.0
         self.paused = False
         self.speed = 1.0
         self.set_at = time.time()
         self.set_by = None
+        self.locked_by = None    # member allowed to control, or None = anyone
+        self.buffer_hold = None  # member we auto-paused for, or None
 
     # -- members -----------------------------------------------------------
 
@@ -58,6 +60,8 @@ class RoomState:
                 'position': 0.0,
                 'paused': True,
                 'file': '',
+                'caching': False,
+                'on_item': False,
             }
         return member_id
 
@@ -65,7 +69,8 @@ class RoomState:
         with self.lock:
             self.members.pop(member_id, None)
 
-    def touch(self, member_id, position=None, paused=None, file=None):
+    def touch(self, member_id, position=None, paused=None, file=None,
+              caching=None, on_item=None):
         with self.lock:
             m = self.members.get(member_id)
             if m is None:
@@ -77,6 +82,10 @@ class RoomState:
                 m['paused'] = bool(paused)
             if file is not None:
                 m['file'] = str(file)
+            if caching is not None:
+                m['caching'] = bool(caching)
+            if on_item is not None:
+                m['on_item'] = bool(on_item)
             return True
 
     def _prune(self):
@@ -86,26 +95,73 @@ class RoomState:
                  if m['last_seen'] < cutoff]
         for mid in stale:
             del self.members[mid]
+        if self.locked_by and self.locked_by not in self.members:
+            self.locked_by = None
+        if self.buffer_hold and self.buffer_hold not in self.members:
+            self.buffer_hold = None
+
+    def buffer_check(self):
+        """Pause the party while a member playing the item is buffering,
+        and resume once nobody is. A manual command in between cancels
+        the hold, so a deliberate pause is never overridden."""
+        with self.lock:
+            if not self.item:
+                self.buffer_hold = None
+                return
+            now = time.time()
+            caching = [mid for mid, m in self.members.items()
+                       if m.get('caching') and m.get('on_item')]
+            if caching and not self.paused:
+                self.position += max(0.0, now - self.set_at) \
+                    * (self.speed or 1.0)
+                self.paused = True
+                self.set_at = now
+                self.set_by = caching[0]
+                self.buffer_hold = caching[0]
+                self.seq += 1
+            elif self.buffer_hold and self.paused and not caching:
+                self.paused = False
+                self.set_at = now
+                self.set_by = self.buffer_hold
+                self.buffer_hold = None
+                self.seq += 1
+            elif self.buffer_hold and not self.paused:
+                self.buffer_hold = None
 
     # -- playback ----------------------------------------------------------
 
+    # keys an 'open' command may attach beyond file/label/plugin —
+    # library identity so guests can match their own copy
+    ITEM_EXTRA_KEYS = ('type', 'ids', 'title', 'year',
+                       'show', 'season', 'episode')
+
     def command(self, member_id, cmd, payload):
-        """Apply a control command and bump the sequence number."""
+        """Apply a control command and bump the sequence number.
+        Returns True, False (bad command), or 'locked'."""
         now = time.time()
         with self.lock:
             if member_id not in self.members:
                 return False
+            if self.locked_by and member_id != self.locked_by:
+                return 'locked'
             position = float(payload.get('position') or 0.0)
             if cmd == 'open':
                 item = payload.get('item') or {}
                 if not item.get('file'):
                     return False
-                self.item = {'file': str(item['file']),
-                             'label': str(item.get('label') or ''),
-                             'plugin': str(item.get('plugin') or '')}
+                stored = {'file': str(item['file']),
+                          'label': str(item.get('label') or ''),
+                          'plugin': str(item.get('plugin') or '')}
+                for key in self.ITEM_EXTRA_KEYS:
+                    value = item.get(key)
+                    if value not in (None, '', {}):
+                        stored[key] = value
+                self.item = stored
                 self.position = position
                 self.paused = False
                 self.speed = 1.0
+                # opener may claim sole control of the party
+                self.locked_by = member_id if payload.get('lock') else None
             elif cmd == 'play':
                 self.position = position
                 self.paused = False
@@ -118,8 +174,10 @@ class RoomState:
                 self.item = None
                 self.position = 0.0
                 self.paused = False
+                self.locked_by = None
             else:
                 return False
+            self.buffer_hold = None  # a deliberate command wins over a hold
             self.set_at = now
             self.set_by = member_id
             self.seq += 1
@@ -136,6 +194,7 @@ class RoomState:
                 'speed': self.speed,
                 'set_at': self.set_at,
                 'set_by': self.set_by,
+                'locked_by': self.locked_by,
                 'members': [
                     {
                         'name': m['name'],
@@ -227,8 +286,13 @@ class _Handler(BaseHTTPRequestHandler):
             room.leave(member_id)
             self._send(200, {'ok': True, 'server_time': now})
         elif self.path == '/command':
-            ok = room.command(member_id, str(data.get('cmd') or ''), data)
-            if not ok:
+            result = room.command(member_id, str(data.get('cmd') or ''), data)
+            if result == 'locked':
+                self._send(403, {'ok': False,
+                                 'error': 'controls are locked by the host',
+                                 'server_time': now})
+                return
+            if not result:
                 self._send(400, {'ok': False, 'error': 'bad command',
                                  'server_time': now})
                 return
@@ -238,10 +302,13 @@ class _Handler(BaseHTTPRequestHandler):
             if not room.touch(member_id,
                               position=data.get('position'),
                               paused=data.get('paused'),
-                              file=data.get('file')):
+                              file=data.get('file'),
+                              caching=data.get('caching'),
+                              on_item=data.get('on_item')):
                 self._send(410, {'ok': False, 'error': 'not a member',
                                  'server_time': now})
                 return
+            room.buffer_check()
             self._send(200, {'ok': True, 'state': room.snapshot(),
                              'server_time': now})
         else:
