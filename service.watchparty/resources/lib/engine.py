@@ -30,7 +30,8 @@ from client import RelayClient, RelayError
 POLL_INTERVAL = 1.0
 SUPPRESS_TTL = 3.0       # seconds a suppress token stays valid
 CORRECTION_COOLDOWN = 4.0  # min seconds between drift-correcting seeks
-OPEN_GRACE = 10.0        # seconds to let a newly opened file start up
+OPEN_GRACE = 20.0        # seconds to let a newly opened file start up
+                         # (addon streams can take a while to resolve)
 
 
 def _settings():
@@ -136,8 +137,12 @@ class _PartyPlayer(xbmc.Player):
 
     def onAVStarted(self):
         item = _now_playing_item(self)
-        self.engine.note_av_started(item)
-        if self.engine.suppress.consume('open'):
+        was_auto_open = self.engine.note_av_started(item)
+        # Suppress the push both via the token and for any auto-open that
+        # was still in its grace window: addon streams (YouTube etc.) can
+        # take far longer to resolve than the token TTL, and re-announcing
+        # the party's own item echoes back as a restart on everyone else.
+        if self.engine.suppress.consume('open') or was_auto_open:
             return
         if not item:
             return
@@ -223,12 +228,21 @@ class SyncEngine:
     # -- auto-open bookkeeping ---------------------------------------------
 
     def note_av_started(self, item):
-        """Playback came up: any pending auto-open succeeded, and this
-        device is now playing `item` — remember its key so polls can
-        recognise the party item even though each device's *resolved*
-        stream URL differs (plugin streams resolve per-device)."""
+        """Playback came up. Returns True if this was our own auto-open
+        completing (so the AV-start must not be pushed to the party).
+
+        Remembers what this device is playing so polls can recognise the
+        party item. After an auto-open, adopt the *party's* item key
+        rather than re-deriving our own: the same content can yield a
+        differently-formatted plugin URL on each device, and a key
+        mismatch would read as 'different item' and echo restarts."""
+        was_auto_open = time.time() < self._opening_until
         self._opening_until = 0.0
-        self._local_key = _item_key(item) if item else ''
+        if was_auto_open and self._opened_key:
+            self._local_key = self._opened_key
+        else:
+            self._local_key = _item_key(item) if item else ''
+        return was_auto_open
 
     def note_open_failed(self):
         """Called on stop/error. Returns True if an auto-open was in
