@@ -18,6 +18,7 @@ token for that action; the callback consumes it and skips the push.
 Additionally, state changes whose set_by is our own member id are never
 re-applied as commands (only used for drift correction).
 """
+import collections
 import queue
 import threading
 import time
@@ -286,6 +287,7 @@ class SyncEngine:
         self._last_party_key = ''  # key of the party's last shared item
         self._local_starting_until = 0.0  # local open still buffering
         self._failed_keys = set()  # items that would not play here
+        self._member_names = None  # roster baseline for join/leave toasts
         self._last_error = ''
         self.connected = False
         # Player callbacks run on Kodi's announce thread — network I/O
@@ -439,9 +441,23 @@ class SyncEngine:
                     self._local_key == self._last_party_key)
                 failures = 0
                 self._last_error = ''
+                self._notify_member_changes(state)
                 self._apply(state)
                 self._write_status(state)
             except RelayError as e:
+                # Pruned after a network blip: the relay forgot us, but
+                # the party may still be going — rejoin instead of
+                # failing forever.
+                if 'not a member' in str(e):
+                    try:
+                        self.client.join(common.device_name())
+                        common.log('rejoined party after being pruned')
+                        common.notify('Rejoined party')
+                        failures = 0
+                        self._last_error = ''
+                        continue
+                    except RelayError as rejoin_error:
+                        e = rejoin_error
                 failures += 1
                 self._last_error = str(e)
                 if failures == 5:
@@ -449,6 +465,23 @@ class SyncEngine:
                     common.notify('Party connection lost')
                 self._write_status(None)
         common.log("engine stopped")
+
+    def _notify_member_changes(self, state):
+        """Toast when someone joins or leaves the party."""
+        names = sorted(m.get('name') or 'Kodi'
+                       for m in state.get('members') or [])
+        if self._member_names is None:  # first poll is the baseline
+            self._member_names = names
+            return
+        if names == self._member_names:
+            return
+        old = collections.Counter(self._member_names)
+        new = collections.Counter(names)
+        self._member_names = names
+        for name in (new - old).elements():
+            common.notify(f"{name} joined the party")
+        for name in (old - new).elements():
+            common.notify(f"{name} left the party")
 
     def _expected_position(self, state):
         pos = float(state['position'])
