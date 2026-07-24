@@ -11,7 +11,12 @@ services:
     container_name: kodi-watchparty-relay
     ports:
       - "8765:8765"
+    volumes:
+      - watchparty-state:/data          # parties survive restarts/updates
     # environment:
     #   WATCHPARTY_ROOMS: "MOVIE,SHOWS"   # omit for open mode
     #   WATCHPARTY_SHOW_CODES: "1"        # show full room codes on /status
     restart: unless-stopped
+
+volumes:
+  watchparty-state:

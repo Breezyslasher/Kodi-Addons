@@ -30,6 +30,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 MEMBER_TIMEOUT = 15.0    # seconds without a poll before a member is pruned
 MAX_BODY = 64 * 1024
 
+# Bumped whenever the protocol gains features. 1 = original release,
+# 2 = buffer hold, control lock, library-id item fields.
+PROTOCOL_VERSION = 2
+
 
 def mask_code(code):
     """Obscure a room code — codes are the access tokens."""
@@ -270,6 +274,35 @@ class RoomState:
             self.seq += 1
             return True
 
+    # -- persistence (used by the standalone relay) ------------------------
+
+    def state_dict(self):
+        """Serializable playback state. Members are deliberately not
+        included — they re-poll and auto-rejoin within seconds."""
+        with self.lock:
+            return {'code': self.room_code,
+                    'item': dict(self.item) if self.item else None,
+                    'position': self.position,
+                    'paused': self.paused,
+                    'speed': self.speed,
+                    'set_at': self.set_at,
+                    'seq': self.seq}
+
+    @classmethod
+    def from_state(cls, data):
+        room = cls(str(data.get('code') or ''))
+        item = data.get('item')
+        room.item = dict(item) if item else None
+        room.position = float(data.get('position') or 0.0)
+        room.paused = bool(data.get('paused'))
+        room.speed = float(data.get('speed') or 1.0)
+        room.set_at = float(data.get('set_at') or time.time())
+        room.seq = int(data.get('seq') or 0)
+        # locks and holds reference member ids that no longer exist
+        room.locked_by = None
+        room.buffer_hold = None
+        return room
+
     def snapshot(self):
         with self.lock:
             self._prune()
@@ -343,6 +376,7 @@ class _Handler(BaseHTTPRequestHandler):
         path = self.path.split('?', 1)[0]
         if path == '/ping':
             self._send(200, {'ok': True, 'app': 'watchparty',
+                             'protocol': PROTOCOL_VERSION,
                              'server_time': time.time()})
         elif path == '/status':
             body = DASH_HTML.encode('utf-8')
@@ -386,6 +420,7 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == '/join':
             member_id = room.join(str(data.get('name') or ''))
             self._send(200, {'ok': True, 'member_id': member_id,
+                             'protocol': PROTOCOL_VERSION,
                              'state': room.snapshot(), 'server_time': now})
             return
 

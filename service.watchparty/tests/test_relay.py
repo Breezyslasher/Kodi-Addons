@@ -97,6 +97,24 @@ class EmbeddedRelayTest(unittest.TestCase):
         finally:
             relay_mod.MEMBER_TIMEOUT = original_timeout
 
+    def test_join_reports_protocol_version(self):
+        import relay as relay_mod
+        self.assertEqual(self.host.relay_protocol,
+                         relay_mod.PROTOCOL_VERSION)
+
+    def test_state_roundtrip(self):
+        from relay import RoomState
+        self.host.command('open', position=42.0, item=ITEM, lock=True)
+        room = self.server.room
+        restored = RoomState.from_state(room.state_dict())
+        self.assertEqual(restored.item['ids']['imdb'], 'tt1375666')
+        self.assertEqual(restored.position, 42.0)
+        self.assertEqual(restored.room_code, 'TEST')
+        # member-bound state must not survive a restart
+        self.assertIsNone(restored.locked_by)
+        self.assertIsNone(restored.buffer_hold)
+        self.assertEqual(len(restored.members), 0)
+
     def test_embedded_dashboard(self):
         # the embedded (in-Kodi) relay serves the same dashboard as the
         # standalone one, scoped to its single room, code masked
@@ -184,6 +202,50 @@ class StandaloneRelayTest(unittest.TestCase):
         with urllib.request.urlopen(url) as resp:
             html = resp.read().decode()
         self.assertIn('Watch Party relay', html)
+
+
+class PersistenceTest(unittest.TestCase):
+    PORT = 28767
+
+    def _start(self, state_file):
+        proc = subprocess.Popen(
+            [sys.executable, STANDALONE, '--port', str(self.PORT),
+             '--state-file', state_file],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        client = RelayClient('127.0.0.1', self.PORT, 'PING')
+        for _ in range(50):
+            try:
+                client.ping()
+                return proc
+            except Exception:
+                time.sleep(0.2)
+        proc.terminate()
+        raise RuntimeError('standalone relay did not start')
+
+    def test_party_survives_relay_restart(self):
+        import tempfile
+        state_file = os.path.join(tempfile.mkdtemp(), 'state.json')
+        proc = self._start(state_file)
+        try:
+            c = RelayClient('127.0.0.1', self.PORT, 'MOVIE')
+            c.join('host')
+            c.command('open', position=90.0, item=ITEM)
+        finally:
+            proc.terminate()       # SIGTERM — clean shutdown saves state
+            proc.wait(timeout=5)
+
+        proc = self._start(state_file)
+        try:
+            c = RelayClient('127.0.0.1', self.PORT, 'MOVIE')
+            c.join('host-again')
+            state = c.poll(0, False, '')
+            self.assertIsNotNone(state['item'])
+            self.assertEqual(state['item']['title'], 'Inception')
+            self.assertEqual(state['item']['ids']['imdb'], 'tt1375666')
+            self.assertGreaterEqual(state['position'], 90.0)
+        finally:
+            proc.terminate()
+            proc.wait(timeout=5)
 
 
 class FixedModeTest(unittest.TestCase):

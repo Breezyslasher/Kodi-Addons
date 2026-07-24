@@ -26,7 +26,7 @@ import time
 import xbmc
 
 import common
-from client import RelayClient, RelayError
+from client import PROTOCOL_VERSION, RelayClient, RelayError
 
 
 POLL_INTERVAL = 1.0
@@ -303,6 +303,11 @@ class SyncEngine:
         state = self.client.join(common.device_name())
         self.connected = True
         common.log(f"joined party as {self.client.member_id}")
+        if self.client.relay_protocol < PROTOCOL_VERSION:
+            common.log(f"relay speaks protocol {self.client.relay_protocol},"
+                       f" addon speaks {PROTOCOL_VERSION}", xbmc.LOGWARNING)
+            common.notify('Relay is older than the addon — '
+                          'update it for all features')
         self._write_status(state)
         self._thread.start()
         self._push_thread.start()

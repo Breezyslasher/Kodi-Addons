@@ -11,6 +11,11 @@ WORKDIR /app
 COPY relay_standalone.py .
 COPY resources/lib/relay.py resources/lib/
 
+# room playback state survives container restarts (mount /data to also
+# survive container re-creation)
+RUN mkdir -p /data && chown nobody /data
+ENV WATCHPARTY_STATE=/data/state.json
+
 EXPOSE 8765
 USER nobody
 

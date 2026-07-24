@@ -82,15 +82,20 @@ jobs:
             if os.path.exists(zip_path):
                 os.remove(zip_path)
 
+            # Development files that must not ship inside the Kodi addon zip
+            skip_dirs = {'tests', '__pycache__'}
+            skip_files = {'Dockerfile', 'docker-compose.yml'}
+
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for root_dir, dirs, files in os.walk(addon_path):
-                    # Skip hidden files/folders
-                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+                    # Skip hidden and development-only folders
+                    dirs[:] = [d for d in dirs if not d.startswith('.') and d not in skip_dirs]
                     for file in files:
-                        if not file.startswith('.'):
-                            file_path = os.path.join(root_dir, file)
-                            arcname = os.path.join(actual_addon_id, os.path.relpath(file_path, addon_path))
-                            zipf.write(file_path, arcname)
+                        if file.startswith('.') or file in skip_files:
+                            continue
+                        file_path = os.path.join(root_dir, file)
+                        arcname = os.path.join(actual_addon_id, os.path.relpath(file_path, addon_path))
+                        zipf.write(file_path, arcname)
             
             print(f"Created {zip_path}")
             
