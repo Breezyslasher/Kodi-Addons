@@ -13,6 +13,11 @@ import json
 import time
 import urllib.request
 
+# Kodi's Python would otherwise send "Python-urllib/3.x", which CDN bot
+# protection (e.g. Cloudflare Bot Fight Mode) blocks with a 403 before
+# the request ever reaches the relay.
+USER_AGENT = 'WatchParty/1.0 (Kodi addon)'
+
 
 class RelayError(Exception):
     pass
@@ -20,7 +25,13 @@ class RelayError(Exception):
 
 class RelayClient:
     def __init__(self, host, port, room_code, timeout=5.0):
-        self.base = f"http://{host}:{port}"
+        # `host` may be a plain hostname/IP (paired with `port`) or a full
+        # base URL like https://party.example.com[/path] — the latter is
+        # how guests reach a standalone relay behind TLS or a tunnel.
+        if host.startswith(('http://', 'https://')):
+            self.base = host.rstrip('/')
+        else:
+            self.base = f"http://{host}:{port}"
         self.room = room_code
         self.timeout = timeout
         self.member_id = None
@@ -35,7 +46,8 @@ class RelayClient:
         body = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(
             self.base + path, data=body,
-            headers={'Content-Type': 'application/json'}, method='POST')
+            headers={'Content-Type': 'application/json',
+                     'User-Agent': USER_AGENT}, method='POST')
         t0 = time.time()
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
@@ -44,7 +56,11 @@ class RelayClient:
             try:
                 data = json.loads(e.read().decode('utf-8'))
             except Exception:
-                data = {}
+                # Not relay JSON: a proxy/CDN/WAF in front answered, not
+                # the relay itself. Say so — it changes where to look.
+                raise RelayError(
+                    f"HTTP {e.code} from proxy/CDN, not the relay "
+                    f"(bot protection or wrong URL?)")
             raise RelayError(data.get('error') or f"HTTP {e.code}")
         except Exception as e:
             raise RelayError(str(e))
@@ -71,7 +87,8 @@ class RelayClient:
     # -- API ---------------------------------------------------------------
 
     def ping(self):
-        req = urllib.request.Request(self.base + '/ping')
+        req = urllib.request.Request(self.base + '/ping',
+                                     headers={'User-Agent': USER_AGENT})
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             data = json.loads(resp.read().decode('utf-8'))
         return data.get('app') == 'watchparty'

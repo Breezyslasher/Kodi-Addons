@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: watchparty-relay
+  IMAGE_NAME: kodi-watchparty-relay
 
 jobs:
   publish:
@@ -70,7 +70,7 @@ jobs:
           push: true
           tags: ${{ steps.tags.outputs.tags }}
           labels: |
-            org.opencontainers.image.title=Watch Party relay
+            org.opencontainers.image.title=Kodi Watch Party relay
             org.opencontainers.image.description=Standalone relay server for the Kodi Watch Party addon
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.version.outputs.version }}

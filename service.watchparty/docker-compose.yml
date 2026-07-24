@@ -1,0 +1,16 @@
+# Kodi Watch Party standalone relay
+#   docker compose up -d
+#
+# From a repo clone this builds the image locally and tags it with the
+# published name. On a bare server (no clone), delete the `build:` line —
+# compose will pull the prebuilt multi-arch image from GHCR instead.
+services:
+  kodi-watchparty-relay:
+    image: ghcr.io/breezyslasher/kodi-watchparty-relay:latest
+    build: .
+    container_name: kodi-watchparty-relay
+    ports:
+      - "8765:8765"
+    # environment:
+    #   WATCHPARTY_ROOMS: "MOVIE,SHOWS"   # omit for open mode
+    restart: unless-stopped

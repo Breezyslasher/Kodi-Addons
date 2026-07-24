@@ -158,6 +158,17 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):  # silence per-request stderr noise
         pass
 
+    def lookup_room(self, code):
+        """Map a room code to a RoomState, or an error string to reject.
+
+        The embedded (in-Kodi) relay hosts exactly one room; the
+        standalone relay overrides this with a multi-room registry.
+        """
+        room = self.room
+        if room is not None and code == room.room_code:
+            return room
+        return 'wrong room code'
+
     def _send(self, code, obj):
         body = json.dumps(obj).encode('utf-8')
         self.send_response(code)
@@ -179,6 +190,17 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == '/ping':
             self._send(200, {'ok': True, 'app': 'watchparty',
                              'server_time': time.time()})
+        elif self.path == '/':
+            # friendly landing for humans checking the relay in a browser
+            self._send(200, {
+                'ok': True,
+                'app': 'watchparty',
+                'message': 'Watch Party relay is running. In the Kodi '
+                           'addon, choose "Join a party" and enter this '
+                           "server's address plus a room code.",
+                'health': '/ping',
+                'server_time': time.time(),
+            })
         else:
             self._send(404, {'ok': False, 'error': 'not found'})
 
@@ -187,9 +209,10 @@ class _Handler(BaseHTTPRequestHandler):
         if data is None:
             self._send(400, {'ok': False, 'error': 'bad request'})
             return
-        room = self.room
-        if str(data.get('room') or '') != room.room_code:
-            self._send(403, {'ok': False, 'error': 'wrong room code'})
+        room = self.lookup_room(str(data.get('room') or ''))
+        if not isinstance(room, RoomState):
+            self._send(403, {'ok': False,
+                             'error': room or 'wrong room code'})
             return
 
         now = time.time()
