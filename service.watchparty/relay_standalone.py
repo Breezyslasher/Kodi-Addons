@@ -75,6 +75,10 @@ class RoomRegistry:
                   f"({len(self._rooms)} active)", flush=True)
             return room
 
+    def rooms(self):
+        with self._lock:
+            return list(self._rooms.items())
+
     def prune_empty(self):
         """Drop open-mode rooms that have had no members for a while."""
         if not self.open_mode:
@@ -94,94 +98,6 @@ class RoomRegistry:
                     del self._empty_since[code]
                     print(f"[relay] room {code} pruned "
                           f"({len(self._rooms)} active)", flush=True)
-
-
-def _mask(code):
-    """Obscure a room code — codes are the access tokens."""
-    if len(code) <= 2:
-        return '·' * len(code)
-    return code[0] + '·' * (len(code) - 2) + code[-1]
-
-
-def _registry_stats(registry, show_codes):
-    """Dashboard snapshot: rooms, members, what's playing, live position."""
-    now = time.time()
-    with registry._lock:
-        rooms = list(registry._rooms.items())
-    out = []
-    for code, room in sorted(rooms):
-        snap = room.snapshot()
-        item = snap.get('item') or {}
-        position = float(snap.get('position') or 0.0)
-        if item and not snap.get('paused'):
-            position += max(0.0, now - float(snap.get('set_at') or now)) \
-                * float(snap.get('speed') or 1.0)
-        out.append({
-            'room': code if show_codes else _mask(code),
-            'members': [
-                {'name': m.get('name'), 'position': m.get('position'),
-                 'paused': m.get('paused')}
-                for m in snap.get('members') or []
-            ],
-            'item': item.get('label') or item.get('plugin')
-                    or item.get('file') or None,
-            'paused': bool(snap.get('paused')),
-            'position': position,
-        })
-    return out
-
-
-DASH_HTML = """<!doctype html>
-<html><head><meta charset="utf-8"><title>Watch Party relay</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
- body{font-family:system-ui,sans-serif;background:#14161a;color:#e8e8e8;
-      margin:0;padding:1.5rem}
- h1{font-size:1.2rem;margin:0 0 .25rem}
- .sub{color:#8a919c;font-size:.85rem;margin-bottom:1.25rem}
- .room{background:#1d2026;border-radius:10px;padding:1rem 1.25rem;
-       margin-bottom:1rem;max-width:44rem}
- .code{font-weight:700;letter-spacing:.12em}
- .item{color:#9ecbff;margin:.35rem 0;word-break:break-all}
- .state{font-size:.85rem;color:#8a919c}
- .paused{color:#ffb86b}.playing{color:#7ee08a}
- ul{margin:.5rem 0 0;padding-left:1.25rem}
- li{margin:.15rem 0}
- .pos{color:#8a919c;font-size:.85rem}
- .empty{color:#8a919c;font-style:italic}
-</style></head><body>
-<h1>Watch Party relay</h1>
-<div class="sub" id="sub">loading…</div>
-<div id="rooms"></div>
-<script>
-function fmt(s){s=Math.max(0,Math.floor(s||0));
- const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
- return (h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+String(x).padStart(2,'0');}
-function esc(t){const d=document.createElement('div');
- d.textContent=t==null?'':String(t);return d.innerHTML;}
-async function tick(){
- try{
-  const r=await fetch('/status.json'); const d=await r.json();
-  document.getElementById('sub').textContent=
-   d.rooms.length+' room(s) — updated '+new Date().toLocaleTimeString();
-  const el=document.getElementById('rooms');
-  if(!d.rooms.length){el.innerHTML='<div class="empty">No active rooms</div>';return;}
-  el.innerHTML=d.rooms.map(room=>{
-   const st=room.item?(room.paused?'<span class="paused">paused</span>'
-     :'<span class="playing">playing</span>')+' at '+fmt(room.position):'idle';
-   const mem=room.members.length?('<ul>'+room.members.map(m=>
-     '<li>'+esc(m.name)+' <span class="pos">'+fmt(m.position)+
-     (m.paused?' (paused)':'')+'</span></li>').join('')+'</ul>')
-     :'<div class="empty">nobody connected</div>';
-   return '<div class="room"><span class="code">'+esc(room.room)+'</span> '+
-    '<span class="state">'+st+'</span>'+
-    (room.item?'<div class="item">'+esc(room.item)+'</div>':'')+mem+'</div>';
-  }).join('');
- }catch(e){document.getElementById('sub').textContent='relay unreachable';}
-}
-tick();setInterval(tick,2000);
-</script></body></html>
-"""
 
 
 def main():
@@ -212,25 +128,10 @@ def main():
     show_codes = os.environ.get('WATCHPARTY_SHOW_CODES', '').lower() \
         in ('1', 'true', 'yes')
 
-    def do_get(self):
-        path = self.path.split('?', 1)[0]
-        if path == '/status':
-            body = DASH_HTML.encode('utf-8')
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.send_header('Content-Length', str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-        elif path == '/status.json':
-            self._send(200, {'ok': True,
-                             'rooms': _registry_stats(registry, show_codes),
-                             'server_time': time.time()})
-        else:
-            _Handler.do_GET(self)
-
     handler = type('RegistryHandler', (_Handler,), {
         'lookup_room': lambda self, code: registry.lookup(code),
-        'do_GET': do_get,
+        'iter_rooms': lambda self: registry.rooms(),
+        'show_codes': show_codes,
     })
     httpd = ThreadingHTTPServer((args.bind, args.port), handler)
     httpd.daemon_threads = True
