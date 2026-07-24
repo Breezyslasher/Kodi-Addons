@@ -141,6 +141,39 @@ class BookkeepingTest(unittest.TestCase):
         self.assertEqual(e._local_starting_until, 0.0)
 
 
+class PlaylistTest(unittest.TestCase):
+    def test_resolvable_entries(self):
+        self.assertTrue(engine._resolvable_entry(
+            {'file': 'plugin://plugin.audio.x/?id=1'}))
+        self.assertTrue(engine._resolvable_entry(
+            {'file': 'smb://nas/music/track.mp3'}))
+        self.assertFalse(engine._resolvable_entry(
+            {'file': 'http://127.0.0.1:8095/stream'}))
+        self.assertFalse(engine._resolvable_entry(
+            {'file': 'https://cdn.example.com/x.m3u8'}))
+        self.assertFalse(engine._resolvable_entry({'file': ''}))
+
+    def _engine(self, opened_current, playlist):
+        e = engine.SyncEngine.__new__(engine.SyncEngine)
+        e._i_opened_current = opened_current
+        e._party_playlist = playlist
+        return e
+
+    def test_natural_advance_suppressed_for_followers(self):
+        e = self._engine(False, {'smb://nas/t1.mp3', 'smb://nas/t2.mp3'})
+        self.assertTrue(e.is_natural_advance('smb://nas/t2.mp3'))
+
+    def test_opener_announces_advances(self):
+        e = self._engine(True, {'smb://nas/t1.mp3', 'smb://nas/t2.mp3'})
+        self.assertFalse(e.is_natural_advance('smb://nas/t2.mp3'))
+
+    def test_off_playlist_items_still_announced(self):
+        e = self._engine(False, {'smb://nas/t1.mp3'})
+        self.assertFalse(e.is_natural_advance('smb://nas/other.mkv'))
+        e2 = self._engine(False, set())
+        self.assertFalse(e2.is_natural_advance('smb://nas/t1.mp3'))
+
+
 class MemberNotifyTest(unittest.TestCase):
     def test_join_and_leave_toasts(self):
         e = engine.SyncEngine.__new__(engine.SyncEngine)

@@ -97,6 +97,24 @@ class EmbeddedRelayTest(unittest.TestCase):
         finally:
             relay_mod.MEMBER_TIMEOUT = original_timeout
 
+    def test_playlist_passthrough_and_cap(self):
+        entries = [{'file': f'smb://nas/music/t{i}.mp3', 'label': f't{i}'}
+                   for i in range(120)]
+        item = dict(ITEM, type='song', playlist=entries, playlist_pos=3)
+        self.host.command('open', position=0.0, item=item)
+        state = self.guest.poll(0, False, '')
+        stored = state['item']['playlist']
+        self.assertEqual(len(stored), 100)          # capped
+        self.assertEqual(stored[0]['file'], 'smb://nas/music/t0.mp3')
+        self.assertEqual(state['item']['playlist_pos'], 3)
+
+    def test_single_entry_playlist_dropped(self):
+        item = dict(ITEM, playlist=[{'file': 'smb://nas/x.mkv',
+                                     'label': 'x'}], playlist_pos=0)
+        self.host.command('open', position=0.0, item=item)
+        state = self.guest.poll(0, False, '')
+        self.assertNotIn('playlist', state['item'])
+
     def test_join_reports_protocol_version(self):
         import relay as relay_mod
         self.assertEqual(self.host.relay_protocol,

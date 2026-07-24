@@ -223,8 +223,10 @@ class RoomState:
 
     # keys an 'open' command may attach beyond file/label/plugin —
     # library identity so guests can match their own copy
-    ITEM_EXTRA_KEYS = ('type', 'ids', 'title', 'year',
-                       'show', 'season', 'episode', 'artist', 'album')
+    ITEM_EXTRA_KEYS = ('type', 'ids', 'title', 'year', 'show', 'season',
+                       'episode', 'artist', 'album', 'playlist',
+                       'playlist_pos')
+    MAX_PLAYLIST = 100
 
     def command(self, member_id, cmd, payload):
         """Apply a control command and bump the sequence number.
@@ -245,8 +247,19 @@ class RoomState:
                           'plugin': str(item.get('plugin') or '')}
                 for key in self.ITEM_EXTRA_KEYS:
                     value = item.get(key)
-                    if value not in (None, '', {}):
-                        stored[key] = value
+                    if value in (None, '', {}):
+                        continue
+                    if key == 'playlist':
+                        if not isinstance(value, list):
+                            continue
+                        value = [
+                            {'file': str(e.get('file') or ''),
+                             'label': str(e.get('label') or '')}
+                            for e in value[:self.MAX_PLAYLIST]
+                            if isinstance(e, dict)]
+                        if len(value) < 2:
+                            continue
+                    stored[key] = value
                 self.item = stored
                 self.position = position
                 self.paused = False

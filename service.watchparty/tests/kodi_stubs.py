@@ -29,6 +29,24 @@ def install(json_rpc_responses=None):
     xbmc.executeJSONRPC = execute_json_rpc
     xbmc.Player = type('Player', (), {'__init__': lambda self: None})
     xbmc.Monitor = object
+    xbmc.PLAYLIST_MUSIC = 0
+    xbmc.PLAYLIST_VIDEO = 1
+
+    class PlayList:
+        instances = []
+
+        def __init__(self, playlist_type):
+            self.playlist_type = playlist_type
+            self.entries = []
+            PlayList.instances.append(self)
+
+        def clear(self):
+            self.entries = []
+
+        def add(self, url, listitem=None, index=-1):
+            self.entries.append(url)
+
+    xbmc.PlayList = PlayList
     sys.modules['xbmc'] = xbmc
 
     for name in ('xbmcaddon', 'xbmcgui', 'xbmcvfs'):

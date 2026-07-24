@@ -129,7 +129,35 @@ def _now_playing_item(player):
             if info.get('musicbrainztrackid'):
                 item['ids'] = dict(item.get('ids') or {},
                                    mbtrack=info['musicbrainztrackid'])
+        # Share the queue when playing from a playlist/album, so members
+        # can line up the same tracks and transition locally in sync.
+        props = _json_rpc('Player.GetProperties',
+                          {'playerid': player_id,
+                           'properties': ['playlistid', 'position']}) or {}
+        playlist_id = props.get('playlistid')
+        playlist_pos = props.get('position')
+        if isinstance(playlist_id, int) and playlist_id >= 0 \
+                and isinstance(playlist_pos, int) and playlist_pos >= 0:
+            listing = _json_rpc('Playlist.GetItems',
+                                {'playlistid': playlist_id,
+                                 'properties': ['file']}) or {}
+            entries = [{'file': e.get('file') or '',
+                        'label': e.get('label') or ''}
+                       for e in listing.get('items') or []]
+            if 1 < len(entries) <= 100:
+                item['playlist'] = entries
+                item['playlist_pos'] = playlist_pos
     return item
+
+
+def _resolvable_entry(entry):
+    """Can this playlist entry be queued as-is on another device?
+    plugin:// resolves per-device; plain paths are shared; resolved
+    http(s) stream URLs are host-specific, so they can't."""
+    file = entry.get('file') or ''
+    if file.startswith('plugin://'):
+        return True
+    return bool(file) and not file.startswith(('http://', 'https://'))
 
 
 def _item_key(item):
@@ -283,6 +311,8 @@ class _PartyPlayer(xbmc.Player):
             return
         if not item:
             return
+        if self.engine.is_natural_advance(_item_key(item)):
+            return
         try:
             position = self.getTime()
         except RuntimeError:
@@ -343,6 +373,8 @@ class SyncEngine:
         self._local_starting_until = 0.0  # local open still buffering
         self._failed_keys = set()  # items that would not play here
         self._member_names = None  # roster baseline for join/leave toasts
+        self._i_opened_current = False  # we announced the current item
+        self._party_playlist = set()    # entry keys of the shared queue
         self._last_error = ''
         self.connected = False
         # Player callbacks run on Kodi's announce thread — network I/O
@@ -391,6 +423,16 @@ class SyncEngine:
         """Local playback fully stopped — nothing is playing here now."""
         self._local_key = ''
         self._local_starting_until = 0.0
+
+    def is_natural_advance(self, key):
+        """True when this AV-start is just our queued copy of the party
+        playlist moving to the next track. Every member's queue advances
+        near-simultaneously; only the member who opened the playlist
+        announces the change, or each advance would echo as a fresh
+        'open' from every device at once."""
+        return (not self._i_opened_current
+                and bool(self._party_playlist)
+                and key in self._party_playlist)
 
     def note_av_started(self, item):
         """Playback came up. Returns True if this was our own auto-open
@@ -556,7 +598,16 @@ class SyncEngine:
         local_file = self._playing_file()
 
         if item:
-            self._last_party_key = _item_key(item)
+            key_now = _item_key(item)
+            if key_now != self._last_party_key:
+                # whoever announced this item also announces natural
+                # playlist advances for it
+                self._i_opened_current = \
+                    state.get('set_by') == self.client.member_id
+                self._party_playlist = {
+                    e.get('file') or ''
+                    for e in item.get('playlist') or []} - {''}
+            self._last_party_key = key_now
 
         # A local open is still coming up (the user just pressed play, or
         # our auto-open is resolving): leave the player alone — stopping,
@@ -605,6 +656,29 @@ class SyncEngine:
                 return  # still waiting for a previous open to come up
             if key in self._failed_keys:
                 return  # it won't play here; user was told once already
+            # A shared queue whose entries all resolve here: line up the
+            # same playlist locally so track transitions happen natively
+            # and stay smooth, then start from the party's position.
+            entries = item.get('playlist') or []
+            playlist_pos = item.get('playlist_pos')
+            if len(entries) > 1 and isinstance(playlist_pos, int) \
+                    and 0 <= playlist_pos < len(entries) \
+                    and all(_resolvable_entry(e) for e in entries):
+                common.log(f"following party playlist "
+                           f"({len(entries)} items @ {playlist_pos})")
+                common.notify(f"Playing: {item.get('label') or 'party item'}")
+                self.suppress.arm('open')
+                self._opened_key = key
+                self._opening_until = time.time() + OPEN_GRACE
+                playlist = xbmc.PlayList(
+                    xbmc.PLAYLIST_MUSIC if item.get('type') == 'song'
+                    else xbmc.PLAYLIST_VIDEO)
+                playlist.clear()
+                for entry in entries:
+                    playlist.add(entry['file'])
+                self.player.play(playlist, startpos=playlist_pos)
+                return
+
             # Prefer, in order: plugin path (device resolves its own
             # stream), this device's own library copy, the shared path.
             url = item.get('plugin') or _find_in_library(item) \

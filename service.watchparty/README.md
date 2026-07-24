@@ -43,6 +43,11 @@ Raspberry Pi or in Docker, so nobody has to port-forward anything.
   local copy automatically. No shared source needed. Music too: songs match
   by artist/album/title, with MusicBrainz track ids picking the exact
   recording when both libraries have them.
+- **Playlists follow too**: when the party plays from a queue (an album,
+  a season, a mixed playlist), the whole queue is shared and lined up on
+  every member, so track/episode transitions happen locally and stay
+  smooth. Only the member who started the playlist announces advances —
+  everyone else's player just moves with it.
 - **Buffer hold**: while any member watching the item is buffering, the
   party auto-pauses, and resumes when they catch up. A deliberate
   pause/play always overrides the hold.
