@@ -140,7 +140,22 @@ def get_library_service():
         return None, None, None, False
     
     url = f"http://{ip}:{port}"
-    
+
+    # API key auth: an Audiobookshelf API key is a long-lived bearer token, so
+    # when one is set we use it directly and skip the whole login/refresh/cache
+    # flow. It takes precedence over username/password.
+    api_key = get_setting('api_key').strip()
+    if api_key:
+        xbmc.log("Using API key auth", xbmc.LOGINFO)
+        lib_service = AudioBookShelfLibraryService(url, api_key)
+        try:
+            sync_mgr = get_sync_manager()
+            sync_mgr.set_library_service(lib_service)
+            sync_mgr.start_background_sync()
+        except Exception as e:
+            xbmc.log(f"Sync manager setup error: {e}", xbmc.LOGDEBUG)
+        return lib_service, url, api_key, False
+
     token_cache = load_token_cache()
     current_time = time.time()
 
@@ -182,7 +197,7 @@ def get_library_service():
             username = get_setting('username')
             password = get_setting('password')
             if not username or not password:
-                xbmcgui.Dialog().ok('Credentials Required', 'Please enter username and password')
+                xbmcgui.Dialog().ok('Credentials Required', 'Enter a username and password, or an API key, in settings')
                 ADDON.openSettings()
                 return None, None, None, False
 

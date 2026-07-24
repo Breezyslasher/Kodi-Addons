@@ -5,6 +5,7 @@
         <setting id="port" type="text" label="30002" default="13378" />
         <setting id="username" type="text" label="30003" default="" />
         <setting id="password" type="text" label="30004" option="hidden" default="" />
+        <setting id="api_key" type="text" label="30033" option="hidden" default="" />
     </category>
     <category label="30005">
         <setting id="show_progress_markers" type="bool" label="30006" default="true" />
