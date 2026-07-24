@@ -13,4 +13,5 @@ services:
       - "8765:8765"
     # environment:
     #   WATCHPARTY_ROOMS: "MOVIE,SHOWS"   # omit for open mode
+    #   WATCHPARTY_SHOW_CODES: "1"        # show full room codes on /status
     restart: unless-stopped

@@ -81,6 +81,11 @@ docker build -t kodi-watchparty-relay . && docker run -d -p 8765:8765 --restart 
   SyncLounge-style. Rooms empty for 5 minutes are pruned.
 - **Fixed mode** (`--room CODE`, repeatable, or `WATCHPARTY_ROOMS=A,B`):
   only the listed rooms exist; everything else is rejected.
+- **Dashboard**: open `/status` in a browser for a live view of active
+  rooms, connected members and playback positions (auto-refreshes).
+  Room codes are masked there by default since they double as the
+  access tokens — set `WATCHPARTY_SHOW_CODES=1` to show them in full
+  on a private deployment. `/status.json` serves the same data as JSON.
 
 The relay is pure Python standard library (`relay_standalone.py` +
 `resources/lib/relay.py`) — no pip installs. Point it behind a reverse
