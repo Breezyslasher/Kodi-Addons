@@ -18,6 +18,7 @@ token for that action; the callback consumes it and skips the push.
 Additionally, state changes whose set_by is our own member id are never
 re-applied as commands (only used for drift correction).
 """
+import queue
 import threading
 import time
 
@@ -30,7 +31,8 @@ from client import RelayClient, RelayError
 POLL_INTERVAL = 1.0
 SUPPRESS_TTL = 3.0       # seconds a suppress token stays valid
 CORRECTION_COOLDOWN = 4.0  # min seconds between drift-correcting seeks
-OPEN_GRACE = 10.0        # seconds to let a newly opened file start up
+OPEN_GRACE = 20.0        # seconds to let a newly opened file start up
+                         # (addon streams can take a while to resolve)
 
 
 def _settings():
@@ -134,10 +136,20 @@ class _PartyPlayer(xbmc.Player):
     def _push(self, cmd, **kwargs):
         self.engine.push_command(cmd, **kwargs)
 
+    def onPlayBackStarted(self):
+        # Fires the moment an open is requested, long before the stream
+        # is ready. Marks a local open in flight so the poll loop doesn't
+        # fight the still-buffering player (stop/reopen/pause/seek).
+        self.engine.note_local_open()
+
     def onAVStarted(self):
         item = _now_playing_item(self)
-        self.engine.note_av_started(item)
-        if self.engine.suppress.consume('open'):
+        was_auto_open = self.engine.note_av_started(item)
+        # Suppress the push both via the token and for any auto-open that
+        # was still in its grace window: addon streams (YouTube etc.) can
+        # take far longer to resolve than the token TTL, and re-announcing
+        # the party's own item echoes back as a restart on everyone else.
+        if self.engine.suppress.consume('open') or was_auto_open:
             return
         if not item:
             return
@@ -162,21 +174,21 @@ class _PartyPlayer(xbmc.Player):
             return
         self._push('seek', position=seek_time / 1000.0)
 
-    def onPlayBackStopped(self):
-        if self.engine.suppress.consume('stop'):
-            return
+    def _handle_stop(self):
+        suppressed = self.engine.suppress.consume('stop')
         # A stop while our own auto-open is still coming up means the open
         # failed locally — that must not stop the party for everyone else.
-        if self.engine.note_open_failed():
+        failed_open = self.engine.note_open_failed()
+        self.engine.note_stopped()
+        if suppressed or failed_open:
             return
         self._push('stop')
 
+    def onPlayBackStopped(self):
+        self._handle_stop()
+
     def onPlayBackEnded(self):
-        if self.engine.suppress.consume('stop'):
-            return
-        if self.engine.note_open_failed():
-            return
-        self._push('stop')
+        self._handle_stop()
 
     def onPlayBackError(self):
         # Local playback errors are never party-wide events.
@@ -197,9 +209,17 @@ class SyncEngine:
         self._opening_until = 0.0
         self._opened_key = ''     # party item we last auto-opened
         self._local_key = ''      # key of whatever this device is playing
+        self._last_party_key = ''  # key of the party's last shared item
+        self._local_starting_until = 0.0  # local open still buffering
         self._failed_keys = set()  # items that would not play here
         self._last_error = ''
         self.connected = False
+        # Player callbacks run on Kodi's announce thread — network I/O
+        # there stalls the whole UI. Commands are queued and sent by a
+        # dedicated worker instead.
+        self._cmd_q = queue.Queue()
+        self._push_thread = threading.Thread(
+            target=self._push_worker, name='watchparty-push', daemon=True)
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -209,10 +229,13 @@ class SyncEngine:
         common.log(f"joined party as {self.client.member_id}")
         self._write_status(state)
         self._thread.start()
+        self._push_thread.start()
 
     def stop(self):
         self._stop_event.set()
+        self._cmd_q.put(None)
         self._thread.join(timeout=8)
+        self._push_thread.join(timeout=8)
         self.client.leave()
         self.connected = False
         try:
@@ -222,13 +245,34 @@ class SyncEngine:
 
     # -- auto-open bookkeeping ---------------------------------------------
 
+    def note_local_open(self):
+        """An open was requested locally (any source — user or engine);
+        the stream isn't ready yet. The poll loop backs off until AV
+        starts so it can't kill or hijack a buffering stream."""
+        self._local_starting_until = time.time() + OPEN_GRACE
+
+    def note_stopped(self):
+        """Local playback fully stopped — nothing is playing here now."""
+        self._local_key = ''
+        self._local_starting_until = 0.0
+
     def note_av_started(self, item):
-        """Playback came up: any pending auto-open succeeded, and this
-        device is now playing `item` — remember its key so polls can
-        recognise the party item even though each device's *resolved*
-        stream URL differs (plugin streams resolve per-device)."""
+        """Playback came up. Returns True if this was our own auto-open
+        completing (so the AV-start must not be pushed to the party).
+
+        Remembers what this device is playing so polls can recognise the
+        party item. After an auto-open, adopt the *party's* item key
+        rather than re-deriving our own: the same content can yield a
+        differently-formatted plugin URL on each device, and a key
+        mismatch would read as 'different item' and echo restarts."""
+        was_auto_open = time.time() < self._opening_until
         self._opening_until = 0.0
-        self._local_key = _item_key(item) if item else ''
+        self._local_starting_until = 0.0
+        if was_auto_open and self._opened_key:
+            self._local_key = self._opened_key
+        else:
+            self._local_key = _item_key(item) if item else ''
+        return was_auto_open
 
     def note_open_failed(self):
         """Called on stop/error. Returns True if an auto-open was in
@@ -281,14 +325,24 @@ class SyncEngine:
     # -- push --------------------------------------------------------------
 
     def push_command(self, cmd, position=0.0, item=None):
+        """Queue a command for the push worker. Called from Kodi's player
+        callback thread, so it must never block on the network."""
         if not _settings()['allow_control'] or not self.connected:
             return
-        try:
-            self.client.command(cmd, position=position, item=item)
-            common.log(f"pushed {cmd} @ {position:.1f}", xbmc.LOGDEBUG)
-        except RelayError as e:
-            self._last_error = str(e)
-            common.log(f"push {cmd} failed: {e}", xbmc.LOGERROR)
+        self._cmd_q.put((cmd, position, item))
+
+    def _push_worker(self):
+        while True:
+            entry = self._cmd_q.get()
+            if entry is None or self._stop_event.is_set():
+                break
+            cmd, position, item = entry
+            try:
+                self.client.command(cmd, position=position, item=item)
+                common.log(f"pushed {cmd} @ {position:.1f}", xbmc.LOGDEBUG)
+            except RelayError as e:
+                self._last_error = str(e)
+                common.log(f"push {cmd} failed: {e}", xbmc.LOGERROR)
 
     # -- pull --------------------------------------------------------------
 
@@ -325,15 +379,30 @@ class SyncEngine:
         item = state.get('item')
         local_file = self._playing_file()
 
-        # Nothing shared: if we follow the party and it stopped, stop too.
+        if item:
+            self._last_party_key = _item_key(item)
+
+        # A local open is still coming up (the user just pressed play, or
+        # our auto-open is resolving): leave the player alone — stopping,
+        # reopening, pause-matching or seeking a buffering stream can wedge
+        # it. Everything sorts itself out once AV starts.
+        if time.time() < self._local_starting_until:
+            return
+
+        # Nothing shared: if we follow the party and it stopped, stop too —
+        # but only if we're actually playing the party's item, never
+        # something this device started on its own.
         if not item:
-            # A fresh party item is a fresh chance for items that failed.
-            self._failed_keys.clear()
+            self._failed_keys.clear()  # a fresh item is a fresh chance
+            self._opening_until = 0.0  # pending auto-open is moot now
             if cfg['follow_item'] and local_file \
                     and state.get('set_by') \
-                    and state['set_by'] != self.client.member_id:
+                    and state['set_by'] != self.client.member_id \
+                    and self._local_key \
+                    and self._local_key == self._last_party_key:
                 self.suppress.arm('stop')
                 self.player.stop()
+                self.note_stopped()
             return
 
         own_change = state.get('set_by') == self.client.member_id
