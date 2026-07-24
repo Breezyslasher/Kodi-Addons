@@ -28,6 +28,14 @@ msgctxt "#32003"
 msgid "Host port"
 msgstr ""
 
+msgctxt "#32004"
+msgid "Saved host address (pre-filled when joining)"
+msgstr ""
+
+msgctxt "#32005"
+msgid "Saved room code (pre-filled when joining)"
+msgstr ""
+
 msgctxt "#32010"
 msgid "Sync"
 msgstr ""

@@ -56,7 +56,8 @@ def start_party():
 
 def join_party():
     dialog = xbmcgui.Dialog()
-    address = dialog.input('Host address (ip or ip:port)')
+    address = dialog.input('Host address (ip or ip:port)',
+                           defaultt=ADDON.getSettingString('default_address'))
     if not address:
         return
     address = address.strip()
@@ -69,11 +70,16 @@ def join_party():
             return
     else:
         host, port = address, _port()
-    room = dialog.input('Room code')
+    room = dialog.input('Room code',
+                        defaultt=ADDON.getSettingString('default_room'))
     if not room:
         return
+    room = room.strip().upper()
     _write_session({'mode': 'guest', 'host': host, 'port': port,
-                    'room': room.strip().upper()})
+                    'room': room})
+    # Remember for next time so rejoining is just OK, OK
+    ADDON.setSettingString('default_address', address)
+    ADDON.setSettingString('default_room', room)
     xbmcgui.Dialog().notification(
         'Watch Party', 'Joining party...',
         ADDON.getAddonInfo('icon'), 3000)

@@ -4,6 +4,8 @@
         <setting id="show_notifications" type="bool" label="32001" default="true" />
         <setting id="device_name" type="text" label="32002" default="" />
         <setting id="port" type="number" label="32003" default="8765" />
+        <setting id="default_address" type="text" label="32004" default="" />
+        <setting id="default_room" type="text" label="32005" default="" />
     </category>
     <category label="32010">
         <setting id="follow_item" type="bool" label="32011" default="true" />
