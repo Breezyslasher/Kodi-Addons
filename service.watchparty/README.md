@@ -62,7 +62,14 @@ python3 relay_standalone.py                  # open mode on :8765
 python3 relay_standalone.py --room MOVIE     # invite-only: fixed room(s)
 ```
 
-Or with Docker (from this addon's folder):
+Or with Docker — a prebuilt multi-arch image (amd64 / arm64 / armv7, so
+Raspberry Pi works) is published to GHCR by CI:
+
+```
+docker run -d -p 8765:8765 --restart unless-stopped ghcr.io/breezyslasher/watchparty-relay:latest
+```
+
+Or build it yourself from this addon's folder:
 
 ```
 docker compose up -d
