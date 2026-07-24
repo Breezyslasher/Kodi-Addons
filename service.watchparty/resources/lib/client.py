@@ -19,7 +19,7 @@ import urllib.request
 USER_AGENT = 'WatchParty/1.0 (Kodi addon)'
 
 # Protocol version this client speaks; must match relay.PROTOCOL_VERSION.
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 3
 
 
 class RelayError(Exception):

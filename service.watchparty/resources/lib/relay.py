@@ -31,8 +31,9 @@ MEMBER_TIMEOUT = 15.0    # seconds without a poll before a member is pruned
 MAX_BODY = 64 * 1024
 
 # Bumped whenever the protocol gains features. 1 = original release,
-# 2 = buffer hold, control lock, library-id item fields.
-PROTOCOL_VERSION = 2
+# 2 = buffer hold, control lock, library-id item fields,
+# 3 = music identity (artist/album) and shared playlists.
+PROTOCOL_VERSION = 3
 
 
 def mask_code(code):
@@ -222,9 +223,12 @@ class RoomState:
     # -- playback ----------------------------------------------------------
 
     # keys an 'open' command may attach beyond file/label/plugin —
-    # library identity so guests can match their own copy
-    ITEM_EXTRA_KEYS = ('type', 'ids', 'title', 'year',
-                       'show', 'season', 'episode')
+    # library identity so guests can match their own copy, plus the
+    # queue the item is playing from
+    ITEM_EXTRA_KEYS = ('type', 'ids', 'title', 'year', 'show', 'season',
+                       'episode', 'artist', 'album', 'playlist',
+                       'playlist_pos')
+    MAX_PLAYLIST = 100
 
     def command(self, member_id, cmd, payload):
         """Apply a control command and bump the sequence number.
@@ -245,8 +249,30 @@ class RoomState:
                           'plugin': str(item.get('plugin') or '')}
                 for key in self.ITEM_EXTRA_KEYS:
                     value = item.get(key)
-                    if value not in (None, '', {}):
-                        stored[key] = value
+                    if value in (None, '', {}):
+                        continue
+                    if key == 'playlist':
+                        if not isinstance(value, list):
+                            continue
+                        clean = []
+                        for e in value[:self.MAX_PLAYLIST]:
+                            if not isinstance(e, dict):
+                                continue
+                            entry = {'file': str(e.get('file') or ''),
+                                     'label': str(e.get('label') or '')}
+                            # per-entry library identity, same fields
+                            # as the item itself
+                            for field in ('type', 'ids', 'title', 'year',
+                                          'show', 'season', 'episode',
+                                          'artist', 'album'):
+                                v = e.get(field)
+                                if v not in (None, '', {}):
+                                    entry[field] = v
+                            clean.append(entry)
+                        value = clean
+                        if len(value) < 2:
+                            continue
+                    stored[key] = value
                 self.item = stored
                 self.position = position
                 self.paused = False
