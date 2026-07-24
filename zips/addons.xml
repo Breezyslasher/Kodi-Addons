@@ -172,7 +172,7 @@ v2026.6.12 - Samsung DeX + simpler menu
         </news>
     </extension>
 </addon>
-<addon id="service.watchparty" version="2026.7.24.16" name="Watch Party" provider-name="Breezyslasher">
+<addon id="service.watchparty" version="2026.7.24.18" name="Watch Party" provider-name="Breezyslasher">
   <requires>
     <import addon="xbmc.python" version="3.0.1"/>
   </requires>
@@ -181,8 +181,10 @@ v2026.6.12 - Samsung DeX + simpler menu
   </extension>
   <extension point="xbmc.service" library="resources/lib/service.py"/>
   <extension point="xbmc.addon.metadata">
-    <summary lang="en_GB">Synchronized playback across Kodi devices — a SyncLounge-style watch party</summary>
-    <description lang="en_GB">Watch together in real time. One Kodi device hosts a party and others join with a room code; play, pause and seek are mirrored to everyone, with automatic drift correction so all players stay in sync. Works with library files, network shares and plugin streams that are resolvable on every device.</description>
+    <summary lang="en_GB">Watch together across Kodi devices — a SyncLounge-style watch party, on the couch or over the internet</summary>
+    <description lang="en_GB">Real-time synchronized playback for Kodi. Host a party on one device or on the bundled standalone relay (VPS, Raspberry Pi or Docker — no port forwarding for anyone), friends join with a room code, and play, pause and seek stay mirrored everywhere with clock-offset compensation and automatic drift correction.
+
+Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every device resolves the stream with its own account. Library items match by IMDb/TVDb id or show/season/episode, so a friend with their own copy of the same movie follows without any shared source. The party auto-pauses while someone buffers, an optional host mode locks playback control to whoever started the item, and members joining or leaving show as notifications. A live web dashboard at /status shows rooms, members and positions on any relay, and the saved relay address and room code make rejoining a two-click affair.</description>
     <platform>all</platform>
     <license>MIT</license>
     <source>https://github.com/Breezyslasher/Kodi-Addons</source>
