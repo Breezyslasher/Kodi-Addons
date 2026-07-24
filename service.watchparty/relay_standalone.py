@@ -56,15 +56,19 @@ class RoomRegistry:
             self._rooms[code] = RoomState(code)
 
     def lookup(self, code):
+        """Return a RoomState, or an error string explaining the refusal."""
         code = code.strip().upper()
         with self._lock:
             room = self._rooms.get(code)
             if room is not None:
                 return room
             if not self.open_mode:
-                return None
-            if not ROOM_CODE_RE.match(code) or len(self._rooms) >= MAX_ROOMS:
-                return None
+                # don't list the valid codes — they are the access tokens
+                return 'unknown room (this relay uses fixed room codes)'
+            if not ROOM_CODE_RE.match(code):
+                return 'room code must be 3-12 letters or digits'
+            if len(self._rooms) >= MAX_ROOMS:
+                return 'relay is full (too many rooms)'
             room = RoomState(code)
             self._rooms[code] = room
             print(f"[relay] room {code} created "

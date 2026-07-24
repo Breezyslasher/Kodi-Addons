@@ -80,7 +80,7 @@ class Service:
             self.engine = engine
         except Exception as e:
             common.log(f"could not join party: {e}", xbmc.LOGERROR)
-            common.notify('Could not join party')
+            common.notify(f"Could not join party: {e}")
             common.save_json(common.status_file(),
                              {'active': False, 'error': str(e)})
 

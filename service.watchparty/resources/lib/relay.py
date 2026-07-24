@@ -159,7 +159,7 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
     def lookup_room(self, code):
-        """Map a room code to a RoomState, or None to reject.
+        """Map a room code to a RoomState, or an error string to reject.
 
         The embedded (in-Kodi) relay hosts exactly one room; the
         standalone relay overrides this with a multi-room registry.
@@ -167,7 +167,7 @@ class _Handler(BaseHTTPRequestHandler):
         room = self.room
         if room is not None and code == room.room_code:
             return room
-        return None
+        return 'wrong room code'
 
     def _send(self, code, obj):
         body = json.dumps(obj).encode('utf-8')
@@ -210,8 +210,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(400, {'ok': False, 'error': 'bad request'})
             return
         room = self.lookup_room(str(data.get('room') or ''))
-        if room is None:
-            self._send(403, {'ok': False, 'error': 'wrong room code'})
+        if not isinstance(room, RoomState):
+            self._send(403, {'ok': False,
+                             'error': room or 'wrong room code'})
             return
 
         now = time.time()
