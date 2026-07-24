@@ -100,6 +100,16 @@ docker build -t kodi-watchparty-relay . && docker run -d -p 8765:8765 --restart 
   SyncLounge-style. Rooms empty for 5 minutes are pruned.
 - **Fixed mode** (`--room CODE`, repeatable, or `WATCHPARTY_ROOMS=A,B`):
   only the listed rooms exist; everything else is rejected.
+- **Persistence**: with `--state-file PATH` (or `WATCHPARTY_STATE`), room
+  playback state survives relay restarts — after an update or reboot,
+  guests auto-rejoin and the party continues where it was. The Docker
+  image has this on by default (`/data/state.json`; the compose file
+  mounts a volume so it also survives container re-creation). Members
+  aren't persisted; their devices rejoin automatically within seconds.
+- **Version handshake**: the addon warns ("Relay is older than the
+  addon") when it joins a relay that doesn't speak its protocol version,
+  so a stale container is a visible message instead of silently missing
+  features.
 - **Dashboard**: open `/status` in a browser for a live view of active
   rooms, connected members and playback positions (auto-refreshes).
   Room codes are masked there by default since they double as the

@@ -18,6 +18,9 @@ import urllib.request
 # the request ever reaches the relay.
 USER_AGENT = 'WatchParty/1.0 (Kodi addon)'
 
+# Protocol version this client speaks; must match relay.PROTOCOL_VERSION.
+PROTOCOL_VERSION = 2
+
 
 class RelayError(Exception):
     pass
@@ -35,6 +38,7 @@ class RelayClient:
         self.room = room_code
         self.timeout = timeout
         self.member_id = None
+        self.relay_protocol = 1   # learned from /join; pre-v2 relays omit it
         self.clock_offset = 0.0   # server_time - local_time (EMA-smoothed)
         self._offset_samples = 0
 
@@ -96,6 +100,7 @@ class RelayClient:
     def join(self, name):
         data = self._post('/join', {'name': name})
         self.member_id = data['member_id']
+        self.relay_protocol = int(data.get('protocol') or 1)
         return data['state']
 
     def leave(self):

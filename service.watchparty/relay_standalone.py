@@ -26,8 +26,10 @@ Pure Python standard library; needs only relay.py from the addon
 addon checkout).
 """
 import argparse
+import json
 import os
 import re
+import signal
 import sys
 import threading
 import time
@@ -45,15 +47,67 @@ PRUNE_INTERVAL = 60.0
 
 
 class RoomRegistry:
-    """Thread-safe collection of rooms, created on demand in open mode."""
+    """Thread-safe collection of rooms, created on demand in open mode.
 
-    def __init__(self, fixed_codes=None):
+    With a state_path, playback state survives relay restarts: rooms are
+    snapshotted to JSON and reloaded on startup. Members are not saved —
+    their engines auto-rejoin within seconds of the relay coming back.
+    """
+
+    def __init__(self, fixed_codes=None, state_path=None):
         self._lock = threading.Lock()
         self._rooms = {}
         self._empty_since = {}
+        self._saved_fingerprint = None
+        self.state_path = state_path
         self.open_mode = not fixed_codes
         for code in fixed_codes or []:
             self._rooms[code] = RoomState(code)
+        if state_path:
+            self._load_state()
+
+    def _load_state(self):
+        try:
+            with open(self.state_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            return
+        except Exception as e:
+            print(f"[relay] could not read state file: {e}", flush=True)
+            return
+        restored = 0
+        with self._lock:
+            for entry in data.get('rooms') or []:
+                code = str(entry.get('code') or '').strip().upper()
+                if not ROOM_CODE_RE.match(code):
+                    continue
+                # fixed mode only restores its configured rooms
+                if not self.open_mode and code not in self._rooms:
+                    continue
+                self._rooms[code] = RoomState.from_state(entry)
+                restored += 1
+        if restored:
+            print(f"[relay] restored {restored} room(s) from "
+                  f"{self.state_path}", flush=True)
+
+    def save_state(self):
+        """Write rooms to the state file if anything changed."""
+        if not self.state_path:
+            return
+        with self._lock:
+            rooms = list(self._rooms.values())
+        states = [room.state_dict() for room in rooms]
+        fingerprint = sorted((s['code'], s['seq']) for s in states)
+        if fingerprint == self._saved_fingerprint:
+            return
+        try:
+            tmp_path = self.state_path + '.tmp'
+            with open(tmp_path, 'w', encoding='utf-8') as f:
+                json.dump({'rooms': states}, f)
+            os.replace(tmp_path, self.state_path)
+            self._saved_fingerprint = fingerprint
+        except Exception as e:
+            print(f"[relay] could not write state file: {e}", flush=True)
 
     def lookup(self, code):
         """Return a RoomState, or an error string explaining the refusal."""
@@ -112,6 +166,11 @@ def main():
                         help='restrict to fixed room code(s); '
                              'repeatable. Default: open mode. '
                              'Also via WATCHPARTY_ROOMS=A,B')
+    parser.add_argument('--state-file', metavar='PATH',
+                        default=os.environ.get('WATCHPARTY_STATE') or None,
+                        help='persist room playback state here so parties '
+                             'survive relay restarts. Also via '
+                             'WATCHPARTY_STATE. Default: no persistence')
     args = parser.parse_args()
 
     rooms = args.room
@@ -124,7 +183,7 @@ def main():
             parser.error(f"room code '{code}' must be 3-12 letters/digits")
         fixed.append(code)
 
-    registry = RoomRegistry(fixed_codes=fixed)
+    registry = RoomRegistry(fixed_codes=fixed, state_path=args.state_file)
     show_codes = os.environ.get('WATCHPARTY_SHOW_CODES', '').lower() \
         in ('1', 'true', 'yes')
 
@@ -137,19 +196,27 @@ def main():
     httpd.daemon_threads = True
 
     mode = f"fixed rooms: {', '.join(fixed)}" if fixed else 'open mode'
+    persistence = f", state in {args.state_file}" if args.state_file else ''
     print(f"[relay] listening on {args.bind}:{args.port} ({mode}) — "
-          f"dashboard at /status", flush=True)
+          f"dashboard at /status{persistence}", flush=True)
 
-    def pruner():
+    def housekeeper():
         while True:
             time.sleep(PRUNE_INTERVAL)
             registry.prune_empty()
+            registry.save_state()
 
-    threading.Thread(target=pruner, daemon=True).start()
+    threading.Thread(target=housekeeper, daemon=True).start()
+
+    # docker stop / systemd send SIGTERM; exit cleanly so state is saved
+    signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
+        pass
+    finally:
         print("\n[relay] shutting down", flush=True)
+        registry.save_state()
         httpd.server_close()
 
 
