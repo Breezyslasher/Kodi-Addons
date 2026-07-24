@@ -51,7 +51,7 @@ Raspberry Pi or in Docker, so nobody has to port-forward anything.
 
 ## Usage
 
-The main menu offers three ways in:
+The main menu offers three ways into a party (plus Settings):
 
 - **Host a party on this device** — for the couch/LAN case. This Kodi
   runs the relay; it shows your `ip:port` and a generated 4-letter room
@@ -66,8 +66,8 @@ The main menu offers three ways in:
 
 Then just play something — everyone follows. Any member can pause, seek or
 resume for the whole party (this can be turned off per device, see below).
-*Party status* shows who's in the room, what's playing, and each member's
-position.
+Members joining or leaving show as notifications, and *Party status* shows
+who's in the room, what's playing, and each member's position.
 
 ## Remote parties (standalone relay)
 
@@ -146,13 +146,15 @@ copy.
   shared `plugin://` path. Library items on a network share (NFS/SMB) work
   when the share is reachable from every device (a VPN covers remote
   guests). A file that only exists locally on the host
-  (`/home/me/movie.mkv`) won't open on guests — turn off *Follow party
-  item* there and start the same content manually; pause/seek sync still
-  applies once playback has begun.
+  (`/home/me/movie.mkv`) opens on guests only if their own library has
+  the same movie/episode (matched by id — see above); otherwise turn off
+  *Follow party item* there and start the same content manually —
+  pause/seek sync still applies once playback has begun.
 - Stopping playback stops the party's shared item for everyone (like taking
   the disc out). Natural end-of-file does the same.
-- Members are pruned after 15 s without contact; guests reconnect by
-  re-joining.
+- Members are pruned after 15 s without contact, but devices rejoin
+  automatically after a network blip (with a "Rejoined party" toast) —
+  no manual re-joining needed.
 - Traffic is plain HTTP on your LAN; the room code is the access token.
   For anything crossing the internet, prefer the standalone relay behind
   TLS (reverse proxy / tunnel) over exposing a raw port.
@@ -163,4 +165,6 @@ copy.
 ## Requirements
 
 - Kodi 19 (Matrix) or later on all devices
-- Network connectivity between guests and the host's port (default 8765)
+- Network path from every member to the relay — the hosting Kodi's port
+  (default 8765) on a LAN, or the standalone relay's address for remote
+  parties
