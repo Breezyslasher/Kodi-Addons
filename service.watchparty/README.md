@@ -40,7 +40,17 @@ Raspberry Pi or in Docker, so nobody has to port-forward anything.
 - **Library items match by identity**: the party shares IMDb/TVDb/TMDb ids
   (and show/season/episode or title+year), so a guest whose own library has
   the same movie or episode — different NAS, different path — plays their
-  local copy automatically. No shared source needed.
+  local copy automatically. No shared source needed. Music matches too:
+  by artist/album/title, with MusicBrainz ids picking the exact recording.
+  Matched items open by library id, so Kodi shows full metadata instead
+  of a bare stream URL, and a failed open (e.g. an id from someone
+  else's media server) falls through to the next way of playing it.
+- **Playlists follow too**: when the party plays from a queue (an album,
+  a season, a mixed playlist), the whole queue is shared — each entry
+  with its own identity — and lined up on every member, so transitions
+  happen locally and stay smooth. Only the member who started the queue
+  announces advances and its natural end; everyone else's player just
+  moves with it.
 - **Buffer hold**: while any member watching the item is buffering, the
   party auto-pauses, and resumes when they catch up. A deliberate
   pause/play always overrides the hold.

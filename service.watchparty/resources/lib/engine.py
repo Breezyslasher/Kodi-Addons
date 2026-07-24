@@ -64,14 +64,55 @@ def _active_player_id():
     return None
 
 
+ITEM_PROPS = ['file', 'uniqueid', 'title', 'year', 'showtitle', 'season',
+              'episode', 'artist', 'album', 'musicbrainztrackid']
+
+
+def _identity(info):
+    """Library-identity fields from a JSON-RPC item description, so other
+    devices can match their own copy of the same content."""
+    out = {}
+    ids = {k: v for k, v in (info.get('uniqueid') or {}).items() if v}
+    if ids:
+        out['ids'] = ids
+    itype = info.get('type') or ''
+    if itype == 'episode' and info.get('showtitle'):
+        out['type'] = 'episode'
+        out['show'] = info['showtitle']
+        out['season'] = info.get('season')
+        out['episode'] = info.get('episode')
+    elif itype == 'movie' and info.get('title'):
+        out['type'] = 'movie'
+        out['title'] = info['title']
+        if info.get('year'):
+            out['year'] = info['year']
+    elif info.get('title') and (
+            itype == 'song'
+            # media-server direct plays sometimes report type 'unknown';
+            # an artist alongside a title marks it as music anyway
+            or (itype in ('', 'unknown') and info.get('artist'))):
+        out['type'] = 'song'
+        out['title'] = info['title']
+        if info.get('artist'):
+            out['artist'] = info['artist']  # Kodi gives a list
+        if info.get('album'):
+            out['album'] = info['album']
+        if info.get('musicbrainztrackid'):
+            out['ids'] = dict(out.get('ids') or {},
+                              mbtrack=info['musicbrainztrackid'])
+    return out
+
+
 def _now_playing_item(player):
     """Describe the playing item in a way other devices can act on.
 
     player.getPlayingFile() returns the *resolved* stream — for addon
     content that is a tokenized (often device-bound) URL, frequently
     behind a proxy on 127.0.0.1, which no other device can open. The
-    JSON-RPC item 'file' still holds the original plugin:// path, so we
-    share both: guests prefer 'plugin' and resolve the stream themselves.
+    JSON-RPC item still holds the original plugin:// path and the
+    library identity (title/artist/ids), so we share those: guests
+    prefer resolving per-device. When playing from a queue, the queue
+    and position are shared too, entries with their own identity.
     """
     try:
         file = player.getPlayingFile()
@@ -81,14 +122,10 @@ def _now_playing_item(player):
             'label': xbmc.getInfoLabel('Player.Title') or ''}
     player_id = _active_player_id()
     if player_id is not None:
-        # Extended properties fail for some item types; fall back to the
-        # minimal query rather than losing the plugin path.
         result = _json_rpc('Player.GetItem',
                            {'playerid': player_id,
-                            'properties': ['file', 'uniqueid', 'title',
-                                           'year', 'showtitle', 'season',
-                                           'episode']})
-        if result is None:
+                            'properties': ITEM_PROPS})
+        if result is None:  # some Kodi versions reject extended props
             result = _json_rpc('Player.GetItem',
                                {'playerid': player_id,
                                 'properties': ['file']})
@@ -96,22 +133,40 @@ def _now_playing_item(player):
         jfile = info.get('file') or ''
         if jfile.startswith('plugin://'):
             item['plugin'] = jfile
-        # Library identity, so guests can match their own copy of the
-        # same movie/episode even when file paths differ.
-        ids = {k: v for k, v in (info.get('uniqueid') or {}).items() if v}
-        if ids:
-            item['ids'] = ids
-        itype = info.get('type') or ''
-        if itype == 'episode' and info.get('showtitle'):
-            item['type'] = 'episode'
-            item['show'] = info['showtitle']
-            item['season'] = info.get('season')
-            item['episode'] = info.get('episode')
-        elif itype == 'movie' and info.get('title'):
-            item['type'] = 'movie'
-            item['title'] = info['title']
-            if info.get('year'):
-                item['year'] = info['year']
+        item.update(_identity(info))
+        # a real title beats Kodi's filename fallback in labels/toasts
+        if item.get('title'):
+            item['label'] = item['title']
+        elif not item['label'] and info.get('label'):
+            item['label'] = info['label']
+        # Share the queue when playing from a playlist/album, so members
+        # can line up the same items and transition locally in sync.
+        props = _json_rpc('Player.GetProperties',
+                          {'playerid': player_id,
+                           'properties': ['playlistid', 'position']}) or {}
+        playlist_id = props.get('playlistid')
+        playlist_pos = props.get('position')
+        if isinstance(playlist_id, int) and playlist_id >= 0 \
+                and isinstance(playlist_pos, int) and playlist_pos >= 0:
+            listing = _json_rpc('Playlist.GetItems',
+                                {'playlistid': playlist_id,
+                                 'properties': ITEM_PROPS})
+            if listing is None:
+                listing = _json_rpc('Playlist.GetItems',
+                                    {'playlistid': playlist_id,
+                                     'properties': ['file']})
+            entries = []
+            for e in (listing or {}).get('items') or []:
+                entry = {'file': e.get('file') or '',
+                         'label': e.get('title') or e.get('label') or ''}
+                entry.update(_identity(e))
+                entries.append(entry)
+            if 1 < len(entries) <= 100:
+                item['playlist'] = entries
+                item['playlist_pos'] = playlist_pos
+                with_id = sum(1 for e in entries if e.get('type'))
+                common.log(f"sharing queue: {len(entries)} entries "
+                           f"@ {playlist_pos}, {with_id} with identity")
     return item
 
 
@@ -137,16 +192,22 @@ def _playable_url(item):
 
 
 def _find_in_library(item):
-    """This device's own copy of the shared item, or ''.
+    """This device's own copy of the shared item: (open_ref, local_file),
+    or (None, '').
 
-    Matches by library identity (uniqueid like imdb/tvdb/tmdb, or
-    show/season/episode, or title+year) so a guest whose library has the
-    same movie under a different path can follow without a shared source.
+    Matches by library identity (uniqueid like imdb/tvdb/tmdb,
+    show/season/episode, title+year for movies, artist/album/title and
+    MusicBrainz id for songs). The ref is a Player.Open/Playlist.Add
+    item like {'songid': 1340} — opening by library id makes Kodi show
+    full metadata instead of a bare file URL.
     """
+    if item.get('type') == 'song':
+        return _find_song(item)
+
     if item.get('type') == 'episode' and item.get('show'):
         season, ep = item.get('season'), item.get('episode')
         if season in (None, '') or ep in (None, ''):
-            return ''
+            return None, ''
         shows = (_json_rpc('VideoLibrary.GetTVShows',
                            {'filter': {'field': 'title', 'operator': 'is',
                                        'value': str(item['show'])}})
@@ -159,14 +220,15 @@ def _find_in_library(item):
                         or {}).get('episodes') or []
             for episode in episodes:
                 if int(episode.get('episode') or -1) == int(ep):
-                    return episode.get('file') or ''
-        return ''
+                    return {'episodeid': episode['episodeid']}, \
+                        episode.get('file') or ''
+        return None, ''
 
     ids = item.get('ids') or {}
     title = item.get('title') or ''
     year = item.get('year')
     if not ids and not (title and year):
-        return ''
+        return None, ''
     params = {'properties': ['file', 'uniqueid', 'year']}
     if title:
         params['filter'] = {'field': 'title', 'operator': 'is',
@@ -176,12 +238,66 @@ def _find_in_library(item):
     for movie in movies:
         uid = movie.get('uniqueid') or {}
         if any(v and uid.get(k) == v for k, v in ids.items()):
-            return movie.get('file') or ''
+            return {'movieid': movie['movieid']}, movie.get('file') or ''
     if title and year:
         for movie in movies:
             if int(movie.get('year') or 0) == int(year):
-                return movie.get('file') or ''
-    return ''
+                return {'movieid': movie['movieid']}, \
+                    movie.get('file') or ''
+    return None, ''
+
+
+def _find_song(item):
+    """This device's music-library copy: ({'songid': N}, file) or
+    (None, ''). Filters by title (+ first artist, + album when known);
+    a shared MusicBrainz id picks the exact recording. Retries without
+    the album so compilations still match."""
+    title = item.get('title') or ''
+    if not title:
+        return None, ''
+    artists = item.get('artist') or []
+    album = item.get('album') or ''
+    mb_track = (item.get('ids') or {}).get('mbtrack') or ''
+    conditions = [{'field': 'title', 'operator': 'is', 'value': title}]
+    if artists:
+        conditions.append({'field': 'artist', 'operator': 'is',
+                           'value': str(artists[0])})
+    for with_album in ([True, False] if album else [False]):
+        parts = list(conditions)
+        if with_album:
+            parts.append({'field': 'album', 'operator': 'is',
+                          'value': album})
+        params = {'properties': ['file', 'musicbrainztrackid'],
+                  'filter': {'and': parts} if len(parts) > 1 else parts[0]}
+        songs = (_json_rpc('AudioLibrary.GetSongs', params)
+                 or {}).get('songs') or []
+        if mb_track:
+            for song in songs:
+                if song.get('musicbrainztrackid') == mb_track:
+                    return {'songid': song['songid']}, \
+                        song.get('file') or ''
+        if songs:
+            return {'songid': songs[0]['songid']}, \
+                songs[0].get('file') or ''
+    return None, ''
+
+
+def _local_entry_ref(entry):
+    """(open_ref, local_key) this device can queue for a shared playlist
+    entry, or (None, ''). Preference: plugin path (resolves per-device),
+    own library copy by id (full metadata on screen), plain shared path.
+    Host-specific http(s) streams with no matchable identity can't be
+    queued."""
+    file = entry.get('file') or ''
+    if file.startswith('plugin://'):
+        return {'file': file}, file
+    if entry.get('type'):
+        ref, local_file = _find_in_library(entry)
+        if ref:
+            return ref, (local_file or file)
+    if file and not file.startswith(('http://', 'https://')):
+        return {'file': file}, file
+    return None, ''
 
 
 class _Suppressor:
@@ -228,6 +344,8 @@ class _PartyPlayer(xbmc.Player):
             return
         if not item:
             return
+        if self.engine.is_natural_advance(_item_key(item)):
+            return
         try:
             position = self.getTime()
         except RuntimeError:
@@ -249,21 +367,31 @@ class _PartyPlayer(xbmc.Player):
             return
         self._push('seek', position=seek_time / 1000.0)
 
-    def _handle_stop(self):
-        suppressed = self.engine.suppress.consume('stop')
+    def _end_playback(self, announce):
+        # A suppressed stop is one the engine itself caused — including
+        # the teardown of the old item when an open replaces playback.
+        # It must not be misread as the new open failing.
+        if self.engine.suppress.consume('stop'):
+            self.engine.note_stopped()
+            return
         # A stop while our own auto-open is still coming up means the open
         # failed locally — that must not stop the party for everyone else.
         failed_open = self.engine.note_open_failed()
         self.engine.note_stopped()
-        if suppressed or failed_open:
+        if failed_open or not announce:
             return
         self._push('stop')
 
     def onPlayBackStopped(self):
-        self._handle_stop()
+        # A deliberate stop by any member stops the party.
+        self._end_playback(announce=True)
 
     def onPlayBackEnded(self):
-        self._handle_stop()
+        # Natural end is single-writer, like queue advances: only the
+        # member who announced the item declares it over. Followers reach
+        # the end at nearly the same moment, and their 'stop' would race
+        # the driver's next-track announcement at every queue boundary.
+        self._end_playback(announce=self.engine.drives_current_item())
 
     def onPlayBackError(self):
         # Local playback errors are never party-wide events.
@@ -288,6 +416,13 @@ class SyncEngine:
         self._local_starting_until = 0.0  # local open still buffering
         self._failed_keys = set()  # items that would not play here
         self._member_names = None  # roster baseline for join/leave toasts
+        self._open_fallbacks = []  # untried open refs for the current item
+        self._i_opened_current = False  # we announced the current item
+        self._party_keys = set()   # keys belonging to the shared queue
+        self._queue_map = {}       # party entry key -> our local key
+        self._queue_index = {}     # party entry key -> queue position
+        self._queue_playlistid = 0
+        self._queue_jump_pending = ''
         self._last_error = ''
         self.connected = False
         # Player callbacks run on Kodi's announce thread — network I/O
@@ -337,6 +472,21 @@ class SyncEngine:
         self._local_key = ''
         self._local_starting_until = 0.0
 
+    def drives_current_item(self):
+        """True if this device announced the current party item and so
+        speaks for its lifecycle (advances, natural end)."""
+        return self._i_opened_current
+
+    def is_natural_advance(self, key):
+        """True when this AV-start is just our queued copy of the party
+        playlist moving to the next track. Every member's queue advances
+        near-simultaneously; only the member who opened the playlist
+        announces the change, or each advance would echo as a fresh
+        'open' from every device at once."""
+        return (not self._i_opened_current
+                and bool(self._party_keys)
+                and key in self._party_keys)
+
     def note_av_started(self, item):
         """Playback came up. Returns True if this was our own auto-open
         completing (so the AV-start must not be pushed to the party).
@@ -349,6 +499,7 @@ class SyncEngine:
         was_auto_open = time.time() < self._opening_until
         self._opening_until = 0.0
         self._local_starting_until = 0.0
+        self._open_fallbacks = []  # something is playing; no retry needed
         if was_auto_open and self._opened_key:
             self._local_key = self._opened_key
         else:
@@ -358,9 +509,20 @@ class SyncEngine:
     def note_open_failed(self):
         """Called on stop/error. Returns True if an auto-open was in
         flight (i.e. the stop is fallout from a failed open, not a user
-        action). Marks the item so we don't retry it forever."""
+        action). Tries the next open candidate — e.g. a plugin id that
+        only exists on the host's media server fails, but this device's
+        own library copy is next in line — before giving up and marking
+        the item so we don't retry it forever."""
         if not (self._opening_until and time.time() < self._opening_until):
             return False
+        if self._open_fallbacks:
+            next_ref = self._open_fallbacks.pop(0)
+            common.log(f"open failed, trying fallback: {next_ref}",
+                       xbmc.LOGWARNING)
+            self.suppress.arm('open')
+            self._opening_until = time.time() + OPEN_GRACE
+            _json_rpc('Player.Open', {'item': next_ref})
+            return True
         self._opening_until = 0.0
         if self._opened_key:
             self._failed_keys.add(self._opened_key)
@@ -501,7 +663,17 @@ class SyncEngine:
         local_file = self._playing_file()
 
         if item:
-            self._last_party_key = _item_key(item)
+            key_now = _item_key(item)
+            if key_now != self._last_party_key:
+                # whoever announced this item also announces natural
+                # queue advances and the natural end for it
+                self._i_opened_current = \
+                    state.get('set_by') == self.client.member_id
+                self._party_keys = {
+                    e.get('file') or ''
+                    for e in item.get('playlist') or []} - {''}
+                self._party_keys |= set(self._queue_map.values())
+            self._last_party_key = key_now
 
         # A local open is still coming up (the user just pressed play, or
         # our auto-open is resolving): leave the player alone — stopping,
@@ -516,6 +688,10 @@ class SyncEngine:
         if not item:
             self._failed_keys.clear()  # a fresh item is a fresh chance
             self._opening_until = 0.0  # pending auto-open is moot now
+            self._party_keys = set()
+            self._queue_map = {}
+            self._queue_index = {}
+            self._queue_jump_pending = ''
             if cfg['follow_item'] and local_file \
                     and state.get('set_by') \
                     and state['set_by'] != self.client.member_id \
@@ -530,18 +706,32 @@ class SyncEngine:
         key = _item_key(item)
 
         # An auto-open whose grace lapsed with nothing playing failed
-        # silently (no error callback ever fired): give up on that item.
+        # silently (no error callback ever fired): try the next open
+        # candidate, or give up on the item when none remain.
         if self._opening_until and time.time() >= self._opening_until \
                 and not local_file:
+            if self._open_fallbacks:
+                next_ref = self._open_fallbacks.pop(0)
+                common.log(f"open timed out, trying fallback: {next_ref}",
+                           xbmc.LOGWARNING)
+                self.suppress.arm('open')
+                self._opening_until = time.time() + OPEN_GRACE
+                _json_rpc('Player.Open', {'item': next_ref})
+                return
             self._opening_until = 0.0
             if self._opened_key:
                 self._failed_keys.add(self._opened_key)
             common.notify("Can't play the party item on this device")
 
-        # Same item? Resolved URLs differ per device for plugin streams,
-        # so match on the shared key as well as the literal file.
+        # Same item? Resolved URLs differ per device for plugin streams
+        # and library copies, so match on the shared key, and through the
+        # queue's party-key -> local-key mapping.
         same = bool(local_file) and \
-            (item['file'] == local_file or key == self._local_key)
+            (item['file'] == local_file or key == self._local_key
+             or (key in self._queue_map
+                 and self._queue_map[key] == self._local_key))
+        if same:
+            self._queue_jump_pending = ''
 
         if not same:
             if not cfg['follow_item'] or own_change:
@@ -550,22 +740,99 @@ class SyncEngine:
                 return  # still waiting for a previous open to come up
             if key in self._failed_keys:
                 return  # it won't play here; user was told once already
-            # Prefer, in order: plugin path (device resolves its own
-            # stream), this device's own library copy, the shared path.
-            url = item.get('plugin') or _find_in_library(item) \
-                or _playable_url(item)
-            if not url:
+
+            # Our local queue already contains this item: jump to its
+            # slot instead of rebuilding. Waiting one poll first gives
+            # our own natural advance a moment to line up by itself.
+            if key in self._queue_index and local_file:
+                if self._queue_jump_pending != key:
+                    self._queue_jump_pending = key
+                    return
+                self._queue_jump_pending = ''
+                self.suppress.arm('open')
+                self.suppress.arm('stop')
+                self._opened_key = key
+                self._opening_until = time.time() + OPEN_GRACE
+                _json_rpc('Player.Open',
+                          {'item': {'playlistid': self._queue_playlistid,
+                                    'position': self._queue_index[key]}})
+                return
+
+            # A shared queue whose entries all map to something playable
+            # here: line it up locally (by library id where matched, so
+            # Kodi shows full metadata) and start at the party position.
+            # Transitions then happen natively on every device.
+            entries = item.get('playlist') or []
+            playlist_pos = item.get('playlist_pos')
+            refs = None
+            if len(entries) > 1 and isinstance(playlist_pos, int) \
+                    and 0 <= playlist_pos < len(entries):
+                refs = []
+                for i, entry in enumerate(entries):
+                    ref, local_key = _local_entry_ref(entry)
+                    if not ref:
+                        common.log(f"queue entry {i} not usable here: "
+                                   f"{entry.get('file')}", xbmc.LOGWARNING)
+                        refs = None
+                        break
+                    refs.append((entry.get('file') or '', ref, local_key))
+            if refs:
+                playlist_id = 0 if item.get('type') == 'song' else 1
+                common.log(f"following party queue "
+                           f"({len(refs)} items @ {playlist_pos})")
+                common.notify(f"Playing: {item.get('label') or 'party item'}")
+                self.suppress.arm('open')
+                if local_file:
+                    # replacing running playback fires a stop for the
+                    # old item — expected, not a failed open
+                    self.suppress.arm('stop')
+                self._opened_key = key
+                self._open_fallbacks = []
+                self._opening_until = time.time() + OPEN_GRACE
+                self._queue_playlistid = playlist_id
+                self._queue_map = {ek: lk for ek, _, lk in refs}
+                self._queue_index = {ek: i
+                                     for i, (ek, _, _) in enumerate(refs)}
+                self._party_keys |= set(self._queue_map.values())
+                _json_rpc('Playlist.Clear', {'playlistid': playlist_id})
+                _json_rpc('Playlist.Add',
+                          {'playlistid': playlist_id,
+                           'item': [ref for _, ref, _ in refs]})
+                _json_rpc('Player.Open',
+                          {'item': {'playlistid': playlist_id,
+                                    'position': playlist_pos}})
+                return
+
+            # Single item — candidates in preference order: plugin path
+            # (device resolves its own stream), own library copy by id
+            # (full metadata on screen), the shared plain path. A failed
+            # candidate falls through to the next.
+            candidates = []
+            if item.get('plugin'):
+                candidates.append({'file': item['plugin']})
+            lib_ref, _lib_file = _find_in_library(item)
+            if lib_ref:
+                candidates.append(lib_ref)
+            plain = _playable_url(item)
+            if plain and plain != item.get('plugin'):
+                candidates.append({'file': plain})
+            if not candidates:
                 self._failed_keys.add(key)
                 common.log(f"party item not playable here: {item['file']}",
                            xbmc.LOGWARNING)
                 common.notify("Party item can't be played on this device")
                 return
-            common.log(f"following party item: {url}")
+            common.log(f"following party item: {candidates[0]}")
             common.notify(f"Playing: {item.get('label') or 'party item'}")
             self.suppress.arm('open')
+            if local_file:
+                self.suppress.arm('stop')
             self._opened_key = key
+            self._open_fallbacks = candidates[1:]
             self._opening_until = time.time() + OPEN_GRACE
-            self.player.play(url)
+            self._queue_map = {}
+            self._queue_index = {}
+            _json_rpc('Player.Open', {'item': candidates[0]})
             return
 
         # Pause state.

@@ -97,6 +97,27 @@ class EmbeddedRelayTest(unittest.TestCase):
         finally:
             relay_mod.MEMBER_TIMEOUT = original_timeout
 
+    def test_playlist_passthrough_cap_and_identity(self):
+        entries = [{'file': f'https://x.plex.direct/{i}.m4a',
+                    'label': f'Track {i}', 'type': 'song',
+                    'title': f'Track {i}', 'artist': ['Ed Sheeran'],
+                    'album': '='} for i in range(120)]
+        item = dict(ITEM, type='song', playlist=entries, playlist_pos=2)
+        self.host.command('open', position=0.0, item=item)
+        state = self.guest.poll(0, False, '')
+        stored = state['item']['playlist']
+        self.assertEqual(len(stored), 100)              # capped
+        self.assertEqual(stored[0]['artist'], ['Ed Sheeran'])
+        self.assertEqual(stored[0]['album'], '=')
+        self.assertEqual(state['item']['playlist_pos'], 2)
+
+    def test_single_entry_playlist_dropped(self):
+        item = dict(ITEM, playlist=[{'file': 'smb://nas/x.mkv',
+                                     'label': 'x'}], playlist_pos=0)
+        self.host.command('open', position=0.0, item=item)
+        state = self.guest.poll(0, False, '')
+        self.assertNotIn('playlist', state['item'])
+
     def test_join_reports_protocol_version(self):
         import relay as relay_mod
         self.assertEqual(self.host.relay_protocol,
