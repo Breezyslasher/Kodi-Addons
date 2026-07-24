@@ -55,6 +55,20 @@ See the [addon README](script.webhook.runner/README.md) for details.
 
 ---
 
+### 🎬 [Watch Party](service.watchparty/)
+Synchronized playback across Kodi devices — a SyncLounge-style watch party. One device hosts, others join with a room code; play/pause/seek are mirrored to everyone with automatic drift correction.
+
+**Highlights:**
+- No external server — the hosting Kodi runs an embedded relay
+- Clock-offset compensation and rate-limited drift correction keep everyone within seconds
+- Follow mode auto-opens whatever the party plays (network shares, streams, plugin URLs)
+
+See the [addon README](service.watchparty/README.md) for details.
+
+**Requirements:** Kodi 19+ on all devices, network path between guests and host
+
+---
+
 ## 🚀 Installation
 
 ### Method 1: Repository Installation (Recommended)
@@ -92,6 +106,7 @@ Kodi-Addons/
 ├── context.plexkodiconnect.download/ # Plex download addon  
 ├── script.scrcpy-launcher/          # scrcpy launcher addon
 ├── script.webhook.runner/           # Webhook runner addon
+├── service.watchparty/              # Watch Party sync addon
 ├── repository.breezyslasher/        # Repository metadata
 ├── zips/                           # Generated ZIP files
 ├── .github/workflows/              # CI/CD workflows
@@ -113,6 +128,7 @@ Each addon has its own license:
 - **PlexKodiConnect Download**: MIT
 - **scrcpy Launcher**: MIT
 - **Webhook Runner**: MIT
+- **Watch Party**: MIT
 
 ## 🔗 Links
 

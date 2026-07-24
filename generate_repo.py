@@ -14,8 +14,9 @@ import xml.etree.ElementTree as ET
 ADDON_FOLDERS = [
     "repository.breezyslasher",
     "context.plexkodiconnect.download",
-    "plugin.audio.audiobookshelf", 
-    "script.webhook.runner"
+    "plugin.audio.audiobookshelf",
+    "script.webhook.runner",
+    "service.watchparty"
 ]
 
 def get_addon_xml_content(folder):
