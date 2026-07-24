@@ -99,6 +99,8 @@ docker build -t kodi-watchparty-relay . && docker run -d -p 8765:8765 --restart 
   Room codes are masked there by default since they double as the
   access tokens — set `WATCHPARTY_SHOW_CODES=1` to show them in full
   on a private deployment. `/status.json` serves the same data as JSON.
+  The embedded in-Kodi relay serves the same dashboard for its room
+  (`http://kodi-ip:8765/status`) — handy on a phone while hosting.
 
 The relay is pure Python standard library (`relay_standalone.py` +
 `resources/lib/relay.py`) — no pip installs. Point it behind a reverse

@@ -97,6 +97,18 @@ class EmbeddedRelayTest(unittest.TestCase):
         finally:
             relay_mod.MEMBER_TIMEOUT = original_timeout
 
+    def test_embedded_dashboard(self):
+        # the embedded (in-Kodi) relay serves the same dashboard as the
+        # standalone one, scoped to its single room, code masked
+        base = f'http://127.0.0.1:{self.port}'
+        with urllib.request.urlopen(f'{base}/status.json') as resp:
+            data = json.load(resp)
+        self.assertEqual([r['room'] for r in data['rooms']], ['T··T'])
+        names = sorted(m['name'] for m in data['rooms'][0]['members'])
+        self.assertEqual(names, ['guest', 'host'])
+        with urllib.request.urlopen(f'{base}/status') as resp:
+            self.assertIn('Watch Party relay', resp.read().decode())
+
     def test_lock_lifecycle(self):
         self.host.command('open', position=0.0, item=ITEM, lock=True)
         state = self.guest.poll(0, False, '')
