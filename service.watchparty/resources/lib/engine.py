@@ -60,6 +60,57 @@ def _active_player_id():
     return None
 
 
+def _now_playing_item(player):
+    """Describe the playing item in a way other devices can act on.
+
+    player.getPlayingFile() returns the *resolved* stream — for addon
+    content that is a tokenized (often device-bound) URL, frequently
+    behind a proxy on 127.0.0.1, which no other device can open. The
+    JSON-RPC item 'file' still holds the original plugin:// path, so we
+    share both: guests prefer 'plugin' and resolve the stream themselves.
+    """
+    try:
+        file = player.getPlayingFile()
+    except RuntimeError:
+        return None
+    item = {'file': file,
+            'label': xbmc.getInfoLabel('Player.Title') or ''}
+    player_id = _active_player_id()
+    if player_id is not None:
+        result = _json_rpc('Player.GetItem',
+                           {'playerid': player_id,
+                            'properties': ['file']}) or {}
+        jfile = (result.get('item') or {}).get('file') or ''
+        if jfile.startswith('plugin://'):
+            item['plugin'] = jfile
+    return item
+
+
+def _item_key(item):
+    """Stable identity for a shared item across devices."""
+    return item.get('plugin') or item.get('file') or ''
+
+
+def _host_local(url):
+    """True for URLs that only resolve on the device that made them."""
+    try:
+        from urllib.parse import urlparse
+        host = (urlparse(url).hostname or '').lower()
+    except Exception:
+        return False
+    return host in ('127.0.0.1', 'localhost', '::1')
+
+
+def _playable_url(item):
+    """Best URL for *this* device, or '' if the item can't play here."""
+    if item.get('plugin'):
+        return item['plugin']
+    file = item.get('file') or ''
+    if file and not _host_local(file):
+        return file
+    return ''
+
+
 class _Suppressor:
     """Short-lived tokens marking actions the engine itself triggered."""
 
@@ -88,16 +139,17 @@ class _PartyPlayer(xbmc.Player):
         self.engine.push_command(cmd, **kwargs)
 
     def onAVStarted(self):
+        item = _now_playing_item(self)
+        self.engine.note_av_started(item)
         if self.engine.suppress.consume('open'):
             return
+        if not item:
+            return
         try:
-            file = self.getPlayingFile()
-            label = xbmc.getInfoLabel('Player.Title') or ''
             position = self.getTime()
         except RuntimeError:
-            return
-        self._push('open', position=position,
-                   item={'file': file, 'label': label})
+            position = 0.0
+        self._push('open', position=position, item=item)
 
     def onPlayBackPaused(self):
         if self.engine.suppress.consume('pause'):
@@ -117,12 +169,22 @@ class _PartyPlayer(xbmc.Player):
     def onPlayBackStopped(self):
         if self.engine.suppress.consume('stop'):
             return
+        # A stop while our own auto-open is still coming up means the open
+        # failed locally — that must not stop the party for everyone else.
+        if self.engine.note_open_failed():
+            return
         self._push('stop')
 
     def onPlayBackEnded(self):
         if self.engine.suppress.consume('stop'):
             return
+        if self.engine.note_open_failed():
+            return
         self._push('stop')
+
+    def onPlayBackError(self):
+        # Local playback errors are never party-wide events.
+        self.engine.note_open_failed()
 
 
 class SyncEngine:
@@ -137,6 +199,9 @@ class SyncEngine:
                                         name='watchparty-engine', daemon=True)
         self._last_correction = 0.0
         self._opening_until = 0.0
+        self._opened_key = ''     # party item we last auto-opened
+        self._local_key = ''      # key of whatever this device is playing
+        self._failed_keys = set()  # items that would not play here
         self._last_error = ''
         self.connected = False
 
@@ -158,6 +223,30 @@ class SyncEngine:
             common.save_json(common.status_file(), {'active': False})
         except Exception:
             pass
+
+    # -- auto-open bookkeeping ---------------------------------------------
+
+    def note_av_started(self, item):
+        """Playback came up: any pending auto-open succeeded, and this
+        device is now playing `item` — remember its key so polls can
+        recognise the party item even though each device's *resolved*
+        stream URL differs (plugin streams resolve per-device)."""
+        self._opening_until = 0.0
+        self._local_key = _item_key(item) if item else ''
+
+    def note_open_failed(self):
+        """Called on stop/error. Returns True if an auto-open was in
+        flight (i.e. the stop is fallout from a failed open, not a user
+        action). Marks the item so we don't retry it forever."""
+        if not (self._opening_until and time.time() < self._opening_until):
+            return False
+        self._opening_until = 0.0
+        if self._opened_key:
+            self._failed_keys.add(self._opened_key)
+        common.log(f"could not play party item here: {self._opened_key}",
+                   xbmc.LOGWARNING)
+        common.notify("Can't play the party item on this device")
+        return True
 
     # -- local player helpers ---------------------------------------------
 
@@ -242,6 +331,8 @@ class SyncEngine:
 
         # Nothing shared: if we follow the party and it stopped, stop too.
         if not item:
+            # A fresh party item is a fresh chance for items that failed.
+            self._failed_keys.clear()
             if cfg['follow_item'] and local_file \
                     and state.get('set_by') \
                     and state['set_by'] != self.client.member_id:
@@ -250,21 +341,44 @@ class SyncEngine:
             return
 
         own_change = state.get('set_by') == self.client.member_id
+        key = _item_key(item)
 
-        # Different item playing (or nothing playing): follow the party.
-        if item['file'] != local_file:
+        # An auto-open whose grace lapsed with nothing playing failed
+        # silently (no error callback ever fired): give up on that item.
+        if self._opening_until and time.time() >= self._opening_until \
+                and not local_file:
+            self._opening_until = 0.0
+            if self._opened_key:
+                self._failed_keys.add(self._opened_key)
+            common.notify("Can't play the party item on this device")
+
+        # Same item? Resolved URLs differ per device for plugin streams,
+        # so match on the shared key as well as the literal file.
+        same = bool(local_file) and \
+            (item['file'] == local_file or key == self._local_key)
+
+        if not same:
             if not cfg['follow_item'] or own_change:
                 return
             if time.time() < self._opening_until:
                 return  # still waiting for a previous open to come up
-            common.log(f"following party item: {item['file']}")
+            if key in self._failed_keys:
+                return  # it won't play here; user was told once already
+            url = _playable_url(item)
+            if not url:
+                # e.g. a host-local proxy URL with no plugin path shared
+                self._failed_keys.add(key)
+                common.log(f"party item not playable here: {item['file']}",
+                           xbmc.LOGWARNING)
+                common.notify("Party item can't be played on this device")
+                return
+            common.log(f"following party item: {url}")
             common.notify(f"Playing: {item.get('label') or 'party item'}")
             self.suppress.arm('open')
+            self._opened_key = key
             self._opening_until = time.time() + OPEN_GRACE
-            self.player.play(item['file'])
+            self.player.play(url)
             return
-
-        self._opening_until = 0.0
 
         # Pause state.
         local_paused = self._is_paused()

@@ -39,7 +39,7 @@ class RoomState:
         self.room_code = room_code
         self.members = {}   # member_id -> dict
         self.seq = 0
-        self.item = None    # {'file': str, 'label': str} or None
+        self.item = None    # {'file': str, 'label': str, 'plugin': str} or None
         self.position = 0.0
         self.paused = False
         self.speed = 1.0
@@ -101,7 +101,8 @@ class RoomState:
                 if not item.get('file'):
                     return False
                 self.item = {'file': str(item['file']),
-                             'label': str(item.get('label') or '')}
+                             'label': str(item.get('label') or ''),
+                             'plugin': str(item.get('plugin') or '')}
                 self.position = position
                 self.paused = False
                 self.speed = 1.0
