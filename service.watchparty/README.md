@@ -55,9 +55,9 @@ Raspberry Pi or in Docker, so nobody has to port-forward anything.
   mirrored to everyone, so repeat-one loops and repeat-all wraps stay in
   sync. Shuffle is the announcer's privilege — followers stay unshuffled
   and play the announced order. Toggles propagate instantly (not at the
-  next track): followers realign their whole queue around the currently
-  playing track — Kodi's shuffle moves every slot, including the current
-  one — with no audible interruption.
+  next track): followers reorder their queue in place to the announcer's
+  new order — the playing track keeps playing and stays correctly marked,
+  because the queue is permuted with swaps rather than rebuilt.
 - **Buffer hold**: while any member watching the item is buffering, the
   party auto-pauses, and resumes when they catch up. A deliberate
   pause/play always overrides the hold.
