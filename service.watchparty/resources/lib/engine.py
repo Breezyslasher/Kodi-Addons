@@ -675,6 +675,53 @@ class SyncEngine:
                 self._write_status(None)
         common.log("engine stopped")
 
+    def _live_queue(self):
+        """(playlist_id, files, cursor) as Kodi has the queue *now*.
+
+        Cached positions are never trusted for playback decisions: the
+        local queue can drift from the shared order (a reorder that
+        could not complete, a local shuffle, a manual edit), and acting
+        on a stale index plays whatever else sits in that slot.
+        """
+        player_id = _active_player_id()
+        if player_id is None:
+            return -1, [], -1
+        props = _json_rpc('Player.GetProperties',
+                          {'playerid': player_id,
+                           'properties': ['playlistid', 'position']}) or {}
+        playlist_id = props.get('playlistid')
+        cursor = props.get('position')
+        if not isinstance(playlist_id, int) or playlist_id < 0:
+            return -1, [], -1
+        listing = _json_rpc('Playlist.GetItems',
+                            {'playlistid': playlist_id,
+                             'properties': ['file']}) or {}
+        files = [i.get('file') or '' for i in listing.get('items') or []]
+        return playlist_id, files, (cursor if isinstance(cursor, int)
+                                    else -1)
+
+    def _cursor_is(self, key):
+        """True when the local queue is sitting on the party's item."""
+        want = self._queue_map.get(key)
+        if not want:
+            return False
+        _playlist_id, files, cursor = self._live_queue()
+        return 0 <= cursor < len(files) and files[cursor] == want
+
+    def _queue_slot_of(self, key):
+        """(playlist_id, index) of the party's item in the live local
+        queue, or (-1, -1) when it is not there any more."""
+        want = self._queue_map.get(key)
+        if not want:
+            return -1, -1
+        playlist_id, files, _cursor = self._live_queue()
+        if playlist_id < 0:
+            return -1, -1
+        for index, file in enumerate(files):
+            if file == want:
+                return playlist_id, index
+        return -1, -1
+
     def _resync_queue(self, item, key):
         """Permute the local queue into a changed shared order in place.
 
@@ -692,15 +739,6 @@ class SyncEngine:
         shared_order = [e.get('file') or '' for e in entries]
         if key not in shared_order or not self._queue_map:
             return False
-        player_id = _active_player_id()
-        if player_id is None:
-            return False
-        props = _json_rpc('Player.GetProperties',
-                          {'playerid': player_id,
-                           'properties': ['playlistid']}) or {}
-        playlist_id = props.get('playlistid')
-        if not isinstance(playlist_id, int) or playlist_id < 0:
-            return False
         # what the shared order means for this device
         target = []
         for party_key in shared_order:
@@ -708,10 +746,9 @@ class SyncEngine:
             if not local_key:
                 return False  # entry we never mapped — needs a rebuild
             target.append(local_key)
-        listing = _json_rpc('Playlist.GetItems',
-                            {'playlistid': playlist_id,
-                             'properties': ['file']}) or {}
-        current = [i.get('file') or '' for i in listing.get('items') or []]
+        playlist_id, current, _cursor = self._live_queue()
+        if playlist_id < 0:
+            return False
         if sorted(current) != sorted(target):
             return False  # different item set — needs a rebuild
         # selection sort: each swap puts one item in its final place
@@ -834,6 +871,13 @@ class SyncEngine:
             (item['file'] == local_file or key == self._local_key
              or (key in self._queue_map
                  and self._queue_map[key] == self._local_key))
+        if not same and local_file and self._queue_order:
+            # While following a queue the playlist's own cursor is the
+            # authority: a media server can hand out a different stream
+            # URL (fresh token) for the same song each time it plays, so
+            # comparing resolved URLs gives false mismatches — and acting
+            # on those is what put the wrong song on followers.
+            same = self._cursor_is(key)
         if same:
             self._queue_jump_pending = ''
 
@@ -861,15 +905,26 @@ class SyncEngine:
                 if self._queue_jump_pending != key:
                     self._queue_jump_pending = key
                     return
-                self._queue_jump_pending = ''
-                self.suppress.arm('open')
-                self.suppress.arm('stop')
-                self._opened_key = key
-                self._opening_until = time.time() + OPEN_GRACE
-                _json_rpc('Player.Open',
-                          {'item': {'playlistid': self._queue_playlistid,
-                                    'position': self._queue_index[key]}})
-                return
+                # Resolve the slot from the live playlist rather than the
+                # cached index: if the local queue has drifted from the
+                # shared order at all, a cached position points at some
+                # other song — and jumping there plays the wrong song.
+                playlist_id, position = self._queue_slot_of(key)
+                if position < 0:
+                    common.log("queue slot for the party item is gone — "
+                               "rebuilding", xbmc.LOGWARNING)
+                    self._queue_index = {}
+                    self._queue_order = []
+                else:
+                    self._queue_jump_pending = ''
+                    self.suppress.arm('open')
+                    self.suppress.arm('stop')
+                    self._opened_key = key
+                    self._opening_until = time.time() + OPEN_GRACE
+                    _json_rpc('Player.Open',
+                              {'item': {'playlistid': playlist_id,
+                                        'position': position}})
+                    return
 
             # A shared queue whose entries all map to something playable
             # here: line it up locally (by library id where matched, so

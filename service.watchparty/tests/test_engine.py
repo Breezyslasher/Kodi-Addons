@@ -275,6 +275,35 @@ class QueueReorderTest(unittest.TestCase):
         self.assertFalse(e._resync_queue(
             self._entries(['pa', 'pb', 'pc', 'pd']), 'pOTHER'))
 
+    def test_slot_is_resolved_live_not_from_stale_index(self):
+        # the local queue drifted from the shared order; a cached index
+        # would point at the wrong song, so the slot is looked up live
+        e = self._engine()
+        self.queue = ['d', 'c', 'b', 'a']
+        e._queue_index = {'pa': 0, 'pb': 1, 'pc': 2, 'pd': 3}  # stale
+        self.assertEqual(e._queue_slot_of('pa'), (0, 3))
+        self.assertEqual(e._queue_slot_of('pd'), (0, 0))
+
+    def test_slot_missing_when_item_left_the_queue(self):
+        e = self._engine()
+        self.queue = ['b', 'c', 'd']          # 'a' removed locally
+        self.assertEqual(e._queue_slot_of('pa'), (-1, -1))
+        self.assertEqual(e._queue_slot_of('pUNKNOWN'), (-1, -1))
+
+    def test_cursor_identifies_the_playing_item(self):
+        # cursor is at position 0 in the stub — 'a' / party key 'pa'
+        e = self._engine()
+        self.assertTrue(e._cursor_is('pa'))
+        self.assertFalse(e._cursor_is('pb'))
+
+    def test_cursor_beats_a_rewritten_stream_url(self):
+        # the media server handed out a fresh token for the same song:
+        # the resolved URL no longer matches, but the queue cursor does
+        e = self._engine()
+        e._local_key = 'a?token=CHANGED'
+        self.assertNotEqual(e._queue_map['pa'], e._local_key)
+        self.assertTrue(e._cursor_is('pa'))
+
 
 class SingleWriterTest(unittest.TestCase):
     def _engine(self, opened_current, party_keys=frozenset()):
