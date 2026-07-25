@@ -127,8 +127,13 @@ docker build -t kodi-watchparty-relay . && docker run -d -p 8765:8765 --restart 
   addon") when it joins a relay that doesn't speak its protocol version,
   so a stale container is a visible message instead of silently missing
   features.
-- **Dashboard**: open `/status` in a browser for a live view of active
-  rooms, connected members and playback positions (auto-refreshes).
+- **Dashboard**: open `/status` in a browser for a live monitoring view —
+  now playing with a sync timeline (every member plotted against the
+  server anchor, drift called out past the threshold), member list with
+  buffering / locked / no-poll states, relay health (poll round-trip,
+  commands per minute, corrective seeks) and other rooms. It keeps the
+  last good snapshot on screen if the relay goes away, and reads fine on
+  a phone. `/status.json` serves the same data as JSON.
   Room codes are masked there by default since they double as the
   access tokens — set `WATCHPARTY_SHOW_CODES=1` to show them in full
   on a private deployment. `/status.json` serves the same data as JSON.

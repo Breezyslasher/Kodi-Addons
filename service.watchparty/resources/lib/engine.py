@@ -120,6 +120,16 @@ def _now_playing_item(player):
         return None
     item = {'file': file,
             'label': xbmc.getInfoLabel('Player.Title') or ''}
+    try:
+        # total length, so followers and the dashboard can show progress
+        duration = player.getTotalTime()
+        if duration and duration > 0:
+            item['duration'] = round(float(duration), 1)
+    except RuntimeError:
+        pass
+    art = xbmc.getInfoLabel('Player.Art(thumb)') or ''
+    if art.startswith(('http://', 'https://')):
+        item['art'] = art  # only shareable if not a local image:// path
     player_id = _active_player_id()
     if player_id is not None:
         result = _json_rpc('Player.GetItem',
@@ -435,6 +445,7 @@ class SyncEngine:
         self._failed_keys = set()  # items that would not play here
         self._member_names = None  # roster baseline for join/leave toasts
         self._open_fallbacks = []  # untried open refs for the current item
+        self._corrections = 0      # drift-correcting seeks we've applied
         self._i_opened_current = False  # we announced the current item
         self._party_keys = set()   # keys belonging to the shared queue
         self._queue_map = {}       # party entry key -> our local key
@@ -647,7 +658,8 @@ class SyncEngine:
                     caching=bool(local_file) and bool(
                         xbmc.getCondVisibility('Player.Caching')),
                     on_item=bool(self._local_key) and
-                    self._local_key == self._last_party_key)
+                    self._local_key == self._last_party_key,
+                    corrections=self._corrections)
                 failures = 0
                 self._last_error = ''
                 self._notify_member_changes(state)
@@ -1056,6 +1068,7 @@ class SyncEngine:
                 and time.time() - self._last_correction > CORRECTION_COOLDOWN:
             common.log(f"drift {drift:+.1f}s — correcting to {expected:.1f}")
             self._last_correction = time.time()
+            self._corrections += 1
             self._seek(expected)
 
     # -- status for the UI -------------------------------------------------
