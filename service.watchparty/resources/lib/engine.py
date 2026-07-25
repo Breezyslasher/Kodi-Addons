@@ -716,21 +716,23 @@ class SyncEngine:
         for _ in range(local_pos):
             _json_rpc('Playlist.Remove',
                       {'playlistid': playlist_id, 'position': 0})
-        # rebuild the shared order around it
-        head = [ref for _, ref, _ in refs[:current]]
-        tail = [ref for _, ref, _ in refs[current + 1:]]
-        if head:
-            _json_rpc('Playlist.Insert',
-                      {'playlistid': playlist_id, 'position': 0,
-                       'item': head})
-        if tail:
+        # Append the rest as a rotation of the shared order starting at
+        # the playing track: same next tracks and same repeat-all wrap
+        # sequence as the announcer, but never inserting *before* the
+        # current item — Kodi's play cursor doesn't follow inserts in
+        # front of it, which desyncs the marker and the next-track pick.
+        rotated = refs[current + 1:] + refs[:current]
+        if rotated:
             _json_rpc('Playlist.Add',
-                      {'playlistid': playlist_id, 'item': tail})
+                      {'playlistid': playlist_id,
+                       'item': [ref for _, ref, _ in rotated]})
         self._queue_order = shared_order
         self._queue_playlistid = playlist_id
         self._queue_map = {ek: lk for ek, _, lk in refs}
         self._queue_map[key] = self._local_key or key
-        self._queue_index = {ek: i for i, (ek, _, _) in enumerate(refs)}
+        self._queue_index = {ek: i + 1
+                             for i, (ek, _, _) in enumerate(rotated)}
+        self._queue_index[key] = 0
         self._party_keys |= set(shared_order) | {lk for _, _, lk in refs}
 
     def _notify_member_changes(self, state):
