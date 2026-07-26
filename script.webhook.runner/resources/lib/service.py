@@ -24,6 +24,7 @@ EVENTS_FILE = os.path.join(ADDON_DATA, 'events.json')
 
 SUPPORTED_EVENTS = [
     # Playback
+    'playback_open',
     'playback_start',
     'playback_stop',
     'playback_pause',
@@ -39,10 +40,17 @@ SUPPORTED_EVENTS = [
     'screensaver_off',
     'dpms_on',
     'dpms_off',
+    'player_property_changed',
+    # Playlist
+    'playlist_add',
+    'playlist_remove',
+    'playlist_clear',
     # System / power
     'system_sleep',
     'system_wake',
     'system_quit',
+    'system_restart',
+    'system_low_battery',
     'kodi_start',
     'kodi_stop',
     # Library
@@ -50,6 +58,19 @@ SUPPORTED_EVENTS = [
     'library_scan_finish',
     'library_clean_start',
     'library_clean_finish',
+    'database_scan_start',
+    'database_updated',
+    'video_library_update',
+    'video_library_remove',
+    'video_library_export',
+    'video_library_refresh',
+    'audio_library_update',
+    'audio_library_remove',
+    'audio_library_export',
+    # Input / application
+    'input_requested',
+    'input_finished',
+    'volume_changed',
     # Misc
     'settings_changed',
 ]
@@ -92,6 +113,12 @@ def _fire(event_name):
 
 
 class _Player(xbmc.Player):
+    def onPlayBackStarted(self):
+        # Fires when Kodi opens the file, before the A/V stream is ready.
+        # 'playback_start' (onAVStarted) fires slightly later when the
+        # stream is actually rendering.
+        _fire('playback_open')
+
     def onAVStarted(self):
         _fire('playback_start')
 
@@ -126,14 +153,38 @@ class _Player(xbmc.Player):
         _fire('playback_error')
 
 
-# System.* notifications have no dedicated xbmc.Monitor callback, so they are
-# picked up via onNotification. Other events (screensaver, library scan/clean,
-# DPMS) already have direct callbacks, so we don't map them here to avoid
+# These Kodi notifications have no dedicated xbmc.Monitor/xbmc.Player callback,
+# so they are picked up via onNotification. Events that DO have a direct
+# callback (screensaver, DPMS, library scan/clean, playback, etc.) are handled
+# in the callback classes above and deliberately not mapped here, to avoid
 # firing a webhook twice for the same event.
 _NOTIFICATION_EVENTS = {
+    # System / power
     'System.OnSleep': 'system_sleep',
     'System.OnWake': 'system_wake',
     'System.OnQuit': 'system_quit',
+    'System.OnRestart': 'system_restart',
+    'System.OnLowBattery': 'system_low_battery',
+    # Application
+    'Application.OnVolumeChanged': 'volume_changed',
+    # Playlist
+    'Playlist.OnAdd': 'playlist_add',
+    'Playlist.OnRemove': 'playlist_remove',
+    'Playlist.OnClear': 'playlist_clear',
+    # Input
+    'Input.OnInputRequested': 'input_requested',
+    'Input.OnInputFinished': 'input_finished',
+    # Player (no direct callback for this one)
+    'Player.OnPropertyChanged': 'player_property_changed',
+    # Video library (scan/clean already handled by direct callbacks)
+    'VideoLibrary.OnUpdate': 'video_library_update',
+    'VideoLibrary.OnRemove': 'video_library_remove',
+    'VideoLibrary.OnExport': 'video_library_export',
+    'VideoLibrary.OnRefresh': 'video_library_refresh',
+    # Audio library
+    'AudioLibrary.OnUpdate': 'audio_library_update',
+    'AudioLibrary.OnRemove': 'audio_library_remove',
+    'AudioLibrary.OnExport': 'audio_library_export',
 }
 
 
@@ -161,6 +212,12 @@ class _Monitor(xbmc.Monitor):
 
     def onCleanFinished(self, library):
         _fire('library_clean_finish')
+
+    def onDatabaseScanStarted(self, database):
+        _fire('database_scan_start')
+
+    def onDatabaseUpdated(self, database):
+        _fire('database_updated')
 
     def onSettingsChanged(self):
         _fire('settings_changed')
