@@ -185,6 +185,20 @@ copy.
   host quits, the party ends. A standalone relay keeps the room alive
   independently of any member.
 
+## Testing
+
+[`TESTING.md`](TESTING.md) is a full manual pass over every feature —
+122 numbered cases covering setup, sync, content types, queues, host
+controls, resilience and the dashboard. Bug reports use the *Watch Party
+bug report* issue template and should quote the case id.
+
+The automated suite (relay protocol + engine decision logic, no Kodi
+needed) runs on every PR:
+
+```
+python3 -m unittest discover service.watchparty/tests
+```
+
 ## Requirements
 
 - Kodi 19 (Matrix) or later on all devices
