@@ -445,23 +445,33 @@ class MusicController:
             provider_instance_id_or_domain=provider_instance_id_or_domain
         )
     
-    def get_artist_albums(self, item_id, provider_instance_id_or_domain='library', in_library_only=False):
-        """Get albums for an artist."""
-        return self.client.send_command(
-            'music/artists/artist_albums',
-            item_id=str(item_id),
-            provider_instance_id_or_domain=provider_instance_id_or_domain,
-            in_library_only=in_library_only
-        )
-    
-    def get_artist_tracks(self, item_id, provider_instance_id_or_domain='library', in_library_only=False):
-        """Get tracks for an artist."""
-        return self.client.send_command(
-            'music/artists/artist_tracks',
-            item_id=str(item_id),
-            provider_instance_id_or_domain=provider_instance_id_or_domain,
-            in_library_only=in_library_only
-        )
+    def get_artist_albums(self, item_id, provider_instance_id_or_domain='library', provider_filter=None):
+        """Get albums for an artist.
+
+        music/artists/artist_albums takes an optional provider_filter (not the
+        old in_library_only flag); it is only sent when provided.
+        """
+        args = {
+            'item_id': str(item_id),
+            'provider_instance_id_or_domain': provider_instance_id_or_domain,
+        }
+        if provider_filter is not None:
+            args['provider_filter'] = provider_filter
+        return self.client.send_command('music/artists/artist_albums', **args)
+
+    def get_artist_tracks(self, item_id, provider_instance_id_or_domain='library', provider_filter=None):
+        """Get tracks for an artist.
+
+        music/artists/artist_tracks takes an optional provider_filter (not the
+        old in_library_only flag); it is only sent when provided.
+        """
+        args = {
+            'item_id': str(item_id),
+            'provider_instance_id_or_domain': provider_instance_id_or_domain,
+        }
+        if provider_filter is not None:
+            args['provider_filter'] = provider_filter
+        return self.client.send_command('music/artists/artist_tracks', **args)
     
     # Albums
     def get_library_albums(self, favorite=None, search=None, limit=500, offset=0, order_by='sort_name'):
