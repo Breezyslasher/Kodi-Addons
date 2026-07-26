@@ -282,6 +282,25 @@ def set_music_info(list_item, title, artist='', duration=0, playcount=0, tracknu
                                     'playcount': playcount, 'tracknumber': tracknumber})
 
 
+def has_parts(media):
+    """True when a book should open a chapters/parts folder instead of playing.
+
+    The library list endpoint (/api/libraries/{id}/items) returns MINIFIED
+    media, which carries numAudioFiles/numChapters counts but NOT the
+    chapters/audioFiles arrays. Checking media['chapters'] there is always
+    falsy, so single-file books (numAudioFiles == 1) with embedded chapters
+    were treated as directly playable and never exposed their chapters.
+    Prefer the numChapters count, falling back to the array for expanded
+    payloads. A lone chapter spanning the whole book isn't worth a folder.
+    """
+    if media.get('numAudioFiles', 1) > 1:
+        return True
+    num_chapters = media.get('numChapters')
+    if num_chapters is None:
+        num_chapters = len(media.get('chapters') or [])
+    return num_chapters > 1
+
+
 def find_file_for_position(audio_files, position):
     sorted_files = sorted(audio_files, key=lambda x: x.get('index', 0))
     cumulative = 0
@@ -553,7 +572,7 @@ def list_audiobooks_combined(book_libs=None):
                     context_items.append(('Download', f'RunPlugin({build_url(action="download", item_id=item_id, library_id=library_id)})'))
             list_item.addContextMenuItems(context_items)
             
-            if media.get('numAudioFiles', 1) > 1 or media.get('chapters'):
+            if has_parts(media):
                 xbmcplugin.addDirectoryItem(ADDON_HANDLE,
                                            build_url(action='parts', item_id=item_id),
                                            list_item, isFolder=True)
@@ -1203,7 +1222,7 @@ def list_library_items(library_id, is_podcast=False):
                 xbmcplugin.addDirectoryItem(ADDON_HANDLE, 
                                            build_url(action='episodes', item_id=item_id),
                                            list_item, isFolder=True)
-            elif media.get('numAudioFiles', 1) > 1 or media.get('chapters'):
+            elif has_parts(media):
                 xbmcplugin.addDirectoryItem(ADDON_HANDLE,
                                            build_url(action='parts', item_id=item_id),
                                            list_item, isFolder=True)
