@@ -53,12 +53,20 @@ msgctxt "#30004"
 msgid "Password"
 msgstr ""
 
+msgctxt "#30033"
+msgid "API Key (optional, overrides username/password)"
+msgstr ""
+
 msgctxt "#30006"
 msgid "Show progress markers ([X%], [Done])"
 msgstr ""
 
 msgctxt "#30007"
 msgid "Min episodes to show sort option"
+msgstr ""
+
+msgctxt "#30034"
+msgid "Group libraries by type (Audiobooks/Podcasts) instead of listing each separately"
 msgstr ""
 
 msgctxt "#30009"
