@@ -55,9 +55,9 @@ Raspberry Pi or in Docker, so nobody has to port-forward anything.
   mirrored to everyone, so repeat-one loops and repeat-all wraps stay in
   sync. Shuffle is the announcer's privilege — followers stay unshuffled
   and play the announced order. Toggles propagate instantly (not at the
-  next track): followers realign their whole queue around the currently
-  playing track — Kodi's shuffle moves every slot, including the current
-  one — with no audible interruption.
+  next track): followers reorder their queue in place to the announcer's
+  new order — the playing track keeps playing and stays correctly marked,
+  because the queue is permuted with swaps rather than rebuilt.
 - **Buffer hold**: while any member watching the item is buffering, the
   party auto-pauses, and resumes when they catch up. A deliberate
   pause/play always overrides the hold.
@@ -127,8 +127,14 @@ docker build -t kodi-watchparty-relay . && docker run -d -p 8765:8765 --restart 
   addon") when it joins a relay that doesn't speak its protocol version,
   so a stale container is a visible message instead of silently missing
   features.
-- **Dashboard**: open `/status` in a browser for a live view of active
-  rooms, connected members and playback positions (auto-refreshes).
+- **Dashboard**: open the relay's address in a browser (the dashboard is
+  the landing page; `/status` is the same page) for a live monitoring view —
+  now playing with a sync timeline (every member plotted against the
+  server anchor, drift called out past the threshold), member list with
+  buffering / locked / no-poll states, relay health (poll round-trip,
+  commands per minute, corrective seeks) and other rooms. It keeps the
+  last good snapshot on screen if the relay goes away, and reads fine on
+  a phone. `/status.json` serves the same data as JSON.
   Room codes are masked there by default since they double as the
   access tokens — set `WATCHPARTY_SHOW_CODES=1` to show them in full
   on a private deployment. `/status.json` serves the same data as JSON.

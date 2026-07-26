@@ -197,6 +197,114 @@ class BookkeepingTest(unittest.TestCase):
         self.assertEqual(e._local_starting_until, 0.0)
 
 
+class QueueReorderTest(unittest.TestCase):
+    """In-place reordering after the announcer shuffles."""
+
+    def setUp(self):
+        import json as _json
+        import xbmc as _xbmc
+        self.xbmc = _xbmc
+        self.original_rpc = _xbmc.executeJSONRPC
+        self.queue = ['a', 'b', 'c', 'd']
+        self.swaps = []
+
+        def rpc(query):
+            req = _json.loads(query)
+            method, params = req['method'], req.get('params') or {}
+            if method == 'Player.GetActivePlayers':
+                return _json.dumps({'result': [{'playerid': 0,
+                                                'type': 'audio'}]})
+            if method == 'Player.GetProperties':
+                return _json.dumps({'result': {'playlistid': 0,
+                                               'position': 0}})
+            if method == 'Playlist.GetItems':
+                return _json.dumps({'result': {
+                    'items': [{'file': f} for f in self.queue],
+                    'limits': {'total': len(self.queue)}}})
+            if method == 'Playlist.Swap':
+                i, j = params['position1'], params['position2']
+                self.queue[i], self.queue[j] = self.queue[j], self.queue[i]
+                self.swaps.append((i, j))
+                return _json.dumps({'result': 'OK'})
+            return _json.dumps({'error': {'code': -1}})
+
+        _xbmc.executeJSONRPC = rpc
+
+    def tearDown(self):
+        self.xbmc.executeJSONRPC = self.original_rpc
+
+    def _engine(self):
+        e = engine.SyncEngine.__new__(engine.SyncEngine)
+        e._queue_map = {'pa': 'a', 'pb': 'b', 'pc': 'c', 'pd': 'd'}
+        e._queue_order = ['pa', 'pb', 'pc', 'pd']
+        e._queue_index = {'pa': 0, 'pb': 1, 'pc': 2, 'pd': 3}
+        e._queue_playlistid = 0
+        e._party_keys = set()
+        e._local_key = 'b'
+        return e
+
+    def _entries(self, order):
+        return {'playlist': [{'file': k} for k in order]}
+
+    def test_permutes_queue_without_rebuilding(self):
+        e = self._engine()
+        shuffled = ['pd', 'pb', 'pa', 'pc']
+        # 'pb' is the playing track and moves slots, as Kodi's shuffle does
+        self.assertTrue(e._resync_queue(self._entries(shuffled), 'pb'))
+        self.assertEqual(self.queue, ['d', 'b', 'a', 'c'])
+        self.assertTrue(self.swaps)          # reordered by swapping
+        self.assertEqual(e._queue_order, shuffled)
+        self.assertEqual(e._queue_index, {'pd': 0, 'pb': 1,
+                                          'pa': 2, 'pc': 3})
+
+    def test_already_in_order_is_a_no_op(self):
+        e = self._engine()
+        same = ['pa', 'pb', 'pc', 'pd']
+        self.assertTrue(e._resync_queue(self._entries(same), 'pb'))
+        self.assertEqual(self.swaps, [])
+        self.assertEqual(self.queue, ['a', 'b', 'c', 'd'])
+
+    def test_unknown_entry_falls_back(self):
+        e = self._engine()
+        with_new = ['pa', 'pb', 'pc', 'pd', 'pNEW']
+        self.assertFalse(e._resync_queue(self._entries(with_new), 'pb'))
+        self.assertEqual(self.swaps, [])     # queue left untouched
+
+    def test_playing_item_outside_queue_falls_back(self):
+        e = self._engine()
+        self.assertFalse(e._resync_queue(
+            self._entries(['pa', 'pb', 'pc', 'pd']), 'pOTHER'))
+
+    def test_slot_is_resolved_live_not_from_stale_index(self):
+        # the local queue drifted from the shared order; a cached index
+        # would point at the wrong song, so the slot is looked up live
+        e = self._engine()
+        self.queue = ['d', 'c', 'b', 'a']
+        e._queue_index = {'pa': 0, 'pb': 1, 'pc': 2, 'pd': 3}  # stale
+        self.assertEqual(e._queue_slot_of('pa'), (0, 3))
+        self.assertEqual(e._queue_slot_of('pd'), (0, 0))
+
+    def test_slot_missing_when_item_left_the_queue(self):
+        e = self._engine()
+        self.queue = ['b', 'c', 'd']          # 'a' removed locally
+        self.assertEqual(e._queue_slot_of('pa'), (-1, -1))
+        self.assertEqual(e._queue_slot_of('pUNKNOWN'), (-1, -1))
+
+    def test_cursor_identifies_the_playing_item(self):
+        # cursor is at position 0 in the stub — 'a' / party key 'pa'
+        e = self._engine()
+        self.assertTrue(e._cursor_is('pa'))
+        self.assertFalse(e._cursor_is('pb'))
+
+    def test_cursor_beats_a_rewritten_stream_url(self):
+        # the media server handed out a fresh token for the same song:
+        # the resolved URL no longer matches, but the queue cursor does
+        e = self._engine()
+        e._local_key = 'a?token=CHANGED'
+        self.assertNotEqual(e._queue_map['pa'], e._local_key)
+        self.assertTrue(e._cursor_is('pa'))
+
+
 class SingleWriterTest(unittest.TestCase):
     def _engine(self, opened_current, party_keys=frozenset()):
         e = engine.SyncEngine.__new__(engine.SyncEngine)

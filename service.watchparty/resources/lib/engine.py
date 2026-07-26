@@ -120,6 +120,16 @@ def _now_playing_item(player):
         return None
     item = {'file': file,
             'label': xbmc.getInfoLabel('Player.Title') or ''}
+    try:
+        # total length, so followers and the dashboard can show progress
+        duration = player.getTotalTime()
+        if duration and duration > 0:
+            item['duration'] = round(float(duration), 1)
+    except RuntimeError:
+        pass
+    art = xbmc.getInfoLabel('Player.Art(thumb)') or ''
+    if art.startswith(('http://', 'https://')):
+        item['art'] = art  # only shareable if not a local image:// path
     player_id = _active_player_id()
     if player_id is not None:
         result = _json_rpc('Player.GetItem',
@@ -435,6 +445,7 @@ class SyncEngine:
         self._failed_keys = set()  # items that would not play here
         self._member_names = None  # roster baseline for join/leave toasts
         self._open_fallbacks = []  # untried open refs for the current item
+        self._corrections = 0      # drift-correcting seeks we've applied
         self._i_opened_current = False  # we announced the current item
         self._party_keys = set()   # keys belonging to the shared queue
         self._queue_map = {}       # party entry key -> our local key
@@ -647,7 +658,8 @@ class SyncEngine:
                     caching=bool(local_file) and bool(
                         xbmc.getCondVisibility('Player.Caching')),
                     on_item=bool(self._local_key) and
-                    self._local_key == self._last_party_key)
+                    self._local_key == self._last_party_key,
+                    corrections=self._corrections)
                 failures = 0
                 self._last_error = ''
                 self._notify_member_changes(state)
@@ -675,63 +687,103 @@ class SyncEngine:
                 self._write_status(None)
         common.log("engine stopped")
 
-    def _resync_queue(self, item, key):
-        """Realign the whole local queue to a changed shared order
-        without interrupting playback. Kodi's shuffle reorders every
-        slot — the currently playing track included — so the list is
-        rebuilt around whatever is playing here: strip everything
-        else, insert the new head before it, append the new tail."""
-        entries = item.get('playlist') or []
-        shared_order = [e.get('file') or '' for e in entries]
-        if key not in shared_order:
-            return  # current item left the queue; boundary logic copes
-        current = shared_order.index(key)
+    def _live_queue(self):
+        """(playlist_id, files, cursor) as Kodi has the queue *now*.
+
+        Cached positions are never trusted for playback decisions: the
+        local queue can drift from the shared order (a reorder that
+        could not complete, a local shuffle, a manual edit), and acting
+        on a stale index plays whatever else sits in that slot.
+        """
         player_id = _active_player_id()
         if player_id is None:
-            return
+            return -1, [], -1
         props = _json_rpc('Player.GetProperties',
                           {'playerid': player_id,
-                           'properties': ['position', 'playlistid']}) or {}
-        local_pos = props.get('position')
+                           'properties': ['playlistid', 'position']}) or {}
         playlist_id = props.get('playlistid')
-        if not isinstance(local_pos, int) or local_pos < 0 \
-                or not isinstance(playlist_id, int) or playlist_id < 0:
-            return
-        refs = []
-        for entry in entries:
-            ref, local_key = _local_entry_ref(entry)
-            if not ref:
-                return  # unmappable entry; per-boundary repair covers it
-            refs.append((entry.get('file') or '', ref, local_key))
-        total = ((_json_rpc('Playlist.GetItems',
-                            {'playlistid': playlist_id}) or {})
-                 .get('limits') or {}).get('total')
-        if not isinstance(total, int):
-            return
-        # strip everything after, then before, the playing track — it
-        # keeps playing throughout, sliding to index 0
-        for pos in range(total - 1, local_pos, -1):
-            _json_rpc('Playlist.Remove',
-                      {'playlistid': playlist_id, 'position': pos})
-        for _ in range(local_pos):
-            _json_rpc('Playlist.Remove',
-                      {'playlistid': playlist_id, 'position': 0})
-        # rebuild the shared order around it
-        head = [ref for _, ref, _ in refs[:current]]
-        tail = [ref for _, ref, _ in refs[current + 1:]]
-        if head:
-            _json_rpc('Playlist.Insert',
-                      {'playlistid': playlist_id, 'position': 0,
-                       'item': head})
-        if tail:
-            _json_rpc('Playlist.Add',
-                      {'playlistid': playlist_id, 'item': tail})
+        cursor = props.get('position')
+        if not isinstance(playlist_id, int) or playlist_id < 0:
+            return -1, [], -1
+        listing = _json_rpc('Playlist.GetItems',
+                            {'playlistid': playlist_id,
+                             'properties': ['file']}) or {}
+        files = [i.get('file') or '' for i in listing.get('items') or []]
+        return playlist_id, files, (cursor if isinstance(cursor, int)
+                                    else -1)
+
+    def _cursor_is(self, key):
+        """True when the local queue is sitting on the party's item."""
+        want = self._queue_map.get(key)
+        if not want:
+            return False
+        _playlist_id, files, cursor = self._live_queue()
+        return 0 <= cursor < len(files) and files[cursor] == want
+
+    def _queue_slot_of(self, key):
+        """(playlist_id, index) of the party's item in the live local
+        queue, or (-1, -1) when it is not there any more."""
+        want = self._queue_map.get(key)
+        if not want:
+            return -1, -1
+        playlist_id, files, _cursor = self._live_queue()
+        if playlist_id < 0:
+            return -1, -1
+        for index, file in enumerate(files):
+            if file == want:
+                return playlist_id, index
+        return -1, -1
+
+    def _resync_queue(self, item, key):
+        """Permute the local queue into a changed shared order in place.
+
+        Kodi's shuffle reorders every slot, the playing one included.
+        Rather than rebuilding the queue — which either restarts the
+        track or leaves Kodi's play cursor pointing at the wrong row,
+        since the cursor does not follow items inserted in front of it —
+        the list is reordered with Playlist.Swap: the same operation the
+        GUI performs when you move items while music plays, so Kodi
+        keeps the cursor on the playing track and audio never stops.
+
+        Returns True when the queue now matches the shared order.
+        """
+        entries = item.get('playlist') or []
+        shared_order = [e.get('file') or '' for e in entries]
+        if key not in shared_order or not self._queue_map:
+            return False
+        # what the shared order means for this device
+        target = []
+        for party_key in shared_order:
+            local_key = self._queue_map.get(party_key)
+            if not local_key:
+                return False  # entry we never mapped — needs a rebuild
+            target.append(local_key)
+        playlist_id, current, _cursor = self._live_queue()
+        if playlist_id < 0:
+            return False
+        if sorted(current) != sorted(target):
+            return False  # different item set — needs a rebuild
+        # selection sort: each swap puts one item in its final place
+        swaps = 0
+        for index, want in enumerate(target):
+            if current[index] == want:
+                continue
+            try:
+                other = current.index(want, index + 1)
+            except ValueError:
+                return False
+            _json_rpc('Playlist.Swap', {'playlistid': playlist_id,
+                                        'position1': index,
+                                        'position2': other})
+            current[index], current[other] = current[other], current[index]
+            swaps += 1
+        common.log(f"reordered local queue in place ({swaps} swaps)")
         self._queue_order = shared_order
         self._queue_playlistid = playlist_id
-        self._queue_map = {ek: lk for ek, _, lk in refs}
-        self._queue_map[key] = self._local_key or key
-        self._queue_index = {ek: i for i, (ek, _, _) in enumerate(refs)}
-        self._party_keys |= set(shared_order) | {lk for _, _, lk in refs}
+        self._queue_index = {party_key: i
+                             for i, party_key in enumerate(shared_order)}
+        self._party_keys |= set(shared_order) | set(target)
+        return True
 
     def _notify_member_changes(self, state):
         """Toast when someone joins or leaves the party."""
@@ -831,6 +883,13 @@ class SyncEngine:
             (item['file'] == local_file or key == self._local_key
              or (key in self._queue_map
                  and self._queue_map[key] == self._local_key))
+        if not same and local_file and self._queue_order:
+            # While following a queue the playlist's own cursor is the
+            # authority: a media server can hand out a different stream
+            # URL (fresh token) for the same song each time it plays, so
+            # comparing resolved URLs gives false mismatches — and acting
+            # on those is what put the wrong song on followers.
+            same = self._cursor_is(key)
         if same:
             self._queue_jump_pending = ''
 
@@ -858,15 +917,26 @@ class SyncEngine:
                 if self._queue_jump_pending != key:
                     self._queue_jump_pending = key
                     return
-                self._queue_jump_pending = ''
-                self.suppress.arm('open')
-                self.suppress.arm('stop')
-                self._opened_key = key
-                self._opening_until = time.time() + OPEN_GRACE
-                _json_rpc('Player.Open',
-                          {'item': {'playlistid': self._queue_playlistid,
-                                    'position': self._queue_index[key]}})
-                return
+                # Resolve the slot from the live playlist rather than the
+                # cached index: if the local queue has drifted from the
+                # shared order at all, a cached position points at some
+                # other song — and jumping there plays the wrong song.
+                playlist_id, position = self._queue_slot_of(key)
+                if position < 0:
+                    common.log("queue slot for the party item is gone — "
+                               "rebuilding", xbmc.LOGWARNING)
+                    self._queue_index = {}
+                    self._queue_order = []
+                else:
+                    self._queue_jump_pending = ''
+                    self.suppress.arm('open')
+                    self.suppress.arm('stop')
+                    self._opened_key = key
+                    self._opening_until = time.time() + OPEN_GRACE
+                    _json_rpc('Player.Open',
+                              {'item': {'playlistid': playlist_id,
+                                        'position': position}})
+                    return
 
             # A shared queue whose entries all map to something playable
             # here: line it up locally (by library id where matched, so
@@ -958,8 +1028,15 @@ class SyncEngine:
         if self._queue_order and item.get('playlist'):
             shared_order = [e.get('file') or '' for e in item['playlist']]
             if shared_order and shared_order != self._queue_order:
-                common.log("queue order changed — realigning local queue")
-                self._resync_queue(item, key)
+                common.log("queue order changed — reordering local queue")
+                if not self._resync_queue(item, key):
+                    # can't permute (item set differs, or we never mapped
+                    # an entry): drop the stale index so the next track
+                    # boundary rebuilds the queue, and stop retrying.
+                    common.log("in-place reorder not possible — will "
+                               "rebuild at the next item", xbmc.LOGWARNING)
+                    self._queue_order = shared_order
+                    self._queue_index = {}
 
         # Repeat mode follows the party (the item's announcer owns it);
         # shuffle stays OFF while following a shared queue — the
@@ -991,6 +1068,7 @@ class SyncEngine:
                 and time.time() - self._last_correction > CORRECTION_COOLDOWN:
             common.log(f"drift {drift:+.1f}s — correcting to {expected:.1f}")
             self._last_correction = time.time()
+            self._corrections += 1
             self._seek(expected)
 
     # -- status for the UI -------------------------------------------------

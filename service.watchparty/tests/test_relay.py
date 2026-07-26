@@ -187,6 +187,58 @@ class EmbeddedRelayTest(unittest.TestCase):
         self.assertIsNone(restored.buffer_hold)
         self.assertEqual(len(restored.members), 0)
 
+    def test_status_json_exposes_dashboard_fields(self):
+        rich = dict(ITEM, duration=612.0, artist=['Ed Sheeran'],
+                    album='=', repeat='all')
+        self.host.command('open', position=30.0, item=rich, lock=True)
+        self.guest.poll(24.0, False, 'x', caching=True, on_item=True,
+                        corrections=2)
+        url = f'http://127.0.0.1:{self.port}/status.json'
+        with urllib.request.urlopen(url) as resp:
+            data = json.load(resp)
+        self.assertEqual(data['protocol'], 3)
+        self.assertGreaterEqual(data['uptime'], 0)
+        room = data['rooms'][0]
+        # item detail for the now-playing block
+        self.assertEqual(room['now']['title'], 'Inception')
+        self.assertEqual(room['now']['artist'], ['Ed Sheeran'])
+        self.assertEqual(room['now']['repeat'], 'all')
+        self.assertEqual(room['duration'], 612.0)
+        self.assertIsNotNone(room['seq'])
+        # flat label kept for older clients
+        self.assertEqual(room['item'], 'Inception')
+        # names resolved, ids never leaked
+        self.assertEqual(room['locked_by_name'], 'host')
+        self.assertEqual(room['buffer_hold_name'], 'guest')
+        self.assertNotIn('locked_by', room)
+        self.assertEqual(room['corrections'], 2)
+        self.assertGreaterEqual(room['commands_per_min'], 1)
+        guest = [m for m in room['members'] if m['name'] == 'guest'][0]
+        self.assertTrue(guest['caching'])
+        self.assertTrue(guest['on_item'])
+        self.assertIsNotNone(guest['drift'])
+        self.assertLess(guest['age'], 5)
+        host = [m for m in room['members'] if m['name'] == 'host'][0]
+        self.assertTrue(host['is_host'])
+
+    def test_drift_is_none_off_item(self):
+        self.host.command('open', position=0.0, item=ITEM)
+        self.guest.poll(0.0, False, '', on_item=False)
+        url = f'http://127.0.0.1:{self.port}/status.json'
+        with urllib.request.urlopen(url) as resp:
+            room = json.load(resp)['rooms'][0]
+        guest = [m for m in room['members'] if m['name'] == 'guest'][0]
+        self.assertIsNone(guest['drift'])
+
+    def test_root_serves_the_dashboard(self):
+        base = f'http://127.0.0.1:{self.port}'
+        with urllib.request.urlopen(base + '/') as resp:
+            body = resp.read().decode()
+            self.assertIn('text/html', resp.headers.get('Content-Type'))
+        self.assertIn('Watch Party relay', body)
+        with urllib.request.urlopen(base + '/status') as resp:
+            self.assertEqual(body, resp.read().decode())
+
     def test_embedded_dashboard(self):
         # the embedded (in-Kodi) relay serves the same dashboard as the
         # standalone one, scoped to its single room, code masked
