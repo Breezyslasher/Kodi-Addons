@@ -13,6 +13,75 @@ playback, timing and the UI.
 
 ---
 
+## How to run this as a bug hunt
+
+You do not have to go top to bottom. Bugs are not evenly spread — this
+order front-loads the places they have actually turned up.
+
+**Pass 1 — smoke (15 min).** WP-030, WP-070→WP-076, WP-081, WP-150.
+If any of these fail, stop and report; everything else builds on them.
+
+**Pass 2 — the risky half (60–90 min).** §10 queues/repeat/shuffle, §8
+content types you actually use, §9 host controls, §11 resilience. This is
+where the last five bugs of this project came from.
+
+**Pass 3 — the rest (45 min).** §1–3 UI and settings, §5–6 relay and
+remote, §12 dashboard, §13 housekeeping.
+
+**Pass 4 — soak.** WP-174: leave a long queue running for an evening and
+check sync in the morning. Slow leaks (drift accumulation, queue state
+rot, memory) only show up here.
+
+### Where I would look first
+
+Honest assessment of what is least proven, roughly most to least likely
+to still bite:
+
+1. **Repeat-one propagation (WP-128).** Kodi may loop a track without a
+   fresh AV-start; if it does, the announcer never announces the loop and
+   followers can drift. Least verified of the repeat modes.
+2. **Shuffle order fidelity (WP-126/127/135).** Followers reorder their
+   queue to match the announcer, which assumes Kodi reports the shuffled
+   order via `Playlist.GetItems`. If it reports the pre-shuffle order on
+   your build, followers reorder to the wrong sequence.
+3. **Mixed-content queues (WP-134).** A queue holding both music and
+   video picks one playlist id; a mixed queue is untested territory.
+4. **Cross-server Plex fallback (WP-097).** Works by letting the first
+   open fail — timing-dependent, and the failure path is the least
+   travelled code in the follow logic.
+5. **Reboot / update mid-party (WP-006, WP-142).** Session file survives,
+   but what the engine does on a cold start into a live party is not
+   verified.
+6. **Three or more members (WP-147).** Everything was built and tested
+   with two; buffer hold and lock with 3+ members are logically sound but
+   unproven.
+7. **Long queues (WP-133).** The 100-entry cap and the per-entry library
+   matching cost are untested at scale — watch for a stall when a big
+   album is shared or reordered.
+
+### Known limits — not bugs, do not chase
+
+- **Live TV / PVR (WP-100)** is unsupported: channel ids are per-device
+  and the position anchor is meaningless for a broadcast. Expect noise;
+  only report it if it breaks the *other* device.
+- **Playback speed is not synced.** Fast-forward on one device is not
+  mirrored; drift correction snaps it back afterwards.
+- **Plex artwork shows the placeholder (WP-163)** by design — those URLs
+  carry a token that must not go on an unauthenticated page.
+- **Followers' queue windows may differ visually** from the announcer's
+  while a queue is active, as long as the playing item and the next item
+  match.
+- **Kodi labels the addon a "Program add-on"** — that is what the
+  launchable-script extension point does; the service still runs.
+
+### Results log
+
+| Date | Build (addon / relay) | Passes run | Failures (case ids) |
+|---|---|---|---|
+|  |  |  |  |
+
+---
+
 ## 0. Rig
 
 You need at least two Kodi devices. Several cases need three, and the
