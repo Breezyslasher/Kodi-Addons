@@ -23,6 +23,7 @@ EVENTS_FILE = os.path.join(ADDON_DATA, 'events.json')
 # Keep this list in sync with SUPPORTED_EVENTS in resources/lib/service.py.
 EVENT_NAMES = [
     # Playback
+    ('playback_open',           'Playback opening'),
     ('playback_start',          'Playback started'),
     ('playback_stop',           'Playback stopped'),
     ('playback_pause',          'Playback paused'),
@@ -33,6 +34,11 @@ EVENT_NAMES = [
     ('playback_av_change',      'Playback stream changed'),
     ('playback_queue_next',     'Next item queued'),
     ('playback_error',          'Playback error'),
+    ('player_property_changed', 'Player property changed'),
+    # Playlist
+    ('playlist_add',            'Playlist item added'),
+    ('playlist_remove',         'Playlist item removed'),
+    ('playlist_clear',          'Playlist cleared'),
     # Screensaver / display power
     ('screensaver_on',          'Screensaver activated'),
     ('screensaver_off',         'Screensaver deactivated'),
@@ -42,6 +48,8 @@ EVENT_NAMES = [
     ('system_sleep',            'System sleep'),
     ('system_wake',             'System wake'),
     ('system_quit',             'System quitting'),
+    ('system_restart',          'System restart'),
+    ('system_low_battery',      'Low battery'),
     ('kodi_start',              'Kodi started'),
     ('kodi_stop',               'Kodi stopping'),
     # Library
@@ -49,6 +57,19 @@ EVENT_NAMES = [
     ('library_scan_finish',     'Library scan finished'),
     ('library_clean_start',     'Library clean started'),
     ('library_clean_finish',    'Library clean finished'),
+    ('database_scan_start',     'Database scan started'),
+    ('database_updated',        'Database updated'),
+    ('video_library_update',    'Video library updated'),
+    ('video_library_remove',    'Video library item removed'),
+    ('video_library_export',    'Video library exported'),
+    ('video_library_refresh',   'Video library refreshed'),
+    ('audio_library_update',    'Audio library updated'),
+    ('audio_library_remove',    'Audio library item removed'),
+    ('audio_library_export',    'Audio library exported'),
+    # Input / application
+    ('input_requested',         'Input requested'),
+    ('input_finished',          'Input finished'),
+    ('volume_changed',          'Volume changed'),
     # Misc
     ('settings_changed',        'Settings changed'),
 ]
