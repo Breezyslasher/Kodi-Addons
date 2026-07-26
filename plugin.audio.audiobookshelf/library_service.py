@@ -327,16 +327,26 @@ class AudioBookShelfLibraryService:
 			xbmc.log(f"Error syncing playback session: {str(e)}", xbmc.LOGDEBUG)
 			return None
 
-	def close_playback_session(self, session_id):
+	def close_playback_session(self, session_id, current_time=None, duration=None, time_listened=0):
 		"""Close a playback session on the server.
 
 		Route is /api/session/{id}/close - there is no
-		/api/session/local/{id}/close.
+		/api/session/local/{id}/close. The server accepts an optional sync
+		body here, so passing the final position records it as part of
+		closing instead of needing a separate sync call.
 		"""
 		endpoint = f"/api/session/{session_id}/close"
 
+		payload = None
+		if current_time is not None and duration:
+			payload = {
+				"currentTime": current_time,
+				"duration": duration,
+				"timeListened": time_listened
+			}
+
 		try:
-			response = requests.post(self.base_url + endpoint, headers=self.headers)
+			response = requests.post(self.base_url + endpoint, headers=self.headers, json=payload)
 			response.raise_for_status()
 			xbmc.log(f"Closed playback session: {session_id}", xbmc.LOGINFO)
 			return True
