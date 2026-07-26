@@ -364,8 +364,13 @@ function roomHtml(r,threshold){
     esc(r.buffer_hold_name)+'</h3><p>Everyone paused at '+fmt(r.position)+
     ' \u00b7 '+since+'s so far. Resumes automatically when caching '+
     'clears.</p></div>'}
- var art=n.art?'<img class="art" src="'+esc(n.art)+'" alt="">':
-   '<div class="art">&#9834;</div>';
+ // art can be unreachable from wherever the dashboard is open (a LAN
+ // media server, or http art on an https page) — fall back to the
+ // placeholder instead of leaving a broken image
+ var glyph=(n.type=='song'?'&#9834;':'&#9654;');
+ var art=n.art?'<img class="art" src="'+esc(n.art)+'" alt="" '+
+   'onerror="this.outerHTML=\\'<div class=&quot;art&quot;>'+glyph+
+   '</div>\\'">':'<div class="art">'+glyph+'</div>';
  var pill=r.paused?'<span class="pill warn">&#10073;&#10073; PAUSED</span>':
    '<span class="pill ok">&#9654; PLAYING</span>';
  var title=n.title||r.item||'Nothing playing';
