@@ -230,6 +230,15 @@ class EmbeddedRelayTest(unittest.TestCase):
         guest = [m for m in room['members'] if m['name'] == 'guest'][0]
         self.assertIsNone(guest['drift'])
 
+    def test_root_serves_the_dashboard(self):
+        base = f'http://127.0.0.1:{self.port}'
+        with urllib.request.urlopen(base + '/') as resp:
+            body = resp.read().decode()
+            self.assertIn('text/html', resp.headers.get('Content-Type'))
+        self.assertIn('Watch Party relay', body)
+        with urllib.request.urlopen(base + '/status') as resp:
+            self.assertEqual(body, resp.read().decode())
+
     def test_embedded_dashboard(self):
         # the embedded (in-Kodi) relay serves the same dashboard as the
         # standalone one, scoped to its single room, code masked

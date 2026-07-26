@@ -127,7 +127,8 @@ docker build -t kodi-watchparty-relay . && docker run -d -p 8765:8765 --restart 
   addon") when it joins a relay that doesn't speak its protocol version,
   so a stale container is a visible message instead of silently missing
   features.
-- **Dashboard**: open `/status` in a browser for a live monitoring view —
+- **Dashboard**: open the relay's address in a browser (the dashboard is
+  the landing page; `/status` is the same page) for a live monitoring view —
   now playing with a sync timeline (every member plotted against the
   server anchor, drift called out past the threshold), member list with
   buffering / locked / no-poll states, relay health (poll round-trip,

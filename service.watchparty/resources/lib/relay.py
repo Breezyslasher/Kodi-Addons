@@ -829,7 +829,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, {'ok': True, 'app': 'watchparty',
                              'protocol': PROTOCOL_VERSION,
                              'server_time': time.time()})
-        elif path == '/status':
+        elif path in ('/', '/status'):
+            # the dashboard is the landing page: typing the relay's
+            # address into a browser should show the party, not JSON
             body = DASH_HTML.encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
@@ -858,18 +860,6 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header('Cache-Control', 'max-age=86400')
             self.end_headers()
             self.wfile.write(body)
-        elif path == '/':
-            # friendly landing for humans checking the relay in a browser
-            self._send(200, {
-                'ok': True,
-                'app': 'watchparty',
-                'message': 'Watch Party relay is running. In the Kodi '
-                           'addon, choose "Join a party" and enter this '
-                           "server's address plus a room code.",
-                'health': '/ping',
-                'dashboard': '/status',
-                'server_time': time.time(),
-            })
         else:
             self._send(404, {'ok': False, 'error': 'not found'})
 
