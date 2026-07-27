@@ -1,12 +1,18 @@
 # Watch Party — testing
 
-**The checklist itself is an issue template.** Open a new issue with
-*Testing Checklist — Watch Party* and tick items off there, so each test
-pass is recorded, dated and linkable. It covers every feature: 434 checks
-across installation, menus, settings, both relay flavours, persistence,
-remote access, sync, content types, queues, repeat/shuffle, control lock,
-buffer hold, resilience, the dashboard, performance, and a regression
-list of every bug fixed so far.
+**The checklists are issue templates**, so each pass is recorded, dated
+and linkable. There are two:
+
+| Template | Size | When |
+|---|---|---|
+| *Smoke Test — Watch Party* | 47 checks, ~20 min | after every change, before shipping |
+| *Testing Checklist — Watch Party* | 434 checks, ~2–3 h | before a release, or when something structural changed |
+
+Run the smoke test by default — every line in it is something that has
+broken at least once, and it ends with the regression list. Reach for the
+full checklist when you touch the relay protocol, the follow logic or the
+dashboard, or when you want a clean bill of health before telling people
+to install it.
 
 This page is the companion: how to run a pass, and what to watch.
 

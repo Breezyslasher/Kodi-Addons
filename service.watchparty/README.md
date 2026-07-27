@@ -192,12 +192,12 @@ copy.
 
 ## Testing
 
-The full feature checklist is an issue template — open a new issue with
-*Testing Checklist — Watch Party* and tick off the 434 checks as you go,
-so each pass is recorded and linkable. [`TESTING.md`](TESTING.md) is the
-companion: rig, suggested order, where bugs are most likely, and what is
-a known limit rather than a bug. Problems go in the *Watch Party — bug
-report* template.
+Two checklists ship as issue templates, so each pass is recorded and
+linkable: *Smoke Test — Watch Party* (47 checks, ~20 min, run it after
+every change) and *Testing Checklist — Watch Party* (434 checks, for
+releases). [`TESTING.md`](TESTING.md) is the companion: rig, suggested
+order, where bugs are most likely, and what is a known limit rather than
+a bug. Problems go in the *Watch Party — bug report* template.
 
 The automated suite (relay protocol + engine decision logic, no Kodi
 needed) runs on every PR:
