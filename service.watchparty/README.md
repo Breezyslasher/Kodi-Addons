@@ -185,6 +185,22 @@ copy.
   host quits, the party ends. A standalone relay keeps the room alive
   independently of any member.
 
+## Testing
+
+The full feature checklist is an issue template — open a new issue with
+*Testing Checklist — Watch Party* and tick off the 434 checks as you go,
+so each pass is recorded and linkable. [`TESTING.md`](TESTING.md) is the
+companion: rig, suggested order, where bugs are most likely, and what is
+a known limit rather than a bug. Problems go in the *Watch Party — bug
+report* template.
+
+The automated suite (relay protocol + engine decision logic, no Kodi
+needed) runs on every PR:
+
+```
+python3 -m unittest discover service.watchparty/tests
+```
+
 ## Requirements
 
 - Kodi 19 (Matrix) or later on all devices

@@ -68,6 +68,37 @@ ITEM_PROPS = ['file', 'uniqueid', 'title', 'year', 'showtitle', 'season',
               'episode', 'artist', 'album', 'musicbrainztrackid']
 
 
+# Query parameters that carry a credential. Artwork URLs holding one are
+# never shared: the relay dashboard is unauthenticated, and publishing a
+# media server token there would be worse than the room code it masks.
+_ART_SECRETS = ('x-plex-token', 'token', 'api_key', 'apikey', 'auth',
+                'password', 'session', 'sig', 'signature')
+
+
+def _shareable_art(art):
+    """A poster URL other devices can load, or ''.
+
+    Kodi wraps art paths as image://<urlencoded>/ — unwrap that so
+    library and addon artwork is usable, then keep only http(s) URLs
+    without credentials in them.
+    """
+    if not art:
+        return ''
+    if art.startswith('image://'):
+        from urllib.parse import unquote
+        art = unquote(art[len('image://'):]).rstrip('/')
+    if not art.startswith(('http://', 'https://')):
+        return ''  # a local path means nothing on another device
+    from urllib.parse import urlsplit, parse_qsl
+    try:
+        query = parse_qsl(urlsplit(art).query)
+    except Exception:
+        return ''
+    if any(name.lower() in _ART_SECRETS for name, _ in query):
+        return ''
+    return art
+
+
 def _identity(info):
     """Library-identity fields from a JSON-RPC item description, so other
     devices can match their own copy of the same content."""
@@ -127,9 +158,10 @@ def _now_playing_item(player):
             item['duration'] = round(float(duration), 1)
     except RuntimeError:
         pass
-    art = xbmc.getInfoLabel('Player.Art(thumb)') or ''
-    if art.startswith(('http://', 'https://')):
-        item['art'] = art  # only shareable if not a local image:// path
+    art = _shareable_art(xbmc.getInfoLabel('Player.Art(thumb)')
+                         or xbmc.getInfoLabel('Player.Art(poster)') or '')
+    if art:
+        item['art'] = art
     player_id = _active_player_id()
     if player_id is not None:
         result = _json_rpc('Player.GetItem',
