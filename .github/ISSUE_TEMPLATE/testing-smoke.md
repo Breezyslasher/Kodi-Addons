@@ -6,12 +6,17 @@ labels: testing, service.watchparty
 assignees: ''
 ---
 
-| Mark | Meaning |
+**How to mark:** a GitHub checkbox is only ticked or unticked, so tick it
+to mean *"I ran this"* and put the result after the text.
+
+| Written as | Meaning |
 |---|---|
-| ✓ | Working |
-| ✗ | Broken — open a bug report and link it here |
-| ⚠ | Works with caveats — note them inline |
-| `- [ ]` | Untested |
+| `- [ ] Pause on A → B pauses` | not tested yet |
+| `- [x] Pause on A → B pauses` | ran it, works |
+| `- [x] Pause on A → B pauses ✗ #42` | ran it, broken — link the bug report |
+| `- [x] Pause on A → B pauses ⚠ 3s late` | works, but note the caveat |
+
+Anything left unticked at the end is untested, not passed.
 
 **~20 minutes, two devices.** Everything here has broken at least once.
 For a full sweep use *Testing Checklist — Watch Party* instead.
