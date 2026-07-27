@@ -195,8 +195,11 @@ DASH_HTML = """<!doctype html>
  /* width only: no max-height and no object-fit, so the image is never
     fitted into a box it does not match — that is what puts bars down
     the sides of a poster or above and below a wide still */
+ /* align-self is essential: .np is a flex row, and flex's default
+    align-items:stretch pulls a height:auto image to the row's height,
+    which squashes or stretches it out of shape */
  img.art{width:150px;height:auto;border-radius:10px;flex:none;
-         display:block}
+         display:block;align-self:flex-start}
  div.art{width:150px;height:222px;border-radius:10px;background:#1d2026;
          border:1px dashed #33373f;flex:none;display:flex;
          align-items:center;justify-content:center;color:#3a3f47;
