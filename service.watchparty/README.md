@@ -187,10 +187,12 @@ copy.
 
 ## Testing
 
-[`TESTING.md`](TESTING.md) is a full manual pass over every feature —
-122 numbered cases covering setup, sync, content types, queues, host
-controls, resilience and the dashboard. Bug reports use the *Watch Party
-bug report* issue template and should quote the case id.
+The full feature checklist is an issue template — open a new issue with
+*Testing Checklist — Watch Party* and tick off the 434 checks as you go,
+so each pass is recorded and linkable. [`TESTING.md`](TESTING.md) is the
+companion: rig, suggested order, where bugs are most likely, and what is
+a known limit rather than a bug. Problems go in the *Watch Party — bug
+report* template.
 
 The automated suite (relay protocol + engine decision logic, no Kodi
 needed) runs on every PR:
