@@ -93,15 +93,19 @@ def _art_source(art):
         art = unquote(art[len('image://'):]).rstrip('/')
     if not art.startswith(('http://', 'https://')):
         return ''
-    return _shrink_art(art)
+    return art
 
 
 def _shrink_art(url):
     """Ask a transcoding art endpoint for a dashboard-sized image.
 
-    Media servers hand out full-size art (Plex defaults to 1920px);
-    the dashboard shows it at ~132px, so clamping the request keeps
-    each upload small.
+    Two reasons to rewrite the request. Media servers hand out full-size
+    art (Kodi asks Plex for 1920px) and the dashboard shows it at ~150px,
+    so a clamp keeps each upload small. More importantly Kodi asks for a
+    *square* box, and a server fitting wide or tall art into a square box
+    pads it — those bars are then baked into the image and no amount of
+    CSS removes them. Asking for a width only lets the server keep the
+    artwork's own shape.
     """
     from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
     try:
@@ -109,18 +113,34 @@ def _shrink_art(url):
         query = parse_qsl(parts.query, keep_blank_values=True)
     except Exception:
         return url
+    # YouTube's default/hqdefault/sddefault thumbnails are 4:3 with black
+    # bars baked in by YouTube; mqdefault is the same frame at a clean
+    # 16:9 and always exists.
+    if parts.netloc.endswith(('ytimg.com', 'youtube.com')):
+        for boxed in ('/hqdefault.jpg', '/sddefault.jpg', '/default.jpg'):
+            if parts.path.endswith(boxed):
+                return urlunsplit((
+                    parts.scheme, parts.netloc,
+                    parts.path[:-len(boxed)] + '/mqdefault.jpg',
+                    parts.query, parts.fragment))
     if not any(name in ('width', 'height') for name, _ in query):
         return url
-    clamped = []
+    sizes = {name: value for name, value in query
+             if name in ('width', 'height')}
+    square = (len(sizes) == 2
+              and sizes.get('width') == sizes.get('height'))
+    rebuilt = []
     for name, value in query:
+        if name == 'height' and square:
+            continue  # drop it: width alone keeps the real aspect
         if name in ('width', 'height'):
             try:
                 value = str(min(int(value), ART_PREVIEW_PX))
             except (TypeError, ValueError):
                 pass
-        clamped.append((name, value))
+        rebuilt.append((name, value))
     return urlunsplit((parts.scheme, parts.netloc, parts.path,
-                       urlencode(clamped), parts.fragment))
+                       urlencode(rebuilt), parts.fragment))
 
 
 def _fetch_art(url):
@@ -763,7 +783,12 @@ class SyncEngine:
             # bytes so the dashboard never sees them.
             if art_src and art_src != self._art_sent:
                 self._art_sent = art_src
-                content_type, data = _fetch_art(art_src)
+                # preferred request first, the server's own URL second so
+                # a server that insists on both dimensions still gives us
+                # something rather than nothing
+                content_type, data = _fetch_art(_shrink_art(art_src))
+                if not data:
+                    content_type, data = _fetch_art(art_src)
                 if data:
                     try:
                         self.client.upload_art(content_type, data)
