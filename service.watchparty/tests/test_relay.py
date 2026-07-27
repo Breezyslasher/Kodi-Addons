@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 import unittest
+import urllib.error
 import urllib.request
 
 ADDON_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -186,6 +187,36 @@ class EmbeddedRelayTest(unittest.TestCase):
         self.assertIsNone(restored.locked_by)
         self.assertIsNone(restored.buffer_hold)
         self.assertEqual(len(restored.members), 0)
+
+    def test_art_upload_and_serving(self):
+        png = (b'\x89PNG\r\n\x1a\n' + b'\x00' * 64)
+        self.host.command('open', position=0.0, item=ITEM)
+        path = self.host.upload_art('image/png', png)
+        self.assertTrue(path.startswith('/art/'))
+        # the opaque id must not be derived from the room code
+        self.assertNotIn('TEST', path)
+        base = f'http://127.0.0.1:{self.port}'
+        with urllib.request.urlopen(base + path) as resp:
+            self.assertEqual(resp.read(), png)
+            self.assertEqual(resp.headers.get('Content-Type'), 'image/png')
+        # and the dashboard is pointed at it
+        with urllib.request.urlopen(base + '/status.json') as resp:
+            room = json.load(resp)['rooms'][0]
+        self.assertEqual(room['now']['art_url'], path)
+
+    def test_art_rejects_non_images_and_unknown_rooms(self):
+        with self.assertRaises(RelayError):
+            self.host.upload_art('text/html', b'<script>alert(1)</script>')
+        stranger = RelayClient('127.0.0.1', self.port, 'WRONG')
+        stranger.member_id = 'nobody'
+        with self.assertRaises(RelayError):
+            stranger.upload_art('image/png', b'\x89PNG\r\n\x1a\n')
+
+    def test_unknown_art_id_is_404(self):
+        url = f'http://127.0.0.1:{self.port}/art/deadbeef'
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            urllib.request.urlopen(url)
+        self.assertEqual(ctx.exception.code, 404)
 
     def test_status_json_exposes_dashboard_fields(self):
         rich = dict(ITEM, duration=612.0, artist=['Ed Sheeran'],

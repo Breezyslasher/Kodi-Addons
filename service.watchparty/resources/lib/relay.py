@@ -34,6 +34,7 @@ ICON_PATH = os.path.join(os.path.dirname(os.path.dirname(
 
 MEMBER_TIMEOUT = 15.0    # seconds without a poll before a member is pruned
 MAX_BODY = 64 * 1024
+MAX_ART = 1024 * 1024    # uploaded cover art, per room
 
 # Bumped whenever the protocol gains features. 1 = original release,
 # 2 = buffer hold, control lock, library-id item fields,
@@ -75,6 +76,10 @@ def rooms_stats(rooms, show_codes=False):
             detail['queue_pos'] = item.get('playlist_pos')
             detail['repeat'] = item.get('repeat') or 'off'
             detail['shuffled'] = bool(item.get('shuffled'))
+            # art the relay holds itself — works for viewers who could
+            # never reach the origin, and never carries its credentials
+            art_id = snap.get('art_id')
+            detail['art_url'] = ('/art/' + art_id) if art_id else None
         out.append({
             'room': code if show_codes else mask_code(code),
             'members': [
@@ -368,7 +373,10 @@ function roomHtml(r,threshold){
  // media server, or http art on an https page) — fall back to the
  // placeholder instead of leaving a broken image
  var glyph=(n.type=='song'?'&#9834;':'&#9654;');
- var art=n.art?'<img class="art" src="'+esc(n.art)+'" alt="" '+
+ // prefer art the relay holds: reachable from anywhere, unlike an
+ // origin URL that may point at someone else's LAN
+ var src=n.art_url||n.art;
+ var art=src?'<img class="art" src="'+esc(src)+'" alt="" '+
    'onerror="this.outerHTML=\\'<div class=&quot;art&quot;>'+glyph+
    '</div>\\'">':'<div class="art">'+glyph+'</div>';
  var pill=r.paused?'<span class="pill warn">&#10073;&#10073; PAUSED</span>':
@@ -510,6 +518,10 @@ class RoomState:
         self.buffer_hold = None  # member we auto-paused for, or None
         self.buffer_hold_since = 0.0
         self.command_times = []  # recent command timestamps, for /status
+        # cover art bytes uploaded by the announcer, so the dashboard can
+        # show art the viewer could never fetch itself (a LAN-only media
+        # server) without ever handling that server's credentials
+        self.art = None          # (art_id, content_type, bytes)
 
     # -- members -----------------------------------------------------------
 
@@ -735,6 +747,23 @@ class RoomState:
         room.buffer_hold = None
         return room
 
+    def set_art(self, member_id, content_type, data):
+        """Store cover art for the current item. The id is opaque —
+        deriving it from the room code would leak the code on a page
+        that deliberately masks it."""
+        with self.lock:
+            if member_id not in self.members:
+                return None
+            art_id = uuid.uuid4().hex[:16]
+            self.art = (art_id, content_type, data)
+            return art_id
+
+    def get_art(self, art_id):
+        art = self.art
+        if art and art[0] == art_id:
+            return art[1], art[2]
+        return None, None
+
     def snapshot(self):
         now = time.time()
         with self.lock:
@@ -757,6 +786,7 @@ class RoomState:
                 'buffer_hold_name': names.get(self.buffer_hold),
                 'buffer_hold_since': (self.buffer_hold_since
                                       if self.buffer_hold else 0.0),
+                'art_id': self.art[0] if self.art else None,
                 'commands_per_min': len(self.command_times),
                 'corrections': sum(m.get('corrections') or 0
                                    for m in self.members.values()),
@@ -850,6 +880,20 @@ class _Handler(BaseHTTPRequestHandler):
                              'protocol': PROTOCOL_VERSION,
                              'uptime': time.time() - START_TIME,
                              'server_time': time.time()})
+        elif path.startswith('/art/'):
+            art_id = path[len('/art/'):]
+            for _code, room in self.iter_rooms():
+                content_type, data = room.get_art(art_id)
+                if data:
+                    self.send_response(200)
+                    self.send_header('Content-Type', content_type)
+                    self.send_header('Content-Length', str(len(data)))
+                    # ids are per upload, so this can cache hard
+                    self.send_header('Cache-Control', 'max-age=3600')
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+            self._send(404, {'ok': False, 'error': 'no art'})
         elif path == '/icon.png':
             # present next to the addon; absent in the slim relay image,
             # where the page falls back to a drawn mark
@@ -868,7 +912,40 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self._send(404, {'ok': False, 'error': 'not found'})
 
+    def _handle_art_upload(self):
+        """Raw image bytes from the announcer — kept out of the JSON
+        path because artwork is far larger than a control message."""
+        try:
+            length = int(self.headers.get('Content-Length') or 0)
+        except ValueError:
+            length = 0
+        if length <= 0 or length > MAX_ART:
+            self._send(413, {'ok': False, 'error': 'bad art size'})
+            return
+        room = self.lookup_room(str(self.headers.get('X-Room') or ''))
+        if not isinstance(room, RoomState):
+            # drain so the connection can be reused
+            self.rfile.read(length)
+            self._send(403, {'ok': False, 'error': room or 'wrong room'})
+            return
+        content_type = self.headers.get('Content-Type') or ''
+        if not content_type.startswith('image/'):
+            self.rfile.read(length)
+            self._send(400, {'ok': False, 'error': 'not an image'})
+            return
+        data = self.rfile.read(length)
+        art_id = room.set_art(str(self.headers.get('X-Member') or ''),
+                              content_type, data)
+        if not art_id:
+            self._send(410, {'ok': False, 'error': 'not a member'})
+            return
+        self._send(200, {'ok': True, 'art': '/art/' + art_id,
+                         'server_time': time.time()})
+
     def do_POST(self):
+        if self.path.split('?', 1)[0] == '/art':
+            self._handle_art_upload()
+            return
         data = self._read_body()
         if data is None:
             self._send(400, {'ok': False, 'error': 'bad request'})

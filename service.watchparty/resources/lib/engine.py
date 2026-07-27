@@ -75,6 +75,74 @@ _ART_SECRETS = ('x-plex-token', 'token', 'api_key', 'apikey', 'auth',
                 'password', 'session', 'sig', 'signature')
 
 
+MAX_ART_BYTES = 1024 * 1024
+ART_PREVIEW_PX = 640
+
+
+def _art_source(art):
+    """Any http(s) artwork URL this device can fetch, or ''.
+
+    Unlike _shareable_art this keeps credentialed URLs — they are only
+    ever used locally, to fetch bytes for upload, never published.
+    """
+    if not art:
+        return ''
+    if art.startswith('image://'):
+        from urllib.parse import unquote
+        art = unquote(art[len('image://'):]).rstrip('/')
+    if not art.startswith(('http://', 'https://')):
+        return ''
+    return _shrink_art(art)
+
+
+def _shrink_art(url):
+    """Ask a transcoding art endpoint for a dashboard-sized image.
+
+    Media servers hand out full-size art (Plex defaults to 1920px);
+    the dashboard shows it at ~132px, so clamping the request keeps
+    each upload small.
+    """
+    from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+    try:
+        parts = urlsplit(url)
+        query = parse_qsl(parts.query, keep_blank_values=True)
+    except Exception:
+        return url
+    if not any(name in ('width', 'height') for name, _ in query):
+        return url
+    clamped = []
+    for name, value in query:
+        if name in ('width', 'height'):
+            try:
+                value = str(min(int(value), ART_PREVIEW_PX))
+            except (TypeError, ValueError):
+                pass
+        clamped.append((name, value))
+    return urlunsplit((parts.scheme, parts.netloc, parts.path,
+                       urlencode(clamped), parts.fragment))
+
+
+def _fetch_art(url):
+    """(content_type, bytes) for artwork, or (None, None)."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(
+            url, headers={'User-Agent': 'WatchParty/1.0 (Kodi addon)'})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            content_type = (resp.headers.get('Content-Type')
+                            or 'image/jpeg').split(';')[0].strip()
+            if not content_type.startswith('image/'):
+                return None, None
+            data = resp.read(MAX_ART_BYTES + 1)
+    except Exception as e:
+        common.log(f"art fetch failed: {e}", xbmc.LOGDEBUG)
+        return None, None
+    if not data or len(data) > MAX_ART_BYTES:
+        common.log('art too large to share', xbmc.LOGDEBUG)
+        return None, None
+    return content_type, data
+
+
 def _shareable_art(art):
     """A poster URL other devices can load, or ''.
 
@@ -158,10 +226,14 @@ def _now_playing_item(player):
             item['duration'] = round(float(duration), 1)
     except RuntimeError:
         pass
-    art = _shareable_art(xbmc.getInfoLabel('Player.Art(thumb)')
-                         or xbmc.getInfoLabel('Player.Art(poster)') or '')
-    if art:
-        item['art'] = art
+    raw_art = _art_source(xbmc.getInfoLabel('Player.Art(poster)')
+                          or xbmc.getInfoLabel('Player.Art(thumb)') or '')
+    if raw_art:
+        # kept out of the shared item: this URL may carry a media-server
+        # token. The announcer fetches it locally and uploads the bytes.
+        item['_art_src'] = raw_art
+        if _shareable_art(raw_art):
+            item['art'] = raw_art  # credential-free, safe to share as-is
     player_id = _active_player_id()
     if player_id is not None:
         result = _json_rpc('Player.GetItem',
@@ -478,6 +550,7 @@ class SyncEngine:
         self._member_names = None  # roster baseline for join/leave toasts
         self._open_fallbacks = []  # untried open refs for the current item
         self._corrections = 0      # drift-correcting seeks we've applied
+        self._art_sent = ''        # art source we last uploaded
         self._i_opened_current = False  # we announced the current item
         self._party_keys = set()   # keys belonging to the shared queue
         self._queue_map = {}       # party entry key -> our local key
@@ -660,14 +733,18 @@ class SyncEngine:
             return
         # Claim sole control of the party when opening, if configured.
         lock = cmd == 'open' and settings['host_control']
-        self._cmd_q.put((cmd, position, item, lock))
+        art_src = ''
+        if item:
+            item = dict(item)
+            art_src = item.pop('_art_src', '')  # local use only
+        self._cmd_q.put((cmd, position, item, lock, art_src))
 
     def _push_worker(self):
         while True:
             entry = self._cmd_q.get()
             if entry is None or self._stop_event.is_set():
                 break
-            cmd, position, item, lock = entry
+            cmd, position, item, lock, art_src = entry
             try:
                 self.client.command(cmd, position=position, item=item,
                                     lock=lock)
@@ -675,6 +752,20 @@ class SyncEngine:
             except RelayError as e:
                 self._last_error = str(e)
                 common.log(f"push {cmd} failed: {e}", xbmc.LOGERROR)
+                continue
+            # Cover art rides along after the command: fetched here,
+            # where the media server's credentials work, and uploaded as
+            # bytes so the dashboard never sees them.
+            if art_src and art_src != self._art_sent:
+                self._art_sent = art_src
+                content_type, data = _fetch_art(art_src)
+                if data:
+                    try:
+                        self.client.upload_art(content_type, data)
+                        common.log(f"shared art ({len(data) // 1024} KB)")
+                    except RelayError as e:
+                        common.log(f"art upload failed: {e}",
+                                   xbmc.LOGDEBUG)
 
     # -- pull --------------------------------------------------------------
 
