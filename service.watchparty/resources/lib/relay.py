@@ -49,6 +49,40 @@ def mask_code(code):
     return code[0] + '·' * (len(code) - 2) + code[-1]
 
 
+# Query parameters that carry a credential. Media servers put these in
+# both stream and artwork URLs (Plex: X-Plex-Token, Emby: api_key), and
+# those URLs reach the relay as ordinary item data.
+SECRET_PARAMS = ('x-plex-token', 'x-emby-token', 'token', 'api_key',
+                 'apikey', 'api-key', 'auth', 'password', 'session',
+                 'sig', 'signature', 'access_token')
+
+
+def redact_url(value):
+    """A URL safe to publish: same address, credentials removed.
+
+    Applied to everything /status.json exposes. The dashboard is
+    unauthenticated — it masks room codes, so it must not hand out a
+    working media-server token next to them. Redaction happens here
+    rather than only in the addon so that older clients, which share
+    these URLs verbatim, are covered too.
+    """
+    if not isinstance(value, str) or '?' not in value \
+            or '://' not in value:
+        return value
+    from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+    try:
+        parts = urlsplit(value)
+        query = parse_qsl(parts.query, keep_blank_values=True)
+    except Exception:
+        return ''  # unparseable and possibly credentialed: drop it
+    if not any(name.lower() in SECRET_PARAMS for name, _ in query):
+        return value
+    kept = [(name, val) for name, val in query
+            if name.lower() not in SECRET_PARAMS]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path,
+                       urlencode(kept), parts.fragment))
+
+
 def rooms_stats(rooms, show_codes=False):
     """Dashboard payload for [(code, RoomState), ...].
 
@@ -71,6 +105,7 @@ def rooms_stats(rooms, show_codes=False):
                        'episode', 'ids', 'art', 'duration', 'artist',
                        'album')
                       if item.get(k) not in (None, '', {})}
+            detail['art'] = redact_url(detail.get('art') or '') or None
             detail['label'] = item.get('label') or ''
             detail['queue'] = len(item.get('playlist') or []) or None
             detail['queue_pos'] = item.get('playlist_pos')
@@ -88,11 +123,12 @@ def rooms_stats(rooms, show_codes=False):
                  'caching': m.get('caching'), 'on_item': m.get('on_item'),
                  'age': round(float(m.get('age') or 0.0), 1),
                  'is_host': m.get('is_host'), 'is_owner': m.get('is_owner'),
-                 'file': m.get('file')}
+                 'file': redact_url(m.get('file') or '')}
                 for m in snap.get('members') or []
             ],
-            'item': item.get('label') or item.get('plugin')
-                    or item.get('file') or None,
+            'item': item.get('label') or redact_url(item.get('plugin')
+                                                    or item.get('file')
+                                                    or '') or None,
             'now': detail,
             'duration': item.get('duration'),
             'paused': bool(snap.get('paused')),

@@ -217,6 +217,43 @@ class EmbeddedRelayTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             urllib.request.urlopen(url)
         self.assertEqual(ctx.exception.code, 404)
+    def test_status_json_never_publishes_credentials(self):
+        # exactly what a Plex/PKC party puts on the wire
+        token = 'X-Plex-Token=f2GG45UKwr4yEKJc3Q8u'
+        stream = ('https://192-168-1-28.plex.direct:32400/library/parts/'
+                  '9906/1661732320/file.m4a?' + token)
+        art = ('https://192-168-1-28.plex.direct:32400/photo/:/transcode'
+               '?width=1920&height=1920&url=/library/metadata/5248/thumb'
+               '&' + token)
+        self.host.command('open', position=0.0,
+                          item={'file': stream, 'label': '', 'plugin': '',
+                                'type': 'song', 'title': 'Whispers',
+                                'art': art})
+        self.guest.poll(1.0, False, stream, on_item=True)
+        url = f'http://127.0.0.1:{self.port}/status.json'
+        with urllib.request.urlopen(url) as resp:
+            body = resp.read().decode()
+        self.assertNotIn('X-Plex-Token', body)
+        self.assertNotIn('f2GG45UKwr4yEKJc3Q8u', body)
+        room = json.loads(body)['rooms'][0]
+        # the rest of the URL survives, only the credential is dropped
+        self.assertIn('/library/parts/9906/', room['item'])
+        self.assertIn('width=1920', room['now']['art'])
+        guest = [m for m in room['members'] if m['name'] == 'guest'][0]
+        self.assertIn('/library/parts/9906/', guest['file'])
+
+    def test_redaction_leaves_clean_urls_alone(self):
+        from relay import redact_url
+        plain = 'https://img.youtube.com/vi/abc/hqdefault.jpg'
+        self.assertEqual(redact_url(plain), plain)
+        self.assertEqual(redact_url('smb://nas/movies/x.mkv'),
+                         'smb://nas/movies/x.mkv')
+        self.assertEqual(redact_url('plugin://plugin.video.x/?id=7'),
+                         'plugin://plugin.video.x/?id=7')
+        self.assertEqual(redact_url(''), '')
+        self.assertEqual(
+            redact_url('https://s.example/a.jpg?api_key=k&w=5'),
+            'https://s.example/a.jpg?w=5')
 
     def test_status_json_exposes_dashboard_fields(self):
         rich = dict(ITEM, duration=612.0, artist=['Ed Sheeran'],
