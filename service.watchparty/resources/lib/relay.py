@@ -34,6 +34,7 @@ ICON_PATH = os.path.join(os.path.dirname(os.path.dirname(
 
 MEMBER_TIMEOUT = 15.0    # seconds without a poll before a member is pruned
 MAX_BODY = 64 * 1024
+MAX_ART = 1024 * 1024    # uploaded cover art, per room
 
 # Bumped whenever the protocol gains features. 1 = original release,
 # 2 = buffer hold, control lock, library-id item fields,
@@ -46,6 +47,40 @@ def mask_code(code):
     if len(code) <= 2:
         return '·' * len(code)
     return code[0] + '·' * (len(code) - 2) + code[-1]
+
+
+# Query parameters that carry a credential. Media servers put these in
+# both stream and artwork URLs (Plex: X-Plex-Token, Emby: api_key), and
+# those URLs reach the relay as ordinary item data.
+SECRET_PARAMS = ('x-plex-token', 'x-emby-token', 'token', 'api_key',
+                 'apikey', 'api-key', 'auth', 'password', 'session',
+                 'sig', 'signature', 'access_token')
+
+
+def redact_url(value):
+    """A URL safe to publish: same address, credentials removed.
+
+    Applied to everything /status.json exposes. The dashboard is
+    unauthenticated — it masks room codes, so it must not hand out a
+    working media-server token next to them. Redaction happens here
+    rather than only in the addon so that older clients, which share
+    these URLs verbatim, are covered too.
+    """
+    if not isinstance(value, str) or '?' not in value \
+            or '://' not in value:
+        return value
+    from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+    try:
+        parts = urlsplit(value)
+        query = parse_qsl(parts.query, keep_blank_values=True)
+    except Exception:
+        return ''  # unparseable and possibly credentialed: drop it
+    if not any(name.lower() in SECRET_PARAMS for name, _ in query):
+        return value
+    kept = [(name, val) for name, val in query
+            if name.lower() not in SECRET_PARAMS]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path,
+                       urlencode(kept), parts.fragment))
 
 
 def rooms_stats(rooms, show_codes=False):
@@ -70,11 +105,16 @@ def rooms_stats(rooms, show_codes=False):
                        'episode', 'ids', 'art', 'duration', 'artist',
                        'album')
                       if item.get(k) not in (None, '', {})}
+            detail['art'] = redact_url(detail.get('art') or '') or None
             detail['label'] = item.get('label') or ''
             detail['queue'] = len(item.get('playlist') or []) or None
             detail['queue_pos'] = item.get('playlist_pos')
             detail['repeat'] = item.get('repeat') or 'off'
             detail['shuffled'] = bool(item.get('shuffled'))
+            # art the relay holds itself — works for viewers who could
+            # never reach the origin, and never carries its credentials
+            art_id = snap.get('art_id')
+            detail['art_url'] = ('/art/' + art_id) if art_id else None
         out.append({
             'room': code if show_codes else mask_code(code),
             'members': [
@@ -83,11 +123,12 @@ def rooms_stats(rooms, show_codes=False):
                  'caching': m.get('caching'), 'on_item': m.get('on_item'),
                  'age': round(float(m.get('age') or 0.0), 1),
                  'is_host': m.get('is_host'), 'is_owner': m.get('is_owner'),
-                 'file': m.get('file')}
+                 'file': redact_url(m.get('file') or '')}
                 for m in snap.get('members') or []
             ],
-            'item': item.get('label') or item.get('plugin')
-                    or item.get('file') or None,
+            'item': item.get('label') or redact_url(item.get('plugin')
+                                                    or item.get('file')
+                                                    or '') or None,
             'now': detail,
             'duration': item.get('duration'),
             'paused': bool(snap.get('paused')),
@@ -149,10 +190,14 @@ DASH_HTML = """<!doctype html>
  .room{display:flex;flex-direction:column;gap:20px}
  /* now playing */
  .np{display:flex;gap:20px}
- .art{width:132px;height:196px;border-radius:10px;background:#1d2026;
-      border:1px dashed #33373f;flex:none;object-fit:cover;
-      display:flex;align-items:center;justify-content:center;
-      color:#3a3f47;font-size:26px}
+ /* real artwork keeps its own shape — square for music covers, tall
+    for posters, wide for stills — so only the width is fixed */
+ img.art{width:180px;height:auto;max-height:220px;object-fit:contain;
+         border-radius:10px;background:#1d2026;flex:none;display:block}
+ div.art{width:180px;height:220px;border-radius:10px;background:#1d2026;
+         border:1px dashed #33373f;flex:none;display:flex;
+         align-items:center;justify-content:center;color:#3a3f47;
+         font-size:30px}
  .npr{display:flex;flex-direction:column;gap:10px;flex:1;min-width:0}
  .codeline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
  .code{font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.22em}
@@ -262,7 +307,8 @@ DASH_HTML = """<!doctype html>
    .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;
           width:100%}
    .upd{text-align:left}
-   .art{width:96px;height:142px}
+   img.art{width:120px;max-height:180px}
+   div.art{width:120px;height:178px;font-size:24px}
    .title{font-size:20px}
  }
  @media (prefers-reduced-motion:reduce){
@@ -368,7 +414,10 @@ function roomHtml(r,threshold){
  // media server, or http art on an https page) — fall back to the
  // placeholder instead of leaving a broken image
  var glyph=(n.type=='song'?'&#9834;':'&#9654;');
- var art=n.art?'<img class="art" src="'+esc(n.art)+'" alt="" '+
+ // prefer art the relay holds: reachable from anywhere, unlike an
+ // origin URL that may point at someone else's LAN
+ var src=n.art_url||n.art;
+ var art=src?'<img class="art" src="'+esc(src)+'" alt="" '+
    'onerror="this.outerHTML=\\'<div class=&quot;art&quot;>'+glyph+
    '</div>\\'">':'<div class="art">'+glyph+'</div>';
  var pill=r.paused?'<span class="pill warn">&#10073;&#10073; PAUSED</span>':
@@ -510,6 +559,10 @@ class RoomState:
         self.buffer_hold = None  # member we auto-paused for, or None
         self.buffer_hold_since = 0.0
         self.command_times = []  # recent command timestamps, for /status
+        # cover art bytes uploaded by the announcer, so the dashboard can
+        # show art the viewer could never fetch itself (a LAN-only media
+        # server) without ever handling that server's credentials
+        self.art = None          # (art_id, content_type, bytes)
 
     # -- members -----------------------------------------------------------
 
@@ -735,6 +788,23 @@ class RoomState:
         room.buffer_hold = None
         return room
 
+    def set_art(self, member_id, content_type, data):
+        """Store cover art for the current item. The id is opaque —
+        deriving it from the room code would leak the code on a page
+        that deliberately masks it."""
+        with self.lock:
+            if member_id not in self.members:
+                return None
+            art_id = uuid.uuid4().hex[:16]
+            self.art = (art_id, content_type, data)
+            return art_id
+
+    def get_art(self, art_id):
+        art = self.art
+        if art and art[0] == art_id:
+            return art[1], art[2]
+        return None, None
+
     def snapshot(self):
         now = time.time()
         with self.lock:
@@ -757,6 +827,7 @@ class RoomState:
                 'buffer_hold_name': names.get(self.buffer_hold),
                 'buffer_hold_since': (self.buffer_hold_since
                                       if self.buffer_hold else 0.0),
+                'art_id': self.art[0] if self.art else None,
                 'commands_per_min': len(self.command_times),
                 'corrections': sum(m.get('corrections') or 0
                                    for m in self.members.values()),
@@ -850,6 +921,20 @@ class _Handler(BaseHTTPRequestHandler):
                              'protocol': PROTOCOL_VERSION,
                              'uptime': time.time() - START_TIME,
                              'server_time': time.time()})
+        elif path.startswith('/art/'):
+            art_id = path[len('/art/'):]
+            for _code, room in self.iter_rooms():
+                content_type, data = room.get_art(art_id)
+                if data:
+                    self.send_response(200)
+                    self.send_header('Content-Type', content_type)
+                    self.send_header('Content-Length', str(len(data)))
+                    # ids are per upload, so this can cache hard
+                    self.send_header('Cache-Control', 'max-age=3600')
+                    self.end_headers()
+                    self.wfile.write(data)
+                    return
+            self._send(404, {'ok': False, 'error': 'no art'})
         elif path == '/icon.png':
             # present next to the addon; absent in the slim relay image,
             # where the page falls back to a drawn mark
@@ -868,7 +953,40 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self._send(404, {'ok': False, 'error': 'not found'})
 
+    def _handle_art_upload(self):
+        """Raw image bytes from the announcer — kept out of the JSON
+        path because artwork is far larger than a control message."""
+        try:
+            length = int(self.headers.get('Content-Length') or 0)
+        except ValueError:
+            length = 0
+        if length <= 0 or length > MAX_ART:
+            self._send(413, {'ok': False, 'error': 'bad art size'})
+            return
+        room = self.lookup_room(str(self.headers.get('X-Room') or ''))
+        if not isinstance(room, RoomState):
+            # drain so the connection can be reused
+            self.rfile.read(length)
+            self._send(403, {'ok': False, 'error': room or 'wrong room'})
+            return
+        content_type = self.headers.get('Content-Type') or ''
+        if not content_type.startswith('image/'):
+            self.rfile.read(length)
+            self._send(400, {'ok': False, 'error': 'not an image'})
+            return
+        data = self.rfile.read(length)
+        art_id = room.set_art(str(self.headers.get('X-Member') or ''),
+                              content_type, data)
+        if not art_id:
+            self._send(410, {'ok': False, 'error': 'not a member'})
+            return
+        self._send(200, {'ok': True, 'art': '/art/' + art_id,
+                         'server_time': time.time()})
+
     def do_POST(self):
+        if self.path.split('?', 1)[0] == '/art':
+            self._handle_art_upload()
+            return
         data = self._read_body()
         if data is None:
             self._send(400, {'ok': False, 'error': 'bad request'})
