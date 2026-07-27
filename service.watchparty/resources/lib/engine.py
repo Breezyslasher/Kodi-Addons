@@ -27,6 +27,7 @@ import xbmc
 
 import common
 from client import PROTOCOL_VERSION, RelayClient, RelayError
+from relay import redact_url
 
 
 POLL_INTERVAL = 1.0
@@ -217,7 +218,11 @@ def _now_playing_item(player):
         file = player.getPlayingFile()
     except RuntimeError:
         return None
-    item = {'file': file,
+    # The resolved stream URL is shared as the item's identity, never to
+    # be opened elsewhere — so strip any media-server credential from it
+    # before it leaves this device. Redaction is deterministic, so every
+    # member still derives the same key for the same item.
+    item = {'file': redact_url(file),
             'label': xbmc.getInfoLabel('Player.Title') or ''}
     try:
         # total length, so followers and the dashboard can show progress
@@ -276,7 +281,7 @@ def _now_playing_item(player):
                                      'properties': ['file']})
             entries = []
             for e in (listing or {}).get('items') or []:
-                entry = {'file': e.get('file') or '',
+                entry = {'file': redact_url(e.get('file') or ''),
                          'label': e.get('title') or e.get('label') or ''}
                 entry.update(_identity(e))
                 entries.append(entry)
@@ -777,7 +782,9 @@ class SyncEngine:
                 state = self.client.poll(
                     position=self.safe_time(),
                     paused=self._is_paused(),
-                    file=local_file,
+                    # what we're playing is shown on the dashboard;
+                    # send it without any credential it may carry
+                    file=redact_url(local_file),
                     caching=bool(local_file) and bool(
                         xbmc.getCondVisibility('Player.Caching')),
                     on_item=bool(self._local_key) and

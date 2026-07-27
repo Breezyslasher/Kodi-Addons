@@ -190,10 +190,14 @@ DASH_HTML = """<!doctype html>
  .room{display:flex;flex-direction:column;gap:20px}
  /* now playing */
  .np{display:flex;gap:20px}
- .art{width:132px;height:196px;border-radius:10px;background:#1d2026;
-      border:1px dashed #33373f;flex:none;object-fit:cover;
-      display:flex;align-items:center;justify-content:center;
-      color:#3a3f47;font-size:26px}
+ /* real artwork keeps its own shape — square for music covers, tall
+    for posters, wide for stills — so only the width is fixed */
+ img.art{width:180px;height:auto;max-height:220px;object-fit:contain;
+         border-radius:10px;background:#1d2026;flex:none;display:block}
+ div.art{width:180px;height:220px;border-radius:10px;background:#1d2026;
+         border:1px dashed #33373f;flex:none;display:flex;
+         align-items:center;justify-content:center;color:#3a3f47;
+         font-size:30px}
  .npr{display:flex;flex-direction:column;gap:10px;flex:1;min-width:0}
  .codeline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
  .code{font:700 13px ui-monospace,Menlo,monospace;letter-spacing:.22em}
@@ -303,7 +307,8 @@ DASH_HTML = """<!doctype html>
    .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;
           width:100%}
    .upd{text-align:left}
-   .art{width:96px;height:142px}
+   img.art{width:120px;max-height:180px}
+   div.art{width:120px;height:178px;font-size:24px}
    .title{font-size:20px}
  }
  @media (prefers-reduced-motion:reduce){
