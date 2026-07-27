@@ -192,9 +192,15 @@ DASH_HTML = """<!doctype html>
  .np{display:flex;gap:20px}
  /* real artwork keeps its own shape — square for music covers, tall
     for posters, wide for stills — so only the width is fixed */
- img.art{width:180px;height:auto;max-height:220px;object-fit:contain;
-         border-radius:10px;background:#1d2026;flex:none;display:block}
- div.art{width:180px;height:220px;border-radius:10px;background:#1d2026;
+ /* width only: no max-height and no object-fit, so the image is never
+    fitted into a box it does not match — that is what puts bars down
+    the sides of a poster or above and below a wide still */
+ /* align-self is essential: .np is a flex row, and flex's default
+    align-items:stretch pulls a height:auto image to the row's height,
+    which squashes or stretches it out of shape */
+ img.art{width:150px;height:auto;border-radius:10px;flex:none;
+         display:block;align-self:flex-start}
+ div.art{width:150px;height:222px;border-radius:10px;background:#1d2026;
          border:1px dashed #33373f;flex:none;display:flex;
          align-items:center;justify-content:center;color:#3a3f47;
          font-size:30px}
@@ -307,8 +313,8 @@ DASH_HTML = """<!doctype html>
    .stats{display:grid;grid-template-columns:1fr 1fr;gap:12px 20px;
           width:100%}
    .upd{text-align:left}
-   img.art{width:120px;max-height:180px}
-   div.art{width:120px;height:178px;font-size:24px}
+   img.art{width:110px}
+   div.art{width:110px;height:163px;font-size:24px}
    .title{font-size:20px}
  }
  @media (prefers-reduced-motion:reduce){
