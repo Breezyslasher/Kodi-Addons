@@ -274,27 +274,59 @@ class AppleTVApi(object):
                               {"ctx_brand": APPLE_TV_PLUS_CHANNEL}, headers)
         if not text:
             return None
-
-        def find(pattern):
-            m = re.search(pattern, text)
-            return m.group(1) if m else None
-
-        hls = find(r'"hlsUrl"\s*:\s*"([^"]+)"')
-        if not hls:
-            kodiutils.log_error(
-                "No hlsUrl for %s. Likely no media-user-token (not signed in to "
-                "tv.apple.com), or the title is not in your subscription/region."
-                % content_id)
+        try:
+            data = json.loads(text)
+        except ValueError:
+            kodiutils.log_error("Playback response was not JSON")
             return None
-        hls = hls.encode("utf-8").decode("unicode_escape").replace("&amp;", "&")
+
+        # A title can have several playables (feature you are entitled to, an
+        # unentitled purchase option, trailers). Pick the entitled one with a
+        # stream -- grabbing the first hlsUrl in the JSON returns the trailer.
+        assets = self._select_playable_assets(data)
+        if not assets or not assets.get("hlsUrl"):
+            kodiutils.log_error(
+                "No playable stream for %s. Likely not in your subscription/"
+                "region, or no media-user-token." % content_id)
+            return None
+
+        hls = assets["hlsUrl"].encode("utf-8").decode("unicode_escape").replace("&amp;", "&")
+        qp = assets.get("fpsKeyServerQueryParameters") or {}
         return {
             "manifest": hls,
-            "user_token": find(r'"userToken"\s*:\s*"([^"]+)"') or mut,
-            "license_server": find(r'"fpsKeyServerUrl"\s*:\s*"([^"]+)"'),
-            "adam_id": find(r'"assetAdamId"\s*:\s*"?(\d+)"?') or self._q(hls, "a"),
-            "svc_id": find(r'"svcId"\s*:\s*"([^"]+)"') or self._q(hls, "svcId"),
-            "is_external": True,
+            "user_token": mut,
+            "license_server": assets.get("fpsKeyServerUrl"),
+            "adam_id": str(assets.get("assetAdamId") or qp.get("adamId") or self._q(hls, "a")),
+            "svc_id": qp.get("svcId") or self._q(hls, "svcId"),
+            "is_external": qp.get("isExternal", True),
         }
+
+    def _select_playable_assets(self, data):
+        """Return the assets of the entitled, streamable playable."""
+        playables = self._deep_find(data, "playables")
+        if isinstance(playables, dict):
+            candidates = list(playables.values())
+        elif isinstance(playables, list):
+            candidates = playables
+        else:
+            candidates = []
+
+        def has_stream(p):
+            return isinstance(p, dict) and isinstance(p.get("assets"), dict) \
+                and p["assets"].get("hlsUrl")
+
+        entitled = [p for p in candidates if has_stream(p) and p.get("isEntitledToPlay")]
+        # Prefer the Apple TV+ channel when more than one is entitled.
+        for p in entitled:
+            if p.get("channelId") == APPLE_TV_PLUS_CHANNEL:
+                return p["assets"]
+        if entitled:
+            return entitled[0]["assets"]
+        # Fallback: any playable that carries a stream.
+        for p in candidates:
+            if has_stream(p):
+                return p["assets"]
+        return None
 
     def _get_text(self, path, extra_params, headers):
         try:
@@ -332,7 +364,10 @@ class AppleTVApi(object):
         try:
             resp = self.session.get(WIDEVINE_CERT_URL, timeout=30)
             if resp.status_code == 200:
-                return resp.text.strip()
+                # The endpoint returns the raw DER certificate; ISA wants it as
+                # correctly-padded base64.
+                import base64
+                return base64.b64encode(resp.content).decode("ascii")
         except Exception as exc:
             kodiutils.log_error("Widevine cert fetch failed: %s" % exc)
         return None
