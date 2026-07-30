@@ -128,8 +128,11 @@ class AppleTVApi(object):
         return cache.get(shelf_id, [])
 
     def search(self, query):
-        data = self._get_json("/search", {"q": query})
-        return self._extract_items(data)
+        data = self._get_json("/search", {"searchTerm": query, "topResultsOnly": "true"})
+        items = []
+        for shelf in self._extract_shelves(data):
+            items.extend(shelf["items"])
+        return items
 
     def get_itunes_library(self):
         if not self.auth.is_authenticated():

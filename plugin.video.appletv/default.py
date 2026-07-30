@@ -84,6 +84,8 @@ def main_menu(auth):
     if auth.is_authenticated():
         add_dir(L("itunes_library"), "itunes_library")
     add_dir(L("search"), "search")
+    if kodiutils.get_setting("manifest_url_override"):
+        add_dir("[Debug] Test playback (manifest override)", "debug_play")
     if auth.is_authenticated():
         add_dir(L("sign_out"), "sign_out")
     else:
@@ -236,8 +238,12 @@ def router(paramstring):
         do_play(api, params.get("item_id"), params.get("item_type", "Movie"))
     elif action == "sign_in":
         do_sign_in(auth)
+        main_menu(auth)
     elif action == "sign_out":
         do_sign_out(auth)
+        main_menu(auth)
+    elif action == "debug_play":
+        do_play(api, "debug", "Movie")
     else:
         main_menu(auth)
 

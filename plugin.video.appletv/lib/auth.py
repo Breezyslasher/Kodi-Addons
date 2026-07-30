@@ -108,6 +108,10 @@ class AppleAuth(object):
         kodiutils.delete_file(SESSION_FILE)
 
     def is_authenticated(self):
+        # A pasted media-user-token (advanced/debug setting) counts as signed in
+        # so the pipeline can be tested without the full Apple ID login.
+        if kodiutils.get_setting("media_user_token"):
+            return True
         return bool(self.tokens.get("authenticated"))
 
     # -- header helpers --------------------------------------------------

@@ -110,14 +110,17 @@ class SRPClient(object):
         S = pow(base, self._a + u * x, _N)
         self._K = _hash(_to_bytes(S))
 
-        # M1 = H(H(N) xor H(g) | H(I) | s | A | B | K)
-        h_n = _hash_int(_N)
-        h_g = _hash_int(_g)
-        h_ng = _to_bytes(h_n ^ h_g)
+        # M1 = H(H(N) xor H(PAD(g)) | H(I) | s | A | B | K)
+        # A and B are the minimal big-endian byte strings (unpadded), and g is
+        # left-padded to the length of N before hashing (RFC 5054). This mirrors
+        # the reference SRP client exactly -- padding A/B here breaks the proof.
+        h_n = _hash(_to_bytes(_N))
+        h_g = _hash(_pad(_g))
+        h_ng = bytes(a ^ b for a, b in zip(h_n, h_g))
         h_i = _hash(self.account_name.encode("utf-8"))
-        self._M1 = _hash(h_ng, h_i, salt, _pad(self.A), _pad(B), self._K)
+        self._M1 = _hash(h_ng, h_i, salt, _to_bytes(self.A), _to_bytes(B), self._K)
         # Expected server proof: H(A | M1 | K)
-        self._expected_HAMK = _hash(_pad(self.A), self._M1, self._K)
+        self._expected_HAMK = _hash(_to_bytes(self.A), self._M1, self._K)
         return self._M1
 
     def proof_bytes(self):
