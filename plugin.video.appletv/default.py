@@ -59,13 +59,28 @@ def add_playable(entry):
     if entry.get("art"):
         item.setArt({"thumb": entry["art"], "poster": entry["art"], "fanart": entry["art"]})
     tag = item.getVideoInfoTag()
-    tag.setTitle(entry["title"])
-    tag.setMediaType("movie" if str(entry.get("type", "")).lower() == "movie" else "tvshow")
+    tag.setTitle(entry.get("sort_title") or entry["title"])
+    tag.setMediaType("episode" if str(entry.get("type")) == "Episode" else "movie")
     if entry.get("plot"):
         tag.setPlot(entry["plot"])
     if entry.get("year"):
         try:
             tag.setYear(int(entry["year"]))
+        except (TypeError, ValueError):
+            pass
+    if entry.get("season"):
+        try:
+            tag.setSeason(int(entry["season"]))
+        except (TypeError, ValueError):
+            pass
+    if entry.get("episode"):
+        try:
+            tag.setEpisode(int(entry["episode"]))
+        except (TypeError, ValueError):
+            pass
+    if entry.get("duration"):
+        try:
+            tag.setDuration(int(entry["duration"]))
         except (TypeError, ValueError):
             pass
     item.setProperty("IsPlayable", "true")
@@ -81,8 +96,6 @@ def add_playable(entry):
 
 def main_menu(auth):
     add_dir(L("originals"), "originals")
-    if auth.is_authenticated():
-        add_dir(L("itunes_library"), "itunes_library")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
         add_dir("[Debug] Test playback (manifest override)", "debug_play")
@@ -103,12 +116,20 @@ def show_shelves(api, shelves):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def show_items(items):
+def add_item(entry):
+    """Add a catalogue entry: shows become folders, everything else plays."""
+    if str(entry.get("type")) == "Show":
+        add_dir(entry["title"], "show", art=entry.get("art"), show_id=entry["id"])
+    else:
+        add_playable(entry)
+
+
+def show_items(items, content="movies"):
     if not items:
         kodiutils.notify(L("no_results"))
     for entry in items:
-        add_playable(entry)
-    xbmcplugin.setContent(HANDLE, "movies")
+        add_item(entry)
+    xbmcplugin.setContent(HANDLE, content)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -227,11 +248,8 @@ def router(paramstring):
         show_shelves(api, api.get_originals_shelves())
     elif action == "shelf":
         show_items(api.get_shelf_items(params.get("shelf_id")))
-    elif action == "itunes_library":
-        if not auth.is_authenticated():
-            kodiutils.ok_dialog(L("sign_in_required"))
-            return
-        show_items(api.get_itunes_library())
+    elif action == "show":
+        show_items(api.get_show_episodes(params.get("show_id")), content="episodes")
     elif action == "search":
         do_search(api)
     elif action == "play":

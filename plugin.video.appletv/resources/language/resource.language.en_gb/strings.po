@@ -116,7 +116,7 @@ msgid "No results found"
 msgstr ""
 
 msgctxt "#32028"
-msgid "Playback could not be resolved. This title may be unavailable to Kodi (FairPlay-only or region locked)."
+msgid "Playback could not be resolved. Make sure you are signed in; the title may also be region locked or not part of your subscription. See the log for details."
 msgstr ""
 
 msgctxt "#32029"

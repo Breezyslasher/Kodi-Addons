@@ -134,11 +134,28 @@ class AppleTVApi(object):
             items.extend(shelf["items"])
         return items
 
-    def get_itunes_library(self):
-        if not self.auth.is_authenticated():
-            return []
-        data = self._get_json("/personal/library", {"types": "Movie"})
-        return self._extract_items(data)
+    def get_show_episodes(self, show_id, page=30, max_pages=25):
+        """Return a show's episodes (paginated via nextToken 'offset:size')."""
+        episodes = []
+        offset = 0
+        for _ in range(max_pages):
+            data = self._get_json(
+                "/shows/%s/episodes" % show_id,
+                {"nextToken": "%d:%d" % (offset, page),
+                 "includeSeasonSummary": "false",
+                 "selectedSeasonEpisodesOnly": "false"},
+            )
+            raw_eps = self._deep_find(data, "episodes") if data else None
+            if not raw_eps:
+                break
+            for raw in raw_eps:
+                item = self._map_item(raw, force_type="Episode")
+                if item:
+                    episodes.append(item)
+            if len(raw_eps) < page:
+                break
+            offset += page
+        return episodes
 
     # -- playback --------------------------------------------------------
 
@@ -319,25 +336,34 @@ class AppleTVApi(object):
                 results.append(item)
         return results
 
-    def _map_item(self, raw):
+    def _map_item(self, raw, force_type=None):
         if not isinstance(raw, dict):
             return None
         item_id = raw.get("id") or raw.get("canonicalId") or raw.get("adamId")
         title = raw.get("title") or raw.get("name")
-        item_type = raw.get("type") or "Movie"
-        # Skip non-playable promo/brand tiles.
-        if not item_id or not title or item_type in ("Brand", "Upsell"):
+        item_type = force_type or raw.get("type") or "Movie"
+        # Skip non-playable promo/brand/trailer tiles.
+        if not item_id or not title or item_type in ("Brand", "Upsell", "Preview"):
             return None
         rel = raw.get("releaseDate")
         year = rel[:4] if isinstance(rel, str) and len(rel) >= 4 else None
         long_desc = raw.get("longDescription")
         plot = raw.get("description") or (long_desc.get("standard") if isinstance(long_desc, dict) else "") or ""
+        season = raw.get("seasonNumber")
+        episode = raw.get("episodeNumber")
+        label = title
+        if item_type == "Episode" and season and episode:
+            label = "S%dE%d · %s" % (season, episode, title)
         return {
             "id": item_id,
-            "title": title,
+            "title": label,
+            "sort_title": title,
             "type": item_type,
             "plot": plot,
             "year": year,
+            "season": season,
+            "episode": episode,
+            "duration": raw.get("duration"),
             "art": self._item_art(raw.get("images") or {}),
         }
 
