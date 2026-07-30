@@ -322,3 +322,33 @@ class AppleAuth(object):
         if self._session_id:
             self.tokens["session_id"] = self._session_id
         self.save()
+
+    def authorize_media(self, developer_token):
+        """Exchange the signed-in Apple ID session for a media-user-token.
+
+        After Apple ID sign-in the session holds the myacinfo cookie; posting to
+        auth.tv.apple.com/auth/v1/web with the web developer token makes Apple
+        set the media-user-token cookie, which is the credential playback needs.
+        Returns the token, or None.
+        """
+        try:
+            self.session.post(
+                "https://auth.tv.apple.com/auth/v1/web",
+                data=json.dumps({"webAuthorizationFlowContext": "tv"}),
+                headers={
+                    "Authorization": "Bearer " + developer_token,
+                    "Content-Type": "application/json",
+                    "Origin": REDIRECT_URI,
+                    "Referer": REDIRECT_URI + "/",
+                },
+                timeout=30,
+            )
+            mut = self.session.cookies.get("media-user-token")
+            if mut:
+                self.tokens["media_user_token"] = mut
+                self.save()
+                return mut
+            kodiutils.log_error("Store login did not return a media-user-token")
+        except Exception as exc:
+            kodiutils.log_error("Media authorization failed: %s" % exc)
+        return None

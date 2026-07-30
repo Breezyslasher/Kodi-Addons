@@ -19,12 +19,14 @@ Reconstructed from a real `tv.apple.com` browser capture:
 | Browse Apple TV+ Originals / search | ✅ Real shelf titles, posters, and full item lists |
 | Playback prepare (manifest `t=`, `media-user-token`) | ✅ Scraped from the server-rendered title page (`hlsUrl`/`userToken`) |
 | Widevine licence exchange (`fpsRequest`) | ✅ Local proxy wraps the challenge in Apple's JSON envelope |
+| Playback resolve via UTS JSON (`/movies/{id}`, `/episodes/{id}`) | ✅ Returns `hlsUrl` with Bearer + media-user-token |
 | HLS + Widevine playback via InputStream Adaptive | ✅ Wired with manifest/segment auth headers, service certificate, licence proxy |
-| Apple-ID login → `tv.apple.com` media session hand-off | ⏳ The store-login step is still being reproduced; if the title page has no `hlsUrl`, sign-in didn't carry through — paste your `media-user-token` (and a manifest URL) in Advanced settings to test end-to-end meanwhile |
+| Apple-ID login → media-user-token (store login) | ✅ `POST auth.tv.apple.com/auth/v1/web` after sign-in mints the token automatically |
+| Show → season/episode browsing | ✅ Shows open to their episode list |
 
-Sign-in and browsing are expected to work. Playback works automatically **if**
-the Apple-ID login carries through to a `tv.apple.com` media session; that
-hand-off is the last piece under construction, with a manual paste fallback.
+Sign-in, browsing, search and playback are all wired end to end. A pasted
+`media-user-token` / manifest URL remains available in Advanced settings as a
+debug fallback.
 
 ## Reality check — please read
 

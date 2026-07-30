@@ -56,7 +56,8 @@ class AppleTVApi(object):
     def _bootstrap(self, force=False):
         if self._boot is not None and not force:
             return self._boot
-        boot = {"utsk": None, "developer_token": None, "storefront": DEFAULT_STOREFRONT}
+        boot = {"utsk": None, "developer_token": None, "storefront": DEFAULT_STOREFRONT,
+                "user_token": None}
         try:
             html = self.session.get(WEB_HOME, timeout=30).text
             m = re.search(r'"utsk"\s*:\s*"([^"]+)"', html)
@@ -68,12 +69,32 @@ class AppleTVApi(object):
             m = re.search(r'"storefrontId"\s*:\s*"?(\d+)"?', html)
             if m:
                 boot["storefront"] = m.group(1)
+            # Present only when the session is signed in to tv.apple.com; this
+            # is the account media-user-token needed for playback.
+            m = re.search(r'"userToken"\s*:\s*"([^"]+)"', html)
+            if m:
+                boot["user_token"] = m.group(1)
+                self.auth.tokens["media_user_token"] = m.group(1)
+                self.auth.save()
         except Exception as exc:
             kodiutils.log_error("Bootstrap scrape failed: %s" % exc)
         if not boot["utsk"]:
             kodiutils.log_error("Could not scrape utsk token from tv.apple.com")
         self._boot = boot
         return boot
+
+    def _media_user_token(self):
+        tok = (kodiutils.get_setting("media_user_token")
+               or self._bootstrap().get("user_token")
+               or self.auth.tokens.get("media_user_token"))
+        if tok:
+            return tok
+        # Signed in but no token yet: mint one via the store-login exchange.
+        if self.auth.tokens.get("authenticated"):
+            dev = self._bootstrap().get("developer_token")
+            if dev:
+                return self.auth.authorize_media(dev)
+        return None
 
     def _storefront(self):
         return kodiutils.get_setting("storefront") or self._bootstrap().get("storefront") or DEFAULT_STOREFRONT
@@ -171,13 +192,11 @@ class AppleTVApi(object):
         if not assets:
             return None
 
-        mut = (assets.get("user_token")
-               or kodiutils.get_setting("media_user_token")
-               or self.auth.tokens.get("media_user_token"))
+        mut = assets.get("user_token") or self._media_user_token()
         if not mut:
             kodiutils.log_error(
-                "No media-user-token found. Sign in, or paste one from a "
-                "tv.apple.com capture into the addon's advanced settings.")
+                "No media-user-token. Sign in (it is read from tv.apple.com when "
+                "signed in), or paste one into the addon's advanced settings.")
             return None
 
         # Headers the manifest/segment requests need (token-authenticated).
@@ -207,11 +226,12 @@ class AppleTVApi(object):
         }
 
     def _prepare_playback(self, content_id, item_type):
-        """Scrape the server-rendered title page for playback assets.
+        """Resolve playback assets via the UTS JSON endpoint.
 
-        The page embeds hlsUrl (manifest incl. the per-title ?t= token),
-        userToken (media-user-token), the licence server URL and the asset
-        parameters. Requires the session to be signed in to tv.apple.com.
+        GET /api/uts/v3/{movies|episodes}/{id} with a Bearer developer token and
+        the account media-user-token returns the playables, including hlsUrl (the
+        manifest with its ?t= token), fpsKeyServerUrl and the asset ids. This
+        avoids scraping the HTML page.
         """
         override = kodiutils.get_setting("manifest_url_override")
         if override:
@@ -219,56 +239,53 @@ class AppleTVApi(object):
             return {"manifest": override, "adam_id": self._q(override, "a"),
                     "svc_id": self._q(override, "svcId"), "is_external": True}
 
-        html = self._fetch_title_page(content_id, item_type)
-        if not html:
+        bearer = self._bootstrap().get("developer_token")
+        mut = self._media_user_token()
+        headers = {}
+        if bearer:
+            headers["authorization"] = "Bearer " + bearer
+        if mut:
+            headers["media-user-token"] = mut
+            headers["Origin"] = WEB_HOME
+
+        endpoint = "episodes" if str(item_type) == "Episode" else "movies"
+        text = self._get_text("/%s/%s" % (endpoint, content_id),
+                              {"ctx_brand": APPLE_TV_PLUS_CHANNEL}, headers)
+        if not text:
             return None
 
         def find(pattern):
-            m = re.search(pattern, html)
+            m = re.search(pattern, text)
             return m.group(1) if m else None
 
         hls = find(r'"hlsUrl"\s*:\s*"([^"]+)"')
         if not hls:
             kodiutils.log_error(
-                "No hlsUrl on the title page for %s. This usually means the "
-                "session is not signed in to tv.apple.com, or the title is not "
-                "playable with your subscription/region." % content_id)
+                "No hlsUrl for %s. Likely no media-user-token (not signed in to "
+                "tv.apple.com), or the title is not in your subscription/region."
+                % content_id)
             return None
         hls = hls.encode("utf-8").decode("unicode_escape").replace("&amp;", "&")
-
         return {
             "manifest": hls,
-            "user_token": find(r'"userToken"\s*:\s*"([^"]+)"'),
+            "user_token": find(r'"userToken"\s*:\s*"([^"]+)"') or mut,
             "license_server": find(r'"fpsKeyServerUrl"\s*:\s*"([^"]+)"'),
             "adam_id": find(r'"assetAdamId"\s*:\s*"?(\d+)"?') or self._q(hls, "a"),
             "svc_id": find(r'"svcId"\s*:\s*"([^"]+)"') or self._q(hls, "svcId"),
             "is_external": True,
         }
 
-    def _fetch_title_page(self, content_id, item_type):
-        """Fetch the tv.apple.com title page, trying each content-type path."""
-        cc = self._country()
-        types = ["movie", "episode", "show"]
-        t = (item_type or "").lower()
-        if t in types:
-            types.remove(t)
-            types.insert(0, t)
-        for kind in types:
-            url = "%s/%s/%s/x/%s" % (WEB_HOME, cc, kind, content_id)
-            try:
-                resp = self.session.get(url, timeout=30)
-                if resp.status_code == 200 and '"hlsUrl"' in resp.text:
-                    return resp.text
-            except Exception as exc:
-                kodiutils.log_error("Title page fetch failed (%s): %s" % (kind, exc))
-        # Last resort: the type-less canonical URL.
+    def _get_text(self, path, extra_params, headers):
         try:
-            resp = self.session.get("%s/%s/%s" % (WEB_HOME, cc, content_id), timeout=30)
-            if resp.status_code == 200:
-                return resp.text
-        except Exception:
-            pass
-        return None
+            resp = self.session.get(UTS_BASE + path, params=self._params(extra_params),
+                                    headers=headers, timeout=30)
+            if resp.status_code != 200:
+                kodiutils.log_error("UTS %s -> %s %s" % (path, resp.status_code, resp.text[:200]))
+                return None
+            return resp.text
+        except Exception as exc:
+            kodiutils.log_error("UTS request error %s: %s" % (path, exc))
+            return None
 
     def _extract_widevine_uri(self, manifest_url, headers=None):
         """Pull the Widevine key data: URI from the manifest, for fpsRequest."""
