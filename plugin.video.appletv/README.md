@@ -15,15 +15,16 @@ Reconstructed from a real `tv.apple.com` browser capture:
 
 | Piece | Status |
 |-------|--------|
-| Apple ID sign-in + two-factor (device or SMS) | ✅ Implemented to match the real web flow (authorize → SRP + hashcash → 2FA → trust) |
-| Browse Apple TV+ Originals / search | ✅ Confirmed UTS endpoints, tokens scraped from the web shell |
+| Apple ID sign-in + two-factor (device or SMS) | ✅ Matches the real web flow (authorize → SRP with *no-username-in-x* + hashcash → 2FA → trust) |
+| Browse Apple TV+ Originals / search | ✅ Real shelf titles, posters, and full item lists |
+| Playback prepare (manifest `t=`, `media-user-token`) | ✅ Scraped from the server-rendered title page (`hlsUrl`/`userToken`) |
 | Widevine licence exchange (`fpsRequest`) | ✅ Local proxy wraps the challenge in Apple's JSON envelope |
-| HLS + Widevine playback via InputStream Adaptive | ✅ Wired (manifest, service certificate, licence proxy) |
-| Account `media-user-token` (mint on login) | ⏳ Not yet auto-obtained — paste one in Advanced settings to test |
-| Per-title playback token (manifest `t=`) | ⏳ Prepare call not yet reproduced — paste a manifest URL in Advanced settings to test, or share a play-session capture |
+| HLS + Widevine playback via InputStream Adaptive | ✅ Wired with manifest/segment auth headers, service certificate, licence proxy |
+| Apple-ID login → `tv.apple.com` media session hand-off | ⏳ The store-login step is still being reproduced; if the title page has no `hlsUrl`, sign-in didn't carry through — paste your `media-user-token` (and a manifest URL) in Advanced settings to test end-to-end meanwhile |
 
-So sign-in and browsing are expected to work; end-to-end playback needs the two
-tokens above until their mint calls are reproduced.
+Sign-in and browsing are expected to work. Playback works automatically **if**
+the Apple-ID login carries through to a `tv.apple.com` media session; that
+hand-off is the last piece under construction, with a manual paste fallback.
 
 ## Reality check — please read
 

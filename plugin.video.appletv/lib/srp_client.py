@@ -92,8 +92,11 @@ class SRPClient(object):
             raise ValueError("Invalid server public value B")
 
         derived = self._derive_password_key(password, salt, iterations, protocol)
-        # x = H(salt | H(I | ':' | P))
-        inner = _hash(self.account_name.encode("utf-8"), b":", derived)
+        # Apple computes x WITHOUT the username ("no username in x"):
+        #   x = H(salt | H(':' | P))
+        # Including the account name here makes the proof mismatch and Apple
+        # rejects sign-in with error -20101 even when the password is correct.
+        inner = _hash(b":", derived)
         x = _hash_int(salt, inner)
 
         # u = H(PAD(A) | PAD(B))

@@ -70,20 +70,18 @@ class _Handler(BaseHTTPRequestHandler):
             kodiutils.log_error("License proxy missing bearer/media-user-token")
             return None
 
-        envelope = {
-            "streaming-request": {
-                "version": 1,
-                "streaming-keys": [{
-                    "lease-action": "start",
-                    "id": 1,
-                    "challenge": base64.b64encode(challenge).decode("ascii"),
-                    "key-system": "com.widevine.alpha",
-                    "uri": ctx.get("skd_uri", ""),
-                    "adamId": ctx.get("adam_id", ""),
-                    "isExternal": True,
-                }],
-            }
+        key = {
+            "lease-action": "start",
+            "id": 1,
+            "challenge": base64.b64encode(challenge).decode("ascii"),
+            "key-system": "com.widevine.alpha",
+            "adamId": ctx.get("adam_id", ""),
+            "isExternal": bool(ctx.get("is_external", True)),
+            "svcId": ctx.get("svc_id", ""),
         }
+        if ctx.get("wv_uri"):
+            key["uri"] = ctx["wv_uri"]
+        envelope = {"streaming-request": {"version": 1, "streaming-keys": [key]}}
         headers = {
             "Content-Type": "application/json",
             "Origin": "https://tv.apple.com",
@@ -92,7 +90,8 @@ class _Handler(BaseHTTPRequestHandler):
             "x-apple-music-user-token": mut,
             "x-apple-renewal": "true",
         }
-        resp = requests.post(FPS_URL, data=json.dumps(envelope), headers=headers, timeout=30)
+        url = ctx.get("license_server") or FPS_URL
+        resp = requests.post(url, data=json.dumps(envelope), headers=headers, timeout=30)
         if resp.status_code != 200:
             kodiutils.log_error("fpsRequest %s: %s" % (resp.status_code, resp.text[:300]))
             return None

@@ -1,7 +1,7 @@
 """Apple TV addon entry point and router."""
 
 import sys
-from urllib.parse import urlencode, parse_qsl
+from urllib.parse import urlencode, parse_qsl, quote
 
 import xbmc
 import xbmcgui
@@ -81,7 +81,6 @@ def add_playable(entry):
 
 def main_menu(auth):
     add_dir(L("originals"), "originals")
-    add_dir(L("movies"), "movies")
     if auth.is_authenticated():
         add_dir(L("itunes_library"), "itunes_library")
     add_dir(L("search"), "search")
@@ -176,6 +175,12 @@ def build_isa_listitem(playback):
     item.setMimeType("application/vnd.apple.mpegurl")
     item.setContentLookup(False)
 
+    headers = playback.get("stream_headers") or {}
+    if headers:
+        header_str = "&".join("%s=%s" % (k, quote(str(v), safe="")) for k, v in headers.items())
+        item.setProperty("inputstream.adaptive.manifest_headers", header_str)
+        item.setProperty("inputstream.adaptive.stream_headers", header_str)
+
     cert = playback.get("certificate_b64")
     if cert:
         item.setProperty("inputstream.adaptive.server_certificate", cert)
@@ -218,8 +223,6 @@ def router(paramstring):
         main_menu(auth)
     elif action == "originals":
         show_shelves(api, api.get_originals_shelves())
-    elif action == "movies":
-        show_shelves(api, api.get_movies_shelves())
     elif action == "shelf":
         show_items(api.get_shelf_items(params.get("shelf_id")))
     elif action == "itunes_library":

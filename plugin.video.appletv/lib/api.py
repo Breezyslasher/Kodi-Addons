@@ -1,25 +1,22 @@
 """Apple TV catalogue and playback API (reconstructed from the web client).
 
-Endpoints and parameters here were captured from a real tv.apple.com session:
+Captured from a real tv.apple.com session:
 
   Catalogue (anonymous browse works):
     GET tv.apple.com/api/uts/v3/configurations
     GET tv.apple.com/api/uts/v3/canvases/channels/tvs.sbd.4000   (TV+ Originals)
     GET tv.apple.com/api/uts/v3/search?q=...
-    GET tv.apple.com/api/uts/v3/contents/{id}/...                (title detail)
-  Tokens (scraped from the tv.apple.com HTML shell):
-    developerToken  -> Bearer app token used for playback/licence calls
-    utsk            -> UTS session token used for catalogue calls
-  Playback:
-    GET play-edge.itunes.apple.com/.../hls/subscription/playlist.m3u8?...&t=<tok>
-    GET play.itunes.apple.com/.../wa/widevineCert
-    POST play-edge.itunes.apple.com/.../wa/fpsRequest  (Widevine, JSON-wrapped)
+  Tokens scraped from the tv.apple.com HTML shell:
+    developerToken -> Bearer app token
+    utsk           -> UTS session token
+  Playback: the server-rendered title page embeds everything needed:
+    "hlsUrl"          -> the HLS manifest URL (already carries the ?t= token)
+    "userToken"       -> the account media-user-token (present when signed in)
+    "fpsKeyServerUrl" -> the Widevine licence endpoint (JSON-wrapped, proxied)
+    "assetAdamId"/"svcId"/"isExternal" -> licence-request parameters
 
-Two playback tokens are minted by Apple between page-load and pressing play and
-were not in the capture: the account ``media-user-token`` and the per-title
-playback token (the manifest ``t=`` value). They can be supplied via settings
-(pasted from a capture) until the mint calls are reproduced; the code logs
-clearly when they are missing.
+Apple serves Widevine (not FairPlay) to non-Apple clients: the HLS manifest
+carries a Widevine PSSH, so InputStream Adaptive can decrypt it.
 """
 
 import json
@@ -31,32 +28,34 @@ from . import license_proxy
 UTS_BASE = "https://tv.apple.com/api/uts/v3"
 WEB_HOME = "https://tv.apple.com"
 WIDEVINE_CERT_URL = "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/widevineCert"
-PLAY_EDGE = "https://play-edge.itunes.apple.com/WebObjects/MZPlayLocal.woa"
 
 DEFAULT_STOREFRONT = "143441"
 DEFAULT_LOCALE = "en-US"
 UTS_VERSION = "96"
 UTS_CLIENT_FLAGS = "OjAAAAEAAAAAAAIAEAAAACMAKwAtAA~~"
-
 APPLE_TV_PLUS_CHANNEL = "tvs.sbd.4000"
-SUBSCRIPTION_SVC_ID = "tvs.vds.4105"
+
+CANVAS_CACHE = "canvas_cache.json"
+
+# Poster/thumbnail image keys seen in canvas items, best first.
+IMAGE_KEYS = (
+    "posterArt", "coverArt16X9", "coverArt", "shelfItemImage",
+    "shelfImageBackground", "previewFrame", "singleColorContentLogo",
+    "contentLogo", "fullColorContentLogo",
+)
 
 
 class AppleTVApi(object):
     def __init__(self, auth):
         self.auth = auth
         self.session = auth.session
-        self._boot = None  # cached {utsk, developer_token, storefront}
+        self._boot = None
 
     # -- bootstrap (scrape tokens from the web shell) --------------------
 
-    def _bootstrap(self):
-        if self._boot is not None:
+    def _bootstrap(self, force=False):
+        if self._boot is not None and not force:
             return self._boot
-        cached = self.auth.tokens.get("boot")
-        if cached and cached.get("utsk") and cached.get("developer_token"):
-            self._boot = cached
-            return cached
         boot = {"utsk": None, "developer_token": None, "storefront": DEFAULT_STOREFRONT}
         try:
             html = self.session.get(WEB_HOME, timeout=30).text
@@ -74,18 +73,17 @@ class AppleTVApi(object):
         if not boot["utsk"]:
             kodiutils.log_error("Could not scrape utsk token from tv.apple.com")
         self._boot = boot
-        self.auth.tokens["boot"] = boot
-        self.auth.save()
         return boot
-
-    def developer_token(self):
-        return self._bootstrap().get("developer_token")
 
     def _storefront(self):
         return kodiutils.get_setting("storefront") or self._bootstrap().get("storefront") or DEFAULT_STOREFRONT
 
     def _locale(self):
         return kodiutils.get_setting("locale") or DEFAULT_LOCALE
+
+    def _country(self):
+        loc = self._locale()
+        return (loc.split("-")[-1] if "-" in loc else "us").lower()
 
     def _params(self, extra=None):
         params = {
@@ -102,9 +100,8 @@ class AppleTVApi(object):
         return params
 
     def _get_json(self, path, extra_params=None):
-        url = UTS_BASE + path
         try:
-            resp = self.session.get(url, params=self._params(extra_params), timeout=30)
+            resp = self.session.get(UTS_BASE + path, params=self._params(extra_params), timeout=30)
             if resp.status_code != 200:
                 kodiutils.log_error("UTS %s -> %s %s" % (path, resp.status_code, resp.text[:200]))
                 return None
@@ -116,20 +113,19 @@ class AppleTVApi(object):
     # -- catalogue -------------------------------------------------------
 
     def get_originals_shelves(self):
-        """Apple TV+ Originals channel canvas -> list of shelves."""
         data = self._get_json(
             "/canvases/channels/%s" % APPLE_TV_PLUS_CHANNEL,
             {"includePlatter": "true", "platterPassThrough": "true"},
         )
-        return self._extract_shelves(data)
-
-    def get_movies_shelves(self):
-        data = self._get_json("/canvases/pages/Movies", {"includePlatter": "true"})
-        return self._extract_shelves(data)
+        shelves = self._extract_shelves(data)
+        # Cache items so opening a shelf shows the full list (they're already here).
+        cache = {s["id"]: s["items"] for s in shelves if s.get("id")}
+        kodiutils.write_json(CANVAS_CACHE, cache)
+        return shelves
 
     def get_shelf_items(self, shelf_id):
-        data = self._get_json("/shelves/%s" % shelf_id, {"nextToken": ""})
-        return self._extract_items(data)
+        cache = kodiutils.read_json(CANVAS_CACHE, default={}) or {}
+        return cache.get(shelf_id, [])
 
     def search(self, query):
         data = self._get_json("/search", {"q": query})
@@ -141,54 +137,139 @@ class AppleTVApi(object):
         data = self._get_json("/personal/library", {"types": "Movie"})
         return self._extract_items(data)
 
-    def get_detail(self, content_id):
-        return self._get_json("/contents/%s/player-tabs" % content_id, {})
-
     # -- playback --------------------------------------------------------
 
     def get_playback(self, content_id, item_type="Movie"):
-        """Resolve a title to an ISA-playable dict, or None.
-
-        Returns::
-            {"manifest": <hls url>, "manifest_type": "hls",
-             "license_url": <local proxy url>, "certificate_url": <cert url>}
-        """
-        if not self.auth.is_authenticated():
-            kodiutils.log_error("Playback requires sign-in")
-            return None
-
+        """Resolve a title to an ISA-playable dict, or None."""
         boot = self._bootstrap()
         bearer = boot.get("developer_token")
-        mut = kodiutils.get_setting("media_user_token") or self.auth.tokens.get("media_user_token")
         if not bearer:
             kodiutils.log_error("No developer token; cannot request playback")
             return None
+
+        assets = self._prepare_playback(content_id, item_type)
+        if not assets:
+            return None
+
+        mut = (assets.get("user_token")
+               or kodiutils.get_setting("media_user_token")
+               or self.auth.tokens.get("media_user_token"))
         if not mut:
             kodiutils.log_error(
-                "No media-user-token. Paste one captured from tv.apple.com into the "
-                "addon's advanced settings to test playback.")
+                "No media-user-token found. Sign in, or paste one from a "
+                "tv.apple.com capture into the addon's advanced settings.")
             return None
 
-        prepared = self._prepare_playback(content_id, bearer, mut)
-        if not prepared:
-            return None
+        # Headers the manifest/segment requests need (token-authenticated).
+        stream_headers = {
+            "authorization": "Bearer " + bearer,
+            "media-user-token": mut,
+            "Origin": WEB_HOME,
+            "User-Agent": self.session.headers.get("User-Agent", ""),
+        }
+        wv_uri = self._extract_widevine_uri(assets["manifest"], stream_headers)
 
-        # Publish per-playback context for the licence proxy.
         kodiutils.write_json("playback_context.json", {
             "bearer": bearer,
             "media_user_token": mut,
-            "skd_uri": prepared.get("skd_uri", ""),
-            "adam_id": prepared.get("adam_id", ""),
+            "adam_id": assets.get("adam_id", ""),
+            "svc_id": assets.get("svc_id", ""),
+            "is_external": assets.get("is_external", True),
+            "wv_uri": wv_uri,
+            "license_server": assets.get("license_server", ""),
         })
         return {
-            "manifest": prepared["manifest"],
+            "manifest": assets["manifest"],
             "manifest_type": "hls",
             "license_url": license_proxy.license_url(),
             "certificate_b64": self.get_widevine_certificate(),
+            "stream_headers": stream_headers,
         }
 
+    def _prepare_playback(self, content_id, item_type):
+        """Scrape the server-rendered title page for playback assets.
+
+        The page embeds hlsUrl (manifest incl. the per-title ?t= token),
+        userToken (media-user-token), the licence server URL and the asset
+        parameters. Requires the session to be signed in to tv.apple.com.
+        """
+        override = kodiutils.get_setting("manifest_url_override")
+        if override:
+            return {"manifest": override, "adam_id": self._q(override, "a"),
+                    "svc_id": self._q(override, "svcId"), "is_external": True}
+
+        html = self._fetch_title_page(content_id, item_type)
+        if not html:
+            return None
+
+        def find(pattern):
+            m = re.search(pattern, html)
+            return m.group(1) if m else None
+
+        hls = find(r'"hlsUrl"\s*:\s*"([^"]+)"')
+        if not hls:
+            kodiutils.log_error(
+                "No hlsUrl on the title page for %s. This usually means the "
+                "session is not signed in to tv.apple.com, or the title is not "
+                "playable with your subscription/region." % content_id)
+            return None
+        hls = hls.encode("utf-8").decode("unicode_escape").replace("&amp;", "&")
+
+        return {
+            "manifest": hls,
+            "user_token": find(r'"userToken"\s*:\s*"([^"]+)"'),
+            "license_server": find(r'"fpsKeyServerUrl"\s*:\s*"([^"]+)"'),
+            "adam_id": find(r'"assetAdamId"\s*:\s*"?(\d+)"?') or self._q(hls, "a"),
+            "svc_id": find(r'"svcId"\s*:\s*"([^"]+)"') or self._q(hls, "svcId"),
+            "is_external": True,
+        }
+
+    def _fetch_title_page(self, content_id, item_type):
+        """Fetch the tv.apple.com title page, trying each content-type path."""
+        cc = self._country()
+        types = ["movie", "episode", "show"]
+        t = (item_type or "").lower()
+        if t in types:
+            types.remove(t)
+            types.insert(0, t)
+        for kind in types:
+            url = "%s/%s/%s/x/%s" % (WEB_HOME, cc, kind, content_id)
+            try:
+                resp = self.session.get(url, timeout=30)
+                if resp.status_code == 200 and '"hlsUrl"' in resp.text:
+                    return resp.text
+            except Exception as exc:
+                kodiutils.log_error("Title page fetch failed (%s): %s" % (kind, exc))
+        # Last resort: the type-less canonical URL.
+        try:
+            resp = self.session.get("%s/%s/%s" % (WEB_HOME, cc, content_id), timeout=30)
+            if resp.status_code == 200:
+                return resp.text
+        except Exception:
+            pass
+        return None
+
+    def _extract_widevine_uri(self, manifest_url, headers=None):
+        """Pull the Widevine key data: URI from the manifest, for fpsRequest."""
+        try:
+            master = self.session.get(manifest_url, headers=headers, timeout=30).text
+            variant = None
+            base = manifest_url.rsplit("/", 1)[0] + "/"
+            for line in master.splitlines():
+                line = line.strip()
+                if line and not line.startswith("#") and "playlist.m3u8" in line:
+                    variant = line if line.startswith("http") else base + line
+                    break
+            text = self.session.get(variant, headers=headers, timeout=30).text if variant else master
+            m = re.search(r'KEYFORMAT="urn:uuid:edef8ba9[^"]*"[^\n]*?URI="([^"]+)"', text)
+            if not m:
+                m = re.search(r'URI="(data:[^"]*edef8ba9[^"]*)"', text)
+            return m.group(1) if m else ""
+        except Exception as exc:
+            kodiutils.log_error("Widevine URI extraction failed: %s" % exc)
+            return ""
+
     def get_widevine_certificate(self):
-        """Fetch Apple's Widevine service certificate (base64 text)."""
         try:
             resp = self.session.get(WIDEVINE_CERT_URL, timeout=30)
             if resp.status_code == 200:
@@ -197,42 +278,10 @@ class AppleTVApi(object):
             kodiutils.log_error("Widevine cert fetch failed: %s" % exc)
         return None
 
-    def _prepare_playback(self, content_id, bearer, mut):
-        """Obtain the tokenised HLS manifest URL for a title.
-
-        The web app mints a per-title playback token (the manifest ``t=`` value)
-        via a private prepare call that was not in the capture. Until it is
-        reproduced, an advanced setting may supply a full manifest URL directly
-        so the rest of the pipeline (ISA + Widevine proxy) can be validated.
-        """
-        override = kodiutils.get_setting("manifest_url_override")
-        if override:
-            adam = ""
-            m = re.search(r"[?&]a=(\d+)", override)
-            if m:
-                adam = m.group(1)
-            return {"manifest": override, "adam_id": adam, "skd_uri": ""}
-
-        adam_id = self._resolve_adam_id(content_id)
-        if not adam_id:
-            kodiutils.log_error("Could not resolve adamId for %s" % content_id)
-            return None
-        kodiutils.log_error(
-            "Playback prepare call not yet reproduced: need the per-title 't=' "
-            "token for adamId %s. Capture a play session and share it, or paste a "
-            "manifest URL override in settings." % adam_id)
-        return None
-
-    def _resolve_adam_id(self, content_id):
-        """Pull the playable adamId from a title's detail (playablePassThrough)."""
-        detail = self.get_detail(content_id)
-        if not detail:
-            return None
-        # The adamId travels inside a base64 'playablePassThrough' or a playables map.
-        adam = self._deep_find(detail, "adamId")
-        if adam:
-            return str(adam)
-        return None
+    @staticmethod
+    def _q(url, key):
+        m = re.search(r"[?&]%s=([^&]+)" % re.escape(key), url)
+        return m.group(1) if m else ""
 
     # -- response parsing helpers ---------------------------------------
 
@@ -243,18 +292,24 @@ class AppleTVApi(object):
         for shelf in self._as_list(self._deep_find(data, "shelves")):
             if not isinstance(shelf, dict):
                 continue
-            title = shelf.get("title") or shelf.get("displayType") or "More"
-            shelf_id = shelf.get("id") or shelf.get("adamId") or ""
-            items = self._extract_items(shelf)
-            if items:
-                shelves.append({"id": shelf_id, "title": title, "items": items})
+            title = self._shelf_title(shelf)
+            shelf_id = shelf.get("id") or shelf.get("channelId") or ""
+            items = self._extract_items(shelf.get("items"))
+            if items and shelf_id:
+                shelves.append({"id": str(shelf_id), "title": title, "items": items})
         return shelves
 
-    def _extract_items(self, data):
-        if not data:
-            return []
+    def _shelf_title(self, shelf):
+        header = shelf.get("header")
+        if isinstance(header, dict):
+            t = self._deep_find(header, "title")
+            if isinstance(t, str) and t:
+                return t
+        return shelf.get("title") or shelf.get("displayType") or "More"
+
+    def _extract_items(self, items):
         results = []
-        for raw in self._as_list(self._deep_find(data, "items")):
+        for raw in self._as_list(items):
             item = self._map_item(raw)
             if item:
                 results.append(item)
@@ -265,25 +320,30 @@ class AppleTVApi(object):
             return None
         item_id = raw.get("id") or raw.get("canonicalId") or raw.get("adamId")
         title = raw.get("title") or raw.get("name")
-        if not item_id or not title:
+        item_type = raw.get("type") or "Movie"
+        # Skip non-playable promo/brand tiles.
+        if not item_id or not title or item_type in ("Brand", "Upsell"):
             return None
-        images = raw.get("images") or {}
-        art = images.get("coverArt16X9") or images.get("coverArt") or images.get("previewFrame") or {}
-        art_url = None
-        if isinstance(art, dict) and art.get("url"):
-            art_url = art["url"].replace("{w}", "1920").replace("{h}", "1080").replace("{f}", "jpg").replace("{c}", "")
         rel = raw.get("releaseDate")
-        year = None
-        if isinstance(rel, str) and len(rel) >= 4:
-            year = rel[:4]
+        year = rel[:4] if isinstance(rel, str) and len(rel) >= 4 else None
+        long_desc = raw.get("longDescription")
+        plot = raw.get("description") or (long_desc.get("standard") if isinstance(long_desc, dict) else "") or ""
         return {
             "id": item_id,
             "title": title,
-            "type": raw.get("type") or "Movie",
-            "plot": raw.get("description") or (raw.get("longDescription") or {}).get("standard", "") if isinstance(raw.get("longDescription"), dict) else raw.get("description", ""),
+            "type": item_type,
+            "plot": plot,
             "year": year,
-            "art": art_url,
+            "art": self._item_art(raw.get("images") or {}),
         }
+
+    def _item_art(self, images):
+        for key in IMAGE_KEYS:
+            val = images.get(key)
+            if isinstance(val, dict) and val.get("url"):
+                return (val["url"].replace("{w}", "1920").replace("{h}", "1080")
+                        .replace("{f}", "jpg").replace("{c}", "").replace("{cropcode}", ""))
+        return None
 
     @staticmethod
     def _as_list(value):
