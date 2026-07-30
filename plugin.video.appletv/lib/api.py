@@ -18,7 +18,9 @@ import re
 
 from . import kodiutils
 
-UTS_BASE = "https://tv.apple.com/api/uts/v3"
+# The Apple TV catalogue API is served from uts-api.itunes.apple.com; tv.apple.com
+# is only the web frontend (requesting the API there returns 404).
+UTS_BASE = "https://uts-api.itunes.apple.com/uts/v3"
 WEB_HOME = "https://tv.apple.com"
 PLAY_BASE = "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa"
 
@@ -26,8 +28,11 @@ PLAY_BASE = "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa"
 DEFAULT_STOREFRONT = "143441"
 DEFAULT_LOCALE = "en-US"
 
-# Apple TV+ Originals "brand" page id used by the web app.
-APPLE_TV_PLUS_BRAND = "tv.apple.com/brand/tvs.sbd.4000"
+# Apple TV+ Originals brand id used by the web app.
+APPLE_TV_PLUS_BRAND = "tvs.sbd.4000"
+
+# Client feature flag the web app sends with every UTS request.
+UTS_CLIENT_FLAGS = "OjAAAAAAAAA~"
 
 
 class AppleTVApi(object):
@@ -53,6 +58,7 @@ class AppleTVApi(object):
             "mfr": "Apple",
             "locale": self._locale(),
             "l": self._locale(),
+            "utscf": UTS_CLIENT_FLAGS,
             "utsk": self._get_bootstrap_token() or "",
         }
 
@@ -99,8 +105,8 @@ class AppleTVApi(object):
     def get_originals_shelves(self):
         """Return the shelves on the Apple TV+ Originals brand page."""
         data = self._get_json(
-            "%s/pages/brand" % UTS_BASE,
-            {"brandId": APPLE_TV_PLUS_BRAND, "nextToken": ""},
+            "%s/brands/%s" % (UTS_BASE, APPLE_TV_PLUS_BRAND),
+            {"nextToken": ""},
         )
         return self._extract_shelves(data)
 
