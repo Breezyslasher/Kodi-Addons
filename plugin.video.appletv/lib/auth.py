@@ -170,6 +170,12 @@ class AppleAuth(object):
     def login(self, account_name, password):
         """Full SRP sign-in. Returns a STATUS_* constant."""
         try:
+            # Start clean: stale idmsa cookies/session state from a previous
+            # attempt can make Apple reject the new SRP flow.
+            self.session.cookies.clear()
+            self._scnt = None
+            self._session_id = None
+            self._auth_attributes = None
             self._frame = _frame_id()
             self._bootstrap()
 

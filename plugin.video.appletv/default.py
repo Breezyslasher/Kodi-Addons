@@ -152,10 +152,13 @@ def do_sign_in(auth, api):
 
     if status == STATUS_OK:
         # Mint the media-user-token now, while the fresh myacinfo cookie is in
-        # the session, so playback (a separate process) does not have to.
-        token = api._media_user_token()
-        if not token:
-            kodiutils.log_error("Signed in but could not mint media-user-token")
+        # the session, so playback (a separate process) does not have to. This
+        # must never break the sign-in result, so guard it.
+        try:
+            if not api._media_user_token():
+                kodiutils.log_error("Signed in but could not mint media-user-token")
+        except Exception as exc:
+            kodiutils.log_error("Token mint error after sign-in: %s" % exc)
         kodiutils.notify(L("sign_in_ok"))
     else:
         kodiutils.ok_dialog(L("sign_in_failed"))
