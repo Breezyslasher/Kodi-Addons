@@ -135,7 +135,7 @@ def show_items(items, content="movies"):
 
 # -- actions -------------------------------------------------------------
 
-def do_sign_in(auth):
+def do_sign_in(auth, api):
     account = kodiutils.input_text(L("enter_apple_id"))
     if not account:
         return
@@ -151,6 +151,11 @@ def do_sign_in(auth):
         status = auth.submit_2fa_code(code)
 
     if status == STATUS_OK:
+        # Mint the media-user-token now, while the fresh myacinfo cookie is in
+        # the session, so playback (a separate process) does not have to.
+        token = api._media_user_token()
+        if not token:
+            kodiutils.log_error("Signed in but could not mint media-user-token")
         kodiutils.notify(L("sign_in_ok"))
     else:
         kodiutils.ok_dialog(L("sign_in_failed"))
@@ -255,7 +260,7 @@ def router(paramstring):
     elif action == "play":
         do_play(api, params.get("item_id"), params.get("item_type", "Movie"))
     elif action == "sign_in":
-        do_sign_in(auth)
+        do_sign_in(auth, api)
         main_menu(auth)
     elif action == "sign_out":
         do_sign_out(auth)

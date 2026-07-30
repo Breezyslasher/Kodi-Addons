@@ -91,11 +91,20 @@ class AppleAuth(object):
     def _load(self):
         data = kodiutils.read_json(SESSION_FILE, default={}) or {}
         self.tokens = data.get("tokens", {})
-        for name, value in (data.get("cookies") or {}).items():
-            self.session.cookies.set(name, value)
+        cookies = data.get("cookies") or []
+        if isinstance(cookies, dict):  # legacy name->value form (domain lost)
+            cookies = [{"name": n, "value": v} for n, v in cookies.items()]
+        for c in cookies:
+            if isinstance(c, dict) and c.get("name"):
+                self.session.cookies.set(
+                    c["name"], c.get("value"),
+                    domain=c.get("domain", ""), path=c.get("path", "/"))
 
     def save(self):
-        cookies = {c.name: c.value for c in self.session.cookies}
+        # Preserve domain/path so cookies like myacinfo (domain apple.com) are
+        # still sent to auth.tv.apple.com in a later plugin invocation.
+        cookies = [{"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
+                   for c in self.session.cookies]
         kodiutils.write_json(SESSION_FILE, {
             "tokens": self.tokens,
             "cookies": cookies,
@@ -343,7 +352,13 @@ class AppleAuth(object):
                 },
                 timeout=30,
             )
-            mut = self.session.cookies.get("media-user-token")
+            # Read by iteration (cookies.get can raise if the name exists for
+            # more than one domain).
+            mut = None
+            for cookie in self.session.cookies:
+                if cookie.name == "media-user-token" and cookie.value:
+                    mut = cookie.value
+                    break
             if mut:
                 self.tokens["media_user_token"] = mut
                 self.save()
