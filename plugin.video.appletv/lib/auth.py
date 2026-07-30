@@ -147,13 +147,17 @@ class AppleAuth(object):
 
             m1 = srp.process_challenge(password, salt, iterations, protocol, b_value)
 
+            # Body shape mirrors known-good Apple web clients: the client public
+            # value A is only sent in /init (the server tracks it via the
+            # session), and trustTokens must be present (empty is fine). Sending
+            # an extra "a" here or omitting trustTokens is a known cause of 400.
             complete_body = {
                 "accountName": account_name,
                 "c": challenge,
                 "m1": base64.b64encode(m1).decode("ascii"),
                 "m2": base64.b64encode(srp.expected_server_proof()).decode("ascii"),
-                "a": base64.b64encode(srp.public_a_bytes()).decode("ascii"),
                 "rememberMe": True,
+                "trustTokens": [],
             }
             complete = self.session.post(
                 AUTH_BASE + "/signin/complete?isRememberMeEnabled=true",
