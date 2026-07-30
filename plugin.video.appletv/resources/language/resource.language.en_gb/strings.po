@@ -45,6 +45,14 @@ msgctxt "#32007"
 msgid "Experimental: playback is limited to SD by Kodi's Widevine L3 CDM."
 msgstr ""
 
+msgctxt "#32008"
+msgid "media-user-token (advanced; paste from a browser capture to test playback)"
+msgstr ""
+
+msgctxt "#32009"
+msgid "Manifest URL override (advanced; paste a playlist.m3u8 URL to test playback)"
+msgstr ""
+
 # --- Menu labels ---
 msgctxt "#32010"
 msgid "Apple TV+ Originals"

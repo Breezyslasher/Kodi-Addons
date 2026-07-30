@@ -161,22 +161,30 @@ def do_play(api, item_id, item_type):
 
 
 def build_isa_listitem(playback):
-    """Wire a stream into InputStream Adaptive with Widevine."""
+    """Wire an Apple HLS+Widevine stream into InputStream Adaptive.
+
+    Widevine key delivery goes through the addon's local licence proxy, which
+    wraps the challenge in Apple's JSON envelope (see lib/license_proxy.py).
+    """
     is_helper_ok = ensure_widevine()
     item = xbmcgui.ListItem(path=playback["manifest"])
     manifest_type = playback.get("manifest_type", "hls")
 
     item.setProperty("inputstream", "inputstream.adaptive")
-    # Kodi 21+/22 uses manifest_type; keep the legacy key for older builds too.
     item.setProperty("inputstream.adaptive.manifest_type", manifest_type)
     item.setProperty("inputstream.adaptive.license_type", "com.widevine.alpha")
+    item.setMimeType("application/vnd.apple.mpegurl")
+    item.setContentLookup(False)
+
+    cert = playback.get("certificate_b64")
+    if cert:
+        item.setProperty("inputstream.adaptive.server_certificate", cert)
 
     license_url = playback.get("license_url")
     if license_url:
-        headers = playback.get("license_headers") or {}
-        header_str = "&".join("%s=%s" % (k, v) for k, v in headers.items())
-        # ISA license_key format: url|headers|postdata(B{SSM})|response
-        license_key = "%s|%s|R{SSM}|" % (license_url, header_str)
+        # ISA posts the raw challenge to our proxy; the proxy returns the raw
+        # licence. Format: url|request_headers|request_data|response_data
+        license_key = "%s|Content-Type=application/octet-stream|R{SSM}|" % license_url
         item.setProperty("inputstream.adaptive.license_key", license_key)
 
     if not is_helper_ok:
@@ -211,7 +219,7 @@ def router(paramstring):
     elif action == "originals":
         show_shelves(api, api.get_originals_shelves())
     elif action == "movies":
-        show_shelves(api, api.get_canvas("MoviesGenre"))
+        show_shelves(api, api.get_movies_shelves())
     elif action == "shelf":
         show_items(api.get_shelf_items(params.get("shelf_id")))
     elif action == "itunes_library":

@@ -4,10 +4,26 @@ Sign in with your Apple ID and browse **Apple TV+ Originals** and your
 **iTunes movie library** in Kodi, with playback through **InputStream Adaptive**
 using **Widevine** DRM.
 
-> ⚠️ **Experimental.** Read the *Reality check* section before installing. This
-> addon depends entirely on Apple's private, undocumented services and on
-> Kodi's Widevine support. It is a working foundation to test and iterate on,
-> not a guaranteed plug-and-play experience.
+> ⚠️ **Experimental.** Read the *Reality check* and *Current status* sections
+> before installing. This addon depends entirely on Apple's private,
+> undocumented services and on Kodi's Widevine support. It is a working
+> foundation to test and iterate on, not a guaranteed plug-and-play experience.
+
+## Current status
+
+Reconstructed from a real `tv.apple.com` browser capture:
+
+| Piece | Status |
+|-------|--------|
+| Apple ID sign-in + two-factor (device or SMS) | ✅ Implemented to match the real web flow (authorize → SRP + hashcash → 2FA → trust) |
+| Browse Apple TV+ Originals / search | ✅ Confirmed UTS endpoints, tokens scraped from the web shell |
+| Widevine licence exchange (`fpsRequest`) | ✅ Local proxy wraps the challenge in Apple's JSON envelope |
+| HLS + Widevine playback via InputStream Adaptive | ✅ Wired (manifest, service certificate, licence proxy) |
+| Account `media-user-token` (mint on login) | ⏳ Not yet auto-obtained — paste one in Advanced settings to test |
+| Per-title playback token (manifest `t=`) | ⏳ Prepare call not yet reproduced — paste a manifest URL in Advanced settings to test, or share a play-session capture |
+
+So sign-in and browsing are expected to work; end-to-end playback needs the two
+tokens above until their mint calls are reproduced.
 
 ## Reality check — please read
 

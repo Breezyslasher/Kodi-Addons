@@ -9,6 +9,7 @@
 	<extension point="xbmc.python.pluginsource" library="default.py">
 		<provides>video</provides>
 	</extension>
+	<extension point="xbmc.service" library="service.py"/>
 	<extension point="xbmc.addon.metadata">
 		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
 		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals and your iTunes movie library, playing back through InputStream Adaptive with Widevine DRM.
@@ -31,13 +32,18 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
-2026.7.30 - Initial experimental release
-- NEW: Apple ID sign-in with two-factor authentication (SRP-6a web flow).
-- NEW: Browse Apple TV+ Originals and iTunes purchased movies.
-- NEW: Search across the Apple TV catalogue.
-- NEW: Widevine playback wired through InputStream Adaptive.
-- NOTE: Experimental. Playback is limited to SD by Kodi's Widevine L3
-  CDM, and Apple's private endpoints may require updates over time.
+2026.7.30 - Experimental release (matched to real web client)
+- NEW: Apple ID sign-in rebuilt from a real tv.apple.com capture:
+  authorize -> SRP init/complete with X-Apple-HC hashcash -> two-factor
+  (trusted-device or SMS) -> session trust. Real OAuth client id.
+- NEW: Catalogue via confirmed UTS endpoints (Apple TV+ Originals
+  channel canvas, search) with tokens scraped from the web shell.
+- NEW: Widevine playback pipeline: HLS via InputStream Adaptive with a
+  local licence proxy that wraps the challenge in Apple's fpsRequest
+  JSON envelope (Apple serves Widevine to non-Apple clients).
+- NOTE: Two playback tokens (account media-user-token and the per-title
+  playback token) are still being reproduced; advanced settings accept
+  pasted values to test playback meanwhile. SD only (Widevine L3).
 		</news>
 	</extension>
 </addon>
