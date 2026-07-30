@@ -84,7 +84,7 @@ jobs:
                 os.remove(zip_path)
 
             # Development files that must not ship inside the Kodi addon zip
-            skip_dirs = {'tests', '__pycache__'}
+            skip_dirs = {'tests', '__pycache__', 'tools'}
             skip_files = {'Dockerfile', 'docker-compose.yml'}
 
             with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
