@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="32000">
+        <setting id="account_status" type="action" label="32001" action="RunPlugin(plugin://plugin.video.appletv/?action=sign_in)" />
+        <setting id="sign_out" type="action" label="32015" action="RunPlugin(plugin://plugin.video.appletv/?action=sign_out)" />
+    </category>
+    <category label="32002">
+        <setting id="storefront" type="text" label="32003" default="143441" />
+        <setting id="locale" type="text" label="32004" default="en-US" />
+    </category>
+    <category label="32005">
+        <setting id="oauth_widget_key" type="text" label="32006" default="" />
+        <setting label="32007" type="lsep" />
+        <setting id="media_user_token" type="text" label="32008" option="hidden" default="" />
+        <setting id="manifest_url_override" type="text" label="32009" default="" />
+    </category>
+</settings>

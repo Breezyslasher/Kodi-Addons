@@ -1,0 +1,128 @@
+# Kodi Media Center language file
+# Addon Name: Apple TV
+# Addon id: plugin.video.appletv
+# Addon Provider: Breezyslasher
+msgid ""
+msgstr ""
+"Project-Id-Version: plugin.video.appletv\n"
+"Report-Msgid-Bugs-To: https://github.com/Breezyslasher/Kodi-Addons\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+
+# --- Settings: categories ---
+msgctxt "#32000"
+msgid "Account"
+msgstr ""
+
+msgctxt "#32002"
+msgid "Region"
+msgstr ""
+
+msgctxt "#32005"
+msgid "Advanced"
+msgstr ""
+
+# --- Settings: labels ---
+msgctxt "#32001"
+msgid "Sign in with Apple ID"
+msgstr ""
+
+msgctxt "#32003"
+msgid "Storefront ID (143441 = United States)"
+msgstr ""
+
+msgctxt "#32004"
+msgid "Locale (e.g. en-US)"
+msgstr ""
+
+msgctxt "#32006"
+msgid "OAuth widget key override (leave blank for default)"
+msgstr ""
+
+msgctxt "#32007"
+msgid "Experimental: playback is limited to SD by Kodi's Widevine L3 CDM."
+msgstr ""
+
+msgctxt "#32008"
+msgid "media-user-token (advanced; paste from a browser capture to test playback)"
+msgstr ""
+
+msgctxt "#32009"
+msgid "Manifest URL override (advanced; paste a playlist.m3u8 URL to test playback)"
+msgstr ""
+
+# --- Menu labels ---
+msgctxt "#32010"
+msgid "Apple TV+ Originals"
+msgstr ""
+
+msgctxt "#32011"
+msgid "Movies"
+msgstr ""
+
+msgctxt "#32012"
+msgid "My iTunes Library"
+msgstr ""
+
+msgctxt "#32013"
+msgid "Search"
+msgstr ""
+
+msgctxt "#32014"
+msgid "Sign in with Apple ID"
+msgstr ""
+
+msgctxt "#32015"
+msgid "Sign out"
+msgstr ""
+
+msgctxt "#32016"
+msgid "Signed in"
+msgstr ""
+
+# --- Dialogs ---
+msgctxt "#32020"
+msgid "Apple ID (email)"
+msgstr ""
+
+msgctxt "#32021"
+msgid "Password"
+msgstr ""
+
+msgctxt "#32022"
+msgid "Two-factor code (check your Apple devices)"
+msgstr ""
+
+msgctxt "#32023"
+msgid "Signed in successfully"
+msgstr ""
+
+msgctxt "#32024"
+msgid "Sign-in failed. Check your Apple ID, password and code, then try again."
+msgstr ""
+
+msgctxt "#32025"
+msgid "Please sign in with your Apple ID first."
+msgstr ""
+
+msgctxt "#32026"
+msgid "Search Apple TV"
+msgstr ""
+
+msgctxt "#32027"
+msgid "No results found"
+msgstr ""
+
+msgctxt "#32028"
+msgid "Playback could not be resolved. Make sure you are signed in; the title may also be region locked or not part of your subscription. See the log for details."
+msgstr ""
+
+msgctxt "#32029"
+msgid "Playing via Widevine (standard definition)"
+msgstr ""
+
+msgctxt "#32030"
+msgid "Sign out of your Apple ID?"
+msgstr ""

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.30" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="19.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals and your iTunes movie library, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+
+Features:
+* Apple ID sign-in with two-factor authentication
+* Browse Apple TV+ Originals (shows and movies)
+* Browse your iTunes purchased/rented movie library
+* Search the Apple TV catalogue
+* Widevine playback via InputStream Adaptive</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>
+2026.7.30 - Experimental release (matched to real web client)
+- NEW: Apple ID sign-in rebuilt from a real tv.apple.com capture:
+  authorize -> SRP init/complete with X-Apple-HC hashcash -> two-factor
+  (trusted-device or SMS) -> session trust. Real OAuth client id.
+- NEW: Catalogue via confirmed UTS endpoints (Apple TV+ Originals
+  channel canvas, search) with tokens scraped from the web shell.
+- NEW: Widevine playback pipeline: HLS via InputStream Adaptive with a
+  local licence proxy that wraps the challenge in Apple's fpsRequest
+  JSON envelope (Apple serves Widevine to non-Apple clients).
+- NOTE: Two playback tokens (account media-user-token and the per-title
+  playback token) are still being reproduced; advanced settings accept
+  pasted values to test playback meanwhile. SD only (Widevine L3).
+		</news>
+	</extension>
+</addon>
