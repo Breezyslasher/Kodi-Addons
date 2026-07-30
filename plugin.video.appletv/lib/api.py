@@ -198,6 +198,7 @@ class AppleTVApi(object):
         """
         override = kodiutils.get_setting("manifest_url_override")
         if override:
+            override = override.replace("&amp;", "&").strip()
             return {"manifest": override, "adam_id": self._q(override, "a"),
                     "svc_id": self._q(override, "svcId"), "is_external": True}
 
