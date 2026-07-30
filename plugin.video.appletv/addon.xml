@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.30" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="19.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals and your iTunes movie library, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+
+Features:
+* Apple ID sign-in with two-factor authentication
+* Browse Apple TV+ Originals (shows and movies)
+* Browse your iTunes purchased/rented movie library
+* Search the Apple TV catalogue
+* Widevine playback via InputStream Adaptive</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>
+2026.7.30 - Initial experimental release
+- NEW: Apple ID sign-in with two-factor authentication (SRP-6a web flow).
+- NEW: Browse Apple TV+ Originals and iTunes purchased movies.
+- NEW: Search across the Apple TV catalogue.
+- NEW: Widevine playback wired through InputStream Adaptive.
+- NOTE: Experimental. Playback is limited to SD by Kodi's Widevine L3
+  CDM, and Apple's private endpoints may require updates over time.
+		</news>
+	</extension>
+</addon>

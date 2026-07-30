@@ -18,6 +18,17 @@ See the [addon README](plugin.audio.audiobookshelf/README.md) for the full featu
 
 ---
 
+### 🍎 [Apple TV](plugin.video.appletv/) *(experimental)*
+Sign in with your Apple ID and browse Apple TV+ Originals and your iTunes movie library in Kodi, with playback through InputStream Adaptive using Widevine DRM.
+
+**How it works:** Apple TV+ uses FairPlay DRM on Apple devices (which Kodi can't decrypt) but Widevine on Android/web (which Kodi can). This addon mimics the web/Android client to receive Widevine streams.
+
+**Known limits:** Playback is standard-definition only (Kodi's Widevine L3 CDM), and Apple's private endpoints may need updates over time. See the [addon README](plugin.video.appletv/README.md) for the full reality check.
+
+**Requirements:** Kodi 19+, InputStream Adaptive + Widevine CDM, an Apple ID
+
+---
+
 ### ⬇️ [PlexKodiConnect Download](context.plexkodiconnect.download/)
 Context-menu addon for downloading Plex media (movies, shows, music) for offline viewing, including bulk and smart-unwatched downloads.
 
