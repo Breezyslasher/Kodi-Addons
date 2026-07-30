@@ -59,7 +59,17 @@ class AppleTVApi(object):
         boot = {"utsk": None, "developer_token": None, "storefront": DEFAULT_STOREFRONT,
                 "user_token": None}
         try:
-            html = self.session.get(WEB_HOME, timeout=30).text
+            # Fetch the page as a browser would. The shared session carries
+            # idmsa API headers (Accept: application/json, X-Requested-With,
+            # Origin) which, once signed in, make tv.apple.com return a non-HTML
+            # response with no embedded tokens. Override them per request.
+            html = self.session.get(WEB_HOME, headers={
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Content-Type": None,
+                "X-Requested-With": None,
+                "Origin": None,
+                "Referer": None,
+            }, timeout=30).text
             m = re.search(r'"utsk"\s*:\s*"([^"]+)"', html)
             if m:
                 boot["utsk"] = m.group(1)
@@ -78,8 +88,19 @@ class AppleTVApi(object):
                 self.auth.save()
         except Exception as exc:
             kodiutils.log_error("Bootstrap scrape failed: %s" % exc)
+        # Fall back to the last good tokens if this scrape came up empty.
+        cached = self.auth.tokens.get("boot") or {}
         if not boot["utsk"]:
-            kodiutils.log_error("Could not scrape utsk token from tv.apple.com")
+            boot["utsk"] = cached.get("utsk")
+        if not boot["developer_token"]:
+            boot["developer_token"] = cached.get("developer_token")
+        if not boot["utsk"]:
+            kodiutils.log_error("Could not obtain utsk token from tv.apple.com")
+        else:
+            self.auth.tokens["boot"] = {"utsk": boot["utsk"],
+                                        "developer_token": boot["developer_token"],
+                                        "storefront": boot["storefront"]}
+            self.auth.save()
         self._boot = boot
         return boot
 
