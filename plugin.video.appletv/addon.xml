@@ -3,7 +3,7 @@
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
-		<import addon="inputstream.adaptive" version="19.0.0"/>
+		<import addon="inputstream.adaptive" version="22.0.0"/>
 		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
 	</requires>
 	<extension point="xbmc.python.pluginsource" library="default.py">
@@ -32,7 +32,12 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
-2026.7.31 - Encrypted playback working
+2026.7.31 - Encrypted playback working (Kodi 22 required)
+- REQUIRES Kodi 22 with InputStream Adaptive 22 or newer. Playback uses
+  the inputstream.adaptive.drm property, which the 21.x series does not
+  have, so Kodi 21 support has been dropped rather than left broken.
+- NEW: Sporting events play, list their kick-off time, and report when a
+  game has not started yet instead of failing.
 - Playback now works on Kodi 22 with InputStream Adaptive 22, using the
   new inputstream.adaptive.drm property (secure_decoder, pre_init_data).
 - Streams are limited to the lowest quality tier (360p by default), H.264
@@ -41,8 +46,6 @@ Features:
   Dolby Vision with shifted colours.
 - Key ids are supplied to ISA via KEYID and the init segment's tenc box,
   which Apple leaves empty.
-- Sporting events report clearly instead of failing with a 404.
-
 2026.7.30 - Experimental release (matched to real web client)
 - NEW: Apple ID sign-in rebuilt from a real tv.apple.com capture:
   authorize -> SRP init/complete with X-Apple-HC hashcash -> two-factor

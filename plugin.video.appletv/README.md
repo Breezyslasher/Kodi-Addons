@@ -25,9 +25,9 @@ using **Widevine** DRM.
 
 ### Requirements and limits for playback
 
-Encrypted playback works only with **Kodi 22 and InputStream Adaptive 22 or
-newer**, which added the `inputstream.adaptive.drm` property this addon relies
-on. On Kodi 21 / ISA 21 the video never decrypts.
+The addon requires **Kodi 22 with InputStream Adaptive 22 or newer**. Playback
+relies on the `inputstream.adaptive.drm` property, which the 21.x series does
+not have, so Kodi 21 is not supported.
 
 Three constraints decide which stream is played, all enforced automatically by
 the manifest proxy:
@@ -98,9 +98,10 @@ supported hardware.
 
 ## Requirements
 
-- **Kodi 22 or later with InputStream Adaptive 22 or later** for playback.
-  Browsing and search work on Kodi 19+, but encrypted video needs the
-  `inputstream.adaptive.drm` property added in ISA 22.
+- **Kodi 22 or later with InputStream Adaptive 22 or later.** This is enforced
+  in `addon.xml`. Playback depends on the `inputstream.adaptive.drm` property,
+  which does not exist in the 21.x series (only `drm_legacy` was added there,
+  in 21.5.0), and on Kodi 21 the video never decrypts.
 - **Widevine CDM** — the addon uses *InputStream Helper* to install it
   automatically on supported platforms (x86/ARM Linux, Android, Windows).
   Widevine is **not** available on some platforms (e.g. iOS, and Apple silicon
@@ -136,9 +137,6 @@ Install from the Breezyslasher repository, or from zip:
   and HDR variants, which Kodi renders with shifted colours.
 - **H.264 only** — advanced, on by default. The CDM's decoder cannot decode
   HEVC, so those variants are skipped.
-- **Disable InputStream Adaptive secure decoder** — advanced, off by default.
-  Sets ISA's global `NOSECUREDECODER`, which affects every DRM addon on the
-  system. Not needed; left in for testing.
 - **media-user-token / Manifest URL override** — advanced debug inputs. Paste
   values captured from `tv.apple.com` to exercise playback without signing in.
 

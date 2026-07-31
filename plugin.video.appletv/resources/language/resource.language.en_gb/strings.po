@@ -65,10 +65,6 @@ msgctxt "#32041"
 msgid "Maximum video height (0 = no limit)"
 msgstr ""
 
-msgctxt "#32042"
-msgid "Disable InputStream Adaptive secure decoder (needed for software Widevine)"
-msgstr ""
-
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""
