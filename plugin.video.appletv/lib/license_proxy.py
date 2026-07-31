@@ -38,6 +38,15 @@ def _context():
     return kodiutils.read_json(CONTEXT_FILE, default={}) or {}
 
 
+# Widevine keys discovered while serving variant playlists, keyed by key id.
+# A title has a separate key per variant/rendition and the master playlist can
+# list hundreds of them, so the set collected up front is not complete: record
+# every key the proxy actually serves, and the licence handler can then always
+# match the exact key a challenge asks for. Both handlers run in the service
+# process, so a module-level dict is shared between them.
+_DISCOVERED_KEYS = {}
+
+
 def kid_from_data_uri(uri):
     """Extract the 16-byte Widevine key id (hex) from a key's data: URI PSSH."""
     try:
@@ -51,6 +60,28 @@ def kid_from_data_uri(uri):
     except Exception:
         pass
     return None
+
+
+def _license_key_ids(licence):
+    """Best-effort list of the key ids a Widevine licence carries.
+
+    Used for diagnostics only: in the License protobuf each key entry starts
+    with field 1 (tag 0x0a) holding a 16-byte id, so collect those. Apple's key
+    ids end in ASCII padding, which makes the real ones easy to recognise.
+    """
+    ids = []
+    pos = 0
+    while len(ids) < 8:
+        pos = licence.find(b"\x0a\x10", pos)
+        if pos < 0:
+            break
+        candidate = licence[pos + 2:pos + 18]
+        if len(candidate) == 16:
+            hexed = candidate.hex()
+            if hexed not in ids:
+                ids.append(hexed)
+        pos += 2
+    return ids
 
 
 def _patch_tenc_kid(data, kid_hex):
@@ -145,11 +176,16 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        self.send_response(200)
-        self.send_header("Content-Type", "application/vnd.apple.mpegurl")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (ConnectionResetError, BrokenPipeError):
+            # InputStream Adaptive abandons a playlist request when it switches
+            # representation; nothing is wrong, so do not log a traceback.
+            pass
 
     def _serve_init(self, target, kid_hex):
         """Serve an init segment with the real key id patched into its tenc box.
@@ -174,9 +210,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             data, patched = _patch_tenc_kid(resp.content, kid_hex)
-            if patched:
-                kodiutils.log("Init segment: patched %d tenc KID(s) -> %s"
-                              % (patched, kid_hex[:16]))
+            kodiutils.log("Init segment %s: patched %d tenc KID(s) -> %s"
+                          % (target.rsplit("/", 1)[-1][:48], patched, kid_hex))
         except Exception as exc:
             kodiutils.log_error("Init segment proxy error: %s" % exc)
             self.send_response(502)
@@ -200,26 +235,30 @@ class _Handler(BaseHTTPRequestHandler):
         recoverable from the PSSH, so add it here as KEYID.
         """
         is_master = "#EXT-X-STREAM-INF" in text
+        if is_master:
+            return self._rewrite_master(text, base_url)
+
         tagged = 0
         mapped = 0
+        dropped = 0
         cur_kid = None
         out = []
-        for line in text.splitlines():
+        lines = text.splitlines()
+        index = 0
+        while index < len(lines):
+            line = lines[index]
+            index += 1
             s = line.strip()
-            if is_master:
-                if s.startswith("#") and 'URI="' in s:
-                    out.append(re.sub(
-                        r'URI="([^"]+)"',
-                        lambda m: 'URI="%s"' % self._proxied(m.group(1), base_url), s))
-                    continue
-                if s and not s.startswith("#"):
-                    out.append(self._proxied(s, base_url))
-                    continue
-            else:
+            if True:
                 if s.startswith("#EXT-X-KEY"):
                     if "urn:uuid:edef8ba9" in s:
                         uri_match = re.search(r'URI="([^"]+)"', s)
                         cur_kid = kid_from_data_uri(uri_match.group(1)) if uri_match else None
+                        if cur_kid:
+                            # Remember this variant's key so the licence handler
+                            # can match challenges for variants that were not
+                            # scanned before playback started.
+                            _DISCOVERED_KEYS[cur_kid] = uri_match.group(1)
                         fixed = self._add_keyid(s)
                         if fixed != s:
                             tagged += 1
@@ -241,9 +280,106 @@ class _Handler(BaseHTTPRequestHandler):
                     out.append(urljoin(base_url, s))
                     continue
             out.append(line)
-        if not is_master:
-            kodiutils.log("Manifest proxy: variant served, %d KEYID added, "
-                          "%d init segment(s) routed" % (tagged, mapped))
+        kodiutils.log("Manifest proxy: variant served, %d KEYID added, "
+                      "%d init segment(s) routed" % (tagged, mapped))
+        return "\n".join(out) + "\n"
+
+    def _rewrite_master(self, text, base_url):
+        """Rewrite the master playlist, optionally capping video height.
+
+        Apple uses a different content key per quality tier. The web player
+        selects an SD variant and its key decrypts under Kodi's software (L3)
+        Widevine CDM; a higher tier's key is licensed but the CDM will not use
+        it, which surfaces as kNoKey. Capping the height keeps InputStream
+        Adaptive on the tier the web player uses.
+
+        Renditions referenced only by dropped variants are removed too, so ISA
+        does not report "Cannot find variant for AUDIO GROUP-ID".
+        """
+        max_h = kodiutils.get_setting_int("max_height", 360)
+        sdr_only = kodiutils.get_setting_bool("sdr_only", True)
+        avc_only = kodiutils.get_setting_bool("avc_only", True)
+        lines = text.splitlines()
+
+        def unwanted(tag):
+            """Drop variants the CDM will refuse or the player cannot show.
+
+            Apple keys each quality tier separately and the higher tiers demand
+            output protection this system cannot provide: the CDM reports the
+            key as output restricted (OnSessionKeysChange status 3) and the DRM
+            session fails. Dolby Vision variants are dropped as well because
+            Kodi decodes them as plain HEVC, which renders with badly shifted
+            colours.
+            """
+            res = re.search(r'RESOLUTION=\d+x(\d+)', tag)
+            if max_h and res and int(res.group(1)) > max_h:
+                return True
+            codecs = re.search(r'CODECS="([^"]+)"', tag)
+            if sdr_only:
+                video_range = re.search(r'VIDEO-RANGE=([A-Z]+)', tag)
+                if video_range and video_range.group(1) != "SDR":
+                    return True
+                if codecs and re.search(r'\bdv(h[e1]|av)', codecs.group(1)):
+                    return True
+            if avc_only and codecs:
+                # Encrypted video is decoded by the CDM, whose decoder handles
+                # H.264 only: an HEVC variant makes ISA report "ToCdmVideoCodec:
+                # Unknown video codec 5" and the stream cannot be opened. Apple
+                # publishes H.264 alongside HEVC at every tier.
+                video_codec = codecs.group(1).split(",")[0]
+                if not video_codec.startswith("avc"):
+                    return True
+            return False
+
+        too_tall = unwanted
+
+        # First pass: decide which variants survive and which groups they use.
+        keep_variant = {}
+        groups = set()
+        for i, line in enumerate(lines):
+            s = line.strip()
+            if s.startswith("#EXT-X-STREAM-INF"):
+                keep = not too_tall(s)
+                keep_variant[i] = keep
+                if keep:
+                    for attr in ("AUDIO", "SUBTITLES", "CLOSED-CAPTIONS"):
+                        m = re.search(r'%s="([^"]+)"' % attr, s)
+                        if m:
+                            groups.add(m.group(1))
+
+        out = []
+        dropped = 0
+        index = 0
+        while index < len(lines):
+            line = lines[index]
+            s = line.strip()
+            index += 1
+            if s.startswith("#EXT-X-STREAM-INF"):
+                if not keep_variant.get(index - 1, True):
+                    dropped += 1
+                    if index < len(lines):
+                        index += 1  # skip this variant's URI line
+                    continue
+            elif s.startswith("#EXT-X-I-FRAME-STREAM-INF"):
+                if too_tall(s):
+                    dropped += 1
+                    continue
+            elif s.startswith("#EXT-X-MEDIA"):
+                m = re.search(r'GROUP-ID="([^"]+)"', s)
+                if max_h and m and groups and m.group(1) not in groups:
+                    continue  # rendition only used by variants we removed
+
+            if s.startswith("#") and 'URI="' in s:
+                out.append(re.sub(
+                    r'URI="([^"]+)"',
+                    lambda m: 'URI="%s"' % self._proxied(m.group(1), base_url), s))
+            elif s and not s.startswith("#"):
+                out.append(self._proxied(s, base_url))
+            else:
+                out.append(line)
+
+        kodiutils.log("Manifest proxy: master served, height cap=%s, %d variant(s) dropped"
+                      % (max_h or "none", dropped))
         return "\n".join(out) + "\n"
 
     def _init_proxied(self, url, base_url, kid):
@@ -274,11 +410,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_response(500)
                 self.end_headers()
                 return
-            self.send_response(200)
-            self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Length", str(len(license_bytes)))
-            self.end_headers()
-            self.wfile.write(license_bytes)
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(license_bytes)))
+                self.end_headers()
+                self.wfile.write(license_bytes)
+            except (ConnectionResetError, BrokenPipeError):
+                pass
         except Exception as exc:
             kodiutils.log_error("License proxy error: %s" % exc)
             try:
@@ -299,23 +438,28 @@ class _Handler(BaseHTTPRequestHandler):
         # (video and audio have different keys); a wrong or missing uri gives a
         # 500. Match by the key id embedded in the challenge, then fall back to
         # the other known keys rather than failing outright.
-        wv_keys = ctx.get("wv_keys") or {}
+        # Keys found up front plus every key seen while serving variants.
+        wv_keys = dict(ctx.get("wv_keys") or {})
+        wv_keys.update(_DISCOVERED_KEYS)
+
         candidates = []
+        matched_kid = None
         for kid_hex, kuri in wv_keys.items():
             try:
                 if bytes.fromhex(kid_hex) in challenge:
+                    matched_kid = kid_hex
                     candidates.append(kuri)
                     break
             except ValueError:
                 continue
-        matched = bool(candidates)
         for kuri in wv_keys.values():
             if kuri not in candidates:
                 candidates.append(kuri)
         if not candidates:
             candidates = [None]
-        kodiutils.log("License request: %d bytes, exact key match=%s, %d candidate(s)"
-                      % (len(challenge), "yes" if matched else "no", len(candidates)))
+        kodiutils.log("License request: challenge=%d bytes, wants KID=%s, known KIDs=[%s]"
+                      % (len(challenge), matched_kid or "UNKNOWN",
+                         ", ".join(sorted(wv_keys.keys()))))
 
         url = ctx.get("license_server") or FPS_URL
         headers = {
@@ -352,8 +496,11 @@ class _Handler(BaseHTTPRequestHandler):
             if not keys or "license" not in keys[0]:
                 last_error = "no licence in response %s" % resp.text[:150]
                 continue
-            kodiutils.log("License OK (attempt %d/%d)" % (attempt + 1, len(candidates)))
-            return base64.b64decode(keys[0]["license"])
+            licence = base64.b64decode(keys[0]["license"])
+            kodiutils.log("License OK (attempt %d/%d), contains KIDs=[%s]"
+                          % (attempt + 1, len(candidates),
+                             ", ".join(_license_key_ids(licence)) or "none found"))
+            return licence
 
         kodiutils.log_error("fpsRequest failed after %d attempt(s): %s"
                             % (len(candidates), last_error))

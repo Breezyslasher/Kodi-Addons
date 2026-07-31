@@ -230,6 +230,18 @@ class AppleTVApi(object):
         wv_keys = self._collect_widevine_keys(assets["manifest"], stream_headers)
         kodiutils.log("Collected %d Widevine key(s)" % len(wv_keys))
 
+        # First key collected is the video variant's; used to pre-initialise DRM
+        # so a decrypter exists before the first encrypted chapter.
+        pre_init = None
+        for kid_hex, uri in wv_keys.items():
+            pssh_b64 = self._pssh_from_data_uri(uri)
+            if pssh_b64:
+                import base64 as _b64
+                pre_init = "%s|%s" % (
+                    pssh_b64,
+                    _b64.b64encode(bytes.fromhex(kid_hex)).decode("ascii"))
+            break
+
         kodiutils.write_json("playback_context.json", {
             "bearer": bearer,
             "media_user_token": mut,
@@ -248,6 +260,7 @@ class AppleTVApi(object):
             "license_url": license_proxy.license_url(),
             "certificate_b64": self.get_widevine_certificate(),
             "stream_headers": stream_headers,
+            "pre_init_data": pre_init,
         }
 
     def _prepare_playback(self, content_id, item_type):
@@ -272,6 +285,12 @@ class AppleTVApi(object):
         if mut:
             headers["media-user-token"] = mut
             headers["Origin"] = WEB_HOME
+
+        # Sporting events (umc.cse.*) are not movies or episodes and are not
+        # supported; the movies endpoint returns 404 for them.
+        if str(content_id).startswith("umc.cse."):
+            kodiutils.log_error("Live sports events are not supported (%s)" % content_id)
+            return None
 
         endpoint = "episodes" if str(item_type) == "Episode" else "movies"
         text = self._get_text("/%s/%s" % (endpoint, content_id),
@@ -390,6 +409,17 @@ class AppleTVApi(object):
         except Exception as exc:
             kodiutils.log_error("Widevine key collection failed: %s" % exc)
         return keys
+
+    @staticmethod
+    def _pssh_from_data_uri(uri):
+        """Return the base64 PSSH carried in a key's data: URI."""
+        try:
+            from urllib.parse import unquote
+            if "base64," not in uri:
+                return None
+            return unquote(uri.split("base64,", 1)[1]).strip()
+        except Exception:
+            return None
 
     @staticmethod
     def _kid_from_data_uri(uri):

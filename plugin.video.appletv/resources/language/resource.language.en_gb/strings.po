@@ -53,6 +53,22 @@ msgctxt "#32009"
 msgid "Manifest URL override (advanced; paste a playlist.m3u8 URL to test playback)"
 msgstr ""
 
+msgctxt "#32044"
+msgid "H.264 only (the CDM decoder cannot decode HEVC)"
+msgstr ""
+
+msgctxt "#32043"
+msgid "Standard dynamic range only (skip Dolby Vision/HDR variants)"
+msgstr ""
+
+msgctxt "#32041"
+msgid "Maximum video height (0 = no limit)"
+msgstr ""
+
+msgctxt "#32042"
+msgid "Disable InputStream Adaptive secure decoder (needed for software Widevine)"
+msgstr ""
+
 # --- Menu labels ---
 msgctxt "#32010"
 msgid "Apple TV+ Originals"
