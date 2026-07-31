@@ -232,11 +232,28 @@ class _Handler(BaseHTTPRequestHandler):
         is_master = "#EXT-X-STREAM-INF" in text
         tagged = 0
         mapped = 0
+        dropped = 0
         cur_kid = None
         out = []
-        for line in text.splitlines():
+        max_h = kodiutils.get_setting_int("max_height", 540)
+        lines = text.splitlines()
+        index = 0
+        while index < len(lines):
+            line = lines[index]
+            index += 1
             s = line.strip()
             if is_master:
+                # Kodi's Widevine CDM is L3 (software), which licenses a key but
+                # refuses to use it above standard definition -- the CDM then
+                # reports kNoKey. Apple's own web player selects an SD variant
+                # for the same reason, so drop variants above the limit.
+                if s.startswith("#EXT-X-STREAM-INF") or s.startswith("#EXT-X-I-FRAME-STREAM-INF"):
+                    res = re.search(r'RESOLUTION=\d+x(\d+)', s)
+                    if max_h and res and int(res.group(1)) > max_h:
+                        dropped += 1
+                        if s.startswith("#EXT-X-STREAM-INF") and index < len(lines):
+                            index += 1  # skip the variant URI on the next line
+                        continue
                 if s.startswith("#") and 'URI="' in s:
                     out.append(re.sub(
                         r'URI="([^"]+)"',
@@ -276,7 +293,10 @@ class _Handler(BaseHTTPRequestHandler):
                     out.append(urljoin(base_url, s))
                     continue
             out.append(line)
-        if not is_master:
+        if is_master:
+            kodiutils.log("Manifest proxy: master served, %d variant(s) above %dp dropped"
+                          % (dropped, max_h))
+        else:
             kodiutils.log("Manifest proxy: variant served, %d KEYID added, "
                           "%d init segment(s) routed" % (tagged, mapped))
         return "\n".join(out) + "\n"
