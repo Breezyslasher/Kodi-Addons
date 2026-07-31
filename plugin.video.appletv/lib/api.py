@@ -227,7 +227,8 @@ class AppleTVApi(object):
             "Origin": WEB_HOME,
             "User-Agent": self.session.headers.get("User-Agent", ""),
         }
-        wv_uri = self._extract_widevine_uri(assets["manifest"], stream_headers)
+        wv_keys = self._collect_widevine_keys(assets["manifest"], stream_headers)
+        kodiutils.log("Collected %d Widevine key(s)" % len(wv_keys))
 
         kodiutils.write_json("playback_context.json", {
             "bearer": bearer,
@@ -235,7 +236,7 @@ class AppleTVApi(object):
             "adam_id": assets.get("adam_id", ""),
             "svc_id": assets.get("svc_id", ""),
             "is_external": assets.get("is_external", True),
-            "wv_uri": wv_uri,
+            "wv_keys": wv_keys,
             "license_server": assets.get("license_server", ""),
         })
         return {
@@ -340,25 +341,69 @@ class AppleTVApi(object):
             kodiutils.log_error("UTS request error %s: %s" % (path, exc))
             return None
 
-    def _extract_widevine_uri(self, manifest_url, headers=None):
-        """Pull the Widevine key data: URI from the manifest, for fpsRequest."""
+    def _collect_widevine_keys(self, manifest_url, headers=None):
+        """Map each Widevine key id (hex) to its data: URI from the manifest.
+
+        Apple's licence server needs the URI of the exact key a challenge is
+        for; a title has separate video and audio keys, and sending the wrong
+        one (or none) makes fpsRequest return 500. Index the keys by the key id
+        inside each PSSH so the proxy can pick the right one per challenge.
+        """
+        keys = {}
+        # Variant playlists are authenticated by the token in their URL; the web
+        # player requests them with no authorization/media-user-token headers,
+        # and sending those makes the request fail.
+        plain = {k: v for k, v in (headers or {}).items()
+                 if k.lower() in ("user-agent", "origin")}
         try:
             master = self.session.get(manifest_url, headers=headers, timeout=30).text
-            variant = None
             base = manifest_url.rsplit("/", 1)[0] + "/"
+            targets = []
             for line in master.splitlines():
-                line = line.strip()
-                if line and not line.startswith("#") and "playlist.m3u8" in line:
-                    variant = line if line.startswith("http") else base + line
+                s = line.strip()
+                if s and not s.startswith("#") and "playlist.m3u8" in s:
+                    targets.append(s if s.startswith("http") else base + s)
                     break
-            text = self.session.get(variant, headers=headers, timeout=30).text if variant else master
-            m = re.search(r'KEYFORMAT="urn:uuid:edef8ba9[^"]*"[^\n]*?URI="([^"]+)"', text)
-            if not m:
-                m = re.search(r'URI="(data:[^"]*edef8ba9[^"]*)"', text)
-            return m.group(1) if m else ""
+            for line in master.splitlines():
+                if line.startswith("#EXT-X-MEDIA") and "TYPE=AUDIO" in line:
+                    m = re.search(r'URI="([^"]+)"', line)
+                    if m:
+                        u = m.group(1)
+                        targets.append(u if u.startswith("http") else base + u)
+                        break
+            for url in targets:
+                try:
+                    text = self.session.get(url, headers=plain, timeout=30).text
+                except Exception as exc:
+                    kodiutils.log_error("Variant fetch failed: %s" % exc)
+                    continue
+                for line in text.splitlines():
+                    if "urn:uuid:edef8ba9" in line:
+                        m = re.search(r'URI="([^"]+)"', line)
+                        if m:
+                            kid = self._kid_from_data_uri(m.group(1))
+                            if kid:
+                                keys[kid] = m.group(1)
         except Exception as exc:
-            kodiutils.log_error("Widevine URI extraction failed: %s" % exc)
-            return ""
+            kodiutils.log_error("Widevine key collection failed: %s" % exc)
+        return keys
+
+    @staticmethod
+    def _kid_from_data_uri(uri):
+        """Extract the 16-byte key id (hex) from a Widevine data: URI PSSH."""
+        try:
+            import base64
+            from urllib.parse import unquote
+            if "base64," not in uri:
+                return None
+            pssh = base64.b64decode(unquote(uri.split("base64,", 1)[1]))
+            # WidevinePsshData: key_id is field 2 -> tag 0x12, length 0x10 (16).
+            i = pssh.find(b"\x12\x10")
+            if i >= 0 and len(pssh) >= i + 18:
+                return pssh[i + 2:i + 18].hex()
+        except Exception:
+            pass
+        return None
 
     def get_widevine_certificate(self):
         try:
