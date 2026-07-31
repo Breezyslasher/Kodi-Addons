@@ -14,6 +14,7 @@
         <setting id="disable_secure_decoder" type="bool" label="32042" default="false" />
         <setting id="max_height" type="number" label="32041" default="360" />
         <setting id="sdr_only" type="bool" label="32043" default="true" />
+        <setting id="avc_only" type="bool" label="32044" default="true" />
         <setting id="media_user_token" type="text" label="32008" option="hidden" default="" />
         <setting id="manifest_url_override" type="text" label="32009" default="" />
     </category>

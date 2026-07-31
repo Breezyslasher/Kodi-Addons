@@ -298,6 +298,7 @@ class _Handler(BaseHTTPRequestHandler):
         """
         max_h = kodiutils.get_setting_int("max_height", 360)
         sdr_only = kodiutils.get_setting_bool("sdr_only", True)
+        avc_only = kodiutils.get_setting_bool("avc_only", True)
         lines = text.splitlines()
 
         def unwanted(tag):
@@ -313,12 +314,20 @@ class _Handler(BaseHTTPRequestHandler):
             res = re.search(r'RESOLUTION=\d+x(\d+)', tag)
             if max_h and res and int(res.group(1)) > max_h:
                 return True
+            codecs = re.search(r'CODECS="([^"]+)"', tag)
             if sdr_only:
                 video_range = re.search(r'VIDEO-RANGE=([A-Z]+)', tag)
                 if video_range and video_range.group(1) != "SDR":
                     return True
-                codecs = re.search(r'CODECS="([^"]+)"', tag)
                 if codecs and re.search(r'\bdv(h[e1]|av)', codecs.group(1)):
+                    return True
+            if avc_only and codecs:
+                # Encrypted video is decoded by the CDM, whose decoder handles
+                # H.264 only: an HEVC variant makes ISA report "ToCdmVideoCodec:
+                # Unknown video codec 5" and the stream cannot be opened. Apple
+                # publishes H.264 alongside HEVC at every tier.
+                video_codec = codecs.group(1).split(",")[0]
+                if not video_codec.startswith("avc"):
                     return True
             return False
 
