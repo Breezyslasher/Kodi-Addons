@@ -35,6 +35,9 @@ S = {
     "playback_failed": 32028,
     "sd_notice": 32029,
     "confirm_sign_out": 32030,
+    "play_trailer": 32031,
+    "choose_trailer": 32032,
+    "no_trailer": 32033,
 }
 
 
@@ -46,10 +49,20 @@ def url(**kwargs):
     return "%s?%s" % (BASE_URL, urlencode(kwargs))
 
 
-def add_dir(label, action, art=None, **params):
+def trailer_context_menu(item, item_id, item_type):
+    """Context-menu entry that plays the title's trailer."""
+    item.addContextMenuItems([(
+        L("play_trailer"),
+        "RunPlugin(%s)" % url(action="trailers", item_id=item_id, item_type=item_type),
+    )])
+
+
+def add_dir(label, action, art=None, trailer_for=None, **params):
     item = xbmcgui.ListItem(label=label)
     if art:
         item.setArt(art)
+    if trailer_for:
+        trailer_context_menu(item, trailer_for[0], trailer_for[1])
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action=action, **params), item, isFolder=True
     )
@@ -92,6 +105,9 @@ def add_playable(entry):
         except (TypeError, ValueError):
             pass
     item.setProperty("IsPlayable", "true")
+    # Episodes and sporting events carry no Trailers shelf of their own.
+    if kind in ("Movie", "Show", "Vod", "MovieBundle"):
+        trailer_context_menu(item, entry["id"], kind)
     xbmcplugin.addDirectoryItem(
         HANDLE,
         url(action="play", item_id=entry["id"], item_type=entry.get("type", "Movie")),
@@ -127,7 +143,8 @@ def show_shelves(api, shelves):
 def add_item(entry):
     """Add a catalogue entry: shows become folders, everything else plays."""
     if str(entry.get("type")) == "Show":
-        add_dir(entry["title"], "show", art=entry.get("art"), show_id=entry["id"])
+        add_dir(entry["title"], "show", art=entry.get("art"),
+                trailer_for=(entry["id"], "Show"), show_id=entry["id"])
     else:
         add_playable(entry)
 
@@ -196,6 +213,40 @@ def do_play(api, item_id, item_type):
     kodiutils.notify(L("sd_notice"))
     play_item = build_isa_listitem(playback)
     xbmcplugin.setResolvedUrl(HANDLE, True, play_item)
+
+
+def do_trailers(api, item_id, item_type):
+    """Context-menu action: pick a trailer for a title and play it.
+
+    Run via RunPlugin rather than as a resolved item, so it works from any
+    list without disturbing the item the user is standing on.
+    """
+    trailers = api.get_trailers(item_id, item_type)
+    if not trailers:
+        kodiutils.ok_dialog(api.last_error or L("no_trailer"))
+        return
+
+    index = 0
+    if len(trailers) > 1:
+        index = xbmcgui.Dialog().select(L("choose_trailer"),
+                                        [t["label"] for t in trailers])
+        if index < 0:
+            return
+    chosen = trailers[index]
+
+    playback = api.get_trailer_playback(item_id, item_type, chosen["id"])
+    if not playback:
+        kodiutils.ok_dialog(api.last_error or L("playback_failed"))
+        return
+
+    play_item = build_isa_listitem(playback)
+    play_item.setLabel(chosen["title"])
+    if chosen.get("art"):
+        play_item.setArt(chosen["art"])
+    tag = play_item.getVideoInfoTag()
+    tag.setTitle(chosen["title"])
+    tag.setMediaType("video")
+    xbmc.Player().play(playback["manifest"], play_item)
 
 
 def build_isa_listitem(playback):
@@ -277,6 +328,8 @@ def router(paramstring):
         do_search(api)
     elif action == "play":
         do_play(api, params.get("item_id"), params.get("item_type", "Movie"))
+    elif action == "trailers":
+        do_trailers(api, params.get("item_id"), params.get("item_type", "Movie"))
     elif action == "sign_in":
         do_sign_in(auth, api)
         main_menu(auth)

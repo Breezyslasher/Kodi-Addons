@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.1" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.2" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,13 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.7.31.2 - Play trailers from the context menu
+- NEW: Movies and shows have a "Play trailer" context-menu entry. Apple
+  lists a title's trailers in its detail response, each already carrying
+  its own stream, so no extra request is needed. Titles with several
+  trailers (Ted Lasso has seven) offer a chooser.
+- Trailers play without a subscription, so a missing media-user-token no
+  longer blocks them.
 2026.7.31.1 - Artwork no longer cut off
 - Apple ships both tall posters and wide stills for a title. The addon now
   reads each artwork's declared dimensions, sends the tall one to Kodi's

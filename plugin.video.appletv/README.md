@@ -17,6 +17,7 @@ using **Widevine** DRM.
 | Apple-ID login → `media-user-token` (store login) | ✅ `POST auth.tv.apple.com/auth/v1/web` mints it automatically after sign-in |
 | Browse Apple TV+ Originals, search | ✅ Real shelf titles, full item lists |
 | Artwork | ✅ Tall posters and wide stills each requested at their own aspect ratio, so neither is cropped |
+| Trailers | ✅ Context menu on movies and shows; taken from the title's own detail response |
 | Show → episode browsing | ✅ Shows open to their episode list with S/E metadata |
 | Playback resolve (`/uts/v3/movies/{id}`, `/episodes/{id}`) | ✅ Returns the `hlsUrl` for the entitled feature (not the trailer) |
 | Widevine licence exchange (`fpsRequest`) | ✅ Local proxy wraps the challenge in Apple's JSON envelope; the returned key id always matches the requested one |
@@ -95,6 +96,7 @@ supported hardware.
 - Browse Apple TV+ Originals (shelves of shows and movies)
 - Show → episode browsing with season/episode metadata
 - Search the Apple TV catalogue
+- **Play trailer** context-menu entry on movies and shows
 - Widevine playback through InputStream Adaptive (standard definition)
 
 ## Requirements

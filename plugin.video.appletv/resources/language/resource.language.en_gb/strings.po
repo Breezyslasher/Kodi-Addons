@@ -142,3 +142,15 @@ msgstr ""
 msgctxt "#32030"
 msgid "Sign out of your Apple ID?"
 msgstr ""
+
+msgctxt "#32031"
+msgid "Play trailer"
+msgstr ""
+
+msgctxt "#32032"
+msgid "Choose a trailer"
+msgstr ""
+
+msgctxt "#32033"
+msgid "No trailer is available for this title."
+msgstr ""

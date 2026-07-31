@@ -37,6 +37,10 @@ APPLE_TV_PLUS_CHANNEL = "tvs.sbd.4000"
 
 CANVAS_CACHE = "canvas_cache.json"
 
+# Canvas shelves on a title's detail page that hold its extra videos.
+TRAILER_SHELF_PREFIX = "uts.col.Trailers"
+BONUS_SHELF_PREFIX = "uts.col.BonusContent"
+
 # Apple ships several artworks per item in two shapes: tall/portrait posters
 # (e.g. posterArt, 2000x3000) and wide/landscape stills (e.g. coverArt16X9,
 # 3840x2160). Each entry declares the source width/height, so the shape is
@@ -231,18 +235,25 @@ class AppleTVApi(object):
     def get_playback(self, content_id, item_type="Movie"):
         """Resolve a title to an ISA-playable dict, or None."""
         self.last_error = None
+        assets = self._prepare_playback(content_id, item_type)
+        if not assets:
+            return None
+        return self._build_playback(assets)
+
+    def _build_playback(self, assets, require_user_token=True):
+        """Turn resolved stream assets into the dict default.py plays.
+
+        Shared by features and trailers: both arrive as the same asset shape
+        (an hlsUrl plus the fps key-server details).
+        """
         boot = self._bootstrap()
         bearer = boot.get("developer_token")
         if not bearer:
             kodiutils.log_error("No developer token; cannot request playback")
             return None
 
-        assets = self._prepare_playback(content_id, item_type)
-        if not assets:
-            return None
-
         mut = assets.get("user_token") or self._media_user_token()
-        if not mut:
+        if not mut and require_user_token:
             kodiutils.log_error(
                 "No media-user-token. Sign in (it is read from tv.apple.com when "
                 "signed in), or paste one into the addon's advanced settings.")
@@ -251,10 +262,11 @@ class AppleTVApi(object):
         # Headers the manifest/segment requests need (token-authenticated).
         stream_headers = {
             "authorization": "Bearer " + bearer,
-            "media-user-token": mut,
             "Origin": WEB_HOME,
             "User-Agent": self.session.headers.get("User-Agent", ""),
         }
+        if mut:
+            stream_headers["media-user-token"] = mut
         wv_keys = self._collect_widevine_keys(assets["manifest"], stream_headers)
         kodiutils.log("Collected %d Widevine key(s)" % len(wv_keys))
 
@@ -272,7 +284,7 @@ class AppleTVApi(object):
 
         kodiutils.write_json("playback_context.json", {
             "bearer": bearer,
-            "media_user_token": mut,
+            "media_user_token": mut or "",
             "adam_id": assets.get("adam_id", ""),
             "svc_id": assets.get("svc_id", ""),
             "is_external": assets.get("is_external", True),
@@ -305,29 +317,8 @@ class AppleTVApi(object):
             return {"manifest": override, "adam_id": self._q(override, "a"),
                     "svc_id": self._q(override, "svcId"), "is_external": True}
 
-        bearer = self._bootstrap().get("developer_token")
-        mut = self._media_user_token()
-        headers = {}
-        if bearer:
-            headers["authorization"] = "Bearer " + bearer
-        if mut:
-            headers["media-user-token"] = mut
-            headers["Origin"] = WEB_HOME
-
-        if str(item_type) == "SportingEvent" or str(content_id).startswith("umc.cse."):
-            endpoint = "sporting-events"
-        elif str(item_type) == "Episode":
-            endpoint = "episodes"
-        else:
-            endpoint = "movies"
-        text = self._get_text("/%s/%s" % (endpoint, content_id),
-                              {"ctx_brand": APPLE_TV_PLUS_CHANNEL}, headers)
-        if not text:
-            return None
-        try:
-            data = json.loads(text)
-        except ValueError:
-            kodiutils.log_error("Playback response was not JSON")
+        data, mut = self._detail_json(content_id, item_type)
+        if data is None:
             return None
 
         # A title can have several playables (feature you are entitled to, an
@@ -354,6 +345,43 @@ class AppleTVApi(object):
             self.last_error = not_started
             return None
 
+        return self._prepared_from_assets(assets, mut)
+
+    def _detail_json(self, content_id, item_type):
+        """Fetch a title's UTS detail document; returns (data, media-user-token).
+
+        The same document carries the feature's playables and the Trailers and
+        Bonus Content shelves, so trailers need no extra request.
+        """
+        bearer = self._bootstrap().get("developer_token")
+        mut = self._media_user_token()
+        headers = {}
+        if bearer:
+            headers["authorization"] = "Bearer " + bearer
+        if mut:
+            headers["media-user-token"] = mut
+            headers["Origin"] = WEB_HOME
+
+        if str(item_type) == "SportingEvent" or str(content_id).startswith("umc.cse."):
+            endpoint = "sporting-events"
+        elif str(item_type) == "Episode":
+            endpoint = "episodes"
+        elif str(item_type) == "Show":
+            endpoint = "shows"
+        else:
+            endpoint = "movies"
+        text = self._get_text("/%s/%s" % (endpoint, content_id),
+                              {"ctx_brand": APPLE_TV_PLUS_CHANNEL}, headers)
+        if not text:
+            return None, mut
+        try:
+            return json.loads(text), mut
+        except ValueError:
+            kodiutils.log_error("Detail response for %s was not JSON" % content_id)
+            return None, mut
+
+    def _prepared_from_assets(self, assets, mut):
+        """Normalise an Apple playable's assets into what _build_playback wants."""
         hls = assets["hlsUrl"].encode("utf-8").decode("unicode_escape").replace("&amp;", "&")
         qp = assets.get("fpsKeyServerQueryParameters") or {}
         return {
@@ -364,6 +392,84 @@ class AppleTVApi(object):
             "svc_id": qp.get("svcId") or self._q(hls, "svcId"),
             "is_external": qp.get("isExternal", True),
         }
+
+    # -- trailers and bonus content --------------------------------------
+
+    def get_trailers(self, content_id, item_type="Movie"):
+        """List a title's trailers, newest shelf order preserved.
+
+        Apple puts them in a canvas shelf whose id is
+        uts.col.Trailers.<content id>, each item already carrying the playable
+        assets, so this is the only request a trailer needs.
+        """
+        self.last_error = None
+        data, _mut = self._detail_json(content_id, item_type)
+        if data is None:
+            return []
+        trailers = []
+        for item in self._extra_shelf_items(data, TRAILER_SHELF_PREFIX):
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            if not self._playable_assets(item):
+                continue
+            title = item.get("title") or ""
+            duration = item.get("duration")
+            label = title
+            if duration:
+                try:
+                    label = "%s (%d:%02d)" % (title, int(duration) // 60, int(duration) % 60)
+                except (TypeError, ValueError):
+                    pass
+            trailers.append({
+                "id": item["id"],
+                "title": title,
+                "label": label,
+                "duration": duration,
+                "art": self._item_art(item.get("images") or {}),
+            })
+        return trailers
+
+    def get_trailer_playback(self, content_id, item_type, trailer_id):
+        """Resolve one trailer from a title's Trailers shelf to a playable dict."""
+        self.last_error = None
+        data, mut = self._detail_json(content_id, item_type)
+        if data is None:
+            return None
+        for item in self._extra_shelf_items(data, TRAILER_SHELF_PREFIX):
+            if not isinstance(item, dict) or item.get("id") != trailer_id:
+                continue
+            assets = self._playable_assets(item)
+            if not assets:
+                break
+            # Trailers are promotional and play without a subscription, so a
+            # missing media-user-token must not block them.
+            return self._build_playback(self._prepared_from_assets(assets, mut),
+                                        require_user_token=False)
+        kodiutils.log_error("Trailer %s has no playable stream" % trailer_id)
+        return None
+
+    def _extra_shelf_items(self, data, prefix):
+        """Items of the canvas shelf whose id starts with prefix."""
+        root = data.get("data") if isinstance(data, dict) and "data" in data else data
+        canvas = root.get("canvas") if isinstance(root, dict) else None
+        shelves = canvas.get("shelves") if isinstance(canvas, dict) else None
+        for shelf in self._as_list(shelves):
+            if isinstance(shelf, dict) and str(shelf.get("id") or "").startswith(prefix):
+                return self._as_list(shelf.get("items"))
+        return []
+
+    @staticmethod
+    def _playable_assets(item):
+        """The first of an item's playables that actually carries a stream."""
+        playables = item.get("playables")
+        candidates = list(playables.values()) if isinstance(playables, dict) else (playables or [])
+        for playable in candidates:
+            if not isinstance(playable, dict):
+                continue
+            assets = playable.get("assets")
+            if isinstance(assets, dict) and assets.get("hlsUrl"):
+                return assets
+        return None
 
     @staticmethod
     def event_times(data):
