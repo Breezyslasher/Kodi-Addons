@@ -53,6 +53,35 @@ def kid_from_data_uri(uri):
     return None
 
 
+def _patch_tenc_kid(data, kid_hex):
+    """Replace an all-zero default_KID in every tenc box with the real key id.
+
+    tenc payload: version(1) flags(3) reserved(1) reserved/blocks(1)
+    default_isProtected(1) default_Per_Sample_IV_Size(1) default_KID(16),
+    so the key id starts 12 bytes after the 'tenc' fourcc.
+    """
+    try:
+        kid = bytes.fromhex(kid_hex)
+    except (ValueError, TypeError):
+        return data, 0
+    if len(kid) != 16:
+        return data, 0
+
+    out = bytearray(data)
+    patched = 0
+    pos = 0
+    while True:
+        pos = out.find(b"tenc", pos)
+        if pos < 0:
+            break
+        start = pos + 12
+        if start + 16 <= len(out) and out[start:start + 16] == b"\x00" * 16:
+            out[start:start + 16] = kid
+            patched += 1
+        pos += 4
+    return bytes(out), patched
+
+
 def _encode_url(url):
     return base64.urlsafe_b64encode(url.encode("utf-8")).decode("ascii").rstrip("=")
 
@@ -69,15 +98,20 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
-        if parsed.path != "/manifest":
+        if parsed.path not in ("/manifest", "/init"):
             self.send_response(404)
             self.end_headers()
             return
+        query = parse_qs(parsed.query)
         try:
-            target = _decode_url(parse_qs(parsed.query).get("u", [""])[0])
+            target = _decode_url(query.get("u", [""])[0])
         except Exception:
             self.send_response(400)
             self.end_headers()
+            return
+
+        if parsed.path == "/init":
+            self._serve_init(target, query.get("kid", [""])[0])
             return
 
         ctx = _context()
@@ -117,6 +151,44 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _serve_init(self, target, kid_hex):
+        """Serve an init segment with the real key id patched into its tenc box.
+
+        Apple ships default_KID as sixteen zero bytes. InputStream Adaptive
+        takes the key id for every sample straight from tenc, and its only
+        fallback triggers on an *empty* key id, not an all-zero one, so it asks
+        the CDM to decrypt with a key that was never licensed ("kNoKey"). The
+        real key id is in the manifest's key PSSH, so write it into tenc here.
+        """
+        ctx = _context()
+        headers = {
+            "User-Agent": ctx.get("user_agent") or "Mozilla/5.0",
+            "Origin": "https://tv.apple.com",
+            "Referer": "https://tv.apple.com/",
+        }
+        try:
+            resp = requests.get(target, headers=headers, timeout=30)
+            if resp.status_code != 200:
+                kodiutils.log_error("Init segment proxy -> HTTP %s" % resp.status_code)
+                self.send_response(resp.status_code)
+                self.end_headers()
+                return
+            data, patched = _patch_tenc_kid(resp.content, kid_hex)
+            if patched:
+                kodiutils.log("Init segment: patched %d tenc KID(s) -> %s"
+                              % (patched, kid_hex[:16]))
+        except Exception as exc:
+            kodiutils.log_error("Init segment proxy error: %s" % exc)
+            self.send_response(502)
+            self.end_headers()
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _rewrite(self, text, base_url):
         """Route child playlists through the proxy and add KEYID to key lines.
 
@@ -129,6 +201,8 @@ class _Handler(BaseHTTPRequestHandler):
         """
         is_master = "#EXT-X-STREAM-INF" in text
         tagged = 0
+        mapped = 0
+        cur_kid = None
         out = []
         for line in text.splitlines():
             s = line.strip()
@@ -142,20 +216,39 @@ class _Handler(BaseHTTPRequestHandler):
                     out.append(self._proxied(s, base_url))
                     continue
             else:
-                if s.startswith("#EXT-X-KEY") and "urn:uuid:edef8ba9" in s:
-                    fixed = self._add_keyid(s)
-                    if fixed != s:
-                        tagged += 1
-                    out.append(fixed)
+                if s.startswith("#EXT-X-KEY"):
+                    if "urn:uuid:edef8ba9" in s:
+                        uri_match = re.search(r'URI="([^"]+)"', s)
+                        cur_kid = kid_from_data_uri(uri_match.group(1)) if uri_match else None
+                        fixed = self._add_keyid(s)
+                        if fixed != s:
+                            tagged += 1
+                        out.append(fixed)
+                        continue
+                    if "METHOD=NONE" in s:
+                        cur_kid = None  # clear section (Apple's intro chapters)
+                if s.startswith("#EXT-X-MAP") and cur_kid:
+                    # Route the init segment through the proxy so its all-zero
+                    # tenc default_KID can be replaced with the real key id.
+                    out.append(re.sub(
+                        r'URI="([^"]+)"',
+                        lambda m: 'URI="%s"' % self._init_proxied(
+                            m.group(1), base_url, cur_kid), s))
+                    mapped += 1
                     continue
-                # Segment and init-segment URLs stay pointed at Apple's CDN.
+                # Media segment URLs stay pointed at Apple's CDN.
                 if s and not s.startswith("#"):
                     out.append(urljoin(base_url, s))
                     continue
             out.append(line)
         if not is_master:
-            kodiutils.log("Manifest proxy: variant served, %d KEYID added" % tagged)
+            kodiutils.log("Manifest proxy: variant served, %d KEYID added, "
+                          "%d init segment(s) routed" % (tagged, mapped))
         return "\n".join(out) + "\n"
+
+    def _init_proxied(self, url, base_url, kid):
+        return "http://%s:%d/init?kid=%s&u=%s" % (
+            BIND_HOST, _port(), kid, _encode_url(urljoin(base_url, url)))
 
     def _add_keyid(self, line):
         if "KEYID=" in line:
