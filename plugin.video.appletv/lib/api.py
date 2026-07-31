@@ -50,6 +50,9 @@ class AppleTVApi(object):
         self.auth = auth
         self.session = auth.session
         self._boot = None
+        # Message explaining the most recent playback failure, when there is a
+        # better one than "could not be resolved" (e.g. an event not yet live).
+        self.last_error = None
 
     # -- bootstrap (scrape tokens from the web shell) --------------------
 
@@ -203,6 +206,7 @@ class AppleTVApi(object):
 
     def get_playback(self, content_id, item_type="Movie"):
         """Resolve a title to an ISA-playable dict, or None."""
+        self.last_error = None
         boot = self._bootstrap()
         bearer = boot.get("developer_token")
         if not bearer:
@@ -286,13 +290,12 @@ class AppleTVApi(object):
             headers["media-user-token"] = mut
             headers["Origin"] = WEB_HOME
 
-        # Sporting events (umc.cse.*) are not movies or episodes and are not
-        # supported; the movies endpoint returns 404 for them.
-        if str(content_id).startswith("umc.cse."):
-            kodiutils.log_error("Live sports events are not supported (%s)" % content_id)
-            return None
-
-        endpoint = "episodes" if str(item_type) == "Episode" else "movies"
+        if str(item_type) == "SportingEvent" or str(content_id).startswith("umc.cse."):
+            endpoint = "sporting-events"
+        elif str(item_type) == "Episode":
+            endpoint = "episodes"
+        else:
+            endpoint = "movies"
         text = self._get_text("/%s/%s" % (endpoint, content_id),
                               {"ctx_brand": APPLE_TV_PLUS_CHANNEL}, headers)
         if not text:
@@ -308,9 +311,23 @@ class AppleTVApi(object):
         # stream -- grabbing the first hlsUrl in the JSON returns the trailer.
         assets = self._select_playable_assets(data)
         if not assets or not assets.get("hlsUrl"):
+            # A sporting event with no stream is usually one that has not
+            # started; say so rather than reporting a generic failure.
+            not_started = self.event_not_started_message(data)
+            if not_started:
+                kodiutils.log(not_started)
+                self.last_error = not_started
+                return None
             kodiutils.log_error(
                 "No playable stream for %s. Likely not in your subscription/"
                 "region, or no media-user-token." % content_id)
+            return None
+
+        # A live event can carry a stream before you are allowed to watch it.
+        not_started = self.event_not_started_message(data)
+        if not_started:
+            kodiutils.log(not_started)
+            self.last_error = not_started
             return None
 
         hls = assets["hlsUrl"].encode("utf-8").decode("unicode_escape").replace("&amp;", "&")
@@ -323,6 +340,58 @@ class AppleTVApi(object):
             "svc_id": qp.get("svcId") or self._q(hls, "svcId"),
             "is_external": qp.get("isExternal", True),
         }
+
+    @staticmethod
+    def event_times(data):
+        """Kick-off and tune-in times (epoch seconds) of a sporting event."""
+        event = None
+        for holder in ("content", "data"):
+            node = data.get(holder) if isinstance(data, dict) else None
+            if isinstance(node, dict) and isinstance(node.get("eventTime"), dict):
+                event = node["eventTime"]
+                break
+        if event is None:
+            event = AppleTVApi._find_event_time(data)
+        if not isinstance(event, dict):
+            return None, None
+        kick_off = event.get("gameKickOffStartTime")
+        tune_in = (event.get("tuneInTime") or {}).get("startTime")
+        to_secs = lambda ms: int(ms) // 1000 if isinstance(ms, (int, float)) else None
+        return to_secs(kick_off), to_secs(tune_in)
+
+    @staticmethod
+    def _find_event_time(data):
+        if isinstance(data, dict):
+            if "gameKickOffStartTime" in data:
+                return data
+            for value in data.values():
+                found = AppleTVApi._find_event_time(value)
+                if found is not None:
+                    return found
+        elif isinstance(data, list):
+            for value in data:
+                found = AppleTVApi._find_event_time(value)
+                if found is not None:
+                    return found
+        return None
+
+    @classmethod
+    def event_not_started_message(cls, data):
+        """Message for an event that cannot be watched yet, else None."""
+        import time
+        kick_off, tune_in = cls.event_times(data)
+        starts = tune_in or kick_off
+        if not starts or time.time() >= starts:
+            return None
+        return kodiutils.localize(32050) % cls.format_event_time(kick_off or starts)
+
+    @staticmethod
+    def format_event_time(epoch_secs):
+        """Local date and time of an event, e.g. 'Thu 31 Jul at 19:30'."""
+        import time
+        if not epoch_secs:
+            return ""
+        return time.strftime("%a %d %b at %H:%M", time.localtime(epoch_secs))
 
     def _select_playable_assets(self, data):
         """Return the assets of the entitled, streamable playable."""
@@ -505,6 +574,17 @@ class AppleTVApi(object):
         label = title
         if item_type == "Episode" and season and episode:
             label = "S%dE%d · %s" % (season, episode, title)
+
+        start_time = None
+        if item_type == "SportingEvent":
+            kick_off, _ = self.event_times(raw)
+            start_time = kick_off
+            league = raw.get("leagueName") or raw.get("sportName")
+            when = self.format_event_time(kick_off)
+            if when:
+                label = "%s · %s" % (when, title)
+            extra = " · ".join(x for x in (league, when) if x)
+            plot = "\n".join(x for x in (extra, plot) if x)
         return {
             "id": item_id,
             "title": label,
@@ -515,6 +595,7 @@ class AppleTVApi(object):
             "season": season,
             "episode": episode,
             "duration": raw.get("duration"),
+            "start_time": start_time,
             "art": self._item_art(raw.get("images") or {}),
         }
 

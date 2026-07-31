@@ -69,6 +69,10 @@ msgctxt "#32042"
 msgid "Disable InputStream Adaptive secure decoder (needed for software Widevine)"
 msgstr ""
 
+msgctxt "#32050"
+msgid "This event has not started yet. It begins %s."
+msgstr ""
+
 # --- Menu labels ---
 msgctxt "#32010"
 msgid "Apple TV+ Originals"

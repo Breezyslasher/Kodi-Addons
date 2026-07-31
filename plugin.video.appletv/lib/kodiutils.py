@@ -8,9 +8,21 @@ import xbmcaddon
 import xbmcgui
 import xbmcvfs
 
-ADDON = xbmcaddon.Addon()
-ADDON_ID = ADDON.getAddonInfo("id")
-ADDON_NAME = ADDON.getAddonInfo("name")
+
+def addon():
+    """A fresh Addon handle.
+
+    Kodi 22 warns when a script leaves xbmcaddon.Addon instances behind
+    ("has left several classes in memory that we couldn't clean up"), which is
+    what a module-level instance does: it lives until interpreter teardown, by
+    which point Kodi has already checked. Create one per call and let it go out
+    of scope instead.
+    """
+    return xbmcaddon.Addon()
+
+
+ADDON_ID = addon().getAddonInfo("id")
+ADDON_NAME = addon().getAddonInfo("name")
 
 
 def log(message, level=xbmc.LOGINFO):
@@ -23,7 +35,7 @@ def log_error(message):
 
 def get_setting(setting_id, default=""):
     try:
-        value = ADDON.getSetting(setting_id)
+        value = addon().getSetting(setting_id)
         return value if value else default
     except Exception:
         return default
@@ -31,7 +43,7 @@ def get_setting(setting_id, default=""):
 
 def set_setting(setting_id, value):
     try:
-        ADDON.setSetting(setting_id, str(value))
+        addon().setSetting(setting_id, str(value))
     except Exception:
         pass
 
@@ -49,7 +61,7 @@ def get_setting_int(setting_id, default=0):
 
 
 def localize(string_id):
-    return ADDON.getLocalizedString(string_id)
+    return addon().getLocalizedString(string_id)
 
 
 def notify(message, heading=None, icon=xbmcgui.NOTIFICATION_INFO, time_ms=5000):
@@ -73,11 +85,11 @@ def input_numeric(heading):
 
 
 def open_settings():
-    ADDON.openSettings()
+    addon().openSettings()
 
 
 def profile_dir():
-    path = xbmcvfs.translatePath(ADDON.getAddonInfo("profile"))
+    path = xbmcvfs.translatePath(addon().getAddonInfo("profile"))
     if not os.path.exists(path):
         os.makedirs(path)
     return path

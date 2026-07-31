@@ -62,7 +62,14 @@ def add_playable(entry):
         item.setArt({"thumb": entry["art"], "poster": entry["art"], "fanart": entry["art"]})
     tag = item.getVideoInfoTag()
     tag.setTitle(entry.get("sort_title") or entry["title"])
-    tag.setMediaType("episode" if str(entry.get("type")) == "Episode" else "movie")
+    kind = str(entry.get("type"))
+    tag.setMediaType("episode" if kind == "Episode" else "movie")
+    if entry.get("start_time"):
+        try:
+            import time
+            tag.setFirstAired(time.strftime("%Y-%m-%d", time.localtime(entry["start_time"])))
+        except (TypeError, ValueError, OverflowError):
+            pass
     if entry.get("plot"):
         tag.setPlot(entry["plot"])
     if entry.get("year"):
@@ -183,7 +190,7 @@ def do_search(api):
 def do_play(api, item_id, item_type):
     playback = api.get_playback(item_id, item_type)
     if not playback:
-        kodiutils.ok_dialog(L("playback_failed"))
+        kodiutils.ok_dialog(api.last_error or L("playback_failed"))
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
 
@@ -260,8 +267,11 @@ def build_isa_listitem(playback):
 def inputstream_major_version():
     """Major version of the installed InputStream Adaptive, or 0 if unknown."""
     try:
-        version = xbmcaddon.Addon("inputstream.adaptive").getAddonInfo("version")
-        return int(version.split(".")[0])
+        isa = xbmcaddon.Addon("inputstream.adaptive")
+        try:
+            return int(isa.getAddonInfo("version").split(".")[0])
+        finally:
+            del isa
     except Exception:
         return 0
 
@@ -281,9 +291,12 @@ def configure_inputstream():
         return
     try:
         isa = xbmcaddon.Addon("inputstream.adaptive")
-        if isa.getSetting("NOSECUREDECODER") != "true":
-            isa.setSetting("NOSECUREDECODER", "true")
-            kodiutils.log("Set InputStream Adaptive NOSECUREDECODER=true")
+        try:
+            if isa.getSetting("NOSECUREDECODER") != "true":
+                isa.setSetting("NOSECUREDECODER", "true")
+                kodiutils.log("Set InputStream Adaptive NOSECUREDECODER=true")
+        finally:
+            del isa  # Kodi 22 warns about Addon instances left behind
     except Exception as exc:
         kodiutils.log_error("Could not set NOSECUREDECODER: %s" % exc)
 
