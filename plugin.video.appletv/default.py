@@ -377,6 +377,14 @@ def build_isa_listitem(playback):
     # pre_init_data sets up the decrypter before the first encrypted chapter
     # (Apple leaves the opening chapters clear, which otherwise leaves
     # InputStream Adaptive with no decrypter when encryption starts).
+    if not playback.get("encrypted", True):
+        # Nothing to decrypt: with no Widevine key in the manifest, a DRM
+        # session would only stall waiting for a licence that never comes.
+        kodiutils.log("Stream carries no Widevine keys; playing without DRM")
+        if not is_helper_ok:
+            kodiutils.log_error("Widevine CDM not confirmed present")
+        return item
+
     config = {"priority": 1, "secure_decoder": False, "force_single_session": True}
     license_url = playback.get("license_url")
     if license_url:

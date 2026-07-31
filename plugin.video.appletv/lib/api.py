@@ -650,12 +650,17 @@ class AppleTVApi(object):
         return {
             # Served through the local proxy so the KEYID Apple omits can be
             # added; without it ISA decrypts with an all-zero key id.
-            "manifest": license_proxy.manifest_url(assets["manifest"]),
+            "manifest": license_proxy.manifest_url(assets["manifest"],
+                                                   clear=not wv_keys),
             "manifest_type": "hls",
             "license_url": license_proxy.license_url(),
             "certificate_b64": self.get_widevine_certificate(),
             "stream_headers": stream_headers,
             "pre_init_data": pre_init,
+            # Trailers and some extras are served in the clear. Asking
+            # InputStream Adaptive for a Widevine session on an unencrypted
+            # stream leaves it waiting for a licence that can never arrive.
+            "encrypted": bool(wv_keys),
             "report": {
                 "playable_passthrough": assets.get("playable_passthrough"),
                 "external_id": assets.get("external_id"),
@@ -956,34 +961,80 @@ class AppleTVApi(object):
         plain = {k: v for k, v in (headers or {}).items()
                  if k.lower() in ("user-agent", "origin")}
         try:
-            master = self.session.get(manifest_url, headers=headers, timeout=30).text
+            resp = self.session.get(manifest_url, headers=headers, timeout=30)
+            if resp.status_code != 200:
+                kodiutils.log_error("Master manifest -> %s for key collection"
+                                    % resp.status_code)
+                return keys
+            master = resp.text
             base = manifest_url.rsplit("/", 1)[0] + "/"
-            targets = []
-            for line in master.splitlines():
-                s = line.strip()
-                if s and not s.startswith("#") and "playlist.m3u8" in s:
-                    targets.append(s if s.startswith("http") else base + s)
-                    break
-            for line in master.splitlines():
+
+            def absolute(u):
+                return u if u.startswith("http") else base + u
+
+            # Read keys from the variants that will actually be played: Apple
+            # keys each tier separately, so a key taken from a tier the proxy
+            # drops is never the one InputStream Adaptive asks to decrypt.
+            max_h = kodiutils.get_setting_int("max_height", 360)
+            sdr_only = kodiutils.get_setting_bool("sdr_only", True)
+            avc_only = kodiutils.get_setting_bool("avc_only", True)
+
+            lines = master.splitlines()
+            video, skipped = [], 0
+            for i, line in enumerate(lines):
+                if not line.strip().startswith("#EXT-X-STREAM-INF"):
+                    continue
+                uri = next((x.strip() for x in lines[i + 1:i + 3]
+                            if x.strip() and not x.strip().startswith("#")), None)
+                if not uri:
+                    continue
+                if license_proxy.variant_unwanted(line.strip(), max_h,
+                                                  sdr_only, avc_only):
+                    skipped += 1
+                    continue
+                video.append(absolute(uri))
+
+            audio = []
+            for line in lines:
                 if line.startswith("#EXT-X-MEDIA") and "TYPE=AUDIO" in line:
                     m = re.search(r'URI="([^"]+)"', line)
                     if m:
-                        u = m.group(1)
-                        targets.append(u if u.startswith("http") else base + u)
-                        break
+                        audio.append(absolute(m.group(1)))
+            # A couple of each is enough: every kept video variant shares a
+            # tier, and the audio rendition carries the separate audio key.
+            targets = video[:2] + audio[:2]
+            if not targets:
+                kodiutils.log_error(
+                    "No usable variants in master for key collection "
+                    "(%d variants skipped by the quality filter)" % skipped)
+                return keys
+
+            without_key = 0
             for url in targets:
                 try:
-                    text = self.session.get(url, headers=plain, timeout=30).text
+                    vresp = self.session.get(url, headers=plain, timeout=30)
                 except Exception as exc:
                     kodiutils.log_error("Variant fetch failed: %s" % exc)
                     continue
-                for line in text.splitlines():
+                if vresp.status_code != 200:
+                    kodiutils.log_error("Variant -> %s during key collection"
+                                        % vresp.status_code)
+                    continue
+                found = False
+                for line in vresp.text.splitlines():
                     if "urn:uuid:edef8ba9" in line:
                         m = re.search(r'URI="([^"]+)"', line)
                         if m:
                             kid = self._kid_from_data_uri(m.group(1))
                             if kid:
                                 keys[kid] = m.group(1)
+                                found = True
+                if not found:
+                    without_key += 1
+            if not keys:
+                kodiutils.log(
+                    "No Widevine keys in %d variant(s): this stream carries no "
+                    "Widevine encryption" % without_key)
         except Exception as exc:
             kodiutils.log_error("Widevine key collection failed: %s" % exc)
         return keys

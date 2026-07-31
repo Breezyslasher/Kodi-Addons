@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.10" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.11" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,18 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.7.31.11 - Trailers play
+- FIX: Trailers carry no DRM at all -- no key of any kind in the manifest.
+  The addon was still asking InputStream Adaptive for a Widevine session,
+  which then waited for a licence that could never arrive. Streams with no
+  keys now play as plain HLS.
+- Trailers play at full quality: the 360-line, H.264 and SDR limits exist
+  only to satisfy the Widevine CDM, which an unencrypted stream never
+  reaches.
+- FIX: Key collection read its key from the first variant in the manifest,
+  which is usually one the quality filter drops. Since Apple keys each tier
+  separately, that was the wrong key. It now reads from the variants that
+  are actually played, and says so in the log when a stream has no keys.
 2026.7.31.10 - Watch history syncs to your Apple account
 - NEW: What you watch through the addon now updates Apple's Continue
   Watching, and resumes at the right place on your other Apple devices.
