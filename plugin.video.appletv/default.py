@@ -212,16 +212,21 @@ def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
         add_dir(entry["title"], "grandprix", art=entry.get("art"),
                 gp_id=entry["id"], channel_id=channel_id)
     elif kind == "Team":
-        # A club page, likewise its own canvas. Following is offered both
-        # ways: Apple exposes no way to read back which clubs are followed,
-        # so the menu cannot show a single accurate toggle.
-        follow = [
-            (L("follow_team"), "RunPlugin(%s)" % url(
-                action="follow_team", team_id=entry["id"], on="1")),
+        # A club page, likewise its own canvas. Clubs report whether the
+        # account follows them, so the followed ones are marked and the
+        # likely action is offered first. Both stay available: the flag has
+        # not been seen turning true on a tile, only alongside a match.
+        followed = entry.get("favourite")
+        label = ("* " + entry["title"]) if followed else entry["title"]
+        actions = [
             (L("unfollow_team"), "RunPlugin(%s)" % url(
                 action="follow_team", team_id=entry["id"], on="0")),
+            (L("follow_team"), "RunPlugin(%s)" % url(
+                action="follow_team", team_id=entry["id"], on="1")),
         ]
-        add_dir(entry["title"], "team", art=entry.get("art"), context=follow,
+        if not followed:
+            actions.reverse()
+        add_dir(label, "team", art=entry.get("art"), context=actions,
                 team_id=entry["id"], channel_id=channel_id)
     else:
         add_playable(entry)

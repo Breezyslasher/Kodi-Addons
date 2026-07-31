@@ -1289,6 +1289,9 @@ class AppleTVApi(object):
             "episode": episode,
             "duration": raw.get("duration"),
             "start_time": start_time,
+            # Clubs carry whether the account follows them; the canvas is
+            # invalidated on a FAVORITE event, so it comes back up to date.
+            "favourite": bool(raw.get("isFavorite")),
             "art": self._item_art(raw.get("images") or {}),
             # Harvested by _extract_shelves, never kept on the listed entry.
             "stream_assets": self._playable_assets(raw),
