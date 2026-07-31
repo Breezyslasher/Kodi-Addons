@@ -15,7 +15,7 @@ using **Widevine** DRM.
 |-------|--------|
 | Apple ID sign-in + two-factor (trusted device or SMS) | ✅ Matches the real web flow (authorize → SRP with *no-username-in-x* + `X-Apple-HC` hashcash → 2FA → trust) |
 | Apple-ID login → `media-user-token` (store login) | ✅ `POST auth.tv.apple.com/auth/v1/web` mints it automatically after sign-in |
-| Browse Apple TV+, MLS and Formula 1 tabs, search | ✅ Real shelf titles, full item lists |
+| Browse Apple TV+, MLS and Formula 1 tabs, search | ✅ Real shelf titles, every shelf on a tab, every item in a shelf |
 | Artwork | ✅ Tall posters and wide stills each requested at their own aspect ratio, so neither is cropped |
 | Trailers and bonus content | ✅ Context menus on movies and shows; taken from the title's own detail response |
 | Sports clips (highlights, interviews, key plays) | ✅ Played from the stream the shelf lists inline — Apple gives these no detail endpoint |

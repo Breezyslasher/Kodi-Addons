@@ -143,7 +143,11 @@ def show_shelves(api, shelves, channel_id=APPLE_TV_PLUS_CHANNEL):
         kodiutils.notify(L("no_results"))
     for shelf in shelves:
         if shelf.get("items"):
-            add_dir("%s (%d)" % (shelf["title"], len(shelf["items"])),
+            # A shelf with a paging token has more than the canvas returned;
+            # they are fetched when it is opened.
+            count = "%d+" % len(shelf["items"]) if shelf.get("next") \
+                else str(len(shelf["items"]))
+            add_dir("%s (%s)" % (shelf["title"], count),
                     "shelf", shelf_id=shelf["id"], title=shelf["title"],
                     channel_id=channel_id)
     xbmcplugin.endOfDirectory(HANDLE)

@@ -21,6 +21,7 @@ carries a Widevine PSSH, so InputStream Adaptive can decrypt it.
 
 import json
 import re
+from urllib.parse import parse_qs
 
 from . import kodiutils
 from . import license_proxy
@@ -233,9 +234,11 @@ class AppleTVApi(object):
             token = self._canvas_next_token(data)
             if not token or not page:
                 break
-        # Cache items so opening a shelf shows the full list (they're already
-        # here). Kept per channel so switching tabs does not evict the other's.
-        cache = {s["id"]: s["items"] for s in shelves if s.get("id")}
+        # Cache each shelf's first page and what is needed to fetch the rest.
+        # Kept per channel so switching tabs does not evict the other's.
+        cache = {s["id"]: {"items": s["items"], "next": s.get("next"),
+                           "ctx": s.get("ctx") or {}}
+                 for s in shelves if s.get("id")}
         kodiutils.write_json(self._canvas_cache_name(channel_id), cache)
         return shelves
 
@@ -247,11 +250,43 @@ class AppleTVApi(object):
         token = canvas.get("nextToken") if isinstance(canvas, dict) else None
         return str(token) if token not in (None, "") else None
 
-    def get_shelf_items(self, shelf_id, channel_id=None):
+    def get_shelf_items(self, shelf_id, channel_id=None, max_pages=20):
+        """A shelf's items, following its own paging to the end.
+
+        The canvas only sends a shelf's first page. Handing its nextToken back
+        to /shelves/{id}, along with the ctx_* parameters the shelf's url
+        spells out, returns the next batch; the last page carries no token.
+        """
         cache = kodiutils.read_json(
             self._canvas_cache_name(channel_id or APPLE_TV_PLUS_CHANNEL),
             default={}) or {}
-        return cache.get(shelf_id, [])
+        entry = cache.get(shelf_id)
+        if not entry:
+            return []
+        if isinstance(entry, list):
+            return entry  # cache written by an older version of the addon
+
+        items = list(entry.get("items") or [])
+        seen = {i.get("id") for i in items}
+        token = entry.get("next")
+        ctx = entry.get("ctx") or {}
+        for _ in range(max_pages):
+            if not token:
+                break
+            params = dict(ctx)
+            params["nextToken"] = token
+            data = self._get_json("/shelves/%s" % shelf_id, params)
+            shelf = ((data or {}).get("data") or {}).get("shelf")
+            if not isinstance(shelf, dict):
+                break
+            page = self._extract_items(shelf.get("items"))
+            fresh = [i for i in page if i.get("id") not in seen]
+            seen.update(i.get("id") for i in fresh)
+            items.extend(fresh)
+            token = shelf.get("nextToken") or None
+            if not page:
+                break
+        return items
 
     @staticmethod
     def _canvas_cache_name(channel_id):
@@ -734,8 +769,45 @@ class AppleTVApi(object):
             shelf_id = shelf.get("id") or shelf.get("channelId") or ""
             items = self._extract_items(shelf.get("items"))
             if items and shelf_id:
-                shelves.append({"id": str(shelf_id), "title": title, "items": items})
+                shelves.append({
+                    "id": str(shelf_id),
+                    "title": title,
+                    "items": items,
+                    # Enough to fetch the rest of this shelf's items later.
+                    "next": shelf.get("nextToken") or None,
+                    "ctx": self._shelf_context(shelf, data),
+                })
         return shelves
+
+    def _shelf_context(self, shelf, data):
+        """The ctx_* parameters Apple wants when paging a shelf.
+
+        They are spelled out in the shelf's own url; where one is missing the
+        canvas repeats it (its id is ctx_cvs, canvasInfo.entityId is
+        ctx_brand) and the shelf's metrics carry ctx_shelf.
+        """
+        ctx = {}
+        url = shelf.get("url")
+        if isinstance(url, str) and "?" in url:
+            for key, values in parse_qs(url.split("?", 1)[1]).items():
+                if key.startswith("ctx_") and values:
+                    ctx[key] = values[0]
+
+        metrics = shelf.get("metrics")
+        if isinstance(metrics, dict) and not ctx.get("ctx_shelf"):
+            shelf_key = metrics.get("data.uts.shelfId")
+            if shelf_key:
+                ctx["ctx_shelf"] = shelf_key
+
+        root = data.get("data") if isinstance(data, dict) and "data" in data else data
+        canvas = root.get("canvas") if isinstance(root, dict) else None
+        if isinstance(canvas, dict):
+            if not ctx.get("ctx_cvs") and canvas.get("id"):
+                ctx["ctx_cvs"] = canvas["id"]
+            info = canvas.get("canvasInfo")
+            if not ctx.get("ctx_brand") and isinstance(info, dict) and info.get("entityId"):
+                ctx["ctx_brand"] = info["entityId"]
+        return ctx
 
     def _harvest_streams(self, items):
         """Move any inline stream assets off the entries and into the cache.
