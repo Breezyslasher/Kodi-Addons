@@ -365,6 +365,55 @@ class AppleTVApi(object):
                     followed.append(item)
         return followed
 
+    def get_related(self, content_id, league_id=None):
+        """"More like this" for a title, or the other games in a league.
+
+        Both are ordinary shelves keyed by the content id, differing only in
+        the context parameter each wants.
+        """
+        if league_id:
+            shelf = "uts.col.SportsRelated.%s" % content_id
+            params = {"ctx_league": league_id}
+        else:
+            shelf = "uts.col.ContentRelated.%s" % content_id
+            params = {"ctx_contentId": content_id}
+        data = self._get_json("/shelves/%s" % shelf, params)
+        node = ((data or {}).get("data") or {}).get("shelf")
+        if not isinstance(node, dict):
+            return []
+        return self._extract_items(node.get("items"))
+
+    def get_event_clubs(self, event_id):
+        """The clubs playing in a match; it takes no context parameters."""
+        data = self._get_json("/shelves/uts.col.Teams.%s" % event_id, {})
+        node = ((data or {}).get("data") or {}).get("shelf")
+        if not isinstance(node, dict):
+            return []
+        return self._extract_items(node.get("items"))
+
+    def logout(self):
+        """End the session with Apple as well as forgetting it locally.
+
+        The site posts to both the v1 and v2 endpoints; each takes the bearer
+        token, no body. Failure is not fatal -- the local tokens are cleared
+        either way -- so this only reports whether Apple acknowledged.
+        """
+        bearer = self._bootstrap().get("developer_token")
+        if not bearer:
+            return False
+        ok = False
+        for path in ("/auth/v2/web/logout", "/auth/v1/web/logout"):
+            try:
+                resp = self.session.post(
+                    "https://auth.tv.apple.com" + path,
+                    headers={"authorization": "Bearer " + bearer,
+                             "Origin": WEB_HOME},
+                    timeout=30)
+                ok = ok or resp.status_code in (200, 204)
+            except Exception as exc:
+                kodiutils.log_error("logout %s failed: %s" % (path, exc))
+        return ok
+
     def subscription_status(self):
         """Apple TV+ subscription state, or None when it cannot be read."""
         bearer = self._bootstrap().get("developer_token")
@@ -738,10 +787,42 @@ class AppleTVApi(object):
 
     # -- playback --------------------------------------------------------
 
-    def get_playback(self, content_id, item_type="Movie"):
+    def list_playables(self, content_id, item_type="Movie"):
+        """The distinct feeds a title offers, when it offers more than one.
+
+        A match is published several times over: a full replay beside a ten
+        minute recap, and one feed per commentary language. They differ by
+        externalId, so that is what identifies the chosen one.
+        """
+        self.last_error = None
+        data, _mut = self._detail_json(content_id, item_type)
+        if data is None:
+            return []
+        playables = self._deep_find(data, "playables")
+        candidates = list(playables.values()) if isinstance(playables, dict) \
+            else (playables or [])
+        feeds = []
+        for playable in candidates:
+            if not isinstance(playable, dict):
+                continue
+            assets = playable.get("assets")
+            if not isinstance(assets, dict) or not assets.get("hlsUrl"):
+                continue
+            if not playable.get("isEntitledToPlay"):
+                continue
+            locale = playable.get("primaryLocale") or {}
+            feeds.append({
+                "external_id": playable.get("externalId"),
+                "title": playable.get("title") or "",
+                "duration": playable.get("duration"),
+                "language": locale.get("displayName") or "",
+            })
+        return feeds if len(feeds) > 1 else []
+
+    def get_playback(self, content_id, item_type="Movie", external_id=None):
         """Resolve a title to an ISA-playable dict, or None."""
         self.last_error = None
-        assets = self._prepare_playback(content_id, item_type)
+        assets = self._prepare_playback(content_id, item_type, external_id)
         if not assets:
             # Sports clips have no detail endpoint; fall back to the stream the
             # shelf listed inline, which is the only one Apple ever offers.
@@ -826,7 +907,7 @@ class AppleTVApi(object):
             },
         }
 
-    def _prepare_playback(self, content_id, item_type):
+    def _prepare_playback(self, content_id, item_type, external_id=None):
         """Resolve playback assets via the UTS JSON endpoint.
 
         GET /api/uts/v3/{movies|episodes}/{id} with a Bearer developer token and
@@ -847,7 +928,7 @@ class AppleTVApi(object):
         # A title can have several playables (feature you are entitled to, an
         # unentitled purchase option, trailers). Pick the entitled one with a
         # stream -- grabbing the first hlsUrl in the JSON returns the trailer.
-        assets = self._select_playable_assets(data)
+        assets = self._select_playable_assets(data, external_id)
         if not assets or not assets.get("hlsUrl"):
             # A sporting event with no stream is usually one that has not
             # started; say so rather than reporting a generic failure.
@@ -1052,8 +1133,12 @@ class AppleTVApi(object):
             return ""
         return time.strftime("%a %d %b at %H:%M", time.localtime(epoch_secs))
 
-    def _select_playable_assets(self, data):
-        """Return the assets of the entitled, streamable playable."""
+    def _select_playable_assets(self, data, external_id=None):
+        """Return the assets of the entitled, streamable playable.
+
+        external_id picks one specific feed when a title publishes several
+        (a full replay and a recap, or one per commentary language).
+        """
         playables = self._deep_find(data, "playables")
         if isinstance(playables, dict):
             candidates = list(playables.values())
@@ -1065,6 +1150,12 @@ class AppleTVApi(object):
         def has_stream(p):
             return isinstance(p, dict) and isinstance(p.get("assets"), dict) \
                 and p["assets"].get("hlsUrl")
+
+        if external_id:
+            for p in candidates:
+                if has_stream(p) and p.get("externalId") == external_id:
+                    return self._enrich_assets(p)
+            kodiutils.log("Feed %s not found; falling back" % external_id)
 
         entitled = [p for p in candidates if has_stream(p) and p.get("isEntitledToPlay")]
         # Prefer the Apple TV+ channel when more than one is entitled.
@@ -1381,6 +1472,7 @@ class AppleTVApi(object):
             # Clubs carry whether the account follows them; the canvas is
             # invalidated on a FAVORITE event, so it comes back up to date.
             "favourite": bool(raw.get("isFavorite")),
+            "league_id": raw.get("leagueId"),
             "art": self._item_art(raw.get("images") or {}),
             # Harvested by _extract_shelves, never kept on the listed entry.
             "stream_assets": self._playable_assets(raw),

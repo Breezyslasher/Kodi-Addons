@@ -62,6 +62,10 @@ S = {
     "following": 32059,
     "continue_watching": 32060,
     "search_suggestions": 32061,
+    "choose_feed": 32062,
+    "play_feed": 32063,
+    "related": 32064,
+    "clubs": 32065,
 }
 
 
@@ -80,6 +84,8 @@ def extras_context_menu(item, item_id, item_type):
             action="extras", kind="trailers", item_id=item_id, item_type=item_type)),
         (L("bonus_content"), "RunPlugin(%s)" % url(
             action="extras", kind="bonus", item_id=item_id, item_type=item_type)),
+        (L("related"), "Container.Update(%s)" % url(
+            action="related", item_id=item_id)),
     ] + watchlist_menu_items(item_id))
 
 
@@ -148,6 +154,15 @@ def add_playable(entry):
     # anything playable can go on the watchlist.
     if kind in ("Movie", "Show", "Vod", "MovieBundle"):
         extras_context_menu(item, entry["id"], kind)
+    elif kind == "SportingEvent":
+        # A match links to the other games in its league and to its clubs.
+        item.addContextMenuItems([
+            (L("related"), "Container.Update(%s)" % url(
+                action="related", item_id=entry["id"],
+                league=entry.get("league_id") or "")),
+            (L("clubs"), "Container.Update(%s)" % url(
+                action="clubs", item_id=entry["id"])),
+        ] + watchlist_menu_items(entry["id"]))
     else:
         item.addContextMenuItems(watchlist_menu_items(entry["id"]))
     xbmcplugin.addDirectoryItem(
@@ -277,10 +292,18 @@ def do_sign_in(auth, api):
         kodiutils.ok_dialog(L("sign_in_failed"))
 
 
-def do_sign_out(auth):
-    if xbmcgui.Dialog().yesno(kodiutils.ADDON_NAME, L("confirm_sign_out")):
-        auth.clear()
-        kodiutils.notify(L("sign_out"))
+def do_sign_out(auth, api):
+    if not xbmcgui.Dialog().yesno(kodiutils.ADDON_NAME, L("confirm_sign_out")):
+        return
+    # Tell Apple the session is over, then forget it here regardless: a
+    # failed call must never leave the addon signed in locally.
+    try:
+        if not api.logout():
+            kodiutils.log("Apple did not acknowledge the sign-out")
+    except Exception as exc:
+        kodiutils.log_error("Sign-out request failed: %s" % exc)
+    auth.clear()
+    kodiutils.notify(L("sign_out"))
 
 
 def do_show(api, show_id):
@@ -320,8 +343,39 @@ def do_search(api):
     show_items(api.search(query))
 
 
+def choose_feed(api, item_id, item_type):
+    """Let the viewer pick when a match offers more than one feed.
+
+    A game is published as a full replay beside a short recap, and once per
+    commentary language, so picking the first would be arbitrary.
+    """
+    feeds = api.list_playables(item_id, item_type)
+    if not feeds:
+        return None
+    labels = []
+    for feed in feeds:
+        label = feed["title"] or L("play_feed")
+        if feed.get("duration"):
+            mins = int(feed["duration"]) // 60
+            label = "%s (%d min)" % (label, mins)
+        if feed.get("language"):
+            label = "%s - %s" % (label, feed["language"])
+        labels.append(label)
+    index = xbmcgui.Dialog().select(L("choose_feed"), labels)
+    if index < 0:
+        return False  # cancelled, as distinct from "only one feed"
+    return feeds[index]["external_id"]
+
+
 def do_play(api, item_id, item_type):
-    playback = api.get_playback(item_id, item_type)
+    external_id = None
+    if str(item_type) == "SportingEvent":
+        chosen = choose_feed(api, item_id, item_type)
+        if chosen is False:
+            xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+            return
+        external_id = chosen
+    playback = api.get_playback(item_id, item_type, external_id)
     if not playback:
         kodiutils.ok_dialog(api.last_error or L("playback_failed"))
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -539,6 +593,12 @@ def router(paramstring):
         do_watchlist(api, params.get("item_id"), params.get("on") == "1")
     elif action == "up_next":
         show_items(api.get_watchlist())
+    elif action == "related":
+        show_items(api.get_related(params.get("item_id"),
+                                   params.get("league") or None))
+    elif action == "clubs":
+        show_items(api.get_event_clubs(params.get("item_id")),
+                   channel_id=params.get("channel_id") or APPLE_TV_PLUS_CHANNEL)
     elif action == "continue_watching":
         show_items(api.get_continue_watching(api.last_played_id()))
     elif action == "subscription":
@@ -565,7 +625,7 @@ def router(paramstring):
         do_sign_in(auth, api)
         main_menu(auth)
     elif action == "sign_out":
-        do_sign_out(auth)
+        do_sign_out(auth, api)
         main_menu(auth)
     elif action == "debug_play":
         do_play(api, "debug", "Movie")

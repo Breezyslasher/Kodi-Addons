@@ -247,6 +247,22 @@ msgctxt "#32061"
 msgid "Did you mean"
 msgstr ""
 
+msgctxt "#32062"
+msgid "Choose a feed"
+msgstr ""
+
+msgctxt "#32063"
+msgid "Watch"
+msgstr ""
+
+msgctxt "#32064"
+msgid "Related"
+msgstr ""
+
+msgctxt "#32065"
+msgid "Clubs"
+msgstr ""
+
 msgctxt "#32057"
 msgid "Subscription status"
 msgstr ""

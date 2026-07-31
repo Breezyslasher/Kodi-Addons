@@ -103,6 +103,7 @@ supported hardware.
 - **Play trailer** and **Bonus content** context-menu entries on movies and shows
 - **Follow club** / **Unfollow club** on clubs, with a **Following** folder listing them
 - **Add to / Remove from Up Next** on any title, episode or event
+- **Related** rows, match **Clubs**, and a feed picker for matches (full replay / recap / commentary language)
 - Subscription status in settings
 - Widevine playback through InputStream Adaptive (standard definition)
 
