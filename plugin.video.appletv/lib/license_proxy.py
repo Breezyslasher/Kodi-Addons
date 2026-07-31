@@ -38,6 +38,15 @@ def _context():
     return kodiutils.read_json(CONTEXT_FILE, default={}) or {}
 
 
+# Widevine keys discovered while serving variant playlists, keyed by key id.
+# A title has a separate key per variant/rendition and the master playlist can
+# list hundreds of them, so the set collected up front is not complete: record
+# every key the proxy actually serves, and the licence handler can then always
+# match the exact key a challenge asks for. Both handlers run in the service
+# process, so a module-level dict is shared between them.
+_DISCOVERED_KEYS = {}
+
+
 def kid_from_data_uri(uri):
     """Extract the 16-byte Widevine key id (hex) from a key's data: URI PSSH."""
     try:
@@ -51,6 +60,28 @@ def kid_from_data_uri(uri):
     except Exception:
         pass
     return None
+
+
+def _license_key_ids(licence):
+    """Best-effort list of the key ids a Widevine licence carries.
+
+    Used for diagnostics only: in the License protobuf each key entry starts
+    with field 1 (tag 0x0a) holding a 16-byte id, so collect those. Apple's key
+    ids end in ASCII padding, which makes the real ones easy to recognise.
+    """
+    ids = []
+    pos = 0
+    while len(ids) < 8:
+        pos = licence.find(b"\x0a\x10", pos)
+        if pos < 0:
+            break
+        candidate = licence[pos + 2:pos + 18]
+        if len(candidate) == 16:
+            hexed = candidate.hex()
+            if hexed not in ids:
+                ids.append(hexed)
+        pos += 2
+    return ids
 
 
 def _patch_tenc_kid(data, kid_hex):
@@ -174,9 +205,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             data, patched = _patch_tenc_kid(resp.content, kid_hex)
-            if patched:
-                kodiutils.log("Init segment: patched %d tenc KID(s) -> %s"
-                              % (patched, kid_hex[:16]))
+            kodiutils.log("Init segment %s: patched %d tenc KID(s) -> %s"
+                          % (target.rsplit("/", 1)[-1][:48], patched, kid_hex))
         except Exception as exc:
             kodiutils.log_error("Init segment proxy error: %s" % exc)
             self.send_response(502)
@@ -220,6 +250,11 @@ class _Handler(BaseHTTPRequestHandler):
                     if "urn:uuid:edef8ba9" in s:
                         uri_match = re.search(r'URI="([^"]+)"', s)
                         cur_kid = kid_from_data_uri(uri_match.group(1)) if uri_match else None
+                        if cur_kid:
+                            # Remember this variant's key so the licence handler
+                            # can match challenges for variants that were not
+                            # scanned before playback started.
+                            _DISCOVERED_KEYS[cur_kid] = uri_match.group(1)
                         fixed = self._add_keyid(s)
                         if fixed != s:
                             tagged += 1
@@ -299,23 +334,28 @@ class _Handler(BaseHTTPRequestHandler):
         # (video and audio have different keys); a wrong or missing uri gives a
         # 500. Match by the key id embedded in the challenge, then fall back to
         # the other known keys rather than failing outright.
-        wv_keys = ctx.get("wv_keys") or {}
+        # Keys found up front plus every key seen while serving variants.
+        wv_keys = dict(ctx.get("wv_keys") or {})
+        wv_keys.update(_DISCOVERED_KEYS)
+
         candidates = []
+        matched_kid = None
         for kid_hex, kuri in wv_keys.items():
             try:
                 if bytes.fromhex(kid_hex) in challenge:
+                    matched_kid = kid_hex
                     candidates.append(kuri)
                     break
             except ValueError:
                 continue
-        matched = bool(candidates)
         for kuri in wv_keys.values():
             if kuri not in candidates:
                 candidates.append(kuri)
         if not candidates:
             candidates = [None]
-        kodiutils.log("License request: %d bytes, exact key match=%s, %d candidate(s)"
-                      % (len(challenge), "yes" if matched else "no", len(candidates)))
+        kodiutils.log("License request: challenge=%d bytes, wants KID=%s, known KIDs=[%s]"
+                      % (len(challenge), matched_kid or "UNKNOWN",
+                         ", ".join(sorted(wv_keys.keys()))))
 
         url = ctx.get("license_server") or FPS_URL
         headers = {
@@ -352,8 +392,11 @@ class _Handler(BaseHTTPRequestHandler):
             if not keys or "license" not in keys[0]:
                 last_error = "no licence in response %s" % resp.text[:150]
                 continue
-            kodiutils.log("License OK (attempt %d/%d)" % (attempt + 1, len(candidates)))
-            return base64.b64decode(keys[0]["license"])
+            licence = base64.b64decode(keys[0]["license"])
+            kodiutils.log("License OK (attempt %d/%d), contains KIDs=[%s]"
+                          % (attempt + 1, len(candidates),
+                             ", ".join(_license_key_ids(licence)) or "none found"))
+            return licence
 
         kodiutils.log_error("fpsRequest failed after %d attempt(s): %s"
                             % (len(candidates), last_error))
