@@ -266,27 +266,37 @@ class AppleTVApi(object):
         if isinstance(entry, list):
             return entry  # cache written by an older version of the addon
 
-        items = list(entry.get("items") or [])
-        seen = {i.get("id") for i in items}
-        token = entry.get("next")
+        cached = entry.get("items") or []
         ctx = entry.get("ctx") or {}
+        if not ctx:
+            return cached
+
+        # Fetch the shelf afresh rather than continuing from the copy the
+        # canvas embedded. Personalised shelves return a different selection
+        # each time, so pairing a stale first page with freshly-paged ones
+        # would leave holes; the site refetches from the start too.
+        items = []
+        seen = set()
+        token = None
         for _ in range(max_pages):
-            if not token:
-                break
             params = dict(ctx)
-            params["nextToken"] = token
+            if token:
+                params["nextToken"] = token
             data = self._get_json("/shelves/%s" % shelf_id, params)
             shelf = ((data or {}).get("data") or {}).get("shelf")
             if not isinstance(shelf, dict):
                 break
             page = self._extract_items(shelf.get("items"))
-            fresh = [i for i in page if i.get("id") not in seen]
-            seen.update(i.get("id") for i in fresh)
-            items.extend(fresh)
+            for item in page:
+                if item.get("id") not in seen:
+                    seen.add(item.get("id"))
+                    items.append(item)
+            # Never build a token: the format varies by shelf (20:0:20,
+            # 1:0:20, then 40:0:40) and only Apple's reply knows the next one.
             token = shelf.get("nextToken") or None
-            if not page:
+            if not token or not page:
                 break
-        return items
+        return items or cached
 
     @staticmethod
     def _canvas_cache_name(channel_id):

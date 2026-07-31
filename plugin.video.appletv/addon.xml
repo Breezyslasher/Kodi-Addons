@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.5" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.6" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,11 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.7.31.6 - Open a shelf the way the website does
+- Opening a shelf now refetches it from the start instead of continuing
+  from the copy the home page embedded. Personalised shelves return a
+  different selection each time, so pairing a stale first page with freshly
+  paged ones could leave gaps.
 2026.7.31.5 - Shelves open to all their items
 - A canvas only sends each shelf's first page. Opening a shelf now follows
   its own paging token to the end, so "All Documentaries" is no longer 20
