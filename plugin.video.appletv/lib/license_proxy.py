@@ -275,39 +275,9 @@ class _Handler(BaseHTTPRequestHandler):
                     out.append(urljoin(base_url, s))
                     continue
             out.append(line)
-        out, hoisted = self._hoist_key(out)
         kodiutils.log("Manifest proxy: variant served, %d KEYID added, "
-                      "%d init segment(s) routed%s"
-                      % (tagged, mapped, ", key hoisted" if hoisted else ""))
+                      "%d init segment(s) routed" % (tagged, mapped))
         return "\n".join(out) + "\n"
-
-    def _hoist_key(self, lines):
-        """Declare the Widevine key before the first segment.
-
-        Apple leaves the opening chapters unencrypted and only introduces
-        #EXT-X-KEY a few chapters in. InputStream Adaptive sets up its decrypter
-        from the first period, so when the first encrypted period arrives there
-        is no decrypter for it ("Decrypter for the stream not found") and no
-        licence is ever requested.
-
-        Copy the key line above the first segment so the key system is known
-        from the start, then immediately follow it with METHOD=NONE so the
-        opening chapters are still treated as clear. The original key line stays
-        where it is and takes over from its chapter onwards.
-        """
-        key_index = None
-        first_segment = None
-        for i, line in enumerate(lines):
-            s = line.strip()
-            if first_segment is None and (s.startswith("#EXTINF") or s.startswith("#EXT-X-MAP")):
-                first_segment = i
-            if key_index is None and s.startswith("#EXT-X-KEY") and "urn:uuid:edef8ba9" in s:
-                key_index = i
-        if key_index is None or first_segment is None or key_index < first_segment:
-            return lines, False
-        patched = list(lines)
-        patched[first_segment:first_segment] = [lines[key_index], "#EXT-X-KEY:METHOD=NONE"]
-        return patched, True
 
     def _rewrite_master(self, text, base_url):
         """Rewrite the master playlist, optionally capping video height.
