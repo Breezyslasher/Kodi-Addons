@@ -241,7 +241,7 @@ def configure_inputstream():
     decrypt-only path. Other Widevine addons set this the same way for
     software (L3) Widevine.
     """
-    if not kodiutils.get_setting_bool("disable_secure_decoder", True):
+    if not kodiutils.get_setting_bool("disable_secure_decoder", False):
         return
     try:
         isa = xbmcaddon.Addon("inputstream.adaptive")
