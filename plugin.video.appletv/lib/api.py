@@ -236,6 +236,52 @@ class AppleTVApi(object):
         return self._canvas_shelves(
             "/canvases/teams/%s" % team_id, {}, team_id, max_pages)
 
+    def set_team_favourite(self, team_id, favourite=True):
+        """Follow or unfollow a club, as the heart on its page does."""
+        return self._list_request("/favorite-teams", team_id, favourite)
+
+    def set_watchlisted(self, content_id, watchlisted=True):
+        """Add a title or event to the account's Up Next list, or remove it."""
+        return self._list_request("/watchlist", content_id, watchlisted)
+
+    def _list_request(self, path, item_id, add=True):
+        """Add to or remove from one of Apple's per-account lists.
+
+        Both the favourite-clubs and watchlist endpoints take the same shape:
+        the id goes in a query parameter, POST adds (repeating the id in a
+        JSON body) and DELETE removes. Needs a signed-in account.
+        """
+        bearer = self._bootstrap().get("developer_token")
+        mut = self._media_user_token()
+        if not bearer or not mut:
+            kodiutils.log_error("%s needs a signed-in account" % path)
+            return False
+        headers = {"authorization": "Bearer " + bearer,
+                   "media-user-token": mut,
+                   "Origin": WEB_HOME}
+        url = UTS_BASE + path
+        params = self._params({"id": item_id})
+        try:
+            if add:
+                headers["Content-Type"] = "application/json"
+                resp = self.session.post(
+                    url, params=params, headers=headers,
+                    # Compact, to match the body the web client sends byte for
+                    # byte rather than only semantically.
+                    data=json.dumps({"id": item_id}, separators=(",", ":")),
+                    timeout=30)
+            else:
+                resp = self.session.delete(url, params=params, headers=headers,
+                                           timeout=30)
+        except Exception as exc:
+            kodiutils.log_error("%s request failed: %s" % (path, exc))
+            return False
+        if resp.status_code != 200:
+            kodiutils.log_error("%s -> %s %s"
+                                % (path, resp.status_code, resp.text[:200]))
+            return False
+        return True
+
     def _canvas_shelves(self, path, params, cache_key, max_pages=10):
         """Walk a canvas to its last page and cache each shelf's first page.
 

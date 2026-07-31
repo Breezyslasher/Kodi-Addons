@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.8" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.9" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,13 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.7.31.9 - Follow clubs and manage Up Next
+- NEW: Context menu on an MLS club follows or unfollows it.
+- NEW: Context menu on any title, episode or sporting event adds it to
+  Up Next or removes it.
+- Both directions are offered rather than one toggle, because Apple gives
+  no way to read back what is already followed or listed. Neither sends
+  anything unless you are signed in.
 2026.7.31.8 - MLS club pages open
 - NEW: The 30 clubs under "Browse All Clubs" are folders now. Each opens
   its team page: Featured, Matches, Past Matches, Every Goal, best-of

@@ -41,6 +41,16 @@ S = {
     "bonus_content": 32034,
     "choose_bonus": 32035,
     "no_bonus": 32036,
+    "follow_team": 32037,
+    "unfollow_team": 32038,
+    "followed": 32039,
+    "unfollowed": 32040,
+    "follow_failed": 32042,
+    "add_watchlist": 32045,
+    "watchlist_added": 32046,
+    "watchlist_failed": 32047,
+    "remove_watchlist": 32048,
+    "watchlist_removed": 32049,
 }
 
 
@@ -59,15 +69,28 @@ def extras_context_menu(item, item_id, item_type):
             action="extras", kind="trailers", item_id=item_id, item_type=item_type)),
         (L("bonus_content"), "RunPlugin(%s)" % url(
             action="extras", kind="bonus", item_id=item_id, item_type=item_type)),
-    ])
+    ] + watchlist_menu_items(item_id))
 
 
-def add_dir(label, action, art=None, extras_for=None, **params):
+def watchlist_menu_items(item_id):
+    """Both directions are offered: Apple exposes no way to read back what is
+    already on the list, so a single accurate toggle is not possible."""
+    return [
+        (L("add_watchlist"), "RunPlugin(%s)" % url(
+            action="watchlist", item_id=item_id, on="1")),
+        (L("remove_watchlist"), "RunPlugin(%s)" % url(
+            action="watchlist", item_id=item_id, on="0")),
+    ]
+
+
+def add_dir(label, action, art=None, extras_for=None, context=None, **params):
     item = xbmcgui.ListItem(label=label)
     if art:
         item.setArt(art)
     if extras_for:
         extras_context_menu(item, extras_for[0], extras_for[1])
+    if context:
+        item.addContextMenuItems(context)
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action=action, **params), item, isFolder=True
     )
@@ -110,9 +133,12 @@ def add_playable(entry):
         except (TypeError, ValueError):
             pass
     item.setProperty("IsPlayable", "true")
-    # Episodes and sporting events carry no extras shelves of their own.
+    # Episodes and sporting events carry no extras shelves of their own, but
+    # anything playable can go on the watchlist.
     if kind in ("Movie", "Show", "Vod", "MovieBundle"):
         extras_context_menu(item, entry["id"], kind)
+    else:
+        item.addContextMenuItems(watchlist_menu_items(entry["id"]))
     xbmcplugin.addDirectoryItem(
         HANDLE,
         url(action="play", item_id=entry["id"], item_type=entry.get("type", "Movie")),
@@ -172,8 +198,16 @@ def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
         add_dir(entry["title"], "room", art=entry.get("art"),
                 room_id=entry["id"], channel_id=channel_id)
     elif kind == "Team":
-        # A club page, likewise its own canvas.
-        add_dir(entry["title"], "team", art=entry.get("art"),
+        # A club page, likewise its own canvas. Following is offered both
+        # ways: Apple exposes no way to read back which clubs are followed,
+        # so the menu cannot show a single accurate toggle.
+        follow = [
+            (L("follow_team"), "RunPlugin(%s)" % url(
+                action="follow_team", team_id=entry["id"], on="1")),
+            (L("unfollow_team"), "RunPlugin(%s)" % url(
+                action="follow_team", team_id=entry["id"], on="0")),
+        ]
+        add_dir(entry["title"], "team", art=entry.get("art"), context=follow,
                 team_id=entry["id"], channel_id=channel_id)
     else:
         add_playable(entry)
@@ -281,6 +315,26 @@ def do_extras(api, item_id, item_type, kind="trailers"):
     xbmc.Player().play(playback["manifest"], play_item)
 
 
+def do_watchlist(api, item_id, add):
+    """Context-menu action: put a title or event on Up Next, or take it off."""
+    if not item_id:
+        return
+    if api.set_watchlisted(item_id, add):
+        kodiutils.notify(L("watchlist_added" if add else "watchlist_removed"))
+    else:
+        kodiutils.ok_dialog(L("watchlist_failed"))
+
+
+def do_follow_team(api, team_id, follow):
+    """Context-menu action: add or remove a club from Apple's favourites."""
+    if not team_id:
+        return
+    if api.set_team_favourite(team_id, follow):
+        kodiutils.notify(L("followed" if follow else "unfollowed"))
+    else:
+        kodiutils.ok_dialog(L("follow_failed"))
+
+
 def build_isa_listitem(playback):
     """Wire an Apple HLS+Widevine stream into InputStream Adaptive.
 
@@ -364,6 +418,10 @@ def router(paramstring):
         team_id = params.get("team_id")
         brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
         show_shelves(api, api.get_team_shelves(team_id), team_id, brand)
+    elif action == "follow_team":
+        do_follow_team(api, params.get("team_id"), params.get("on") == "1")
+    elif action == "watchlist":
+        do_watchlist(api, params.get("item_id"), params.get("on") == "1")
     elif action == "shelf":
         brand = params.get("brand") or APPLE_TV_PLUS_CHANNEL
         show_items(api.get_shelf_items(params.get("shelf_id"),
