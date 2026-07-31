@@ -19,8 +19,10 @@ skd uri, adamId) is read from a file written by the plugin just before playback.
 
 import base64
 import json
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urljoin, urlparse, parse_qs, unquote
 
 import requests
 
@@ -36,9 +38,139 @@ def _context():
     return kodiutils.read_json(CONTEXT_FILE, default={}) or {}
 
 
+def kid_from_data_uri(uri):
+    """Extract the 16-byte Widevine key id (hex) from a key's data: URI PSSH."""
+    try:
+        if "base64," not in uri:
+            return None
+        pssh = base64.b64decode(unquote(uri.split("base64,", 1)[1]))
+        # WidevinePsshData: key_id is field 2 -> tag 0x12, length 0x10 (16).
+        i = pssh.find(b"\x12\x10")
+        if i >= 0 and len(pssh) >= i + 18:
+            return pssh[i + 2:i + 18].hex()
+    except Exception:
+        pass
+    return None
+
+
+def _encode_url(url):
+    return base64.urlsafe_b64encode(url.encode("utf-8")).decode("ascii").rstrip("=")
+
+
+def _decode_url(value):
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode("utf-8")
+
+
 class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass  # silence default stderr logging
+
+    # -- manifest proxy: add the KEYID that Apple omits -------------------
+
+    def do_GET(self):
+        parsed = urlparse(self.path)
+        if parsed.path != "/manifest":
+            self.send_response(404)
+            self.end_headers()
+            return
+        try:
+            target = _decode_url(parse_qs(parsed.query).get("u", [""])[0])
+        except Exception:
+            self.send_response(400)
+            self.end_headers()
+            return
+
+        ctx = _context()
+        is_master = "u=" in parsed.query and parse_qs(parsed.query).get("m", ["0"])[0] == "1"
+        headers = {
+            "User-Agent": ctx.get("user_agent") or "Mozilla/5.0",
+            "Origin": "https://tv.apple.com",
+            "Referer": "https://tv.apple.com/",
+        }
+        # The top-level manifest is token-authenticated by header; the variant
+        # playlists are authenticated by the token in their URL and the web
+        # player sends no auth headers for them.
+        if is_master:
+            if ctx.get("bearer"):
+                headers["authorization"] = "Bearer " + ctx["bearer"]
+            if ctx.get("media_user_token"):
+                headers["media-user-token"] = ctx["media_user_token"]
+
+        try:
+            resp = requests.get(target, headers=headers, timeout=30)
+            if resp.status_code != 200:
+                kodiutils.log_error("Manifest proxy %s -> HTTP %s"
+                                    % ("master" if is_master else "variant", resp.status_code))
+                self.send_response(resp.status_code)
+                self.end_headers()
+                return
+            body = self._rewrite(resp.text, target).encode("utf-8")
+        except Exception as exc:
+            kodiutils.log_error("Manifest proxy error: %s" % exc)
+            self.send_response(502)
+            self.end_headers()
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _rewrite(self, text, base_url):
+        """Route child playlists through the proxy and add KEYID to key lines.
+
+        InputStream Adaptive takes a stream's key id from the KEYID attribute of
+        #EXT-X-KEY, falling back to parsing the PSSH. Apple sends no KEYID and
+        its v0 PSSH carries the key id inside the Widevine protobuf, which ISA's
+        PSSH parser does not read, so the key id ends up empty and the CDM is
+        asked to decrypt with an all-zero KID ("kNoKey"). The key id is
+        recoverable from the PSSH, so add it here as KEYID.
+        """
+        is_master = "#EXT-X-STREAM-INF" in text
+        tagged = 0
+        out = []
+        for line in text.splitlines():
+            s = line.strip()
+            if is_master:
+                if s.startswith("#") and 'URI="' in s:
+                    out.append(re.sub(
+                        r'URI="([^"]+)"',
+                        lambda m: 'URI="%s"' % self._proxied(m.group(1), base_url), s))
+                    continue
+                if s and not s.startswith("#"):
+                    out.append(self._proxied(s, base_url))
+                    continue
+            else:
+                if s.startswith("#EXT-X-KEY") and "urn:uuid:edef8ba9" in s:
+                    fixed = self._add_keyid(s)
+                    if fixed != s:
+                        tagged += 1
+                    out.append(fixed)
+                    continue
+                # Segment and init-segment URLs stay pointed at Apple's CDN.
+                if s and not s.startswith("#"):
+                    out.append(urljoin(base_url, s))
+                    continue
+            out.append(line)
+        if not is_master:
+            kodiutils.log("Manifest proxy: variant served, %d KEYID added" % tagged)
+        return "\n".join(out) + "\n"
+
+    def _add_keyid(self, line):
+        if "KEYID=" in line:
+            return line
+        m = re.search(r'URI="([^"]+)"', line)
+        if not m:
+            return line
+        kid = kid_from_data_uri(m.group(1))
+        if not kid:
+            kodiutils.log_error("Could not read key id from EXT-X-KEY URI")
+            return line
+        return line + ',KEYID="0x%s"' % kid
+
+    def _proxied(self, url, base_url):
+        return "%s?u=%s" % (manifest_endpoint(), _encode_url(urljoin(base_url, url)))
 
     def do_POST(self):
         try:
@@ -163,7 +295,20 @@ class LicenseProxy(object):
             self._server = None
 
 
+def _port():
+    info = kodiutils.read_json("license_proxy.json", default={}) or {}
+    return info.get("port", DEFAULT_PORT)
+
+
 def license_url():
     """URL the plugin points ISA at, using the port the service published."""
-    info = kodiutils.read_json("license_proxy.json", default={}) or {}
-    return "http://%s:%d/widevine" % (BIND_HOST, info.get("port", DEFAULT_PORT))
+    return "http://%s:%d/widevine" % (BIND_HOST, _port())
+
+
+def manifest_endpoint():
+    return "http://%s:%d/manifest" % (BIND_HOST, _port())
+
+
+def manifest_url(real_url):
+    """Proxy URL for the top-level manifest (m=1 marks it as the master)."""
+    return "%s?m=1&u=%s" % (manifest_endpoint(), _encode_url(real_url))

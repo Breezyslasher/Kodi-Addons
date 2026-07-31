@@ -238,9 +238,12 @@ class AppleTVApi(object):
             "is_external": assets.get("is_external", True),
             "wv_keys": wv_keys,
             "license_server": assets.get("license_server", ""),
+            "user_agent": self.session.headers.get("User-Agent", ""),
         })
         return {
-            "manifest": assets["manifest"],
+            # Served through the local proxy so the KEYID Apple omits can be
+            # added; without it ISA decrypts with an all-zero key id.
+            "manifest": license_proxy.manifest_url(assets["manifest"]),
             "manifest_type": "hls",
             "license_url": license_proxy.license_url(),
             "certificate_b64": self.get_widevine_certificate(),
