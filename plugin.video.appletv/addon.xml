@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.7" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.8" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,10 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.7.31.8 - MLS club pages open
+- NEW: The 30 clubs under "Browse All Clubs" are folders now. Each opens
+  its team page: Featured, Matches, Past Matches, Every Goal, best-of
+  reels and player compilations.
 2026.7.31.7 - Browse categories (rooms) open
 - NEW: The category tiles under "Browse All Apple Originals" -- Kids &
   Family, Sci-Fi, Comedies, Coming to Apple TV and the rest -- are folders

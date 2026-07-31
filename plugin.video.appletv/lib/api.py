@@ -54,8 +54,8 @@ STREAM_CACHE_LIMIT = 600
 
 # Shelf entries that are navigation, not something to play. Apple gives these
 # no playables at all, so listing them as items would only produce dead ones.
-# Room is not here: a room is a browse category with a canvas of its own.
-CONTAINER_TYPES = ("Brand", "Upsell", "Preview", "Team", "GrandPrix",
+# Room and Team are not here: both have a canvas of their own to browse into.
+CONTAINER_TYPES = ("Brand", "Upsell", "Preview", "GrandPrix",
                    "Person", "Originals", "MLS")
 
 # Canvas shelves on a title's detail page that hold its extra videos.
@@ -226,6 +226,15 @@ class AppleTVApi(object):
             "/canvases/rooms/%s" % room_id,
             {"ctx_brand": channel_id or APPLE_TV_PLUS_CHANNEL},
             room_id, max_pages)
+
+    def get_team_shelves(self, team_id, max_pages=10):
+        """Shelves of a team page (an MLS club).
+
+        Another canvas type; the site asks for it with no ctx parameters at
+        all, unlike a room.
+        """
+        return self._canvas_shelves(
+            "/canvases/teams/%s" % team_id, {}, team_id, max_pages)
 
     def _canvas_shelves(self, path, params, cache_key, max_pages=10):
         """Walk a canvas to its last page and cache each shelf's first page.

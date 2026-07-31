@@ -171,6 +171,10 @@ def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
         # canvas of shelves behind it.
         add_dir(entry["title"], "room", art=entry.get("art"),
                 room_id=entry["id"], channel_id=channel_id)
+    elif kind == "Team":
+        # A club page, likewise its own canvas.
+        add_dir(entry["title"], "team", art=entry.get("art"),
+                team_id=entry["id"], channel_id=channel_id)
     else:
         add_playable(entry)
 
@@ -356,6 +360,10 @@ def router(paramstring):
         room_id = params.get("room_id")
         brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
         show_shelves(api, api.get_room_shelves(room_id, brand), room_id, brand)
+    elif action == "team":
+        team_id = params.get("team_id")
+        brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
+        show_shelves(api, api.get_team_shelves(team_id), team_id, brand)
     elif action == "shelf":
         brand = params.get("brand") or APPLE_TV_PLUS_CHANNEL
         show_items(api.get_shelf_items(params.get("shelf_id"),
