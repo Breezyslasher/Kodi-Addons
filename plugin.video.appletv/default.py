@@ -59,6 +59,7 @@ S = {
     "sub_family": 32055,
     "sub_unknown": 32056,
     "sub_shared_with_you": 32058,
+    "following": 32059,
 }
 
 
@@ -184,6 +185,13 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
     """
     if not shelves:
         kodiutils.notify(L("no_results"))
+    # Apple's own favourites shelf is an empty marker the website fills in
+    # itself; the club tiles say who is followed, so do the same here.
+    followed = [i for s in shelves for i in s.get("items") or []
+                if str(i.get("type")) == "Team" and i.get("favourite")]
+    if followed:
+        add_dir("%s (%d)" % (L("following"), len(followed)),
+                "following", cache_key=cache_key, brand=brand)
     for shelf in shelves:
         if shelf.get("items"):
             # A shelf with a paging token has more than the canvas returned;
@@ -213,20 +221,14 @@ def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
                 gp_id=entry["id"], channel_id=channel_id)
     elif kind == "Team":
         # A club page, likewise its own canvas. Clubs report whether the
-        # account follows them, so the followed ones are marked and the
-        # likely action is offered first. Both stay available: the flag has
-        # not been seen turning true on a tile, only alongside a match.
+        # account follows them and the flag updates after a change, so the
+        # menu offers the one action that applies.
         followed = entry.get("favourite")
         label = ("* " + entry["title"]) if followed else entry["title"]
-        actions = [
-            (L("unfollow_team"), "RunPlugin(%s)" % url(
-                action="follow_team", team_id=entry["id"], on="0")),
-            (L("follow_team"), "RunPlugin(%s)" % url(
-                action="follow_team", team_id=entry["id"], on="1")),
-        ]
-        if not followed:
-            actions.reverse()
-        add_dir(label, "team", art=entry.get("art"), context=actions,
+        action = (L("unfollow_team"), "0") if followed else (L("follow_team"), "1")
+        menu = [(action[0], "RunPlugin(%s)" % url(
+            action="follow_team", team_id=entry["id"], on=action[1]))]
+        add_dir(label, "team", art=entry.get("art"), context=menu,
                 team_id=entry["id"], channel_id=channel_id)
     else:
         add_playable(entry)
@@ -488,6 +490,10 @@ def router(paramstring):
         team_id = params.get("team_id")
         brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
         show_shelves(api, api.get_team_shelves(team_id), team_id, brand)
+    elif action == "following":
+        brand = params.get("brand") or APPLE_TV_PLUS_CHANNEL
+        show_items(api.get_followed_teams(params.get("cache_key")),
+                   channel_id=brand)
     elif action == "grandprix":
         gp_id = params.get("gp_id")
         brand = params.get("channel_id") or F1_CHANNEL
