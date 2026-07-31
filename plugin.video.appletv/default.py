@@ -1,5 +1,6 @@
 """Apple TV addon entry point and router."""
 
+import json
 import sys
 from urllib.parse import urlencode, parse_qsl, quote
 
@@ -203,10 +204,13 @@ def build_isa_listitem(playback):
     manifest_type = playback.get("manifest_type", "hls")
 
     item.setProperty("inputstream", "inputstream.adaptive")
-    item.setProperty("inputstream.adaptive.manifest_type", manifest_type)
-    item.setProperty("inputstream.adaptive.license_type", "com.widevine.alpha")
     item.setMimeType("application/vnd.apple.mpegurl")
     item.setContentLookup(False)
+
+    isa_major = inputstream_major_version()
+    if isa_major < 22:
+        # Removed in Kodi 22; the mime type is enough for newer ISA.
+        item.setProperty("inputstream.adaptive.manifest_type", manifest_type)
 
     headers = playback.get("stream_headers") or {}
     if headers:
@@ -215,19 +219,51 @@ def build_isa_listitem(playback):
         item.setProperty("inputstream.adaptive.stream_headers", header_str)
 
     cert = playback.get("certificate_b64")
-    if cert:
-        item.setProperty("inputstream.adaptive.server_certificate", cert)
-
     license_url = playback.get("license_url")
-    if license_url:
-        # ISA posts the raw challenge to our proxy; the proxy returns the raw
-        # licence. Format: url|request_headers|request_data|response_data
-        license_key = "%s|Content-Type=application/octet-stream|R{SSM}|" % license_url
-        item.setProperty("inputstream.adaptive.license_key", license_key)
+
+    if isa_major >= 22:
+        # ISA 22 replaced the individual licence properties with one DRM object,
+        # which also carries options the old properties had no way to express:
+        # secure_decoder overrides the user setting for this stream only, and
+        # pre_init_data sets up the decrypter before the first encrypted chapter
+        # (Apple leaves the opening chapters clear, which otherwise leaves ISA
+        # with no decrypter when encryption starts).
+        config = {"priority": 1, "secure_decoder": False, "force_single_session": True}
+        if license_url:
+            config["license"] = {
+                "server_url": license_url,
+                "req_headers": "Content-Type=application%2Foctet-stream",
+            }
+            if cert:
+                config["license"]["server_certificate"] = cert
+        if playback.get("pre_init_data"):
+            config["pre_init_data"] = playback["pre_init_data"]
+        item.setProperty("inputstream.adaptive.drm",
+                         json.dumps({"com.widevine.alpha": config}))
+        kodiutils.log("ISA %d: using drm property (secure_decoder=false, pre_init=%s)"
+                      % (isa_major, bool(playback.get("pre_init_data"))))
+    else:
+        item.setProperty("inputstream.adaptive.license_type", "com.widevine.alpha")
+        if cert:
+            item.setProperty("inputstream.adaptive.server_certificate", cert)
+        if license_url:
+            # ISA posts the raw challenge to our proxy; the proxy returns the raw
+            # licence. Format: url|request_headers|request_data|response_data
+            license_key = "%s|Content-Type=application/octet-stream|R{SSM}|" % license_url
+            item.setProperty("inputstream.adaptive.license_key", license_key)
 
     if not is_helper_ok:
         kodiutils.log_error("Widevine CDM not confirmed present; playback may fail")
     return item
+
+
+def inputstream_major_version():
+    """Major version of the installed InputStream Adaptive, or 0 if unknown."""
+    try:
+        version = xbmcaddon.Addon("inputstream.adaptive").getAddonInfo("version")
+        return int(version.split(".")[0])
+    except Exception:
+        return 0
 
 
 def configure_inputstream():
