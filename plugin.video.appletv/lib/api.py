@@ -39,10 +39,12 @@ APPLE_TV_PLUS_CHANNEL = "tvs.sbd.4000"
 # The brand tabs tv.apple.com puts along the top of the home page. Each is a
 # canvas of its own under /canvases/channels/{id}; the ids and names are the
 # ones Apple returns in the "channels" map of those responses.
+MLS_CHANNEL = "tvs.sbd.7000"
+F1_CHANNEL = "tvs.sbd.241000"
 CHANNELS = (
     (APPLE_TV_PLUS_CHANNEL, "Apple TV+"),
-    ("tvs.sbd.7000", "MLS"),
-    ("tvs.sbd.241000", "Formula 1"),
+    (MLS_CHANNEL, "MLS"),
+    (F1_CHANNEL, "Formula 1"),
 )
 
 CANVAS_CACHE = "canvas_cache_%s.json"
@@ -54,9 +56,8 @@ STREAM_CACHE_LIMIT = 600
 
 # Shelf entries that are navigation, not something to play. Apple gives these
 # no playables at all, so listing them as items would only produce dead ones.
-# Room and Team are not here: both have a canvas of their own to browse into.
-CONTAINER_TYPES = ("Brand", "Upsell", "Preview", "GrandPrix",
-                   "Person", "Originals", "MLS")
+# Room, Team and GrandPrix are not here: each has a canvas of its own.
+CONTAINER_TYPES = ("Brand", "Upsell", "Preview", "Person", "Originals", "MLS")
 
 # Canvas shelves on a title's detail page that hold its extra videos.
 TRAILER_SHELF_PREFIX = "uts.col.Trailers"
@@ -286,6 +287,13 @@ class AppleTVApi(object):
             "/canvases/rooms/%s" % room_id,
             {"ctx_brand": channel_id or APPLE_TV_PLUS_CHANNEL},
             room_id, max_pages)
+
+    def get_grand_prix_shelves(self, gp_id, channel_id=None, max_pages=10):
+        """Shelves of one Grand Prix weekend (its sessions and highlights)."""
+        return self._canvas_shelves(
+            "/canvases/grandPrix/%s" % gp_id,
+            {"ctx_brand": channel_id or F1_CHANNEL},
+            gp_id, max_pages)
 
     def get_team_shelves(self, team_id, max_pages=10):
         """Shelves of a team page (an MLS club).

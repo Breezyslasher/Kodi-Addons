@@ -10,7 +10,7 @@ import xbmcplugin
 
 from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA, STATUS_ERROR
-from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL,
+from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
                      PLAYBACK_REPORT_CACHE)
 
 HANDLE = int(sys.argv[1])
@@ -207,6 +207,10 @@ def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
         # canvas of shelves behind it.
         add_dir(entry["title"], "room", art=entry.get("art"),
                 room_id=entry["id"], channel_id=channel_id)
+    elif kind == "GrandPrix":
+        # A race weekend: its sessions and highlights, again its own canvas.
+        add_dir(entry["title"], "grandprix", art=entry.get("art"),
+                gp_id=entry["id"], channel_id=channel_id)
     elif kind == "Team":
         # A club page, likewise its own canvas. Following is offered both
         # ways: Apple exposes no way to read back which clubs are followed,
@@ -479,6 +483,10 @@ def router(paramstring):
         team_id = params.get("team_id")
         brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
         show_shelves(api, api.get_team_shelves(team_id), team_id, brand)
+    elif action == "grandprix":
+        gp_id = params.get("gp_id")
+        brand = params.get("channel_id") or F1_CHANNEL
+        show_shelves(api, api.get_grand_prix_shelves(gp_id, brand), gp_id, brand)
     elif action == "follow_team":
         do_follow_team(api, params.get("team_id"), params.get("on") == "1")
     elif action == "watchlist":
