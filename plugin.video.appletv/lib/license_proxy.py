@@ -230,39 +230,21 @@ class _Handler(BaseHTTPRequestHandler):
         recoverable from the PSSH, so add it here as KEYID.
         """
         is_master = "#EXT-X-STREAM-INF" in text
+        if is_master:
+            return self._rewrite_master(text, base_url)
+
         tagged = 0
         mapped = 0
         dropped = 0
         cur_kid = None
         out = []
-        max_h = kodiutils.get_setting_int("max_height", 0)
         lines = text.splitlines()
         index = 0
         while index < len(lines):
             line = lines[index]
             index += 1
             s = line.strip()
-            if is_master:
-                # Kodi's Widevine CDM is L3 (software), which licenses a key but
-                # refuses to use it above standard definition -- the CDM then
-                # reports kNoKey. Apple's own web player selects an SD variant
-                # for the same reason, so drop variants above the limit.
-                if s.startswith("#EXT-X-STREAM-INF") or s.startswith("#EXT-X-I-FRAME-STREAM-INF"):
-                    res = re.search(r'RESOLUTION=\d+x(\d+)', s)
-                    if max_h and res and int(res.group(1)) > max_h:
-                        dropped += 1
-                        if s.startswith("#EXT-X-STREAM-INF") and index < len(lines):
-                            index += 1  # skip the variant URI on the next line
-                        continue
-                if s.startswith("#") and 'URI="' in s:
-                    out.append(re.sub(
-                        r'URI="([^"]+)"',
-                        lambda m: 'URI="%s"' % self._proxied(m.group(1), base_url), s))
-                    continue
-                if s and not s.startswith("#"):
-                    out.append(self._proxied(s, base_url))
-                    continue
-            else:
+            if True:
                 if s.startswith("#EXT-X-KEY"):
                     if "urn:uuid:edef8ba9" in s:
                         uri_match = re.search(r'URI="([^"]+)"', s)
@@ -293,12 +275,76 @@ class _Handler(BaseHTTPRequestHandler):
                     out.append(urljoin(base_url, s))
                     continue
             out.append(line)
-        if is_master:
-            kodiutils.log("Manifest proxy: master served, %d variant(s) above %dp dropped"
-                          % (dropped, max_h))
-        else:
-            kodiutils.log("Manifest proxy: variant served, %d KEYID added, "
-                          "%d init segment(s) routed" % (tagged, mapped))
+        kodiutils.log("Manifest proxy: variant served, %d KEYID added, "
+                      "%d init segment(s) routed" % (tagged, mapped))
+        return "\n".join(out) + "\n"
+
+    def _rewrite_master(self, text, base_url):
+        """Rewrite the master playlist, optionally capping video height.
+
+        Apple uses a different content key per quality tier. The web player
+        selects an SD variant and its key decrypts under Kodi's software (L3)
+        Widevine CDM; a higher tier's key is licensed but the CDM will not use
+        it, which surfaces as kNoKey. Capping the height keeps InputStream
+        Adaptive on the tier the web player uses.
+
+        Renditions referenced only by dropped variants are removed too, so ISA
+        does not report "Cannot find variant for AUDIO GROUP-ID".
+        """
+        max_h = kodiutils.get_setting_int("max_height", 0)
+        lines = text.splitlines()
+
+        def too_tall(tag):
+            res = re.search(r'RESOLUTION=\d+x(\d+)', tag)
+            return bool(max_h and res and int(res.group(1)) > max_h)
+
+        # First pass: decide which variants survive and which groups they use.
+        keep_variant = {}
+        groups = set()
+        for i, line in enumerate(lines):
+            s = line.strip()
+            if s.startswith("#EXT-X-STREAM-INF"):
+                keep = not too_tall(s)
+                keep_variant[i] = keep
+                if keep:
+                    for attr in ("AUDIO", "SUBTITLES", "CLOSED-CAPTIONS"):
+                        m = re.search(r'%s="([^"]+)"' % attr, s)
+                        if m:
+                            groups.add(m.group(1))
+
+        out = []
+        dropped = 0
+        index = 0
+        while index < len(lines):
+            line = lines[index]
+            s = line.strip()
+            index += 1
+            if s.startswith("#EXT-X-STREAM-INF"):
+                if not keep_variant.get(index - 1, True):
+                    dropped += 1
+                    if index < len(lines):
+                        index += 1  # skip this variant's URI line
+                    continue
+            elif s.startswith("#EXT-X-I-FRAME-STREAM-INF"):
+                if too_tall(s):
+                    dropped += 1
+                    continue
+            elif s.startswith("#EXT-X-MEDIA"):
+                m = re.search(r'GROUP-ID="([^"]+)"', s)
+                if max_h and m and groups and m.group(1) not in groups:
+                    continue  # rendition only used by variants we removed
+
+            if s.startswith("#") and 'URI="' in s:
+                out.append(re.sub(
+                    r'URI="([^"]+)"',
+                    lambda m: 'URI="%s"' % self._proxied(m.group(1), base_url), s))
+            elif s and not s.startswith("#"):
+                out.append(self._proxied(s, base_url))
+            else:
+                out.append(line)
+
+        kodiutils.log("Manifest proxy: master served, height cap=%s, %d variant(s) dropped"
+                      % (max_h or "none", dropped))
         return "\n".join(out) + "\n"
 
     def _init_proxied(self, url, base_url, kid):
