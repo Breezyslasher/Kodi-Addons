@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.3" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.4" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,12 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.7.31.4 - Every shelf on a tab, not just the first page
+- Channel canvases are paged: the response carries a nextToken offset to
+  hand back for the next batch of shelves. The addon now walks that to the
+  end, as the website does.
+- Apple TV+ goes from 10 shelves to 20, MLS from 5 to 13. Formula 1 sends
+  no token and is a single page.
 2026.7.31.3 - MLS and Formula 1 tabs, bonus content
 - NEW: The MLS and Formula 1 brand tabs from tv.apple.com's home page are
   now browsable alongside Apple TV+, each with all of its shelves.

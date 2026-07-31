@@ -207,18 +207,45 @@ class AppleTVApi(object):
     def get_originals_shelves(self):
         return self.get_channel_shelves(APPLE_TV_PLUS_CHANNEL)
 
-    def get_channel_shelves(self, channel_id):
-        """Shelves of one brand tab (Apple TV+, MLS, Formula 1, ...)."""
-        data = self._get_json(
-            "/canvases/channels/%s" % channel_id,
-            {"includePlatter": "true", "platterPassThrough": "true"},
-        )
-        shelves = self._extract_shelves(data)
+    def get_channel_shelves(self, channel_id, max_pages=10):
+        """Shelves of one brand tab (Apple TV+, MLS, Formula 1, ...).
+
+        A canvas is paged: the response carries canvas.nextToken, an offset to
+        hand back as the nextToken parameter for the next batch of shelves.
+        The site itself walks this until a page comes back with no shelves and
+        no token, which is where the last one stops.
+        """
+        shelves = []
+        seen = set()
+        token = None
+        for _ in range(max_pages):
+            params = {"includePlatter": "true", "platterPassThrough": "true"}
+            if token:
+                params["nextToken"] = token
+            data = self._get_json("/canvases/channels/%s" % channel_id, params)
+            if not data:
+                break
+            page = self._extract_shelves(data)
+            for shelf in page:
+                if shelf["id"] not in seen:
+                    seen.add(shelf["id"])
+                    shelves.append(shelf)
+            token = self._canvas_next_token(data)
+            if not token or not page:
+                break
         # Cache items so opening a shelf shows the full list (they're already
         # here). Kept per channel so switching tabs does not evict the other's.
         cache = {s["id"]: s["items"] for s in shelves if s.get("id")}
         kodiutils.write_json(self._canvas_cache_name(channel_id), cache)
         return shelves
+
+    @staticmethod
+    def _canvas_next_token(data):
+        """The canvas' own paging offset, absent once the shelves run out."""
+        root = data.get("data") if isinstance(data, dict) and "data" in data else data
+        canvas = root.get("canvas") if isinstance(root, dict) else None
+        token = canvas.get("nextToken") if isinstance(canvas, dict) else None
+        return str(token) if token not in (None, "") else None
 
     def get_shelf_items(self, shelf_id, channel_id=None):
         cache = kodiutils.read_json(
