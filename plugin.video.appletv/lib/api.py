@@ -37,12 +37,36 @@ APPLE_TV_PLUS_CHANNEL = "tvs.sbd.4000"
 
 CANVAS_CACHE = "canvas_cache.json"
 
-# Poster/thumbnail image keys seen in canvas items, best first.
-IMAGE_KEYS = (
-    "posterArt", "coverArt16X9", "coverArt", "shelfItemImage",
-    "shelfImageBackground", "previewFrame", "singleColorContentLogo",
-    "contentLogo", "fullColorContentLogo",
+# Apple ships several artworks per item in two shapes: tall/portrait posters
+# (e.g. posterArt, 2000x3000) and wide/landscape stills (e.g. coverArt16X9,
+# 3840x2160). Each entry declares the source width/height, so the shape is
+# read from those rather than assumed, and the requested box is given the same
+# aspect ratio as its source -- asking mzstatic for a box of a different shape
+# is what cut the posters off.
+# Some keys (notably shelfItemImage) are tall for one title and wide for the
+# next, so these lists only order candidates of a shape that has already been
+# determined from the declared dimensions; a key may appear in both.
+PORTRAIT_IMAGE_KEYS = (
+    "posterArt", "showPosterArt", "contentImageTall", "shelfItemImageTall",
+    "shelfItemImage", "shelfImageBackgroundTall", "epicStageTallImage",
 )
+WIDE_IMAGE_KEYS = (
+    "coverArt16X9", "contentImage16X9", "contentImage", "contentImageLive",
+    "contentImagePost", "shelfItemImage", "shelfItemImageLive",
+    "shelfItemImagePost", "posterImageLive", "posterImagePost", "coverArt",
+    "previewFrame", "shelfImageBackground", "epicStageWideImage",
+    "transitionImage",
+)
+# Logos, glyphs and badges: never usable as poster/thumb/fanart.
+IMAGE_KEY_DENYLIST = (
+    "logo", "glyph", "icon", "badge", "overlay", "header", "splash",
+)
+
+# Long edge requested per Kodi art type. The short edge is derived from the
+# source's own aspect ratio, so nothing is cropped or letterboxed.
+POSTER_HEIGHT = 900
+THUMB_WIDTH = 1280
+FANART_WIDTH = 1920
 
 
 class AppleTVApi(object):
@@ -600,12 +624,78 @@ class AppleTVApi(object):
         }
 
     def _item_art(self, images):
-        for key in IMAGE_KEYS:
-            val = images.get(key)
-            if isinstance(val, dict) and val.get("url"):
-                return (val["url"].replace("{w}", "1920").replace("{h}", "1080")
-                        .replace("{f}", "jpg").replace("{c}", "").replace("{cropcode}", ""))
+        """Pick a portrait and a wide artwork and size each to its own shape.
+
+        Returns a dict ready for ListItem.setArt(). The poster slot is only
+        filled when Apple actually supplies a tall artwork; forcing a 16:9
+        still into a poster box is what produced cut-off images.
+        """
+        portrait = self._pick_image(images, PORTRAIT_IMAGE_KEYS, portrait=True)
+        wide = self._pick_image(images, WIDE_IMAGE_KEYS, portrait=False)
+        art = {}
+        if portrait:
+            art["poster"] = self._sized_url(portrait, height=POSTER_HEIGHT)
+        if wide:
+            art["thumb"] = self._sized_url(wide, width=THUMB_WIDTH)
+            art["fanart"] = self._sized_url(wide, width=FANART_WIDTH)
+        elif portrait:
+            # Tall artwork only (some sports and channel rows): use it for the
+            # thumbnail too rather than leaving the row blank.
+            art["thumb"] = art["poster"]
+        if art.get("thumb"):
+            art["icon"] = art["thumb"]
+        return art or None
+
+    @staticmethod
+    def _image_shape(key, entry):
+        """True/False for portrait/landscape, None when it cannot be told."""
+        lowered = key.lower()
+        if any(bad in lowered for bad in IMAGE_KEY_DENYLIST):
+            return None
+        width, height = entry.get("width"), entry.get("height")
+        try:
+            width, height = float(width), float(height)
+        except (TypeError, ValueError):
+            # No usable dimensions: fall back to Apple's naming convention.
+            return True if "tall" in lowered or "poster" in lowered else None
+        if width <= 0 or height <= 0:
+            return None
+        ratio = width / height
+        if ratio <= 0.9:
+            return True
+        if ratio >= 1.2:
+            return False
+        return None  # roughly square (logos, team badges) -- not artwork
+
+    def _pick_image(self, images, preferred, portrait):
+        """Best image of the wanted shape: preferred keys first, then any."""
+        if not isinstance(images, dict):
+            return None
+        candidates = [k for k in preferred if k in images]
+        candidates += [k for k in images if k not in preferred]
+        for key in candidates:
+            entry = images.get(key)
+            if not isinstance(entry, dict) or not entry.get("url"):
+                continue
+            if self._image_shape(key, entry) is portrait:
+                return entry
         return None
+
+    @staticmethod
+    def _sized_url(entry, width=None, height=None):
+        """Fill an mzstatic {w}x{h} template, keeping the source's aspect."""
+        try:
+            src_w, src_h = float(entry.get("width")), float(entry.get("height"))
+            ratio = src_w / src_h if src_w > 0 and src_h > 0 else None
+        except (TypeError, ValueError, ZeroDivisionError):
+            ratio = None
+        if width is None:
+            width = int(round(height * ratio)) if ratio else height
+        if height is None:
+            height = int(round(width / ratio)) if ratio else width
+        return (entry["url"].replace("{w}", str(int(width)))
+                .replace("{h}", str(int(height)))
+                .replace("{f}", "jpg").replace("{c}", "").replace("{cropcode}", ""))
 
     @staticmethod
     def _as_list(value):

@@ -49,7 +49,7 @@ def url(**kwargs):
 def add_dir(label, action, art=None, **params):
     item = xbmcgui.ListItem(label=label)
     if art:
-        item.setArt({"icon": art, "thumb": art, "poster": art})
+        item.setArt(art)
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action=action, **params), item, isFolder=True
     )
@@ -58,7 +58,7 @@ def add_dir(label, action, art=None, **params):
 def add_playable(entry):
     item = xbmcgui.ListItem(label=entry["title"])
     if entry.get("art"):
-        item.setArt({"thumb": entry["art"], "poster": entry["art"], "fanart": entry["art"]})
+        item.setArt(entry["art"])
     tag = item.getVideoInfoTag()
     tag.setTitle(entry.get("sort_title") or entry["title"])
     kind = str(entry.get("type"))

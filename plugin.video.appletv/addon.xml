@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.1" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,13 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.7.31.1 - Artwork no longer cut off
+- Apple ships both tall posters and wide stills for a title. The addon now
+  reads each artwork's declared dimensions, sends the tall one to Kodi's
+  poster slot and the wide one to thumb/fanart, and requests each at its
+  own aspect ratio instead of forcing everything into a 16:9 box.
+- Titles with no tall artwork (episodes, sporting events) simply get no
+  poster rather than a cropped one; logos and team badges are ignored.
 2026.7.31 - Encrypted playback working (Kodi 22 required)
 - REQUIRES Kodi 22 with InputStream Adaptive 22 or newer. Playback uses
   the inputstream.adaptive.drm property, which the 21.x series does not

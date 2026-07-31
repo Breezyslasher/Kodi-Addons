@@ -15,7 +15,8 @@ using **Widevine** DRM.
 |-------|--------|
 | Apple ID sign-in + two-factor (trusted device or SMS) | ✅ Matches the real web flow (authorize → SRP with *no-username-in-x* + `X-Apple-HC` hashcash → 2FA → trust) |
 | Apple-ID login → `media-user-token` (store login) | ✅ `POST auth.tv.apple.com/auth/v1/web` mints it automatically after sign-in |
-| Browse Apple TV+ Originals, search | ✅ Real shelf titles, posters, full item lists |
+| Browse Apple TV+ Originals, search | ✅ Real shelf titles, full item lists |
+| Artwork | ✅ Tall posters and wide stills each requested at their own aspect ratio, so neither is cropped |
 | Show → episode browsing | ✅ Shows open to their episode list with S/E metadata |
 | Playback resolve (`/uts/v3/movies/{id}`, `/episodes/{id}`) | ✅ Returns the `hlsUrl` for the entitled feature (not the trailer) |
 | Widevine licence exchange (`fpsRequest`) | ✅ Local proxy wraps the challenge in Apple's JSON envelope; the returned key id always matches the requested one |
