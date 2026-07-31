@@ -4,6 +4,7 @@ import sys
 from urllib.parse import urlencode, parse_qsl, quote
 
 import xbmc
+import xbmcaddon
 import xbmcgui
 import xbmcplugin
 
@@ -196,6 +197,7 @@ def build_isa_listitem(playback):
     Widevine key delivery goes through the addon's local licence proxy, which
     wraps the challenge in Apple's JSON envelope (see lib/license_proxy.py).
     """
+    configure_inputstream()
     is_helper_ok = ensure_widevine()
     item = xbmcgui.ListItem(path=playback["manifest"])
     manifest_type = playback.get("manifest_type", "hls")
@@ -226,6 +228,28 @@ def build_isa_listitem(playback):
     if not is_helper_ok:
         kodiutils.log_error("Widevine CDM not confirmed present; playback may fail")
     return item
+
+
+def configure_inputstream():
+    """Ask InputStream Adaptive not to use the CDM's own video decoder.
+
+    When a test decryption fails, ISA flags the stream SECURE_PATH and decodes
+    video inside the CDM (VideoCodec::Open / DecryptAndDecodeVideo), which is
+    where Apple's video fails with kNoKey while audio -- decrypted the ordinary
+    way and decoded by FFmpeg -- succeeds. ISA checks its NOSECUREDECODER
+    setting on exactly that branch, so enabling it keeps video on the
+    decrypt-only path. Other Widevine addons set this the same way for
+    software (L3) Widevine.
+    """
+    if not kodiutils.get_setting_bool("disable_secure_decoder", True):
+        return
+    try:
+        isa = xbmcaddon.Addon("inputstream.adaptive")
+        if isa.getSetting("NOSECUREDECODER") != "true":
+            isa.setSetting("NOSECUREDECODER", "true")
+            kodiutils.log("Set InputStream Adaptive NOSECUREDECODER=true")
+    except Exception as exc:
+        kodiutils.log_error("Could not set NOSECUREDECODER: %s" % exc)
 
 
 def ensure_widevine():

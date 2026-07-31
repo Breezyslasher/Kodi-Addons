@@ -291,7 +291,7 @@ class _Handler(BaseHTTPRequestHandler):
         Renditions referenced only by dropped variants are removed too, so ISA
         does not report "Cannot find variant for AUDIO GROUP-ID".
         """
-        max_h = kodiutils.get_setting_int("max_height", 360)
+        max_h = kodiutils.get_setting_int("max_height", 0)
         lines = text.splitlines()
 
         def too_tall(tag):

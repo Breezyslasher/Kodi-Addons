@@ -11,6 +11,8 @@
     <category label="32005">
         <setting id="oauth_widget_key" type="text" label="32006" default="" />
         <setting label="32007" type="lsep" />
+        <setting id="disable_secure_decoder" type="bool" label="32042" default="true" />
+        <setting id="max_height" type="number" label="32041" default="0" />
         <setting id="media_user_token" type="text" label="32008" option="hidden" default="" />
         <setting id="manifest_url_override" type="text" label="32009" default="" />
     </category>
