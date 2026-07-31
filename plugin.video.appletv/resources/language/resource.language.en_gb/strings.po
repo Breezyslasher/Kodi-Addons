@@ -206,3 +206,35 @@ msgstr ""
 msgctxt "#32049"
 msgid "Removed from Up Next"
 msgstr ""
+
+msgctxt "#32051"
+msgid "Up Next"
+msgstr ""
+
+msgctxt "#32052"
+msgid "Apple TV+ subscription: active"
+msgstr ""
+
+msgctxt "#32053"
+msgid "Apple TV+ subscription: none found"
+msgstr ""
+
+msgctxt "#32054"
+msgid "Renews or expires: %s"
+msgstr ""
+
+msgctxt "#32055"
+msgid "Shared with your family"
+msgstr ""
+
+msgctxt "#32056"
+msgid "Could not read your subscription status. Make sure you are signed in."
+msgstr ""
+
+msgctxt "#32058"
+msgid "Included through Family Sharing"
+msgstr ""
+
+msgctxt "#32057"
+msgid "Subscription status"
+msgstr ""

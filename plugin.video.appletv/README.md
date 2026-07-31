@@ -101,6 +101,7 @@ supported hardware.
 - Search the Apple TV catalogue
 - **Play trailer** and **Bonus content** context-menu entries on movies and shows
 - **Follow club** and **Up Next** context-menu entries (signed in)
+- **Up Next** list in the main menu, and subscription status in settings
 - Widevine playback through InputStream Adaptive (standard definition)
 
 ## Requirements

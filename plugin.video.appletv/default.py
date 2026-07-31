@@ -52,6 +52,13 @@ S = {
     "watchlist_failed": 32047,
     "remove_watchlist": 32048,
     "watchlist_removed": 32049,
+    "up_next": 32051,
+    "sub_active": 32052,
+    "sub_none": 32053,
+    "sub_renews": 32054,
+    "sub_family": 32055,
+    "sub_unknown": 32056,
+    "sub_shared_with_you": 32058,
 }
 
 
@@ -155,6 +162,8 @@ def main_menu(auth):
     for channel_id, name in CHANNELS:
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
+    if auth.is_authenticated():
+        add_dir(L("up_next"), "up_next")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
         add_dir("[Debug] Test playback (manifest override)", "debug_play")
@@ -333,6 +342,32 @@ def do_extras(api, item_id, item_type, kind="trailers"):
     xbmc.Player().play(playback["manifest"], play_item)
 
 
+def do_subscription(api):
+    """Settings action: report the Apple TV+ subscription state."""
+    status = api.subscription_status()
+    if not status:
+        kodiutils.ok_dialog(L("sub_unknown"))
+        return
+    # Fields Apple actually returns here: status, expireDate (epoch ms),
+    # isPurchaser and isFamilySharable.
+    tv = status.get("tv") or {}
+    expires = tv.get("expireDate")
+    lines = [L("sub_active") if expires else L("sub_none")]
+    if expires:
+        try:
+            import time
+            lines.append(L("sub_renews") % time.strftime(
+                "%d %b %Y", time.localtime(int(expires) / 1000)))
+        except (TypeError, ValueError, OverflowError):
+            pass
+    if tv.get("isFamilySharable"):
+        lines.append(L("sub_family"))
+    if not tv.get("isPurchaser") and expires:
+        # Sharable but not the buyer: the subscription comes from elsewhere.
+        lines.append(L("sub_shared_with_you"))
+    xbmcgui.Dialog().ok(kodiutils.ADDON_NAME, "\n".join(lines))
+
+
 def do_watchlist(api, item_id, add):
     """Context-menu action: put a title or event on Up Next, or take it off."""
     if not item_id:
@@ -448,6 +483,10 @@ def router(paramstring):
         do_follow_team(api, params.get("team_id"), params.get("on") == "1")
     elif action == "watchlist":
         do_watchlist(api, params.get("item_id"), params.get("on") == "1")
+    elif action == "up_next":
+        show_items(api.get_watchlist())
+    elif action == "subscription":
+        do_subscription(api)
     elif action == "shelf":
         brand = params.get("brand") or APPLE_TV_PLUS_CHANNEL
         show_items(api.get_shelf_items(params.get("shelf_id"),

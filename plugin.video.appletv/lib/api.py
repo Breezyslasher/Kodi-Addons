@@ -107,6 +107,15 @@ NOW_PLAYING_URL = "https://tv.apple.com/api/np/play/json"
 ACCOUNT_INFO_URL = "https://buy.tv.apple.com/account/web/infoRefresh"
 PLAYBACK_REPORT_CACHE = "now_playing.json"
 
+# The Up Next list is served as an ordinary shelf, with the context values
+# below rather than ones taken from a canvas (nothing links to it from one).
+WATCHLIST_SHELF = "uts.col.Watchlist"
+WATCHLIST_CVS = "uts.tcvs.tv-plus-personalized-canvas-adaptive"
+WATCHLIST_CTX_SHELF = "uts.shlf.gen.Watchlist_%s"
+
+SUBSCRIPTION_STATUS_URL = \
+    "https://speedysub.tv.apple.com/subscription/v1/web/status/tv"
+
 
 class AppleTVApi(object):
     def __init__(self, auth):
@@ -294,6 +303,58 @@ class AppleTVApi(object):
     def set_watchlisted(self, content_id, watchlisted=True):
         """Add a title or event to the account's Up Next list, or remove it."""
         return self._list_request("/watchlist", content_id, watchlisted)
+
+    def get_watchlist(self, channel_id=None, max_pages=20):
+        """The account's Up Next list.
+
+        Nothing in a canvas links to it, so its context values are the ones
+        the site sends when the list is opened directly.
+        """
+        brand = channel_id or APPLE_TV_PLUS_CHANNEL
+        ctx = {"ctx_brand": brand,
+               "ctx_cvs": WATCHLIST_CVS,
+               "ctx_shelf": WATCHLIST_CTX_SHELF % brand}
+        items = []
+        seen = set()
+        token = None
+        for _ in range(max_pages):
+            params = dict(ctx)
+            if token:
+                params["nextToken"] = token
+            data = self._get_json("/shelves/%s" % WATCHLIST_SHELF, params)
+            shelf = ((data or {}).get("data") or {}).get("shelf")
+            if not isinstance(shelf, dict):
+                break
+            page = self._extract_items(shelf.get("items"))
+            for item in page:
+                if item.get("id") not in seen:
+                    seen.add(item.get("id"))
+                    items.append(item)
+            token = shelf.get("nextToken") or None
+            if not token or not page:
+                break
+        return items
+
+    def subscription_status(self):
+        """Apple TV+ subscription state, or None when it cannot be read."""
+        bearer = self._bootstrap().get("developer_token")
+        mut = self._media_user_token()
+        if not bearer or not mut:
+            return None
+        try:
+            resp = self.session.get(
+                SUBSCRIPTION_STATUS_URL,
+                headers={"authorization": "Bearer " + bearer,
+                         "media-user-token": mut,
+                         "Origin": WEB_HOME},
+                timeout=30)
+            if resp.status_code != 200:
+                kodiutils.log_error("subscription status -> %s" % resp.status_code)
+                return None
+            return resp.json()
+        except Exception as exc:
+            kodiutils.log_error("subscription status failed: %s" % exc)
+            return None
 
     def _list_request(self, path, item_id, add=True):
         """Add to or remove from one of Apple's per-account lists.

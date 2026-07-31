@@ -2,6 +2,7 @@
 <settings>
     <category label="32000">
         <setting id="account_status" type="action" label="32001" action="RunPlugin(plugin://plugin.video.appletv/?action=sign_in)" />
+        <setting id="subscription_status" type="action" label="32057" action="RunPlugin(plugin://plugin.video.appletv/?action=subscription)" />
         <setting id="sign_out" type="action" label="32015" action="RunPlugin(plugin://plugin.video.appletv/?action=sign_out)" />
     </category>
     <category label="32002">
