@@ -286,6 +286,12 @@ class AppleTVApi(object):
             headers["media-user-token"] = mut
             headers["Origin"] = WEB_HOME
 
+        # Sporting events (umc.cse.*) are not movies or episodes and are not
+        # supported; the movies endpoint returns 404 for them.
+        if str(content_id).startswith("umc.cse."):
+            kodiutils.log_error("Live sports events are not supported (%s)" % content_id)
+            return None
+
         endpoint = "episodes" if str(item_type) == "Episode" else "movies"
         text = self._get_text("/%s/%s" % (endpoint, content_id),
                               {"ctx_brand": APPLE_TV_PLUS_CHANNEL}, headers)

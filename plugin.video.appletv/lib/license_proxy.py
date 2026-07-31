@@ -176,11 +176,16 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        self.send_response(200)
-        self.send_header("Content-Type", "application/vnd.apple.mpegurl")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.apple.mpegurl")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        except (ConnectionResetError, BrokenPipeError):
+            # InputStream Adaptive abandons a playlist request when it switches
+            # representation; nothing is wrong, so do not log a traceback.
+            pass
 
     def _serve_init(self, target, kid_hex):
         """Serve an init segment with the real key id patched into its tenc box.
@@ -291,12 +296,33 @@ class _Handler(BaseHTTPRequestHandler):
         Renditions referenced only by dropped variants are removed too, so ISA
         does not report "Cannot find variant for AUDIO GROUP-ID".
         """
-        max_h = kodiutils.get_setting_int("max_height", 0)
+        max_h = kodiutils.get_setting_int("max_height", 540)
+        sdr_only = kodiutils.get_setting_bool("sdr_only", True)
         lines = text.splitlines()
 
-        def too_tall(tag):
+        def unwanted(tag):
+            """Drop variants the CDM will refuse or the player cannot show.
+
+            Apple keys each quality tier separately and the higher tiers demand
+            output protection this system cannot provide: the CDM reports the
+            key as output restricted (OnSessionKeysChange status 3) and the DRM
+            session fails. Dolby Vision variants are dropped as well because
+            Kodi decodes them as plain HEVC, which renders with badly shifted
+            colours.
+            """
             res = re.search(r'RESOLUTION=\d+x(\d+)', tag)
-            return bool(max_h and res and int(res.group(1)) > max_h)
+            if max_h and res and int(res.group(1)) > max_h:
+                return True
+            if sdr_only:
+                video_range = re.search(r'VIDEO-RANGE=([A-Z]+)', tag)
+                if video_range and video_range.group(1) != "SDR":
+                    return True
+                codecs = re.search(r'CODECS="([^"]+)"', tag)
+                if codecs and re.search(r'\bdv(h[e1]|av)', codecs.group(1)):
+                    return True
+            return False
+
+        too_tall = unwanted
 
         # First pass: decide which variants survive and which groups they use.
         keep_variant = {}
@@ -375,11 +401,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_response(500)
                 self.end_headers()
                 return
-            self.send_response(200)
-            self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Length", str(len(license_bytes)))
-            self.end_headers()
-            self.wfile.write(license_bytes)
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Length", str(len(license_bytes)))
+                self.end_headers()
+                self.wfile.write(license_bytes)
+            except (ConnectionResetError, BrokenPipeError):
+                pass
         except Exception as exc:
             kodiutils.log_error("License proxy error: %s" % exc)
             try:
