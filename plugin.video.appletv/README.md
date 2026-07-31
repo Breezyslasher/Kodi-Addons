@@ -4,11 +4,10 @@ Sign in with your Apple ID and browse **Apple TV+ Originals** and your
 **iTunes movie library** in Kodi, with playback through **InputStream Adaptive**
 using **Widevine** DRM.
 
-> ⚠️ **Encrypted video does not play yet.** Sign-in, browsing, search and the
-> whole DRM pipeline work, and **audio plays**, but the Widevine CDM refuses to
-> decrypt Apple's video. Read *Current status* before installing. Everything
-> here is reconstructed from real `tv.apple.com` browser captures; Apple
-> documents none of it and can change it at any time.
+> ⚠️ **Experimental, and requires Kodi 22 with InputStream Adaptive 22.**
+> Playback works, in standard definition only — see *Current status* for why.
+> Everything here is reconstructed from real `tv.apple.com` browser captures;
+> Apple documents none of it and can change it at any time.
 
 ## Current status
 
@@ -22,37 +21,43 @@ using **Widevine** DRM.
 | Widevine licence exchange (`fpsRequest`) | ✅ Local proxy wraps the challenge in Apple's JSON envelope; the returned key id always matches the requested one |
 | Key id delivery (`KEYID` + `tenc` patching) | ✅ Apple omits both; the proxy recovers the key id from the PSSH and supplies it |
 | **Audio decryption and playback** | ✅ Works |
-| **Video decryption** | ❌ CDM returns `kNoKey`, or ISA finds no decrypter at the first encrypted chapter |
+| **Video decryption and playback** | ✅ Works on Kodi 22 + ISA 22, standard definition only |
 
-### Why video does not play
+### Requirements and limits for playback
 
-Apple encrypts video with **cbcs pattern encryption (1:9)** and audio without a
-pattern (`0:0`). On this setup the CDM decrypts the unpatterned audio and
-refuses the patterned video in both modes: InputStream Adaptive's test
-decryption fails, so the stream is flagged `SSD_SECURE_PATH` and decoded inside
-the CDM, which then reports `kNoKey` for a key it demonstrably holds.
+Encrypted playback works only with **Kodi 22 and InputStream Adaptive 22 or
+newer**, which added the `inputstream.adaptive.drm` property this addon relies
+on. On Kodi 21 / ISA 21 the video never decrypts.
 
-Ruled out with evidence, so nobody repeats the work:
+Three constraints decide which stream is played, all enforced automatically by
+the manifest proxy:
 
-- **Not a key mismatch.** The requested key id equals the key id in the returned
-  licence, on every request across several captures.
-- **Not a missing key id.** Apple sends no `KEYID` attribute and an all-zero
-  `tenc` default_KID; both are now filled in from the PSSH, and the failure is
-  unchanged.
-- **Not resolution or quality tier.** An SD variant fails exactly like a 1080p
-  one.
-- **Not the crypto mode.** ISA maps `METHOD=SAMPLE-AES` to `AES_CBC` itself.
-- **Not the secure-decoder setting.** `NOSECUREDECODER` clears
-  `SSD_SECURE_DECODER`, not `SSD_SECURE_PATH`, so it cannot apply here.
+1. **Standard definition only.** Apple keys every quality tier separately and
+   the higher tiers demand output protection a software (L3) Widevine CDM
+   cannot provide: the CDM reports those keys as output restricted and the DRM
+   session fails. Only the lowest tier's key is usable, hence the default
+   360-pixel height cap. Apple's own web player picks the same tier for the
+   same reason.
+2. **H.264 only.** Encrypted video is decoded inside the CDM, whose decoder
+   does not handle HEVC (`ToCdmVideoCodec: Unknown video codec 5`). Apple
+   publishes H.264 at every tier, so non-H.264 variants are skipped.
+3. **No Dolby Vision or HDR.** Kodi decodes Dolby Vision Profile 5 as plain
+   HEVC, which renders with badly shifted colours, so those variants are
+   skipped too.
 
-One unexplained detail worth pursuing upstream: ISA logs
-`ToCdmVideoCodecProfile: Unknown codec profile 0` every time it opens Apple
-video through the CDM, i.e. the CDM's video decoder is initialised with no
-codec profile. See `docs/inputstream-adaptive-issue.md` for a written-up report.
+Raising the height cap on hardware with stronger output protection is
+possible, but on a typical desktop the CDM will refuse the key.
 
-Note that no other Kodi DRM addon appears to hit this: Amazon, Disney+, Max,
-Paramount and Crunchyroll all stream **DASH with `cenc`**, while Apple offers
-**only HLS with `cbcs`**.
+### What the addon has to do that Apple does not
+
+- Apple sends no `KEYID` on `#EXT-X-KEY` and an all-zero `tenc` default_KID.
+  Both are filled in from the key's PSSH, otherwise InputStream Adaptive asks
+  the CDM to decrypt with a key that was never licensed.
+- Apple's licence server wants the challenge wrapped in a JSON envelope with
+  the matching key's `uri`, `adamId` and `svcId`; a local proxy does that
+  translation, matching each challenge to its key by key id.
+- Apple leaves the opening chapters unencrypted and starts encryption several
+  chapters in, so the DRM session is pre-initialised via `pre_init_data`.
 
 ## Reality check — please read
 
@@ -68,12 +73,12 @@ This addon works by **mimicking the Apple TV web/Android client**, so Apple
 serves **Widevine** streams that Kodi *can* decrypt — the same technique the
 Netflix and Disney+ Kodi addons use.
 
-Even once video decrypts, two hard limits remain and neither can be coded away:
+Two hard limits remain and neither can be coded away:
 
-1. **Standard definition at best.** Kodi ships the **software Widevine L3** CDM.
-   Apple (like most services) restricts L3 to SD — its own web player selects
-   roughly 360p. Real HD/4K needs the hardware **Widevine L1** DRM that only
-   exists on Apple's devices and certified TVs.
+1. **Standard definition only.** Kodi ships the **software Widevine L3** CDM,
+   and Apple only issues a usable key for its lowest tier at that level — its
+   own web player selects roughly 360p for the same reason. HD/4K needs the
+   hardware **Widevine L1** DRM found on Apple's devices and certified TVs.
 2. **Apple gives no public API.** Sign-in, two-factor auth, the catalogue and
    the playback/licence endpoints are all reverse-engineered from Apple's web
    app. Apple changes these deliberately to break unofficial clients, so parts
@@ -89,13 +94,13 @@ supported hardware.
 - Browse Apple TV+ Originals (shelves of shows and movies)
 - Show → episode browsing with season/episode metadata
 - Search the Apple TV catalogue
-- Widevine licence exchange wired through InputStream Adaptive
-  (audio decrypts; see *Current status* for the video limitation)
+- Widevine playback through InputStream Adaptive (standard definition)
 
 ## Requirements
 
-- **Kodi 19 (Matrix) or later**
-- **InputStream Adaptive** (bundled with most Kodi builds)
+- **Kodi 22 or later with InputStream Adaptive 22 or later** for playback.
+  Browsing and search work on Kodi 19+, but encrypted video needs the
+  `inputstream.adaptive.drm` property added in ISA 22.
 - **Widevine CDM** — the addon uses *InputStream Helper* to install it
   automatically on supported platforms (x86/ARM Linux, Android, Windows).
   Widevine is **not** available on some platforms (e.g. iOS, and Apple silicon
@@ -124,12 +129,16 @@ Install from the Breezyslasher repository, or from zip:
   web client to Apple's sign-in service. Leave blank to use the built-in
   default; set it only if sign-in stops working and you have captured a current
   key from a browser session at `https://tv.apple.com`.
+- **Maximum video height** — advanced, `360` by default. Higher tiers use keys
+  the CDM reports as output restricted, so raising this generally stops
+  playback; `0` removes the limit.
+- **Standard dynamic range only** — advanced, on by default. Skips Dolby Vision
+  and HDR variants, which Kodi renders with shifted colours.
+- **H.264 only** — advanced, on by default. The CDM's decoder cannot decode
+  HEVC, so those variants are skipped.
 - **Disable InputStream Adaptive secure decoder** — advanced, off by default.
   Sets ISA's global `NOSECUREDECODER`, which affects every DRM addon on the
-  system. It does not fix the video issue above; left in only for testing.
-- **Maximum video height** — advanced, `0` (no limit) by default. Drops variants
-  above the given height from the master playlist. Renditions belonging only to
-  removed variants are dropped with them.
+  system. Not needed; left in for testing.
 - **media-user-token / Manifest URL override** — advanced debug inputs. Paste
   values captured from `tv.apple.com` to exercise playback without signing in.
 
@@ -149,12 +158,14 @@ Common cases:
 - **"Playback could not be resolved"** — you may not be signed in, or the title
   is not in your subscription/region. The addon logs whether it obtained a
   `media-user-token` and an `hlsUrl`.
-- **Audio plays but the picture is black or frozen** — this is the known video
-  limitation described in *Current status*, not a configuration mistake. The log
-  shows `kNoKey` or `Decrypter for the stream not found`.
-- **Playback stops a few seconds in** — Apple leaves the opening chapters
-  unencrypted and starts encryption a few chapters in, which is where the video
-  problem surfaces.
+- **Audio plays but the picture is black, or playback stops part way in** —
+  almost always the quality tier. Apple leaves the opening chapters
+  unencrypted, so trouble starts at the first encrypted chapter. Check the log
+  for `status 3` (the CDM refusing an output-restricted key: lower *Maximum
+  video height*) or `Unknown video codec 5` (an HEVC variant: enable *H.264
+  only*).
+- **Nothing plays and the log has no `drm property` line** — you are on ISA 21
+  or older, which lacks the DRM property this addon needs.
 
 ## Legal
 

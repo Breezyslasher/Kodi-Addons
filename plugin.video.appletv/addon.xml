@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.30" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,17 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.7.31 - Encrypted playback working
+- Playback now works on Kodi 22 with InputStream Adaptive 22, using the
+  new inputstream.adaptive.drm property (secure_decoder, pre_init_data).
+- Streams are limited to the lowest quality tier (360p by default), H.264
+  and SDR: Apple keys each tier separately and the CDM reports the higher
+  tiers' keys as output restricted, cannot decode HEVC, and Kodi renders
+  Dolby Vision with shifted colours.
+- Key ids are supplied to ISA via KEYID and the init segment's tenc box,
+  which Apple leaves empty.
+- Sporting events report clearly instead of failing with a 404.
+
 2026.7.30 - Experimental release (matched to real web client)
 - NEW: Apple ID sign-in rebuilt from a real tv.apple.com capture:
   authorize -> SRP init/complete with X-Apple-HC hashcash -> two-factor
