@@ -283,6 +283,21 @@ def do_sign_out(auth):
         kodiutils.notify(L("sign_out"))
 
 
+def do_show(api, show_id):
+    """A show opens to its seasons, or straight to its episodes if it has one."""
+    seasons = api.get_show_seasons(show_id)
+    if not seasons:
+        show_items(api.get_show_episodes(show_id), content="episodes")
+        return
+    for season in seasons:
+        label = season["title"]
+        if season.get("count"):
+            label = "%s (%d)" % (label, season["count"])
+        add_dir(label, "season", show_id=show_id, season=season["number"])
+    xbmcplugin.setContent(HANDLE, "seasons")
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
 def do_search(api):
     query = kodiutils.input_text(L("search_heading"))
     if not query:
@@ -534,7 +549,11 @@ def router(paramstring):
                                        params.get("cache_key")),
                    channel_id=brand)
     elif action == "show":
-        show_items(api.get_show_episodes(params.get("show_id")), content="episodes")
+        do_show(api, params.get("show_id"))
+    elif action == "season":
+        show_items(api.get_show_episodes(params.get("show_id"),
+                                         season=params.get("season")),
+                   content="episodes")
     elif action == "search":
         do_search(api)
     elif action == "play":

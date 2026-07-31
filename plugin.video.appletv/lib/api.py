@@ -684,8 +684,35 @@ class AppleTVApi(object):
         context = kodiutils.read_json(PLAYBACK_REPORT_CACHE, default={}) or {}
         return context.get("content_id")
 
-    def get_show_episodes(self, show_id, page=30, max_pages=25):
-        """Return a show's episodes (paginated via nextToken 'offset:size')."""
+    def get_show_seasons(self, show_id):
+        """A show's seasons, when it has more than one.
+
+        Asking for the episode list with includeSeasonSummary returns a
+        seasonSummaries array alongside it, which is where the site gets the
+        season picker. Returns [] for a show with a single season, so the
+        caller can go straight to the episodes.
+        """
+        data = self._get_json("/shows/%s/episodes" % show_id,
+                              {"includeSeasonSummary": "true"})
+        summaries = self._deep_find(data, "seasonSummaries") if data else None
+        seasons = []
+        for raw in self._as_list(summaries):
+            if not isinstance(raw, dict) or raw.get("seasonNumber") is None:
+                continue
+            seasons.append({
+                "number": raw.get("seasonNumber"),
+                "title": raw.get("title") or "Season %s" % raw.get("seasonNumber"),
+                "count": raw.get("episodeCount"),
+            })
+        return seasons if len(seasons) > 1 else []
+
+    def get_show_episodes(self, show_id, page=30, max_pages=25, season=None):
+        """Return a show's episodes (paginated via nextToken 'offset:size').
+
+        A season is filtered from the full list rather than requested: the
+        capture shows the site paging every episode with
+        selectedSeasonEpisodesOnly=false, and no per-season request to copy.
+        """
         episodes = []
         offset = 0
         for _ in range(max_pages):
@@ -705,6 +732,8 @@ class AppleTVApi(object):
             if len(raw_eps) < page:
                 break
             offset += page
+        if season is not None:
+            episodes = [e for e in episodes if str(e.get("season")) == str(season)]
         return self._harvest_streams(episodes)
 
     # -- playback --------------------------------------------------------

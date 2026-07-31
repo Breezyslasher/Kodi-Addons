@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.16" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.17" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,11 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.7.31.17 - Shows open to their seasons
+- NEW: A show with more than one season opens to a season list with each
+  season's episode count, instead of every episode in one flat run. A
+  179-episode show now opens to five seasons.
+- Shows with a single season still go straight to their episodes.
 2026.7.31.16 - Continue Watching, and a better Search
 - NEW: "Continue Watching" in the main menu lists what you have part
   watched, the same list the addon now feeds by reporting playback.
