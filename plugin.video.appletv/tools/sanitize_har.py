@@ -20,20 +20,20 @@ import json
 import re
 import sys
 
-# Only keep entries whose URL contains one of these (drops trackers, images…).
-KEEP_HOSTS = ("idmsa.apple.com", "uts-api.itunes.apple.com", "tv.apple.com",
-              "play.itunes.apple.com", "itunes.apple.com", "apple.com/WebObjects",
-              "buy.tv.apple.com", "auth.tv.apple.com", "amp-account.tv.apple.com",
-              "speedysub.tv.apple.com", "play-edge.itunes.apple.com")
+# Keep every Apple host by default. An allow-list of known API hosts looks
+# tidier but silently drops whatever Apple adds next -- and it did: sibling
+# store sign-ins (auth.music/podcasts/apps.apple.com), the account lookup on
+# amp-api.music.apple.com and the storefront/ratings call on
+# amp-api.videos.apple.com were all being thrown away.
+KEEP_HOST_SUFFIX = ("apple.com",)
 
 # ...but never these, whatever host they came from: analytics beacons, static
 # assets and the media itself, which is the bulk of a capture and of no use.
-DROP_HOSTS = ("xp.apple.com", "daf.xp.apple.com", "is1-ssl.mzstatic.com",
-              "mzstatic.com", "vod-", "sps-media.apple.com",
-              "experiments.apple.com", "cdn-apple.com")
+DROP_HOSTS = ("xp.apple.com", "daf.xp.apple.com", "mzstatic.com", "vod-",
+              "cdn-apple.com")
 DROP_PATH_RE = re.compile(
     r"\.(js|css|png|jpe?g|webp|gif|svg|ico|woff2?|ttf|mp4|m4s|ts|cmfv|cmfa|aac)$"
-    r"|/static|/assets|/api/csp-report", re.I)
+    r"|/static|/assets/|/api/csp-report", re.I)
 
 # Non-JSON bodies (page shells, scripts) are blanked rather than truncated:
 # they are the bulk of a capture, may carry cookies, and truncating JSON
@@ -131,7 +131,7 @@ def wanted(entry):
     host = url.split("/")[2] if "//" in url else ""
     if any(bad in host for bad in DROP_HOSTS):
         return False
-    if not any(h in url for h in KEEP_HOSTS):
+    if not host.endswith(KEEP_HOST_SUFFIX):
         return False
     path = url.split("?", 1)[0]
     if DROP_PATH_RE.search(path):
