@@ -15,9 +15,10 @@ using **Widevine** DRM.
 |-------|--------|
 | Apple ID sign-in + two-factor (trusted device or SMS) | ✅ Matches the real web flow (authorize → SRP with *no-username-in-x* + `X-Apple-HC` hashcash → 2FA → trust) |
 | Apple-ID login → `media-user-token` (store login) | ✅ `POST auth.tv.apple.com/auth/v1/web` mints it automatically after sign-in |
-| Browse Apple TV+ Originals, search | ✅ Real shelf titles, full item lists |
+| Browse Apple TV+, MLS and Formula 1 tabs, search | ✅ Real shelf titles, full item lists |
 | Artwork | ✅ Tall posters and wide stills each requested at their own aspect ratio, so neither is cropped |
-| Trailers | ✅ Context menu on movies and shows; taken from the title's own detail response |
+| Trailers and bonus content | ✅ Context menus on movies and shows; taken from the title's own detail response |
+| Sports clips (highlights, interviews, key plays) | ✅ Played from the stream the shelf lists inline — Apple gives these no detail endpoint |
 | Show → episode browsing | ✅ Shows open to their episode list with S/E metadata |
 | Playback resolve (`/uts/v3/movies/{id}`, `/episodes/{id}`) | ✅ Returns the `hlsUrl` for the entitled feature (not the trailer) |
 | Widevine licence exchange (`fpsRequest`) | ✅ Local proxy wraps the challenge in Apple's JSON envelope; the returned key id always matches the requested one |
@@ -93,10 +94,10 @@ supported hardware.
 ## Features
 
 - Apple ID sign-in with two-factor authentication (SRP-6a web flow)
-- Browse Apple TV+ Originals (shelves of shows and movies)
+- Browse the Apple TV+, MLS and Formula 1 tabs (all of each tab's shelves)
 - Show → episode browsing with season/episode metadata
 - Search the Apple TV catalogue
-- **Play trailer** context-menu entry on movies and shows
+- **Play trailer** and **Bonus content** context-menu entries on movies and shows
 - Widevine playback through InputStream Adaptive (standard definition)
 
 ## Requirements

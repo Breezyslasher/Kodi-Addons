@@ -35,7 +35,26 @@ UTS_VERSION = "96"
 UTS_CLIENT_FLAGS = "OjAAAAEAAAAAAAIAEAAAACMAKwAtAA~~"
 APPLE_TV_PLUS_CHANNEL = "tvs.sbd.4000"
 
-CANVAS_CACHE = "canvas_cache.json"
+# The brand tabs tv.apple.com puts along the top of the home page. Each is a
+# canvas of its own under /canvases/channels/{id}; the ids and names are the
+# ones Apple returns in the "channels" map of those responses.
+CHANNELS = (
+    (APPLE_TV_PLUS_CHANNEL, "Apple TV+"),
+    ("tvs.sbd.7000", "MLS"),
+    ("tvs.sbd.241000", "Formula 1"),
+)
+
+CANVAS_CACHE = "canvas_cache_%s.json"
+# Streams found inline on shelf items. The sports channels list clip types
+# (NotableMoment, Interview, KeyPlay, ...) that have no detail endpoint of
+# their own but carry a full set of playable assets in the shelf itself.
+STREAM_CACHE = "stream_cache.json"
+STREAM_CACHE_LIMIT = 600
+
+# Shelf entries that are navigation, not something to play. Apple gives these
+# no playables at all, so listing them would only produce dead items.
+CONTAINER_TYPES = ("Brand", "Upsell", "Preview", "Team", "GrandPrix", "Room",
+                   "Person", "Originals", "MLS")
 
 # Canvas shelves on a title's detail page that hold its extra videos.
 TRAILER_SHELF_PREFIX = "uts.col.Trailers"
@@ -186,19 +205,30 @@ class AppleTVApi(object):
     # -- catalogue -------------------------------------------------------
 
     def get_originals_shelves(self):
+        return self.get_channel_shelves(APPLE_TV_PLUS_CHANNEL)
+
+    def get_channel_shelves(self, channel_id):
+        """Shelves of one brand tab (Apple TV+, MLS, Formula 1, ...)."""
         data = self._get_json(
-            "/canvases/channels/%s" % APPLE_TV_PLUS_CHANNEL,
+            "/canvases/channels/%s" % channel_id,
             {"includePlatter": "true", "platterPassThrough": "true"},
         )
         shelves = self._extract_shelves(data)
-        # Cache items so opening a shelf shows the full list (they're already here).
+        # Cache items so opening a shelf shows the full list (they're already
+        # here). Kept per channel so switching tabs does not evict the other's.
         cache = {s["id"]: s["items"] for s in shelves if s.get("id")}
-        kodiutils.write_json(CANVAS_CACHE, cache)
+        kodiutils.write_json(self._canvas_cache_name(channel_id), cache)
         return shelves
 
-    def get_shelf_items(self, shelf_id):
-        cache = kodiutils.read_json(CANVAS_CACHE, default={}) or {}
+    def get_shelf_items(self, shelf_id, channel_id=None):
+        cache = kodiutils.read_json(
+            self._canvas_cache_name(channel_id or APPLE_TV_PLUS_CHANNEL),
+            default={}) or {}
         return cache.get(shelf_id, [])
+
+    @staticmethod
+    def _canvas_cache_name(channel_id):
+        return CANVAS_CACHE % str(channel_id).replace("/", "_")
 
     def search(self, query):
         data = self._get_json("/search", {"searchTerm": query, "topResultsOnly": "true"})
@@ -228,7 +258,7 @@ class AppleTVApi(object):
             if len(raw_eps) < page:
                 break
             offset += page
-        return episodes
+        return self._harvest_streams(episodes)
 
     # -- playback --------------------------------------------------------
 
@@ -237,7 +267,14 @@ class AppleTVApi(object):
         self.last_error = None
         assets = self._prepare_playback(content_id, item_type)
         if not assets:
-            return None
+            # Sports clips have no detail endpoint; fall back to the stream the
+            # shelf listed inline, which is the only one Apple ever offers.
+            inline = self._cached_stream(content_id)
+            if not inline:
+                return None
+            kodiutils.log("Using the stream listed inline for %s" % content_id)
+            self.last_error = None
+            assets = self._prepared_from_assets(inline, self._media_user_token())
         return self._build_playback(assets)
 
     def _build_playback(self, assets, require_user_token=True):
@@ -395,19 +432,21 @@ class AppleTVApi(object):
 
     # -- trailers and bonus content --------------------------------------
 
-    def get_trailers(self, content_id, item_type="Movie"):
-        """List a title's trailers, newest shelf order preserved.
+    def get_extras(self, content_id, item_type="Movie", kind="trailers"):
+        """List a title's trailers or bonus features, in Apple's shelf order.
 
-        Apple puts them in a canvas shelf whose id is
-        uts.col.Trailers.<content id>, each item already carrying the playable
-        assets, so this is the only request a trailer needs.
+        Apple puts them in canvas shelves whose ids are
+        uts.col.Trailers.<content id> and uts.col.BonusContent.<content id>,
+        each item already carrying the playable assets, so this is the only
+        request an extra needs.
         """
         self.last_error = None
         data, _mut = self._detail_json(content_id, item_type)
         if data is None:
             return []
-        trailers = []
-        for item in self._extra_shelf_items(data, TRAILER_SHELF_PREFIX):
+        prefix = TRAILER_SHELF_PREFIX if kind == "trailers" else BONUS_SHELF_PREFIX
+        extras = []
+        for item in self._extra_shelf_items(data, prefix):
             if not isinstance(item, dict) or not item.get("id"):
                 continue
             if not self._playable_assets(item):
@@ -420,32 +459,33 @@ class AppleTVApi(object):
                     label = "%s (%d:%02d)" % (title, int(duration) // 60, int(duration) % 60)
                 except (TypeError, ValueError):
                     pass
-            trailers.append({
+            extras.append({
                 "id": item["id"],
                 "title": title,
                 "label": label,
                 "duration": duration,
                 "art": self._item_art(item.get("images") or {}),
             })
-        return trailers
+        return extras
 
-    def get_trailer_playback(self, content_id, item_type, trailer_id):
-        """Resolve one trailer from a title's Trailers shelf to a playable dict."""
+    def get_extra_playback(self, content_id, item_type, extra_id):
+        """Resolve one trailer or bonus feature to a playable dict."""
         self.last_error = None
         data, mut = self._detail_json(content_id, item_type)
         if data is None:
             return None
-        for item in self._extra_shelf_items(data, TRAILER_SHELF_PREFIX):
-            if not isinstance(item, dict) or item.get("id") != trailer_id:
-                continue
-            assets = self._playable_assets(item)
-            if not assets:
-                break
-            # Trailers are promotional and play without a subscription, so a
-            # missing media-user-token must not block them.
-            return self._build_playback(self._prepared_from_assets(assets, mut),
-                                        require_user_token=False)
-        kodiutils.log_error("Trailer %s has no playable stream" % trailer_id)
+        for prefix in (TRAILER_SHELF_PREFIX, BONUS_SHELF_PREFIX):
+            for item in self._extra_shelf_items(data, prefix):
+                if not isinstance(item, dict) or item.get("id") != extra_id:
+                    continue
+                assets = self._playable_assets(item)
+                if not assets:
+                    continue
+                # Extras are promotional and play without a subscription, so a
+                # missing media-user-token must not block them.
+                return self._build_playback(self._prepared_from_assets(assets, mut),
+                                            require_user_token=False)
+        kodiutils.log_error("Extra %s has no playable stream" % extra_id)
         return None
 
     def _extra_shelf_items(self, data, prefix):
@@ -670,6 +710,33 @@ class AppleTVApi(object):
                 shelves.append({"id": str(shelf_id), "title": title, "items": items})
         return shelves
 
+    def _harvest_streams(self, items):
+        """Move any inline stream assets off the entries and into the cache.
+
+        Sports clips (NotableMoment, Interview, KeyPlay, ...) have no detail
+        endpoint of their own; the shelf is the only place their stream is
+        offered, so it has to be kept when the listing is built.
+        """
+        streams = {}
+        for item in items:
+            assets = item.pop("stream_assets", None)
+            if assets and item.get("id"):
+                streams[str(item["id"])] = assets
+        if not streams:
+            return items
+        cache = kodiutils.read_json(STREAM_CACHE, default={}) or {}
+        cache.update(streams)
+        if len(cache) > STREAM_CACHE_LIMIT:
+            # Plain dicts keep insertion order, so this drops the oldest.
+            for key in list(cache)[:len(cache) - STREAM_CACHE_LIMIT]:
+                cache.pop(key, None)
+        kodiutils.write_json(STREAM_CACHE, cache)
+        return items
+
+    def _cached_stream(self, content_id):
+        cache = kodiutils.read_json(STREAM_CACHE, default={}) or {}
+        return cache.get(str(content_id))
+
     def _shelf_title(self, shelf):
         header = shelf.get("header")
         if isinstance(header, dict):
@@ -684,7 +751,7 @@ class AppleTVApi(object):
             item = self._map_item(raw)
             if item:
                 results.append(item)
-        return results
+        return self._harvest_streams(results)
 
     def _map_item(self, raw, force_type=None):
         if not isinstance(raw, dict):
@@ -692,8 +759,8 @@ class AppleTVApi(object):
         item_id = raw.get("id") or raw.get("canonicalId") or raw.get("adamId")
         title = raw.get("title") or raw.get("name")
         item_type = force_type or raw.get("type") or "Movie"
-        # Skip non-playable promo/brand/trailer tiles.
-        if not item_id or not title or item_type in ("Brand", "Upsell", "Preview"):
+        # Skip tiles that are navigation rather than something to play.
+        if not item_id or not title or item_type in CONTAINER_TYPES:
             return None
         rel = raw.get("releaseDate")
         year = rel[:4] if isinstance(rel, str) and len(rel) >= 4 else None
@@ -727,6 +794,8 @@ class AppleTVApi(object):
             "duration": raw.get("duration"),
             "start_time": start_time,
             "art": self._item_art(raw.get("images") or {}),
+            # Harvested by _extract_shelves, never kept on the listed entry.
+            "stream_assets": self._playable_assets(raw),
         }
 
     def _item_art(self, images):

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.2" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.3" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,16 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.7.31.3 - MLS and Formula 1 tabs, bonus content
+- NEW: The MLS and Formula 1 brand tabs from tv.apple.com's home page are
+  now browsable alongside Apple TV+, each with all of its shelves.
+- NEW: "Bonus content" context-menu entry sits next to "Play trailer" on
+  movies and shows (Ted Lasso has twelve bonus features).
+- The sports channels list clip types (highlights, interviews, key plays)
+  that have no detail endpoint of their own but carry their stream in the
+  shelf itself; that stream is kept so the clips play.
+- Navigation tiles (teams, Grand Prix rounds, browse rooms) no longer
+  appear as playable items, since Apple gives them no stream at all.
 2026.7.31.2 - Play trailers from the context menu
 - NEW: Movies and shows have a "Play trailer" context-menu entry. Apple
   lists a title's trailers in its detail response, each already carrying

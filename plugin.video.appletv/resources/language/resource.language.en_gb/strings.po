@@ -154,3 +154,15 @@ msgstr ""
 msgctxt "#32033"
 msgid "No trailer is available for this title."
 msgstr ""
+
+msgctxt "#32034"
+msgid "Bonus content"
+msgstr ""
+
+msgctxt "#32035"
+msgid "Choose a bonus feature"
+msgstr ""
+
+msgctxt "#32036"
+msgid "No bonus content is available for this title."
+msgstr ""

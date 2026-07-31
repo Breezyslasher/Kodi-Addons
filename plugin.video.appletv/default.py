@@ -10,7 +10,7 @@ import xbmcplugin
 
 from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA, STATUS_ERROR
-from lib.api import AppleTVApi
+from lib.api import AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
@@ -38,6 +38,9 @@ S = {
     "play_trailer": 32031,
     "choose_trailer": 32032,
     "no_trailer": 32033,
+    "bonus_content": 32034,
+    "choose_bonus": 32035,
+    "no_bonus": 32036,
 }
 
 
@@ -49,20 +52,22 @@ def url(**kwargs):
     return "%s?%s" % (BASE_URL, urlencode(kwargs))
 
 
-def trailer_context_menu(item, item_id, item_type):
-    """Context-menu entry that plays the title's trailer."""
-    item.addContextMenuItems([(
-        L("play_trailer"),
-        "RunPlugin(%s)" % url(action="trailers", item_id=item_id, item_type=item_type),
-    )])
+def extras_context_menu(item, item_id, item_type):
+    """Context-menu entries that play a title's trailers and bonus features."""
+    item.addContextMenuItems([
+        (L("play_trailer"), "RunPlugin(%s)" % url(
+            action="extras", kind="trailers", item_id=item_id, item_type=item_type)),
+        (L("bonus_content"), "RunPlugin(%s)" % url(
+            action="extras", kind="bonus", item_id=item_id, item_type=item_type)),
+    ])
 
 
-def add_dir(label, action, art=None, trailer_for=None, **params):
+def add_dir(label, action, art=None, extras_for=None, **params):
     item = xbmcgui.ListItem(label=label)
     if art:
         item.setArt(art)
-    if trailer_for:
-        trailer_context_menu(item, trailer_for[0], trailer_for[1])
+    if extras_for:
+        extras_context_menu(item, extras_for[0], extras_for[1])
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action=action, **params), item, isFolder=True
     )
@@ -105,9 +110,9 @@ def add_playable(entry):
         except (TypeError, ValueError):
             pass
     item.setProperty("IsPlayable", "true")
-    # Episodes and sporting events carry no Trailers shelf of their own.
+    # Episodes and sporting events carry no extras shelves of their own.
     if kind in ("Movie", "Show", "Vod", "MovieBundle"):
-        trailer_context_menu(item, entry["id"], kind)
+        extras_context_menu(item, entry["id"], kind)
     xbmcplugin.addDirectoryItem(
         HANDLE,
         url(action="play", item_id=entry["id"], item_type=entry.get("type", "Movie")),
@@ -119,7 +124,10 @@ def add_playable(entry):
 # -- menus ---------------------------------------------------------------
 
 def main_menu(auth):
-    add_dir(L("originals"), "originals")
+    # One entry per brand tab along the top of tv.apple.com's home page.
+    for channel_id, name in CHANNELS:
+        label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
+        add_dir(label, "channel", channel_id=channel_id)
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
         add_dir("[Debug] Test playback (manifest override)", "debug_play")
@@ -130,13 +138,14 @@ def main_menu(auth):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def show_shelves(api, shelves):
+def show_shelves(api, shelves, channel_id=APPLE_TV_PLUS_CHANNEL):
     if not shelves:
         kodiutils.notify(L("no_results"))
     for shelf in shelves:
         if shelf.get("items"):
             add_dir("%s (%d)" % (shelf["title"], len(shelf["items"])),
-                    "shelf", shelf_id=shelf["id"], title=shelf["title"])
+                    "shelf", shelf_id=shelf["id"], title=shelf["title"],
+                    channel_id=channel_id)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -144,7 +153,7 @@ def add_item(entry):
     """Add a catalogue entry: shows become folders, everything else plays."""
     if str(entry.get("type")) == "Show":
         add_dir(entry["title"], "show", art=entry.get("art"),
-                trailer_for=(entry["id"], "Show"), show_id=entry["id"])
+                extras_for=(entry["id"], "Show"), show_id=entry["id"])
     else:
         add_playable(entry)
 
@@ -215,26 +224,28 @@ def do_play(api, item_id, item_type):
     xbmcplugin.setResolvedUrl(HANDLE, True, play_item)
 
 
-def do_trailers(api, item_id, item_type):
-    """Context-menu action: pick a trailer for a title and play it.
+def do_extras(api, item_id, item_type, kind="trailers"):
+    """Context-menu action: pick a trailer or bonus feature and play it.
 
     Run via RunPlugin rather than as a resolved item, so it works from any
     list without disturbing the item the user is standing on.
     """
-    trailers = api.get_trailers(item_id, item_type)
-    if not trailers:
-        kodiutils.ok_dialog(api.last_error or L("no_trailer"))
+    extras = api.get_extras(item_id, item_type, kind)
+    if not extras:
+        kodiutils.ok_dialog(api.last_error or L(
+            "no_trailer" if kind == "trailers" else "no_bonus"))
         return
 
     index = 0
-    if len(trailers) > 1:
-        index = xbmcgui.Dialog().select(L("choose_trailer"),
-                                        [t["label"] for t in trailers])
+    if len(extras) > 1:
+        index = xbmcgui.Dialog().select(
+            L("choose_trailer" if kind == "trailers" else "choose_bonus"),
+            [e["label"] for e in extras])
         if index < 0:
             return
-    chosen = trailers[index]
+    chosen = extras[index]
 
-    playback = api.get_trailer_playback(item_id, item_type, chosen["id"])
+    playback = api.get_extra_playback(item_id, item_type, chosen["id"])
     if not playback:
         kodiutils.ok_dialog(api.last_error or L("playback_failed"))
         return
@@ -320,16 +331,21 @@ def router(paramstring):
         main_menu(auth)
     elif action == "originals":
         show_shelves(api, api.get_originals_shelves())
+    elif action == "channel":
+        channel_id = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
+        show_shelves(api, api.get_channel_shelves(channel_id), channel_id)
     elif action == "shelf":
-        show_items(api.get_shelf_items(params.get("shelf_id")))
+        show_items(api.get_shelf_items(params.get("shelf_id"),
+                                       params.get("channel_id")))
     elif action == "show":
         show_items(api.get_show_episodes(params.get("show_id")), content="episodes")
     elif action == "search":
         do_search(api)
     elif action == "play":
         do_play(api, params.get("item_id"), params.get("item_type", "Movie"))
-    elif action == "trailers":
-        do_trailers(api, params.get("item_id"), params.get("item_type", "Movie"))
+    elif action == "extras":
+        do_extras(api, params.get("item_id"), params.get("item_type", "Movie"),
+                  params.get("kind", "trailers"))
     elif action == "sign_in":
         do_sign_in(auth, api)
         main_menu(auth)
