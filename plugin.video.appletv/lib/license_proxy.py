@@ -70,18 +70,29 @@ class _Handler(BaseHTTPRequestHandler):
             kodiutils.log_error("License proxy missing bearer/media-user-token")
             return None
 
-        key = {
-            "lease-action": "start",
-            "id": 1,
-            "challenge": base64.b64encode(challenge).decode("ascii"),
-            "key-system": "com.widevine.alpha",
-            "adamId": ctx.get("adam_id", ""),
-            "isExternal": bool(ctx.get("is_external", True)),
-            "svcId": ctx.get("svc_id", ""),
-        }
-        if ctx.get("wv_uri"):
-            key["uri"] = ctx["wv_uri"]
-        envelope = {"streaming-request": {"version": 1, "streaming-keys": [key]}}
+        # Apple needs the data: URI of the exact key this challenge is for
+        # (video and audio have different keys); a wrong or missing uri gives a
+        # 500. Match by the key id embedded in the challenge, then fall back to
+        # the other known keys rather than failing outright.
+        wv_keys = ctx.get("wv_keys") or {}
+        candidates = []
+        for kid_hex, kuri in wv_keys.items():
+            try:
+                if bytes.fromhex(kid_hex) in challenge:
+                    candidates.append(kuri)
+                    break
+            except ValueError:
+                continue
+        matched = bool(candidates)
+        for kuri in wv_keys.values():
+            if kuri not in candidates:
+                candidates.append(kuri)
+        if not candidates:
+            candidates = [None]
+        kodiutils.log("License request: %d bytes, exact key match=%s, %d candidate(s)"
+                      % (len(challenge), "yes" if matched else "no", len(candidates)))
+
+        url = ctx.get("license_server") or FPS_URL
         headers = {
             "Content-Type": "application/json",
             "Origin": "https://tv.apple.com",
@@ -90,16 +101,38 @@ class _Handler(BaseHTTPRequestHandler):
             "x-apple-music-user-token": mut,
             "x-apple-renewal": "true",
         }
-        url = ctx.get("license_server") or FPS_URL
-        resp = requests.post(url, data=json.dumps(envelope), headers=headers, timeout=30)
-        if resp.status_code != 200:
-            kodiutils.log_error("fpsRequest %s: %s" % (resp.status_code, resp.text[:300]))
-            return None
-        keys = (resp.json().get("streaming-response", {}) or {}).get("streaming-keys", [])
-        if not keys or "license" not in keys[0]:
-            kodiutils.log_error("fpsRequest returned no licence: %s" % resp.text[:300])
-            return None
-        return base64.b64decode(keys[0]["license"])
+        last_error = None
+        for attempt, candidate in enumerate(candidates):
+            key = {
+                "lease-action": "start",
+                "id": 1,
+                "challenge": base64.b64encode(challenge).decode("ascii"),
+                "key-system": "com.widevine.alpha",
+                "adamId": ctx.get("adam_id", ""),
+                "isExternal": bool(ctx.get("is_external", True)),
+                "svcId": ctx.get("svc_id", ""),
+            }
+            if candidate:
+                key["uri"] = candidate
+            envelope = {"streaming-request": {"version": 1, "streaming-keys": [key]}}
+            resp = requests.post(url, data=json.dumps(envelope), headers=headers, timeout=30)
+            if resp.status_code != 200:
+                last_error = "HTTP %s %s" % (resp.status_code, resp.text[:150])
+                continue
+            try:
+                keys = (resp.json().get("streaming-response", {}) or {}).get("streaming-keys", [])
+            except ValueError:
+                last_error = "non-JSON response %s" % resp.text[:150]
+                continue
+            if not keys or "license" not in keys[0]:
+                last_error = "no licence in response %s" % resp.text[:150]
+                continue
+            kodiutils.log("License OK (attempt %d/%d)" % (attempt + 1, len(candidates)))
+            return base64.b64decode(keys[0]["license"])
+
+        kodiutils.log_error("fpsRequest failed after %d attempt(s): %s"
+                            % (len(candidates), last_error))
+        return None
 
 
 class LicenseProxy(object):
