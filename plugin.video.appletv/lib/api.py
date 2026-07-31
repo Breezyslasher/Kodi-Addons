@@ -110,6 +110,7 @@ PLAYBACK_REPORT_CACHE = "now_playing.json"
 
 # The Up Next list is served as an ordinary shelf, with the context values
 # below rather than ones taken from a canvas (nothing links to it from one).
+CONTINUE_WATCHING_SHELF = "uts.col.PlayerTabUpNext"
 WATCHLIST_SHELF = "uts.col.Watchlist"
 WATCHLIST_CVS = "uts.tcvs.tv-plus-personalized-canvas-adaptive"
 WATCHLIST_CTX_SHELF = "uts.shlf.gen.Watchlist_%s"
@@ -644,6 +645,44 @@ class AppleTVApi(object):
         for shelf in self._extract_shelves(data):
             items.extend(shelf["items"])
         return items
+
+    def search_hints(self, term):
+        """Apple's search suggestions for a partly-typed term."""
+        data = self._get_json("/search/hints", {"searchTerm": term})
+        hints = ((data or {}).get("data") or {}).get("hints")
+        out = []
+        for hint in hints or []:
+            if isinstance(hint, dict) and hint.get("searchTerm"):
+                out.append({"term": hint["searchTerm"],
+                            "label": hint.get("displayTerm") or hint["searchTerm"]})
+        return out
+
+    def get_search_landing(self):
+        """The browse page Apple shows before anything is typed."""
+        return self._canvas_shelves("/search/landing", {}, "search_landing")
+
+    def get_continue_watching(self, player_content_id=None):
+        """The Continue Watching list, as the player's Up Next tab shows it.
+
+        The site sends playerContentId for the title being watched; there is
+        no capture of the call without it, so the last title played through
+        the addon is used when there is one.
+        """
+        params = {}
+        if player_content_id:
+            params["playerContentId"] = player_content_id
+        data = self._get_json(
+            "/shelves/player-tabs/%s" % CONTINUE_WATCHING_SHELF, params)
+        shelf = ((data or {}).get("data") or {}).get("shelf")
+        if not isinstance(shelf, dict):
+            kodiutils.log("Continue Watching returned no shelf")
+            return []
+        return self._extract_items(shelf.get("items"))
+
+    def last_played_id(self):
+        """Content id of the last title played through the addon, if any."""
+        context = kodiutils.read_json(PLAYBACK_REPORT_CACHE, default={}) or {}
+        return context.get("content_id")
 
     def get_show_episodes(self, show_id, page=30, max_pages=25):
         """Return a show's episodes (paginated via nextToken 'offset:size')."""

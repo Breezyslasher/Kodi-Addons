@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.15" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.16" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,13 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.7.31.16 - Continue Watching, and a better Search
+- NEW: "Continue Watching" in the main menu lists what you have part
+  watched, the same list the addon now feeds by reporting playback.
+- NEW: Opening Search without typing anything shows Apple's browse page
+  instead of an empty list.
+- NEW: After typing, Apple's suggestions are offered, with what you typed
+  kept as the first choice.
 2026.7.31.15 - Following section, and a real follow toggle
 - NEW: A "Following" folder at the top of the MLS tab lists the clubs you
   follow. Apple's own favourites shelf there is an empty placeholder the

@@ -60,6 +60,8 @@ S = {
     "sub_unknown": 32056,
     "sub_shared_with_you": 32058,
     "following": 32059,
+    "continue_watching": 32060,
+    "search_suggestions": 32061,
 }
 
 
@@ -164,6 +166,7 @@ def main_menu(auth):
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
     if auth.is_authenticated():
+        add_dir(L("continue_watching"), "continue_watching")
         add_dir(L("up_next"), "up_next")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
@@ -283,8 +286,22 @@ def do_sign_out(auth):
 def do_search(api):
     query = kodiutils.input_text(L("search_heading"))
     if not query:
-        xbmcplugin.endOfDirectory(HANDLE)
+        # Nothing typed: show Apple's browse page rather than an empty list.
+        show_shelves(api, api.get_search_landing(), "search_landing")
         return
+
+    # Offer Apple's suggestions, with what was typed kept as the first choice.
+    options = [(query, query)]
+    for hint in api.search_hints(query):
+        if hint["term"] != query:
+            options.append((hint["label"], hint["term"]))
+    if len(options) > 1:
+        index = xbmcgui.Dialog().select(L("search_suggestions"),
+                                        [label for label, _ in options])
+        if index < 0:
+            xbmcplugin.endOfDirectory(HANDLE)
+            return
+        query = options[index][1]
     show_items(api.search(query))
 
 
@@ -296,12 +313,12 @@ def do_play(api, item_id, item_type):
         return
 
     kodiutils.notify(L("sd_notice"))
-    write_report_context(playback)
+    write_report_context(playback, content_id=item_id)
     play_item = build_isa_listitem(playback)
     xbmcplugin.setResolvedUrl(HANDLE, True, play_item)
 
 
-def write_report_context(playback, duration=None):
+def write_report_context(playback, duration=None, content_id=None):
     """Leave the service what it needs to report this stream to Apple.
 
     Playback runs in a different process from this one, so the ids that mint
@@ -311,6 +328,9 @@ def write_report_context(playback, duration=None):
     report = dict(playback.get("report") or {})
     if duration:
         report["duration"] = duration
+    if content_id:
+        # Also what Continue Watching sends as its playerContentId.
+        report["content_id"] = content_id
     kodiutils.write_json(PLAYBACK_REPORT_CACHE, report)
 
 
@@ -504,6 +524,8 @@ def router(paramstring):
         do_watchlist(api, params.get("item_id"), params.get("on") == "1")
     elif action == "up_next":
         show_items(api.get_watchlist())
+    elif action == "continue_watching":
+        show_items(api.get_continue_watching(api.last_played_id()))
     elif action == "subscription":
         do_subscription(api)
     elif action == "shelf":

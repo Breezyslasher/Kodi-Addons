@@ -239,6 +239,14 @@ msgctxt "#32059"
 msgid "Following"
 msgstr ""
 
+msgctxt "#32060"
+msgid "Continue Watching"
+msgstr ""
+
+msgctxt "#32061"
+msgid "Did you mean"
+msgstr ""
+
 msgctxt "#32057"
 msgid "Subscription status"
 msgstr ""
