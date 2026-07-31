@@ -95,6 +95,7 @@ supported hardware.
 
 - Apple ID sign-in with two-factor authentication (SRP-6a web flow)
 - Browse the Apple TV+, MLS and Formula 1 tabs (all of each tab's shelves)
+- Browse categories (Kids & Family, Sci-Fi, Comedies, ...) as folders
 - Show → episode browsing with season/episode metadata
 - Search the Apple TV catalogue
 - **Play trailer** and **Bonus content** context-menu entries on movies and shows

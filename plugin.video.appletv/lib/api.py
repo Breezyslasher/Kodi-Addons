@@ -53,8 +53,9 @@ STREAM_CACHE = "stream_cache.json"
 STREAM_CACHE_LIMIT = 600
 
 # Shelf entries that are navigation, not something to play. Apple gives these
-# no playables at all, so listing them would only produce dead items.
-CONTAINER_TYPES = ("Brand", "Upsell", "Preview", "Team", "GrandPrix", "Room",
+# no playables at all, so listing them as items would only produce dead ones.
+# Room is not here: a room is a browse category with a canvas of its own.
+CONTAINER_TYPES = ("Brand", "Upsell", "Preview", "Team", "GrandPrix",
                    "Person", "Originals", "MLS")
 
 # Canvas shelves on a title's detail page that hold its extra videos.
@@ -209,7 +210,25 @@ class AppleTVApi(object):
         return self.get_channel_shelves(APPLE_TV_PLUS_CHANNEL)
 
     def get_channel_shelves(self, channel_id, max_pages=10):
-        """Shelves of one brand tab (Apple TV+, MLS, Formula 1, ...).
+        """Shelves of one brand tab (Apple TV+, MLS, Formula 1, ...)."""
+        return self._canvas_shelves(
+            "/canvases/channels/%s" % channel_id,
+            {"includePlatter": "true", "platterPassThrough": "true"},
+            channel_id, max_pages)
+
+    def get_room_shelves(self, room_id, channel_id=None, max_pages=10):
+        """Shelves of a room -- a browse category such as Kids & Family.
+
+        Rooms are canvases like the channel tabs, keyed by canvasType: the
+        site opens one with /canvases/rooms/{id}?ctx_brand={channel}.
+        """
+        return self._canvas_shelves(
+            "/canvases/rooms/%s" % room_id,
+            {"ctx_brand": channel_id or APPLE_TV_PLUS_CHANNEL},
+            room_id, max_pages)
+
+    def _canvas_shelves(self, path, params, cache_key, max_pages=10):
+        """Walk a canvas to its last page and cache each shelf's first page.
 
         A canvas is paged: the response carries canvas.nextToken, an offset to
         hand back as the nextToken parameter for the next batch of shelves.
@@ -220,10 +239,10 @@ class AppleTVApi(object):
         seen = set()
         token = None
         for _ in range(max_pages):
-            params = {"includePlatter": "true", "platterPassThrough": "true"}
+            request = dict(params)
             if token:
-                params["nextToken"] = token
-            data = self._get_json("/canvases/channels/%s" % channel_id, params)
+                request["nextToken"] = token
+            data = self._get_json(path, request)
             if not data:
                 break
             page = self._extract_shelves(data)
@@ -235,11 +254,11 @@ class AppleTVApi(object):
             if not token or not page:
                 break
         # Cache each shelf's first page and what is needed to fetch the rest.
-        # Kept per channel so switching tabs does not evict the other's.
+        # Kept per canvas so opening another does not evict this one's.
         cache = {s["id"]: {"items": s["items"], "next": s.get("next"),
                            "ctx": s.get("ctx") or {}}
                  for s in shelves if s.get("id")}
-        kodiutils.write_json(self._canvas_cache_name(channel_id), cache)
+        kodiutils.write_json(self._canvas_cache_name(cache_key), cache)
         return shelves
 
     @staticmethod

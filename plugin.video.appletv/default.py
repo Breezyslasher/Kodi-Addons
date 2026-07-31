@@ -138,7 +138,14 @@ def main_menu(auth):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def show_shelves(api, shelves, channel_id=APPLE_TV_PLUS_CHANNEL):
+def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
+                 brand=APPLE_TV_PLUS_CHANNEL):
+    """List a canvas' shelves.
+
+    cache_key names the canvas whose cache holds these shelves (a channel or
+    a room); brand stays the owning channel, which is what rooms nested
+    further down need for their ctx_brand.
+    """
     if not shelves:
         kodiutils.notify(L("no_results"))
     for shelf in shelves:
@@ -149,24 +156,30 @@ def show_shelves(api, shelves, channel_id=APPLE_TV_PLUS_CHANNEL):
                 else str(len(shelf["items"]))
             add_dir("%s (%s)" % (shelf["title"], count),
                     "shelf", shelf_id=shelf["id"], title=shelf["title"],
-                    channel_id=channel_id)
+                    cache_key=cache_key, brand=brand)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def add_item(entry):
-    """Add a catalogue entry: shows become folders, everything else plays."""
-    if str(entry.get("type")) == "Show":
+def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
+    """Add a catalogue entry: shows and rooms are folders, the rest play."""
+    kind = str(entry.get("type"))
+    if kind == "Show":
         add_dir(entry["title"], "show", art=entry.get("art"),
                 extras_for=(entry["id"], "Show"), show_id=entry["id"])
+    elif kind == "Room":
+        # A room is a browse category (Kids & Family, Sci-Fi, ...) with a
+        # canvas of shelves behind it.
+        add_dir(entry["title"], "room", art=entry.get("art"),
+                room_id=entry["id"], channel_id=channel_id)
     else:
         add_playable(entry)
 
 
-def show_items(items, content="movies"):
+def show_items(items, content="movies", channel_id=APPLE_TV_PLUS_CHANNEL):
     if not items:
         kodiutils.notify(L("no_results"))
     for entry in items:
-        add_item(entry)
+        add_item(entry, channel_id)
     xbmcplugin.setContent(HANDLE, content)
     xbmcplugin.endOfDirectory(HANDLE)
 
@@ -337,10 +350,17 @@ def router(paramstring):
         show_shelves(api, api.get_originals_shelves())
     elif action == "channel":
         channel_id = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
-        show_shelves(api, api.get_channel_shelves(channel_id), channel_id)
+        show_shelves(api, api.get_channel_shelves(channel_id),
+                     channel_id, channel_id)
+    elif action == "room":
+        room_id = params.get("room_id")
+        brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
+        show_shelves(api, api.get_room_shelves(room_id, brand), room_id, brand)
     elif action == "shelf":
+        brand = params.get("brand") or APPLE_TV_PLUS_CHANNEL
         show_items(api.get_shelf_items(params.get("shelf_id"),
-                                       params.get("channel_id")))
+                                       params.get("cache_key")),
+                   channel_id=brand)
     elif action == "show":
         show_items(api.get_show_episodes(params.get("show_id")), content="episodes")
     elif action == "search":
