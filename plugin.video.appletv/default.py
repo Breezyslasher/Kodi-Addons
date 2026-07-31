@@ -10,7 +10,8 @@ import xbmcplugin
 
 from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA, STATUS_ERROR
-from lib.api import AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL
+from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL,
+                     PLAYBACK_REPORT_CACHE)
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
@@ -275,8 +276,22 @@ def do_play(api, item_id, item_type):
         return
 
     kodiutils.notify(L("sd_notice"))
+    write_report_context(playback)
     play_item = build_isa_listitem(playback)
     xbmcplugin.setResolvedUrl(HANDLE, True, play_item)
+
+
+def write_report_context(playback, duration=None):
+    """Leave the service what it needs to report this stream to Apple.
+
+    Playback runs in a different process from this one, so the ids that mint
+    a now-playing token are handed over on disk. Written empty when a stream
+    cannot be reported, so the service does not report the previous title.
+    """
+    report = dict(playback.get("report") or {})
+    if duration:
+        report["duration"] = duration
+    kodiutils.write_json(PLAYBACK_REPORT_CACHE, report)
 
 
 def do_extras(api, item_id, item_type, kind="trailers"):
@@ -305,6 +320,9 @@ def do_extras(api, item_id, item_type, kind="trailers"):
         kodiutils.ok_dialog(api.last_error or L("playback_failed"))
         return
 
+    # Trailers and bonus features are not the title itself; reporting them
+    # would put the wrong thing in Continue Watching.
+    write_report_context({})
     play_item = build_isa_listitem(playback)
     play_item.setLabel(chosen["title"])
     if chosen.get("art"):

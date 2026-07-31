@@ -93,6 +93,20 @@ POSTER_HEIGHT = 900
 THUMB_WIDTH = 1280
 FANART_WIDTH = 1920
 
+# Body the web app posts to /configurations to obtain a utsk session token.
+CLIENT_FEATURE_FLAGS = {"featureFlags": {"clientFeatures": [
+    {"name": "catch_up_to_live", "domain": "tvapp", "enabled": True},
+    {"name": "opal", "domain": "tvapp", "enabled": True},
+    {"name": "plato", "domain": "tvapp", "enabled": True},
+    {"name": "server_side_one_tap_multiview", "domain": "tvapp", "enabled": False},
+    {"name": "simple_profiles", "domain": "tvapp", "enabled": False},
+]}}
+
+# Watch-history reporting ("now playing").
+NOW_PLAYING_URL = "https://tv.apple.com/api/np/play/json"
+ACCOUNT_INFO_URL = "https://buy.tv.apple.com/account/web/infoRefresh"
+PLAYBACK_REPORT_CACHE = "now_playing.json"
+
 
 class AppleTVApi(object):
     def __init__(self, auth):
@@ -146,6 +160,11 @@ class AppleTVApi(object):
             boot["utsk"] = cached.get("utsk")
         if not boot["developer_token"]:
             boot["developer_token"] = cached.get("developer_token")
+        if not boot["utsk"] and boot["developer_token"]:
+            # The shell no longer carried one; ask for a session token the way
+            # the web app itself does.
+            boot["utsk"] = self._request_utsk(boot["developer_token"],
+                                              boot["storefront"])
         if not boot["utsk"]:
             kodiutils.log_error("Could not obtain utsk token from tv.apple.com")
         else:
@@ -155,6 +174,38 @@ class AppleTVApi(object):
             self.auth.save()
         self._boot = boot
         return boot
+
+    def _request_utsk(self, developer_token, storefront):
+        """Ask Apple for a UTS session token instead of scraping one.
+
+        The web app posts its feature flags to /configurations and reads utsk
+        back from utskProps. Scraping the HTML shell is still tried first
+        because it also yields the developer token, which this does not.
+        """
+        headers = {"authorization": "Bearer " + developer_token,
+                   "Content-Type": "application/json",
+                   "Origin": WEB_HOME}
+        mut = self._media_user_token()
+        if mut:
+            headers["media-user-token"] = mut
+        params = {"caller": "web", "locale": self._locale(), "pfm": "web",
+                  "sfh": storefront, "v": UTS_VERSION}
+        try:
+            resp = self.session.post(
+                UTS_BASE + "/configurations", params=params, headers=headers,
+                data=json.dumps(CLIENT_FEATURE_FLAGS, separators=(",", ":")),
+                timeout=30)
+            if resp.status_code != 200:
+                kodiutils.log_error("configurations -> %s %s"
+                                    % (resp.status_code, resp.text[:200]))
+                return None
+            props = ((resp.json().get("data") or {}).get("utskProps")) or {}
+            if props.get("utsk"):
+                kodiutils.log("Obtained utsk from /configurations")
+                return props["utsk"]
+        except Exception as exc:
+            kodiutils.log_error("configurations request failed: %s" % exc)
+        return None
 
     def _media_user_token(self):
         tok = (kodiutils.get_setting("media_user_token")
@@ -279,6 +330,127 @@ class AppleTVApi(object):
         if resp.status_code != 200:
             kodiutils.log_error("%s -> %s %s"
                                 % (path, resp.status_code, resp.text[:200]))
+            return False
+        return True
+
+    # -- watch history ("now playing") -----------------------------------
+
+    def _consumer_id(self):
+        """The account id the now-playing report is filed under (pldfltcid)."""
+        cached = self.auth.tokens.get("consumer_id")
+        if cached:
+            return cached
+        bearer = self._bootstrap().get("developer_token")
+        mut = self._media_user_token()
+        if not bearer or not mut:
+            return None
+        try:
+            resp = self.session.get(
+                ACCOUNT_INFO_URL,
+                headers={"authorization": "Bearer " + bearer,
+                         "media-user-token": mut,
+                         "Origin": WEB_HOME},
+                timeout=30)
+            if resp.status_code != 200:
+                kodiutils.log_error("account infoRefresh -> %s" % resp.status_code)
+                return None
+            cid = (resp.json() or {}).get("pldfltcid")
+        except Exception as exc:
+            kodiutils.log_error("account infoRefresh failed: %s" % exc)
+            return None
+        if cid:
+            self.auth.tokens["consumer_id"] = cid
+            self.auth.save()
+        return cid
+
+    def now_playing_token(self, assets, duration_secs):
+        """Exchange a playable's assets for a now-playing pass-through token.
+
+        Apple mints the token that identifies this playback session from the
+        playable's own pass-through, its external id and the stream duration.
+        """
+        passthrough = assets.get("playable_passthrough")
+        external_id = assets.get("external_id")
+        if not passthrough or not external_id:
+            return None
+        bearer = self._bootstrap().get("developer_token")
+        headers = {"Origin": WEB_HOME}
+        if bearer:
+            headers["authorization"] = "Bearer " + bearer
+        mut = self._media_user_token()
+        if mut:
+            headers["media-user-token"] = mut
+        params = self._params({
+            "brandId": assets.get("brand_id") or APPLE_TV_PLUS_CHANNEL,
+            "externalId": external_id,
+            "hlsAssetDuration": str(int(duration_secs or 0)),
+            "playablePassThrough": passthrough,
+        })
+        # The web client sends utscf here but no utsk; match it.
+        params.pop("utsk", None)
+        try:
+            resp = self.session.get(UTS_BASE + "/contents/play-metadata/vod",
+                                    params=params, headers=headers, timeout=30)
+            if resp.status_code != 200:
+                kodiutils.log_error("play-metadata -> %s %s"
+                                    % (resp.status_code, resp.text[:200]))
+                return None
+            return ((resp.json().get("data") or {}).get("nowPlayingPassThrough"))
+        except Exception as exc:
+            kodiutils.log_error("play-metadata failed: %s" % exc)
+            return None
+
+    def report_now_playing(self, token, position_secs, duration_secs, finished=False):
+        """Tell Apple where playback has reached, updating Up Next.
+
+        This is what makes a title appear in Continue Watching and resume at
+        the right place on Apple's own clients.
+        """
+        if not token:
+            return False
+        bearer = self._bootstrap().get("developer_token")
+        mut = self._media_user_token()
+        consumer = self._consumer_id()
+        if not bearer or not mut or not consumer:
+            return False
+        head = int(max(0, position_secs) * 1000)
+        length = int(max(0, duration_secs) * 1000)
+        body = {
+            "context": {
+                "user": {"id": consumer, "keyspace": "cid"},
+                "userAgent": self.session.headers.get("User-Agent", ""),
+                "appleStoreFront": int(self._storefront()),
+                "source": "Client_Device",
+                "cadence": "Contract",
+                "bundleId": "com.apple.tv",
+                "millisecondsSinceEvent": 0,
+            },
+            "event": {"vodEvent": {
+                "playHeadInMilliseconds": head,
+                "mediaLengthInMilliseconds": length,
+                "mainContentInfo": {
+                    "isDone": "Done" if finished else "Not_Done",
+                    "playHeadInMilliseconds": head,
+                    "lengthInMilliseconds": length,
+                    "passThrough": token,
+                },
+            }},
+        }
+        try:
+            resp = self.session.post(
+                NOW_PLAYING_URL,
+                headers={"authorization": "Bearer " + bearer,
+                         "media-user-token": mut,
+                         # Apple's own client sends text/plain here, not JSON.
+                         "Content-Type": "text/plain;charset=UTF-8",
+                         "Origin": WEB_HOME},
+                data=json.dumps(body, separators=(",", ":")), timeout=30)
+        except Exception as exc:
+            kodiutils.log_error("now-playing report failed: %s" % exc)
+            return False
+        if resp.status_code not in (200, 202, 204):
+            kodiutils.log_error("now-playing -> %s %s"
+                                % (resp.status_code, resp.text[:200]))
             return False
         return True
 
@@ -484,6 +656,11 @@ class AppleTVApi(object):
             "certificate_b64": self.get_widevine_certificate(),
             "stream_headers": stream_headers,
             "pre_init_data": pre_init,
+            "report": {
+                "playable_passthrough": assets.get("playable_passthrough"),
+                "external_id": assets.get("external_id"),
+                "brand_id": assets.get("brand_id"),
+            },
         }
 
     def _prepare_playback(self, content_id, item_type):
@@ -574,6 +751,10 @@ class AppleTVApi(object):
             "adam_id": str(assets.get("assetAdamId") or qp.get("adamId") or self._q(hls, "a")),
             "svc_id": qp.get("svcId") or self._q(hls, "svcId"),
             "is_external": qp.get("isExternal", True),
+            # Carried through for watch-history reporting.
+            "playable_passthrough": assets.get("_playablePassThrough"),
+            "external_id": assets.get("_externalId"),
+            "brand_id": assets.get("_brandId"),
         }
 
     # -- trailers and bonus content --------------------------------------
@@ -644,8 +825,7 @@ class AppleTVApi(object):
                 return self._as_list(shelf.get("items"))
         return []
 
-    @staticmethod
-    def _playable_assets(item):
+    def _playable_assets(self, item):
         """The first of an item's playables that actually carries a stream."""
         playables = item.get("playables")
         candidates = list(playables.values()) if isinstance(playables, dict) else (playables or [])
@@ -654,7 +834,7 @@ class AppleTVApi(object):
                 continue
             assets = playable.get("assets")
             if isinstance(assets, dict) and assets.get("hlsUrl"):
-                return assets
+                return self._enrich_assets(playable)
         return None
 
     @staticmethod
@@ -727,14 +907,27 @@ class AppleTVApi(object):
         # Prefer the Apple TV+ channel when more than one is entitled.
         for p in entitled:
             if p.get("channelId") == APPLE_TV_PLUS_CHANNEL:
-                return p["assets"]
+                return self._enrich_assets(p)
         if entitled:
-            return entitled[0]["assets"]
+            return self._enrich_assets(entitled[0])
         # Fallback: any playable that carries a stream.
         for p in candidates:
             if has_stream(p):
-                return p["assets"]
+                return self._enrich_assets(p)
         return None
+
+    @staticmethod
+    def _enrich_assets(playable):
+        """Assets plus the fields watch-history reporting needs.
+
+        playablePassThrough and externalId sit on the playable rather than in
+        its assets, and both are required to mint a now-playing token.
+        """
+        assets = dict(playable.get("assets") or {})
+        assets["_playablePassThrough"] = playable.get("playablePassThrough")
+        assets["_externalId"] = playable.get("externalId")
+        assets["_brandId"] = playable.get("channelId")
+        return assets
 
     def _get_text(self, path, extra_params, headers):
         try:

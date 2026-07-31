@@ -18,6 +18,7 @@ using **Widevine** DRM.
 | Browse Apple TV+, MLS and Formula 1 tabs, search | ✅ Real shelf titles, every shelf on a tab, every item in a shelf |
 | Artwork | ✅ Tall posters and wide stills each requested at their own aspect ratio, so neither is cropped |
 | Trailers and bonus content | ✅ Context menus on movies and shows; taken from the title's own detail response |
+| Watch history / Continue Watching | ✅ Progress reported to Apple during playback, so titles resume on your other devices |
 | Sports clips (highlights, interviews, key plays) | ✅ Played from the stream the shelf lists inline — Apple gives these no detail endpoint |
 | Show → episode browsing | ✅ Shows open to their episode list with S/E metadata |
 | Playback resolve (`/uts/v3/movies/{id}`, `/episodes/{id}`) | ✅ Returns the `hlsUrl` for the entitled feature (not the trailer) |
