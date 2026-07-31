@@ -235,7 +235,7 @@ class _Handler(BaseHTTPRequestHandler):
         dropped = 0
         cur_kid = None
         out = []
-        max_h = kodiutils.get_setting_int("max_height", 540)
+        max_h = kodiutils.get_setting_int("max_height", 0)
         lines = text.splitlines()
         index = 0
         while index < len(lines):
