@@ -21,6 +21,7 @@ carries a Widevine PSSH, so InputStream Adaptive can decrypt it.
 
 import json
 import re
+import time
 from urllib.parse import parse_qs
 
 from . import kodiutils
@@ -46,6 +47,10 @@ CHANNELS = (
     (MLS_CHANNEL, "MLS"),
     (F1_CHANNEL, "Formula 1"),
 )
+
+# How long a scraped utsk is reused before the shell is fetched again.
+# Apple reports a two-hour life; refreshing at one keeps a wide margin.
+BOOT_CACHE_SECONDS = 3600
 
 CANVAS_CACHE = "canvas_cache_%s.json"
 # Streams found inline on shelf items. The sports channels list clip types
@@ -133,6 +138,25 @@ class AppleTVApi(object):
     def _bootstrap(self, force=False):
         if self._boot is not None and not force:
             return self._boot
+
+        # Kodi runs a fresh process for every navigation, so an in-memory
+        # cache saves nothing between screens. Apple says a utsk lasts two
+        # hours (expirationInSeconds on /configurations), so a token kept on
+        # disk is reused until it is nearly due, and the 1 MB page shell is
+        # fetched once an hour instead of once per directory listing.
+        if not force:
+            cached = self.auth.tokens.get("boot") or {}
+            if cached.get("utsk") and cached.get("developer_token"):
+                age = time.time() - (cached.get("stamp") or 0)
+                if 0 <= age < BOOT_CACHE_SECONDS:
+                    self._boot = {
+                        "utsk": cached["utsk"],
+                        "developer_token": cached["developer_token"],
+                        "storefront": cached.get("storefront") or DEFAULT_STOREFRONT,
+                        "user_token": self.auth.tokens.get("media_user_token"),
+                    }
+                    return self._boot
+
         boot = {"utsk": None, "developer_token": None, "storefront": DEFAULT_STOREFRONT,
                 "user_token": None}
         try:
@@ -181,7 +205,8 @@ class AppleTVApi(object):
         else:
             self.auth.tokens["boot"] = {"utsk": boot["utsk"],
                                         "developer_token": boot["developer_token"],
-                                        "storefront": boot["storefront"]}
+                                        "storefront": boot["storefront"],
+                                        "stamp": time.time()}
             self.auth.save()
         self._boot = boot
         return boot
@@ -255,9 +280,16 @@ class AppleTVApi(object):
             params.update(extra)
         return params
 
-    def _get_json(self, path, extra_params=None):
+    def _get_json(self, path, extra_params=None, _retried=False):
         try:
             resp = self.session.get(UTS_BASE + path, params=self._params(extra_params), timeout=30)
+            if resp.status_code in (401, 403) and not _retried:
+                # The cached session token has been rejected: get a fresh one
+                # and try once more, so a stale cache costs a retry rather
+                # than a failed screen.
+                kodiutils.log("UTS %s -> %s; refreshing tokens" % (path, resp.status_code))
+                self._bootstrap(force=True)
+                return self._get_json(path, extra_params, _retried=True)
             if resp.status_code != 200:
                 kodiutils.log_error("UTS %s -> %s %s" % (path, resp.status_code, resp.text[:200]))
                 return None
