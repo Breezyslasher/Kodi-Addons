@@ -279,9 +279,26 @@ class AppleTVApi(object):
             params.update(extra)
         return params
 
+    def _uts_headers(self):
+        """Identify the account on catalogue requests.
+
+        Without these the responses are the signed-out ones: a canvas comes
+        back with no personalised shelves (no Continue Watching) and the
+        watchlist shelf is empty. The site sends both on every UTS call.
+        """
+        headers = {"Origin": WEB_HOME}
+        token = self._bootstrap().get("developer_token")
+        if token:
+            headers["authorization"] = "Bearer " + token
+        mut = self._media_user_token()
+        if mut:
+            headers["media-user-token"] = mut
+        return headers
+
     def _get_json(self, path, extra_params=None, _retried=False):
         try:
-            resp = self.session.get(UTS_BASE + path, params=self._params(extra_params), timeout=30)
+            resp = self.session.get(UTS_BASE + path, params=self._params(extra_params),
+                                    headers=self._uts_headers(), timeout=30)
             if resp.status_code in (401, 403) and not _retried:
                 # The cached session token has been rejected: get a fresh one
                 # and try once more, so a stale cache costs a retry rather
