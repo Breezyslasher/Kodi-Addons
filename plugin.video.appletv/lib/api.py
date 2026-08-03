@@ -1115,6 +1115,7 @@ class AppleTVApi(object):
             "studio": "Apple TV+" if content.get("isAppleOriginal") else None,
             "premiered": self._release_date(content.get("releaseDate")),
             "title": content.get("title"),
+            "show_title": content.get("showTitle"),
             "cast": [],
         }
         for raw in self._extra_shelf_items(data, "uts.col.CastAndCrew"):
@@ -1657,6 +1658,12 @@ class AppleTVApi(object):
             "year": year,
             "season": season,
             "episode": episode,
+            # Continue Watching lists episodes without their show around them,
+            # so the show's name and id travel on the item: the name to label
+            # it by, the id to tell an episode apart from its show when its
+            # own page is fetched.
+            "show_title": raw.get("showTitle"),
+            "show_id": raw.get("showId"),
             "duration": raw.get("duration"),
             "start_time": start_time,
             # Clubs carry whether the account follows them; the canvas is

@@ -107,6 +107,13 @@ def watchlist_menu_items(item_id):
 
 def apply_entry_info(tag, entry):
     """Set what Apple sends about a title on any item, folder or not."""
+    if entry.get("show_title"):
+        # An episode listed away from its show -- Continue Watching does this
+        # -- has no other way of saying which show it belongs to.
+        try:
+            tag.setTvShowTitle(entry["show_title"])
+        except (TypeError, ValueError, AttributeError):
+            pass
     if entry.get("title") or entry.get("sort_title"):
         try:
             tag.setTitle(entry.get("sort_title") or entry["title"])
@@ -494,6 +501,7 @@ def do_play(api, item_id, item_type):
     # nothing about the title and its plot read "Not available". A title's own
     # page carries the description and the cast, which shelf items do not.
     apply_title_info(play_item, api.get_title_info(item_id, item_type))
+
     xbmcplugin.setResolvedUrl(HANDLE, True, play_item)
 
 
@@ -508,7 +516,8 @@ def apply_title_info(item, info):
             (info.get("mpaa"), "setMpaa"),
             (info.get("tagline"), "setTagLine"),
             (info.get("premiered"), "setPremiered"),
-            (info.get("year"), "setYear")):
+            (info.get("year"), "setYear"),
+            (info.get("show_title"), "setTvShowTitle")):
         if not value:
             continue
         try:
