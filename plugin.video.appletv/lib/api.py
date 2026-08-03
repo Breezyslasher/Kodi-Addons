@@ -1092,6 +1092,44 @@ class AppleTVApi(object):
             })
         return people
 
+    def get_title_info(self, content_id, item_type="Movie"):
+        """Everything Kodi's info screen wants about a title, in one request.
+
+        A listing gets this from the shelf item it already has, but playback
+        resolves from an id alone, so the item Kodi is given while playing had
+        nothing on it and showed "Not available" for the plot. The title's own
+        page carries the description, which shelf items do not, along with the
+        cast, so both come back together here.
+        """
+        data, _mut = self._detail_json(content_id, item_type)
+        if data is None:
+            return {}
+        content = (data.get("data") or {}).get("content") or {}
+        info = {
+            "plot": content.get("description") or content.get("heroDescription"),
+            "genres": [g.get("name") for g in self._as_list(content.get("genres"))
+                       if isinstance(g, dict) and g.get("name")],
+            "mpaa": ((content.get("rating") or {}).get("displayName")
+                     if isinstance(content.get("rating"), dict) else None),
+            "tagline": content.get("heroDescription"),
+            "studio": "Apple TV+" if content.get("isAppleOriginal") else None,
+            "premiered": self._release_date(content.get("releaseDate")),
+            "title": content.get("title"),
+            "cast": [],
+        }
+        for raw in self._extra_shelf_items(data, "uts.col.CastAndCrew"):
+            if isinstance(raw, dict) and raw.get("title"):
+                info["cast"].append({
+                    "name": raw["title"],
+                    "role": raw.get("characterName") or raw.get("roleTitle") or "",
+                    "art": self._person_art(raw.get("images") or {}),
+                })
+        try:
+            info["year"] = int(str(info["premiered"] or "")[:4])
+        except (TypeError, ValueError):
+            info["year"] = None
+        return info
+
     def get_extras(self, content_id, item_type="Movie", kind="trailers"):
         """List a title's trailers or bonus features, in Apple's shelf order.
 

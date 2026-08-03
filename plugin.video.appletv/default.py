@@ -463,7 +463,48 @@ def do_play(api, item_id, item_type):
     kodiutils.notify(L("sd_notice"))
     write_report_context(playback, content_id=item_id)
     play_item = build_isa_listitem(playback)
+    # Playback resolves from an id, so the item Kodi shows while playing knew
+    # nothing about the title and its plot read "Not available". A title's own
+    # page carries the description and the cast, which shelf items do not.
+    apply_title_info(play_item, api.get_title_info(item_id, item_type))
     xbmcplugin.setResolvedUrl(HANDLE, True, play_item)
+
+
+def apply_title_info(item, info):
+    """Fill a playing item's info screen from a title's own page."""
+    if not info:
+        return
+    tag = item.getVideoInfoTag()
+    for value, setter in (
+            (info.get("title"), "setTitle"),
+            (info.get("plot"), "setPlot"),
+            (info.get("mpaa"), "setMpaa"),
+            (info.get("tagline"), "setTagLine"),
+            (info.get("premiered"), "setPremiered"),
+            (info.get("year"), "setYear")):
+        if not value:
+            continue
+        try:
+            getattr(tag, setter)(value)
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if info.get("genres"):
+        try:
+            tag.setGenres(list(info["genres"]))
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if info.get("studio"):
+        try:
+            tag.setStudios([info["studio"]])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if info.get("cast"):
+        try:
+            tag.setCast([xbmc.Actor(p["name"], p.get("role") or "", order,
+                                    (p.get("art") or {}).get("thumb") or "")
+                         for order, p in enumerate(info["cast"])])
+        except (TypeError, ValueError, AttributeError):
+            pass
 
 
 def write_report_context(playback, duration=None, content_id=None):
