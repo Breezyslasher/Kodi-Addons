@@ -118,7 +118,7 @@ def add_dir(label, action, art=None, extras_for=None, context=None, **params):
     )
 
 
-def add_playable(entry):
+def add_playable(entry, cast=None):
     item = xbmcgui.ListItem(label=entry["title"])
     if entry.get("art"):
         item.setArt(entry["art"])
@@ -160,6 +160,17 @@ def add_playable(entry):
     if resume.get("position") and resume.get("total"):
         try:
             tag.setResumePoint(resume["position"], resume["total"])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    # Kodi has a cast area of its own, so the people credited on a title fill
+    # it in rather than only being listed. Apple keeps them on the title's
+    # page, not on each item, so the caller fetches them once and passes them
+    # to every entry instead of asking per episode.
+    if cast:
+        try:
+            tag.setCast([xbmc.Actor(person["name"], person.get("role") or "",
+                                    order, (person.get("art") or {}).get("thumb") or "")
+                         for order, person in enumerate(cast)])
         except (TypeError, ValueError, AttributeError):
             pass
     item.setProperty("IsPlayable", "true")
@@ -241,7 +252,7 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
+def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL, cast=None):
     """Add a catalogue entry: shows and rooms are folders, the rest play."""
     kind = str(entry.get("type"))
     if kind == "Show":
@@ -268,7 +279,7 @@ def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
         add_dir(label, "team", art=entry.get("art"), context=menu,
                 team_id=entry["id"], channel_id=channel_id)
     else:
-        add_playable(entry)
+        add_playable(entry, cast)
 
 
 def show_people(people):
@@ -286,11 +297,12 @@ def show_people(people):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def show_items(items, content="movies", channel_id=APPLE_TV_PLUS_CHANNEL):
+def show_items(items, content="movies", channel_id=APPLE_TV_PLUS_CHANNEL,
+               cast=None):
     if not items:
         kodiutils.notify(L("no_results"))
     for entry in items:
-        add_item(entry, channel_id)
+        add_item(entry, channel_id, cast)
     xbmcplugin.setContent(HANDLE, content)
     xbmcplugin.endOfDirectory(HANDLE)
 
@@ -344,7 +356,8 @@ def do_show(api, show_id):
     """A show opens to its seasons, or straight to its episodes if it has one."""
     seasons = api.get_show_seasons(show_id)
     if not seasons:
-        show_items(api.get_show_episodes(show_id), content="episodes")
+        show_items(api.get_show_episodes(show_id), content="episodes",
+                   cast=api.get_cast(show_id, "Show"))
         return
     for season in seasons:
         label = season["title"]
@@ -647,9 +660,10 @@ def router(paramstring):
     elif action == "show":
         do_show(api, params.get("show_id"))
     elif action == "season":
-        show_items(api.get_show_episodes(params.get("show_id"),
-                                         season=params.get("season")),
-                   content="episodes")
+        show_id = params.get("show_id")
+        show_items(api.get_show_episodes(show_id, season=params.get("season")),
+                   content="episodes",
+                   cast=api.get_cast(show_id, "Show"))
     elif action == "search":
         do_search(api)
     elif action == "play":
