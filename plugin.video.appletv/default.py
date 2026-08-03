@@ -200,15 +200,15 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
     """
     if not shelves:
         kodiutils.notify(L("no_results"))
-    # Both lists are fetched with a ctx_brand, so they belong to a tab rather
-    # than to the addon as a whole; cache_key is the room id further down, so
-    # this is the channel's own canvas.
-    if cache_key == APPLE_TV_PLUS_CHANNEL and api.auth.is_authenticated():
+    # The watchlist is fetched with a ctx_brand, so it belongs to a tab
+    # rather than to the addon as a whole. cache_key only equals brand on a
+    # channel's own canvas; a room further down carries its own id.
+    if cache_key == brand and api.auth.is_authenticated():
         # Apple serves Continue Watching only alongside a title being
         # watched, so it has nothing to show until something is played here.
         if api.last_played_id():
             add_dir(L("continue_watching"), "continue_watching")
-        add_dir(L("up_next"), "up_next")
+        add_dir(L("up_next"), "up_next", channel_id=brand)
     # Apple's own favourites shelf is an empty marker the website fills in
     # itself; the club tiles say who is followed, so do the same here.
     followed = [i for s in shelves for i in s.get("items") or []
@@ -598,7 +598,8 @@ def router(paramstring):
     elif action == "watchlist":
         do_watchlist(api, params.get("item_id"), params.get("on") == "1")
     elif action == "up_next":
-        show_items(api.get_watchlist())
+        brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
+        show_items(api.get_watchlist(brand), channel_id=brand)
     elif action == "related":
         show_items(api.get_related(params.get("item_id"),
                                    params.get("league") or None))
