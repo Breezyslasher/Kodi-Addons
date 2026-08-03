@@ -175,17 +175,11 @@ def add_playable(entry):
 
 # -- menus ---------------------------------------------------------------
 
-def main_menu(auth, api):
+def main_menu(auth):
     # One entry per brand tab along the top of tv.apple.com's home page.
     for channel_id, name in CHANNELS:
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
-    if auth.is_authenticated():
-        # Apple serves this one only alongside a title being watched, so it
-        # has nothing to show until something has been played here.
-        if api.last_played_id():
-            add_dir(L("continue_watching"), "continue_watching")
-        add_dir(L("up_next"), "up_next")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
         add_dir("[Debug] Test playback (manifest override)", "debug_play")
@@ -206,6 +200,15 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
     """
     if not shelves:
         kodiutils.notify(L("no_results"))
+    # Both lists are fetched with a ctx_brand, so they belong to a tab rather
+    # than to the addon as a whole; cache_key is the room id further down, so
+    # this is the channel's own canvas.
+    if cache_key == APPLE_TV_PLUS_CHANNEL and api.auth.is_authenticated():
+        # Apple serves Continue Watching only alongside a title being
+        # watched, so it has nothing to show until something is played here.
+        if api.last_played_id():
+            add_dir(L("continue_watching"), "continue_watching")
+        add_dir(L("up_next"), "up_next")
     # Apple's own favourites shelf is an empty marker the website fills in
     # itself; the club tiles say who is followed, so do the same here.
     followed = [i for s in shelves for i in s.get("items") or []
@@ -567,7 +570,7 @@ def router(paramstring):
     api = AppleTVApi(auth)
 
     if not action:
-        main_menu(auth, api)
+        main_menu(auth)
     elif action == "originals":
         show_shelves(api, api.get_originals_shelves())
     elif action == "channel":
@@ -626,14 +629,14 @@ def router(paramstring):
                   params.get("kind", "trailers"))
     elif action == "sign_in":
         do_sign_in(auth, api)
-        main_menu(auth, api)
+        main_menu(auth)
     elif action == "sign_out":
         do_sign_out(auth, api)
-        main_menu(auth, api)
+        main_menu(auth)
     elif action == "debug_play":
         do_play(api, "debug", "Movie")
     else:
-        main_menu(auth, api)
+        main_menu(auth)
 
 
 if __name__ == "__main__":
