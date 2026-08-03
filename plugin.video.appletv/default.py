@@ -175,13 +175,16 @@ def add_playable(entry):
 
 # -- menus ---------------------------------------------------------------
 
-def main_menu(auth):
+def main_menu(auth, api):
     # One entry per brand tab along the top of tv.apple.com's home page.
     for channel_id, name in CHANNELS:
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
     if auth.is_authenticated():
-        add_dir(L("continue_watching"), "continue_watching")
+        # Apple serves this one only alongside a title being watched, so it
+        # has nothing to show until something has been played here.
+        if api.last_played_id():
+            add_dir(L("continue_watching"), "continue_watching")
         add_dir(L("up_next"), "up_next")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
@@ -564,7 +567,7 @@ def router(paramstring):
     api = AppleTVApi(auth)
 
     if not action:
-        main_menu(auth)
+        main_menu(auth, api)
     elif action == "originals":
         show_shelves(api, api.get_originals_shelves())
     elif action == "channel":
@@ -623,14 +626,14 @@ def router(paramstring):
                   params.get("kind", "trailers"))
     elif action == "sign_in":
         do_sign_in(auth, api)
-        main_menu(auth)
+        main_menu(auth, api)
     elif action == "sign_out":
         do_sign_out(auth, api)
-        main_menu(auth)
+        main_menu(auth, api)
     elif action == "debug_play":
         do_play(api, "debug", "Movie")
     else:
-        main_menu(auth)
+        main_menu(auth, api)
 
 
 if __name__ == "__main__":

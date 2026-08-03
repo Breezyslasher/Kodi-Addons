@@ -743,15 +743,17 @@ class AppleTVApi(object):
         return self._canvas_shelves("/search/landing", {}, "search_landing")
 
     def get_continue_watching(self, player_content_id=None):
-        """The Continue Watching list, as the player's Up Next tab shows it.
+        """What the player's Up Next tab lists beside a title being watched.
 
-        The site sends playerContentId for the title being watched; there is
-        no capture of the call without it, so the last title played through
-        the addon is used when there is one.
+        Apple refuses this shelf without playerContentId -- "Id of currently
+        playing content is required" -- so it is a player tab rather than a
+        list that stands on its own, and there is nothing to ask for until
+        something has been played through the addon.
         """
-        params = {}
-        if player_content_id:
-            params["playerContentId"] = player_content_id
+        if not player_content_id:
+            kodiutils.log("Up Next needs a title being watched; none recorded")
+            return []
+        params = {"playerContentId": player_content_id}
         data = self._get_json(
             "/shelves/player-tabs/%s" % CONTINUE_WATCHING_SHELF, params)
         shelf = ((data or {}).get("data") or {}).get("shelf")
