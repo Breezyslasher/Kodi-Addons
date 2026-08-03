@@ -431,6 +431,27 @@ class AppleTVApi(object):
             return []
         return self._extract_items(node.get("items"))
 
+    # A match page carries these alongside its clubs and related games. Like
+    # the clubs shelf they take no context parameters, and their items are the
+    # clip types that carry their stream inline rather than having a page.
+    EVENT_SHELVES = {"highlights": "uts.col.SportsHighlights.%s",
+                     "spotlight": "uts.col.MatchSpotlight.%s"}
+
+    def get_event_extras(self, event_id, kind="highlights"):
+        """A match's highlights, or its spotlight clips.
+
+        Not every match has both: of three captured, all had highlights (one,
+        four and seven clips) and only one had a spotlight.
+        """
+        template = self.EVENT_SHELVES.get(kind)
+        if not template:
+            return []
+        data = self._get_json("/shelves/%s" % (template % event_id), {})
+        node = ((data or {}).get("data") or {}).get("shelf")
+        if not isinstance(node, dict):
+            return []
+        return self._extract_items(node.get("items"))
+
     def get_event_clubs(self, event_id):
         """The clubs playing in a match; it takes no context parameters."""
         data = self._get_json("/shelves/uts.col.Teams.%s" % event_id, {})

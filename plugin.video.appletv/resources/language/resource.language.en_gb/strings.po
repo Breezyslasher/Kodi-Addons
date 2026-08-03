@@ -266,3 +266,11 @@ msgstr ""
 msgctxt "#32057"
 msgid "Subscription status"
 msgstr ""
+
+msgctxt "#32066"
+msgid "Highlights"
+msgstr ""
+
+msgctxt "#32067"
+msgid "Spotlight"
+msgstr ""

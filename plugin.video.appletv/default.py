@@ -65,6 +65,8 @@ S = {
     "play_feed": 32063,
     "related": 32064,
     "clubs": 32065,
+    "highlights": 32066,
+    "spotlight": 32067,
 }
 
 
@@ -169,6 +171,10 @@ def add_playable(entry):
                 league=entry.get("league_id") or "")),
             (L("clubs"), "Container.Update(%s)" % url(
                 action="clubs", item_id=entry["id"])),
+            (L("highlights"), "Container.Update(%s)" % url(
+                action="event_extras", kind="highlights", item_id=entry["id"])),
+            (L("spotlight"), "Container.Update(%s)" % url(
+                action="event_extras", kind="spotlight", item_id=entry["id"])),
         ] + watchlist_menu_items(entry["id"]))
     else:
         item.addContextMenuItems(watchlist_menu_items(entry["id"]))
@@ -598,6 +604,9 @@ def router(paramstring):
     elif action == "related":
         show_items(api.get_related(params.get("item_id"),
                                    params.get("league") or None))
+    elif action == "event_extras":
+        show_items(api.get_event_extras(params.get("item_id"),
+                                        params.get("kind", "highlights")))
     elif action == "clubs":
         show_items(api.get_event_clubs(params.get("item_id")),
                    channel_id=params.get("channel_id") or APPLE_TV_PLUS_CHANNEL)
