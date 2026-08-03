@@ -1625,7 +1625,13 @@ class AppleTVApi(object):
         rel = raw.get("releaseDate")
         year = rel[:4] if isinstance(rel, str) and len(rel) >= 4 else None
         long_desc = raw.get("longDescription")
-        plot = raw.get("description") or (long_desc.get("standard") if isinstance(long_desc, dict) else "") or ""
+        # A title's own page sends "description", but a shelf item does not:
+        # it carries the marketing lines instead, so those stand in rather
+        # than leaving Kodi's info screen reading "No information available".
+        plot = (raw.get("description")
+                or (long_desc.get("standard") if isinstance(long_desc, dict) else "")
+                or raw.get("longNote") or raw.get("heroDescription")
+                or raw.get("shortNote") or raw.get("promoText") or "")
         season = raw.get("seasonNumber")
         episode = raw.get("episodeNumber")
         label = title
