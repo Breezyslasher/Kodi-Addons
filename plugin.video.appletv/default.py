@@ -149,6 +149,14 @@ def add_playable(entry):
             tag.setDuration(int(entry["duration"]))
         except (TypeError, ValueError):
             pass
+    # Apple reports how far the account already is into a title, so it can be
+    # resumed here at the point another Apple client left it.
+    resume = entry.get("resume") or {}
+    if resume.get("position") and resume.get("total"):
+        try:
+            tag.setResumePoint(resume["position"], resume["total"])
+        except (TypeError, ValueError, AttributeError):
+            pass
     item.setProperty("IsPlayable", "true")
     # Episodes and sporting events carry no extras shelves of their own, but
     # anything playable can go on the watchlist.
@@ -204,10 +212,6 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
     # rather than to the addon as a whole. cache_key only equals brand on a
     # channel's own canvas; a room further down carries its own id.
     if cache_key == brand and api.auth.is_authenticated():
-        # Apple serves Continue Watching only alongside a title being
-        # watched, so it has nothing to show until something is played here.
-        if api.last_played_id():
-            add_dir(L("continue_watching"), "continue_watching")
         add_dir(L("up_next"), "up_next", channel_id=brand)
     # Apple's own favourites shelf is an empty marker the website fills in
     # itself; the club tiles say who is followed, so do the same here.
@@ -606,8 +610,6 @@ def router(paramstring):
     elif action == "clubs":
         show_items(api.get_event_clubs(params.get("item_id")),
                    channel_id=params.get("channel_id") or APPLE_TV_PLUS_CHANNEL)
-    elif action == "continue_watching":
-        show_items(api.get_continue_watching(api.last_played_id()))
     elif action == "subscription":
         do_subscription(api)
     elif action == "shelf":

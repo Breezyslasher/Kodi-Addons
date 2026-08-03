@@ -115,7 +115,6 @@ PLAYBACK_REPORT_CACHE = "now_playing.json"
 
 # The Up Next list is served as an ordinary shelf, with the context values
 # below rather than ones taken from a canvas (nothing links to it from one).
-CONTINUE_WATCHING_SHELF = "uts.col.PlayerTabUpNext"
 WATCHLIST_SHELF = "uts.col.Watchlist"
 WATCHLIST_CVS = "uts.tcvs.tv-plus-personalized-canvas-adaptive"
 WATCHLIST_CTX_SHELF = "uts.shlf.gen.Watchlist_%s"
@@ -741,26 +740,6 @@ class AppleTVApi(object):
     def get_search_landing(self):
         """The browse page Apple shows before anything is typed."""
         return self._canvas_shelves("/search/landing", {}, "search_landing")
-
-    def get_continue_watching(self, player_content_id=None):
-        """What the player's Up Next tab lists beside a title being watched.
-
-        Apple refuses this shelf without playerContentId -- "Id of currently
-        playing content is required" -- so it is a player tab rather than a
-        list that stands on its own, and there is nothing to ask for until
-        something has been played through the addon.
-        """
-        if not player_content_id:
-            kodiutils.log("Up Next needs a title being watched; none recorded")
-            return []
-        params = {"playerContentId": player_content_id}
-        data = self._get_json(
-            "/shelves/player-tabs/%s" % CONTINUE_WATCHING_SHELF, params)
-        shelf = ((data or {}).get("data") or {}).get("shelf")
-        if not isinstance(shelf, dict):
-            kodiutils.log("Continue Watching returned no shelf")
-            return []
-        return self._extract_items(shelf.get("items"))
 
     def last_played_id(self):
         """Content id of the last title played through the addon, if any."""
@@ -1455,6 +1434,39 @@ class AppleTVApi(object):
                 return t
         return shelf.get("title") or shelf.get("displayType") or "More"
 
+    @staticmethod
+    def _resume_point(raw):
+        """How far into a title the account already is, from playEvent.
+
+        Apple states the position twice, once for the whole media and once
+        for the main feature inside it, and a capture of the site reporting
+        playback pairs them exactly:
+
+            playCursorInSeconds 288        -> playHeadInMilliseconds 288000
+            mediaLengthInSeconds 5613      -> mediaLengthInMilliseconds 5613792
+            contentPlayCursorInSeconds 247 -> mainContentInfo 247000
+            contentMediaLengthInSeconds    -> mainContentInfo 5412792
+
+        The outer pair measures the stream that is actually played, so it is
+        the one Kodi's resume point wants; the inner pair skips whatever
+        Apple counts as leading material.
+        """
+        event = ((raw.get("playable") or {}).get("playEvent")
+                 if isinstance(raw.get("playable"), dict) else None)
+        if not isinstance(event, dict):
+            return None
+        position = event.get("playCursorInSeconds")
+        total = event.get("mediaLengthInSeconds")
+        if not isinstance(position, (int, float)) or position <= 0:
+            return None
+        if not isinstance(total, (int, float)) or total <= 0:
+            return None
+        # A finished title still carries its cursor; resuming at the end of
+        # one would be worse than starting it again.
+        if event.get("isDone"):
+            return None
+        return {"position": float(position), "total": float(total)}
+
     def _extract_items(self, items):
         results = []
         for raw in self._as_list(items):
@@ -1507,6 +1519,7 @@ class AppleTVApi(object):
             # invalidated on a FAVORITE event, so it comes back up to date.
             "favourite": bool(raw.get("isFavorite")),
             "league_id": raw.get("leagueId"),
+            "resume": self._resume_point(raw),
             "art": self._item_art(raw.get("images") or {}),
             # Harvested by _extract_shelves, never kept on the listed entry.
             "stream_assets": self._playable_assets(raw),
