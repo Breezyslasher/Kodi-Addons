@@ -732,9 +732,16 @@ class AppleTVApi(object):
                 break
         return items or cached
 
-    @staticmethod
-    def _canvas_cache_name(channel_id):
-        return CANVAS_CACHE % str(channel_id).replace("/", "_")
+    def _canvas_cache_name(self, channel_id):
+        """Cache a signed-in canvas apart from a signed-out one.
+
+        The two are different documents -- only the signed-in one carries the
+        personalised shelves, Continue Watching among them -- so sharing a
+        file meant signing in kept serving the anonymous copy until it aged
+        out, and signing out kept serving the personalised one.
+        """
+        who = "user" if self._media_user_token() else "anon"
+        return CANVAS_CACHE % ("%s_%s" % (str(channel_id).replace("/", "_"), who))
 
     def search(self, query):
         data = self._get_json("/search", {"searchTerm": query, "topResultsOnly": "true"})
