@@ -1468,8 +1468,24 @@ class AppleTVApi(object):
         the one Kodi's resume point wants; the inner pair skips whatever
         Apple counts as leading material.
         """
-        event = ((raw.get("playable") or {}).get("playEvent")
-                 if isinstance(raw.get("playable"), dict) else None)
+        # Apple hangs the same playEvent off three different shapes: a single
+        # "playable" on most shelf items, a "playables" list on others, and on
+        # a title's own page a "playables" map keyed by playable id. Take the
+        # first that carries one rather than assuming a shape.
+        event = None
+        for node in (raw.get("playable"), raw.get("playables")):
+            if isinstance(node, dict) and isinstance(node.get("playEvent"), dict):
+                event = node["playEvent"]
+                break
+            candidates = (list(node.values()) if isinstance(node, dict)
+                          else node if isinstance(node, list) else [])
+            for candidate in candidates:
+                if isinstance(candidate, dict) and isinstance(
+                        candidate.get("playEvent"), dict):
+                    event = candidate["playEvent"]
+                    break
+            if event:
+                break
         if not isinstance(event, dict):
             return None
         position = event.get("playCursorInSeconds")

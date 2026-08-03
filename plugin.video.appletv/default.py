@@ -210,7 +210,10 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
     # The watchlist is fetched with a ctx_brand, so it belongs to a tab
     # rather than to the addon as a whole. cache_key only equals brand on a
     # channel's own canvas; a room further down carries its own id.
-    if cache_key == brand and api.auth.is_authenticated():
+    # A signed-in canvas carries the watchlist as a shelf of its own, so only
+    # add one when Apple has not: adding it unconditionally listed it twice.
+    if (cache_key == brand and api.auth.is_authenticated()
+            and not any("Watchlist" in (s.get("id") or "") for s in shelves)):
         add_dir(L("watchlist"), "up_next", channel_id=brand)
     # Apple's own favourites shelf is an empty marker the website fills in
     # itself; the club tiles say who is followed, so do the same here.
