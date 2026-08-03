@@ -105,32 +105,12 @@ def watchlist_menu_items(item_id):
     ]
 
 
-def add_dir(label, action, art=None, extras_for=None, context=None, **params):
-    item = xbmcgui.ListItem(label=label)
-    if art:
-        item.setArt(art)
-    if extras_for:
-        extras_context_menu(item, extras_for[0], extras_for[1])
-    if context:
-        item.addContextMenuItems(context)
-    xbmcplugin.addDirectoryItem(
-        HANDLE, url(action=action, **params), item, isFolder=True
-    )
-
-
-def add_playable(entry, cast=None):
-    item = xbmcgui.ListItem(label=entry["title"])
-    if entry.get("art"):
-        item.setArt(entry["art"])
-    tag = item.getVideoInfoTag()
-    tag.setTitle(entry.get("sort_title") or entry["title"])
-    kind = str(entry.get("type"))
-    tag.setMediaType("episode" if kind == "Episode" else "movie")
-    if entry.get("start_time"):
+def apply_entry_info(tag, entry):
+    """Set what Apple sends about a title on any item, folder or not."""
+    if entry.get("title") or entry.get("sort_title"):
         try:
-            import time
-            tag.setFirstAired(time.strftime("%Y-%m-%d", time.localtime(entry["start_time"])))
-        except (TypeError, ValueError, OverflowError):
+            tag.setTitle(entry.get("sort_title") or entry["title"])
+        except (TypeError, ValueError, AttributeError, KeyError):
             pass
     if entry.get("plot"):
         tag.setPlot(entry["plot"])
@@ -186,6 +166,48 @@ def add_playable(entry, cast=None):
             tag.setDuration(int(entry["duration"]))
         except (TypeError, ValueError):
             pass
+
+
+def add_dir(label, action, art=None, extras_for=None, context=None,
+            info=None, media_type=None, **params):
+    item = xbmcgui.ListItem(label=label)
+    if art:
+        item.setArt(art)
+    # A folder with no info tag gets no Info dialog at all, which is why shows
+    # and seasons had none. Apple describes them the same as anything else.
+    if info or media_type:
+        tag = item.getVideoInfoTag()
+        if media_type:
+            try:
+                tag.setMediaType(media_type)
+            except (TypeError, ValueError, AttributeError):
+                pass
+        if info:
+            apply_entry_info(tag, info)
+    if extras_for:
+        extras_context_menu(item, extras_for[0], extras_for[1])
+    if context:
+        item.addContextMenuItems(context)
+    xbmcplugin.addDirectoryItem(
+        HANDLE, url(action=action, **params), item, isFolder=True
+    )
+
+
+def add_playable(entry, cast=None):
+    item = xbmcgui.ListItem(label=entry["title"])
+    if entry.get("art"):
+        item.setArt(entry["art"])
+    tag = item.getVideoInfoTag()
+    tag.setTitle(entry.get("sort_title") or entry["title"])
+    kind = str(entry.get("type"))
+    tag.setMediaType("episode" if kind == "Episode" else "movie")
+    if entry.get("start_time"):
+        try:
+            import time
+            tag.setFirstAired(time.strftime("%Y-%m-%d", time.localtime(entry["start_time"])))
+        except (TypeError, ValueError, OverflowError):
+            pass
+    apply_entry_info(tag, entry)
     # Apple reports how far the account already is into a title, so it can be
     # resumed here at the point another Apple client left it.
     resume = entry.get("resume") or {}
@@ -289,7 +311,8 @@ def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL, cast=None):
     kind = str(entry.get("type"))
     if kind == "Show":
         add_dir(entry["title"], "show", art=entry.get("art"),
-                extras_for=(entry["id"], "Show"), show_id=entry["id"])
+                extras_for=(entry["id"], "Show"), info=entry,
+                media_type="tvshow", show_id=entry["id"])
     elif kind == "Room":
         # A room is a browse category (Kids & Family, Sci-Fi, ...) with a
         # canvas of shelves behind it.
@@ -387,6 +410,7 @@ def do_sign_out(auth, api):
 def do_show(api, show_id):
     """A show opens to its seasons, or straight to its episodes if it has one."""
     seasons = api.get_show_seasons(show_id)
+    show_info = api.get_title_info(show_id, "Show") if seasons else None
     if not seasons:
         show_items(api.get_show_episodes(show_id), content="episodes",
                    cast=api.get_cast(show_id, "Show"))
@@ -395,7 +419,10 @@ def do_show(api, show_id):
         label = season["title"]
         if season.get("count"):
             label = "%s (%d)" % (label, season["count"])
-        add_dir(label, "season", show_id=show_id, season=season["number"])
+        # Seasons carry only a number and a count of their own, so the show's
+        # own description travels with them rather than leaving them bare.
+        add_dir(label, "season", info=dict(show_info or {}, title=season["title"]),
+                media_type="season", show_id=show_id, season=season["number"])
     xbmcplugin.setContent(HANDLE, "seasons")
     xbmcplugin.endOfDirectory(HANDLE)
 
