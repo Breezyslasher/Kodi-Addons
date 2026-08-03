@@ -52,7 +52,7 @@ S = {
     "watchlist_failed": 32047,
     "remove_watchlist": 32048,
     "watchlist_removed": 32049,
-    "up_next": 32051,
+    "watchlist": 32051,
     "sub_active": 32052,
     "sub_none": 32053,
     "sub_renews": 32054,
@@ -60,7 +60,6 @@ S = {
     "sub_unknown": 32056,
     "sub_shared_with_you": 32058,
     "following": 32059,
-    "continue_watching": 32060,
     "search_suggestions": 32061,
     "choose_feed": 32062,
     "play_feed": 32063,
@@ -212,7 +211,7 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
     # rather than to the addon as a whole. cache_key only equals brand on a
     # channel's own canvas; a room further down carries its own id.
     if cache_key == brand and api.auth.is_authenticated():
-        add_dir(L("up_next"), "up_next", channel_id=brand)
+        add_dir(L("watchlist"), "up_next", channel_id=brand)
     # Apple's own favourites shelf is an empty marker the website fills in
     # itself; the club tiles say who is followed, so do the same here.
     followed = [i for s in shelves for i in s.get("items") or []

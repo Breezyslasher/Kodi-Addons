@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.7.31.19" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.2" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,21 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.2 - Resume where you left off, trailers fixed
+- NEW: A title part-watched on another Apple device now resumes at the
+  right place here. Apple states the position on each item of the
+  Continue Watching shelf; the addon was discarding it.
+- FIX: Trailers played no picture at all. Their init segment, which holds
+  the MOOV atom, was pointed at the addon's own proxy instead of Apple.
+- FIX: Trailers played in the wrong colours -- Apple offers them in Dolby
+  Vision, which Kodi renders with badly shifted colours. Those variants
+  are skipped now whether or not a stream is encrypted.
+- The list you add titles to is called "Watchlist", as Apple calls it,
+  rather than "Up Next", and sits on each brand tab rather than in the
+  main menu, since Apple keeps a separate one per tab.
+- The "Continue Watching" menu entry is gone. It asked for the player's
+  Up Next tab, which Apple refuses outside playback, and it was never
+  needed: that shelf is already listed on the Apple TV+ tab.
 2026.7.31.19 - Faster browsing
 - The session token is kept for an hour instead of being scraped again on
   every screen. Kodi starts a new process for each navigation, so the
@@ -114,7 +129,7 @@ Features:
   its team page: Featured, Matches, Past Matches, Every Goal, best-of
   reels and player compilations.
 2026.7.31.7 - Browse categories (rooms) open
-- NEW: The category tiles under "Browse All Apple Originals" -- Kids &
+- NEW: The category tiles under "Browse All Apple Originals" -- Kids &amp;
   Family, Sci-Fi, Comedies, Coming to Apple TV and the rest -- are folders
   now instead of being hidden. Each opens its own canvas of shelves.
 2026.7.31.6 - Open a shelf the way the website does

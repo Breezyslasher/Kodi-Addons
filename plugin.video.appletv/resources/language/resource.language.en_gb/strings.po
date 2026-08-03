@@ -188,7 +188,7 @@ msgid "Could not change your favourite clubs. Make sure you are signed in."
 msgstr ""
 
 msgctxt "#32045"
-msgid "Add to Up Next"
+msgid "Add to Watchlist"
 msgstr ""
 
 msgctxt "#32046"
@@ -200,7 +200,7 @@ msgid "Could not change Up Next. Make sure you are signed in."
 msgstr ""
 
 msgctxt "#32048"
-msgid "Remove from Up Next"
+msgid "Remove from Watchlist"
 msgstr ""
 
 msgctxt "#32049"
@@ -208,7 +208,7 @@ msgid "Removed from Up Next"
 msgstr ""
 
 msgctxt "#32051"
-msgid "Up Next"
+msgid "Watchlist"
 msgstr ""
 
 msgctxt "#32052"
