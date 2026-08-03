@@ -1724,6 +1724,13 @@ class AppleTVApi(object):
                       if "showposter" not in k.lower()}
         portrait = self._pick_image(images, PORTRAIT_IMAGE_KEYS, portrait=True)
         wide = self._pick_image(images, WIDE_IMAGE_KEYS, portrait=False)
+        if str(item_type) == "Episode":
+            # Of the wide artwork on an episode only posterArt differs between
+            # episodes; shelfItemImage and shelfImageBackground are the show's
+            # and are byte-identical across its episodes, so preferring the
+            # usual order gave every episode the same branded title card.
+            own = self._pick_image(images, ("posterArt",), portrait=False)
+            wide = own or wide
         art = {}
         if portrait:
             art["poster"] = self._sized_url(portrait, height=POSTER_HEIGHT)
