@@ -341,11 +341,18 @@ class _Handler(BaseHTTPRequestHandler):
         Renditions referenced only by dropped variants are removed too, so ISA
         does not report "Cannot find variant for AUDIO GROUP-ID".
         """
-        # The quality limits exist to keep the Widevine CDM happy: it refuses
-        # the higher tiers' keys and cannot decode HEVC. An unencrypted stream
-        # never reaches the CDM, so it plays at whatever quality Apple offers.
+        # Two of the three limits exist to keep the Widevine CDM happy: it
+        # refuses the higher tiers' keys and cannot decode HEVC. An unencrypted
+        # stream never reaches the CDM, so it plays at whatever quality and
+        # codec Apple offers.
+        #
+        # The dynamic-range limit is not one of those. Kodi decodes Dolby
+        # Vision Profile 5 as plain HEVC and renders it with badly shifted
+        # colours -- a trailer came out magenta -- and that happens whether or
+        # not the stream was encrypted, so it stays in force here.
         if clear:
-            max_h, sdr_only, avc_only = 0, False, False
+            max_h, avc_only = 0, False
+            sdr_only = kodiutils.get_setting_bool("sdr_only", True)
         else:
             max_h = kodiutils.get_setting_int("max_height", 360)
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
