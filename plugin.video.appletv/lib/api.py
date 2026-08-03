@@ -1685,7 +1685,7 @@ class AppleTVApi(object):
             # only for Motorsports, where MLS matches carry clubs instead.
             "sport": raw.get("sportName"),
             "resume": self._resume_point(raw),
-            "art": self._item_art(raw.get("images") or {}),
+            "art": self._item_art(raw.get("images") or {}, item_type),
             # Harvested by _extract_shelves, never kept on the listed entry.
             "stream_assets": self._playable_assets(raw),
         }
@@ -1706,13 +1706,22 @@ class AppleTVApi(object):
             return {"thumb": url, "icon": url, "poster": url}
         return {}
 
-    def _item_art(self, images):
+    def _item_art(self, images, item_type=None):
         """Pick a portrait and a wide artwork and size each to its own shape.
 
         Returns a dict ready for ListItem.setArt(). The poster slot is only
         filled when Apple actually supplies a tall artwork; forcing a 16:9
         still into a poster box is what produced cut-off images.
+
+        An episode listed on its own -- Continue Watching does this -- is sent
+        with its own still alongside its show's poster, and the poster was
+        winning the tall slot, so every episode of a show looked identical.
+        The show's poster is set aside for those, leaving the episode's still,
+        which is what Apple's own client shows.
         """
+        if str(item_type) == "Episode" and isinstance(images, dict):
+            images = {k: v for k, v in images.items()
+                      if "showposter" not in k.lower()}
         portrait = self._pick_image(images, PORTRAIT_IMAGE_KEYS, portrait=True)
         wide = self._pick_image(images, WIDE_IMAGE_KEYS, portrait=False)
         art = {}
