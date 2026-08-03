@@ -68,6 +68,7 @@ S = {
     "highlights": 32066,
     "spotlight": 32067,
     "race_weekend": 32068,
+    "cast": 32069,
 }
 
 
@@ -88,6 +89,8 @@ def extras_context_menu(item, item_id, item_type):
             action="extras", kind="bonus", item_id=item_id, item_type=item_type)),
         (L("related"), "Container.Update(%s)" % url(
             action="related", item_id=item_id)),
+        (L("cast"), "Container.Update(%s)" % url(
+            action="cast", item_id=item_id, item_type=item_type)),
     ] + watchlist_menu_items(item_id))
 
 
@@ -176,9 +179,12 @@ def add_playable(entry):
                 action="event_extras", kind="highlights", item_id=entry["id"])),
             (L("spotlight"), "Container.Update(%s)" % url(
                 action="event_extras", kind="spotlight", item_id=entry["id"])),
-            (L("race_weekend"), "Container.Update(%s)" % url(
-                action="event_extras", kind="weekend", item_id=entry["id"])),
-        ] + watchlist_menu_items(entry["id"]))
+        ] + ([(L("race_weekend"), "Container.Update(%s)" % url(
+                action="event_extras", kind="weekend", item_id=entry["id"]))]
+             # Only Motorsports fixtures have a weekend of sessions; a match
+             # in any other sport carries clubs and no weekend at all.
+             if entry.get("sport") == "Motorsports" else [])
+          + watchlist_menu_items(entry["id"]))
     else:
         item.addContextMenuItems(watchlist_menu_items(entry["id"]))
     xbmcplugin.addDirectoryItem(
@@ -263,6 +269,21 @@ def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
                 team_id=entry["id"], channel_id=channel_id)
     else:
         add_playable(entry)
+
+
+def show_people(people):
+    """List a title's cast and crew. Nobody here is playable."""
+    if not people:
+        kodiutils.notify(L("no_results"))
+    for person in people:
+        label = person["name"]
+        if person.get("role"):
+            label = "%s - %s" % (label, person["role"])
+        entry = xbmcgui.ListItem(label=label)
+        if person.get("art"):
+            entry.setArt(person["art"])
+        xbmcplugin.addDirectoryItem(HANDLE, "", entry, isFolder=False)
+    xbmcplugin.endOfDirectory(HANDLE)
 
 
 def show_items(items, content="movies", channel_id=APPLE_TV_PLUS_CHANNEL):
@@ -607,6 +628,9 @@ def router(paramstring):
     elif action == "related":
         show_items(api.get_related(params.get("item_id"),
                                    params.get("league") or None))
+    elif action == "cast":
+        show_people(api.get_cast(params.get("item_id"),
+                                 params.get("item_type", "Movie")))
     elif action == "event_extras":
         show_items(api.get_event_extras(params.get("item_id"),
                                         params.get("kind", "highlights")))

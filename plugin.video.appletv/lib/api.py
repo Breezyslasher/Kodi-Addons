@@ -1070,6 +1070,28 @@ class AppleTVApi(object):
 
     # -- trailers and bonus content --------------------------------------
 
+    def get_cast(self, content_id, item_type="Movie"):
+        """The people credited on a title, in Apple's order.
+
+        They sit in a uts.col.CastAndCrew.<content id> shelf on the title's
+        own page, each carrying the character played where there is one and
+        the job done otherwise. They are not playable, so they are returned as
+        plain names rather than catalogue entries.
+        """
+        data, _mut = self._detail_json(content_id, item_type)
+        if data is None:
+            return []
+        people = []
+        for raw in self._extra_shelf_items(data, "uts.col.CastAndCrew"):
+            if not isinstance(raw, dict) or not raw.get("title"):
+                continue
+            people.append({
+                "name": raw["title"],
+                "role": raw.get("characterName") or raw.get("roleTitle") or "",
+                "art": self._item_art(raw.get("images") or {}),
+            })
+        return people
+
     def get_extras(self, content_id, item_type="Movie", kind="trailers"):
         """List a title's trailers or bonus features, in Apple's shelf order.
 
@@ -1589,6 +1611,9 @@ class AppleTVApi(object):
             # invalidated on a FAVORITE event, so it comes back up to date.
             "favourite": bool(raw.get("isFavorite")),
             "league_id": raw.get("leagueId"),
+            # Which sport a fixture belongs to: a Grand Prix weekend exists
+            # only for Motorsports, where MLS matches carry clubs instead.
+            "sport": raw.get("sportName"),
             "resume": self._resume_point(raw),
             "art": self._item_art(raw.get("images") or {}),
             # Harvested by _extract_shelves, never kept on the listed entry.
