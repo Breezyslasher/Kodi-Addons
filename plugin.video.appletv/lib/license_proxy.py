@@ -300,14 +300,25 @@ class _Handler(BaseHTTPRequestHandler):
                         continue
                     if "METHOD=NONE" in s:
                         cur_kid = None  # clear section (Apple's intro chapters)
-                if s.startswith("#EXT-X-MAP") and cur_kid:
-                    # Route the init segment through the proxy so its all-zero
-                    # tenc default_KID can be replaced with the real key id.
+                if s.startswith("#EXT-X-MAP"):
+                    if cur_kid:
+                        # Route the init segment through the proxy so its
+                        # all-zero tenc default_KID can be replaced with the
+                        # real key id.
+                        out.append(re.sub(
+                            r'URI="([^"]+)"',
+                            lambda m: 'URI="%s"' % self._init_proxied(
+                                m.group(1), base_url, cur_kid), s))
+                        mapped += 1
+                        continue
+                    # With no key there is nothing to patch, but the URI still
+                    # has to be made absolute: this playlist is served from the
+                    # proxy, so a relative one resolves against the proxy and
+                    # 404s. Losing the init segment costs the MOOV atom, and
+                    # ISA then reports the stream as having no extradata.
                     out.append(re.sub(
                         r'URI="([^"]+)"',
-                        lambda m: 'URI="%s"' % self._init_proxied(
-                            m.group(1), base_url, cur_kid), s))
-                    mapped += 1
+                        lambda m: 'URI="%s"' % urljoin(base_url, m.group(1)), s))
                     continue
                 # Media segment URLs stay pointed at Apple's CDN.
                 if s and not s.startswith("#"):
