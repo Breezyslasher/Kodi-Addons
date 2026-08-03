@@ -1088,7 +1088,7 @@ class AppleTVApi(object):
             people.append({
                 "name": raw["title"],
                 "role": raw.get("characterName") or raw.get("roleTitle") or "",
-                "art": self._item_art(raw.get("images") or {}),
+                "art": self._person_art(raw.get("images") or {}),
             })
         return people
 
@@ -1619,6 +1619,22 @@ class AppleTVApi(object):
             # Harvested by _extract_shelves, never kept on the listed entry.
             "stream_assets": self._playable_assets(raw),
         }
+
+    @staticmethod
+    def _person_art(images):
+        """A headshot for a cast member.
+
+        Not _item_art: that sorts artwork into tall posters and wide stills by
+        aspect ratio and discards anything square, which is how logos and team
+        badges are kept out. A headshot is exactly square (1080x1080), so it
+        was being discarded too, and the cast listed as bare names.
+        """
+        for entry in (images or {}).values():
+            if not isinstance(entry, dict) or not entry.get("url"):
+                continue
+            url = AppleTVApi._sized_url(entry, width=600, height=600)
+            return {"thumb": url, "icon": url, "poster": url}
+        return {}
 
     def _item_art(self, images):
         """Pick a portrait and a wide artwork and size each to its own shape.
