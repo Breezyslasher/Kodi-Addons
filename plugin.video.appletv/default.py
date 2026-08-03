@@ -95,8 +95,12 @@ def extras_context_menu(item, item_id, item_type):
 
 
 def watchlist_menu_items(item_id):
-    """Both directions are offered: Apple exposes no way to read back what is
-    already on the list, so a single accurate toggle is not possible."""
+    """Add and remove are both offered rather than one toggle.
+
+    Apple does report membership, as inUpNext, but only on a title's own page
+    and on an episode list -- never on the shelf items most of the addon
+    lists, so the state is unknown where the menu is usually opened.
+    """
     return [
         (L("add_watchlist"), "RunPlugin(%s)" % url(
             action="watchlist", item_id=item_id, on="1")),
@@ -257,8 +261,10 @@ def add_playable(entry, cast=None):
              # in any other sport carries clubs and no weekend at all.
              if entry.get("sport") == "Motorsports" else [])
           + watchlist_menu_items(entry["id"]))
-    else:
-        item.addContextMenuItems(watchlist_menu_items(entry["id"]))
+    # Everything else -- episodes, and the sports clip types that carry their
+    # stream inline -- gets no watchlist entry: Apple's watchlist takes films,
+    # shows and fixtures only, which is what every captured write sends, so
+    # offering it on an episode was offering something that cannot work.
     xbmcplugin.addDirectoryItem(
         HANDLE,
         url(action="play", item_id=entry["id"], item_type=entry.get("type", "Movie")),
