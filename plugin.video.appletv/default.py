@@ -67,6 +67,7 @@ S = {
     "clubs": 32065,
     "highlights": 32066,
     "spotlight": 32067,
+    "race_weekend": 32068,
 }
 
 
@@ -175,6 +176,8 @@ def add_playable(entry):
                 action="event_extras", kind="highlights", item_id=entry["id"])),
             (L("spotlight"), "Container.Update(%s)" % url(
                 action="event_extras", kind="spotlight", item_id=entry["id"])),
+            (L("race_weekend"), "Container.Update(%s)" % url(
+                action="event_extras", kind="weekend", item_id=entry["id"])),
         ] + watchlist_menu_items(entry["id"]))
     else:
         item.addContextMenuItems(watchlist_menu_items(entry["id"]))

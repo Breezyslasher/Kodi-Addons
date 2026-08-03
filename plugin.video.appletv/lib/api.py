@@ -434,23 +434,32 @@ class AppleTVApi(object):
     # A match page carries these alongside its clubs and related games. Like
     # the clubs shelf they take no context parameters, and their items are the
     # clip types that carry their stream inline rather than having a page.
-    EVENT_SHELVES = {"highlights": "uts.col.SportsHighlights.%s",
-                     "spotlight": "uts.col.MatchSpotlight.%s"}
+    EVENT_SHELVES = {"highlights": "uts.col.SportsHighlights",
+                     "spotlight": "uts.col.MatchSpotlight",
+                     "weekend": "uts.col.F1GrandPrixWeekendSchedule"}
 
     def get_event_extras(self, event_id, kind="highlights"):
-        """A match's highlights, or its spotlight clips.
+        """One of the shelves on a match or race page.
 
-        Not every match has both: of three captured, all had highlights (one,
-        four and seven clips) and only one had a spotlight.
+        The shelf is found on the event's own page rather than addressed
+        directly, because two of the three cannot be addressed: highlights and
+        spotlight are keyed by the event, but a Grand Prix weekend is keyed by
+        a league id that appears nowhere else -- the races it lists report a
+        different league of their own.
+
+        Not every event has every shelf. Of three MLS matches captured, all
+        had highlights and one had a spotlight; both F1 races had all three,
+        and neither had the clubs or related shelves an MLS match carries.
         """
-        template = self.EVENT_SHELVES.get(kind)
-        if not template:
+        prefix = self.EVENT_SHELVES.get(kind)
+        if not prefix:
             return []
-        data = self._get_json("/shelves/%s" % (template % event_id), {})
-        node = ((data or {}).get("data") or {}).get("shelf")
-        if not isinstance(node, dict):
-            return []
-        return self._extract_items(node.get("items"))
+        data = self._get_json("/sporting-events/%s" % event_id, {})
+        canvas = ((data or {}).get("data") or {}).get("canvas") or {}
+        for shelf in canvas.get("shelves") or []:
+            if str(shelf.get("id") or "").startswith(prefix):
+                return self._extract_items(shelf.get("items"))
+        return []
 
     def get_event_clubs(self, event_id):
         """The clubs playing in a match; it takes no context parameters."""
