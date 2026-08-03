@@ -149,6 +149,38 @@ def add_playable(entry, cast=None):
             tag.setEpisode(int(entry["episode"]))
         except (TypeError, ValueError):
             pass
+    if entry.get("genres"):
+        try:
+            tag.setGenres(list(entry["genres"]))
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if entry.get("mpaa"):
+        try:
+            tag.setMpaa(entry["mpaa"])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if entry.get("tagline"):
+        try:
+            tag.setTagLine(entry["tagline"])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if entry.get("studio"):
+        try:
+            tag.setStudios([entry["studio"]])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if entry.get("premiered"):
+        try:
+            tag.setPremiered(entry["premiered"])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if entry.get("watched"):
+        # Apple says whether the account has finished a title; Kodi shows that
+        # as a watched tick beside it.
+        try:
+            tag.setPlaycount(1)
+        except (TypeError, ValueError, AttributeError):
+            pass
     if entry.get("duration"):
         try:
             tag.setDuration(int(entry["duration"]))

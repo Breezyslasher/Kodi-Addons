@@ -1511,6 +1511,14 @@ class AppleTVApi(object):
         return shelf.get("title") or shelf.get("displayType") or "More"
 
     @staticmethod
+    def _release_date(value):
+        """Apple's release dates are epoch milliseconds; Kodi wants a date."""
+        try:
+            return time.strftime("%Y-%m-%d", time.localtime(float(value) / 1000.0))
+        except (TypeError, ValueError, OverflowError, OSError):
+            return None
+
+    @staticmethod
     def _resume_point(raw):
         """How far into a title the account already is, from playEvent.
 
@@ -1611,6 +1619,17 @@ class AppleTVApi(object):
             # invalidated on a FAVORITE event, so it comes back up to date.
             "favourite": bool(raw.get("isFavorite")),
             "league_id": raw.get("leagueId"),
+            # Apple sends these on shelf items as well as on a title's own
+            # page, so Kodi's info screen fills in wherever a title is listed
+            # rather than only where a detail document was fetched.
+            "genres": [g.get("name") for g in self._as_list(raw.get("genres"))
+                       if isinstance(g, dict) and g.get("name")],
+            "mpaa": ((raw.get("rating") or {}).get("displayName")
+                     if isinstance(raw.get("rating"), dict) else None),
+            "tagline": raw.get("tagLine") or raw.get("heroDescription"),
+            "studio": "Apple TV+" if raw.get("isAppleOriginal") else None,
+            "premiered": self._release_date(raw.get("releaseDate")),
+            "watched": bool(raw.get("isWatched")),
             # Which sport a fixture belongs to: a Grand Prix weekend exists
             # only for Motorsports, where MLS matches carry clubs instead.
             "sport": raw.get("sportName"),
