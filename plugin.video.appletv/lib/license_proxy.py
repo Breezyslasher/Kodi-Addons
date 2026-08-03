@@ -47,6 +47,39 @@ def _context():
 _DISCOVERED_KEYS = {}
 
 
+def variant_unwanted(tag, max_h, sdr_only, avc_only):
+    """Drop variants the CDM will refuse or the player cannot show.
+
+    Apple keys each quality tier separately and the higher tiers demand output
+    protection this system cannot provide: the CDM reports the key as output
+    restricted (OnSessionKeysChange status 3) and the DRM session fails. Dolby
+    Vision variants are dropped as well because Kodi decodes them as plain
+    HEVC, which renders with badly shifted colours.
+
+    Shared with the key collector, which must read its keys from the very
+    variants that survive here -- a key belonging to a tier that is never
+    played is of no use.
+    """
+    res = re.search(r'RESOLUTION=\d+x(\d+)', tag)
+    if max_h and res and int(res.group(1)) > max_h:
+        return True
+    codecs = re.search(r'CODECS="([^"]+)"', tag)
+    if sdr_only:
+        video_range = re.search(r'VIDEO-RANGE=([A-Z]+)', tag)
+        if video_range and video_range.group(1) != "SDR":
+            return True
+        if codecs and re.search(r'\bdv(h[e1]|av)', codecs.group(1)):
+            return True
+    if avc_only and codecs:
+        # Encrypted video is decoded by the CDM, whose decoder handles H.264
+        # only: an HEVC variant makes ISA report "ToCdmVideoCodec: Unknown
+        # video codec 5". Apple publishes H.264 alongside HEVC at every tier.
+        video_codec = codecs.group(1).split(",")[0]
+        if not video_codec.startswith("avc"):
+            return True
+    return False
+
+
 def kid_from_data_uri(uri):
     """Extract the 16-byte Widevine key id (hex) from a key's data: URI PSSH."""
     try:
@@ -147,6 +180,7 @@ class _Handler(BaseHTTPRequestHandler):
 
         ctx = _context()
         is_master = "u=" in parsed.query and parse_qs(parsed.query).get("m", ["0"])[0] == "1"
+        is_clear = parse_qs(parsed.query).get("c", ["0"])[0] == "1"
         headers = {
             "User-Agent": ctx.get("user_agent") or "Mozilla/5.0",
             "Origin": "https://tv.apple.com",
@@ -169,7 +203,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self.send_response(resp.status_code)
                 self.end_headers()
                 return
-            body = self._rewrite(resp.text, target).encode("utf-8")
+            body = self._rewrite(resp.text, target, is_clear).encode("utf-8")
         except Exception as exc:
             kodiutils.log_error("Manifest proxy error: %s" % exc)
             self.send_response(502)
@@ -224,7 +258,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def _rewrite(self, text, base_url):
+    def _rewrite(self, text, base_url, clear=False):
         """Route child playlists through the proxy and add KEYID to key lines.
 
         InputStream Adaptive takes a stream's key id from the KEYID attribute of
@@ -236,7 +270,7 @@ class _Handler(BaseHTTPRequestHandler):
         """
         is_master = "#EXT-X-STREAM-INF" in text
         if is_master:
-            return self._rewrite_master(text, base_url)
+            return self._rewrite_master(text, base_url, clear)
 
         tagged = 0
         mapped = 0
@@ -266,14 +300,25 @@ class _Handler(BaseHTTPRequestHandler):
                         continue
                     if "METHOD=NONE" in s:
                         cur_kid = None  # clear section (Apple's intro chapters)
-                if s.startswith("#EXT-X-MAP") and cur_kid:
-                    # Route the init segment through the proxy so its all-zero
-                    # tenc default_KID can be replaced with the real key id.
+                if s.startswith("#EXT-X-MAP"):
+                    if cur_kid:
+                        # Route the init segment through the proxy so its
+                        # all-zero tenc default_KID can be replaced with the
+                        # real key id.
+                        out.append(re.sub(
+                            r'URI="([^"]+)"',
+                            lambda m: 'URI="%s"' % self._init_proxied(
+                                m.group(1), base_url, cur_kid), s))
+                        mapped += 1
+                        continue
+                    # With no key there is nothing to patch, but the URI still
+                    # has to be made absolute: this playlist is served from the
+                    # proxy, so a relative one resolves against the proxy and
+                    # 404s. Losing the init segment costs the MOOV atom, and
+                    # ISA then reports the stream as having no extradata.
                     out.append(re.sub(
                         r'URI="([^"]+)"',
-                        lambda m: 'URI="%s"' % self._init_proxied(
-                            m.group(1), base_url, cur_kid), s))
-                    mapped += 1
+                        lambda m: 'URI="%s"' % urljoin(base_url, m.group(1)), s))
                     continue
                 # Media segment URLs stay pointed at Apple's CDN.
                 if s and not s.startswith("#"):
@@ -284,7 +329,7 @@ class _Handler(BaseHTTPRequestHandler):
                       "%d init segment(s) routed" % (tagged, mapped))
         return "\n".join(out) + "\n"
 
-    def _rewrite_master(self, text, base_url):
+    def _rewrite_master(self, text, base_url, clear=False):
         """Rewrite the master playlist, optionally capping video height.
 
         Apple uses a different content key per quality tier. The web player
@@ -296,40 +341,26 @@ class _Handler(BaseHTTPRequestHandler):
         Renditions referenced only by dropped variants are removed too, so ISA
         does not report "Cannot find variant for AUDIO GROUP-ID".
         """
-        max_h = kodiutils.get_setting_int("max_height", 360)
-        sdr_only = kodiutils.get_setting_bool("sdr_only", True)
-        avc_only = kodiutils.get_setting_bool("avc_only", True)
+        # Two of the three limits exist to keep the Widevine CDM happy: it
+        # refuses the higher tiers' keys and cannot decode HEVC. An unencrypted
+        # stream never reaches the CDM, so it plays at whatever quality and
+        # codec Apple offers.
+        #
+        # The dynamic-range limit is not one of those. Kodi decodes Dolby
+        # Vision Profile 5 as plain HEVC and renders it with badly shifted
+        # colours -- a trailer came out magenta -- and that happens whether or
+        # not the stream was encrypted, so it stays in force here.
+        if clear:
+            max_h, avc_only = 0, False
+            sdr_only = kodiutils.get_setting_bool("sdr_only", True)
+        else:
+            max_h = kodiutils.get_setting_int("max_height", 360)
+            sdr_only = kodiutils.get_setting_bool("sdr_only", True)
+            avc_only = kodiutils.get_setting_bool("avc_only", True)
         lines = text.splitlines()
 
         def unwanted(tag):
-            """Drop variants the CDM will refuse or the player cannot show.
-
-            Apple keys each quality tier separately and the higher tiers demand
-            output protection this system cannot provide: the CDM reports the
-            key as output restricted (OnSessionKeysChange status 3) and the DRM
-            session fails. Dolby Vision variants are dropped as well because
-            Kodi decodes them as plain HEVC, which renders with badly shifted
-            colours.
-            """
-            res = re.search(r'RESOLUTION=\d+x(\d+)', tag)
-            if max_h and res and int(res.group(1)) > max_h:
-                return True
-            codecs = re.search(r'CODECS="([^"]+)"', tag)
-            if sdr_only:
-                video_range = re.search(r'VIDEO-RANGE=([A-Z]+)', tag)
-                if video_range and video_range.group(1) != "SDR":
-                    return True
-                if codecs and re.search(r'\bdv(h[e1]|av)', codecs.group(1)):
-                    return True
-            if avc_only and codecs:
-                # Encrypted video is decoded by the CDM, whose decoder handles
-                # H.264 only: an HEVC variant makes ISA report "ToCdmVideoCodec:
-                # Unknown video codec 5" and the stream cannot be opened. Apple
-                # publishes H.264 alongside HEVC at every tier.
-                video_codec = codecs.group(1).split(",")[0]
-                if not video_codec.startswith("avc"):
-                    return True
-            return False
+            return variant_unwanted(tag, max_h, sdr_only, avc_only)
 
         too_tall = unwanted
 
@@ -549,6 +580,11 @@ def manifest_endpoint():
     return "http://%s:%d/manifest" % (BIND_HOST, _port())
 
 
-def manifest_url(real_url):
-    """Proxy URL for the top-level manifest (m=1 marks it as the master)."""
-    return "%s?m=1&u=%s" % (manifest_endpoint(), _encode_url(real_url))
+def manifest_url(real_url, clear=False):
+    """Proxy URL for the top-level manifest (m=1 marks it as the master).
+
+    clear=1 says the stream carries no Widevine keys, so the quality filter
+    -- which exists only to satisfy the CDM -- does not apply to it.
+    """
+    return "%s?m=1&c=%d&u=%s" % (manifest_endpoint(), 1 if clear else 0,
+                                 _encode_url(real_url))

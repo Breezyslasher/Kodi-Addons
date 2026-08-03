@@ -5,13 +5,13 @@ import sys
 from urllib.parse import urlencode, parse_qsl, quote
 
 import xbmc
-import xbmcaddon
 import xbmcgui
 import xbmcplugin
 
 from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA, STATUS_ERROR
-from lib.api import AppleTVApi
+from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
+                     PLAYBACK_REPORT_CACHE)
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
@@ -36,6 +36,35 @@ S = {
     "playback_failed": 32028,
     "sd_notice": 32029,
     "confirm_sign_out": 32030,
+    "play_trailer": 32031,
+    "choose_trailer": 32032,
+    "no_trailer": 32033,
+    "bonus_content": 32034,
+    "choose_bonus": 32035,
+    "no_bonus": 32036,
+    "follow_team": 32037,
+    "unfollow_team": 32038,
+    "followed": 32039,
+    "unfollowed": 32040,
+    "follow_failed": 32042,
+    "add_watchlist": 32045,
+    "watchlist_added": 32046,
+    "watchlist_failed": 32047,
+    "remove_watchlist": 32048,
+    "watchlist_removed": 32049,
+    "watchlist": 32051,
+    "sub_active": 32052,
+    "sub_none": 32053,
+    "sub_renews": 32054,
+    "sub_family": 32055,
+    "sub_unknown": 32056,
+    "sub_shared_with_you": 32058,
+    "following": 32059,
+    "search_suggestions": 32061,
+    "choose_feed": 32062,
+    "play_feed": 32063,
+    "related": 32064,
+    "clubs": 32065,
 }
 
 
@@ -47,10 +76,37 @@ def url(**kwargs):
     return "%s?%s" % (BASE_URL, urlencode(kwargs))
 
 
-def add_dir(label, action, art=None, **params):
+def extras_context_menu(item, item_id, item_type):
+    """Context-menu entries that play a title's trailers and bonus features."""
+    item.addContextMenuItems([
+        (L("play_trailer"), "RunPlugin(%s)" % url(
+            action="extras", kind="trailers", item_id=item_id, item_type=item_type)),
+        (L("bonus_content"), "RunPlugin(%s)" % url(
+            action="extras", kind="bonus", item_id=item_id, item_type=item_type)),
+        (L("related"), "Container.Update(%s)" % url(
+            action="related", item_id=item_id)),
+    ] + watchlist_menu_items(item_id))
+
+
+def watchlist_menu_items(item_id):
+    """Both directions are offered: Apple exposes no way to read back what is
+    already on the list, so a single accurate toggle is not possible."""
+    return [
+        (L("add_watchlist"), "RunPlugin(%s)" % url(
+            action="watchlist", item_id=item_id, on="1")),
+        (L("remove_watchlist"), "RunPlugin(%s)" % url(
+            action="watchlist", item_id=item_id, on="0")),
+    ]
+
+
+def add_dir(label, action, art=None, extras_for=None, context=None, **params):
     item = xbmcgui.ListItem(label=label)
     if art:
-        item.setArt({"icon": art, "thumb": art, "poster": art})
+        item.setArt(art)
+    if extras_for:
+        extras_context_menu(item, extras_for[0], extras_for[1])
+    if context:
+        item.addContextMenuItems(context)
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action=action, **params), item, isFolder=True
     )
@@ -59,10 +115,17 @@ def add_dir(label, action, art=None, **params):
 def add_playable(entry):
     item = xbmcgui.ListItem(label=entry["title"])
     if entry.get("art"):
-        item.setArt({"thumb": entry["art"], "poster": entry["art"], "fanart": entry["art"]})
+        item.setArt(entry["art"])
     tag = item.getVideoInfoTag()
     tag.setTitle(entry.get("sort_title") or entry["title"])
-    tag.setMediaType("episode" if str(entry.get("type")) == "Episode" else "movie")
+    kind = str(entry.get("type"))
+    tag.setMediaType("episode" if kind == "Episode" else "movie")
+    if entry.get("start_time"):
+        try:
+            import time
+            tag.setFirstAired(time.strftime("%Y-%m-%d", time.localtime(entry["start_time"])))
+        except (TypeError, ValueError, OverflowError):
+            pass
     if entry.get("plot"):
         tag.setPlot(entry["plot"])
     if entry.get("year"):
@@ -85,7 +148,30 @@ def add_playable(entry):
             tag.setDuration(int(entry["duration"]))
         except (TypeError, ValueError):
             pass
+    # Apple reports how far the account already is into a title, so it can be
+    # resumed here at the point another Apple client left it.
+    resume = entry.get("resume") or {}
+    if resume.get("position") and resume.get("total"):
+        try:
+            tag.setResumePoint(resume["position"], resume["total"])
+        except (TypeError, ValueError, AttributeError):
+            pass
     item.setProperty("IsPlayable", "true")
+    # Episodes and sporting events carry no extras shelves of their own, but
+    # anything playable can go on the watchlist.
+    if kind in ("Movie", "Show", "Vod", "MovieBundle"):
+        extras_context_menu(item, entry["id"], kind)
+    elif kind == "SportingEvent":
+        # A match links to the other games in its league and to its clubs.
+        item.addContextMenuItems([
+            (L("related"), "Container.Update(%s)" % url(
+                action="related", item_id=entry["id"],
+                league=entry.get("league_id") or "")),
+            (L("clubs"), "Container.Update(%s)" % url(
+                action="clubs", item_id=entry["id"])),
+        ] + watchlist_menu_items(entry["id"]))
+    else:
+        item.addContextMenuItems(watchlist_menu_items(entry["id"]))
     xbmcplugin.addDirectoryItem(
         HANDLE,
         url(action="play", item_id=entry["id"], item_type=entry.get("type", "Movie")),
@@ -97,7 +183,10 @@ def add_playable(entry):
 # -- menus ---------------------------------------------------------------
 
 def main_menu(auth):
-    add_dir(L("originals"), "originals")
+    # One entry per brand tab along the top of tv.apple.com's home page.
+    for channel_id, name in CHANNELS:
+        label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
+        add_dir(label, "channel", channel_id=channel_id)
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
         add_dir("[Debug] Test playback (manifest override)", "debug_play")
@@ -108,29 +197,75 @@ def main_menu(auth):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def show_shelves(api, shelves):
+def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
+                 brand=APPLE_TV_PLUS_CHANNEL):
+    """List a canvas' shelves.
+
+    cache_key names the canvas whose cache holds these shelves (a channel or
+    a room); brand stays the owning channel, which is what rooms nested
+    further down need for their ctx_brand.
+    """
     if not shelves:
         kodiutils.notify(L("no_results"))
+    # The watchlist is fetched with a ctx_brand, so it belongs to a tab
+    # rather than to the addon as a whole. cache_key only equals brand on a
+    # channel's own canvas; a room further down carries its own id.
+    if cache_key == brand and api.auth.is_authenticated():
+        add_dir(L("watchlist"), "up_next", channel_id=brand)
+    # Apple's own favourites shelf is an empty marker the website fills in
+    # itself; the club tiles say who is followed, so do the same here.
+    followed = [i for s in shelves for i in s.get("items") or []
+                if str(i.get("type")) == "Team" and i.get("favourite")]
+    if followed:
+        add_dir("%s (%d)" % (L("following"), len(followed)),
+                "following", cache_key=cache_key, brand=brand)
     for shelf in shelves:
         if shelf.get("items"):
-            add_dir("%s (%d)" % (shelf["title"], len(shelf["items"])),
-                    "shelf", shelf_id=shelf["id"], title=shelf["title"])
+            # A shelf with a paging token has more than the canvas returned;
+            # they are fetched when it is opened.
+            count = "%d+" % len(shelf["items"]) if shelf.get("next") \
+                else str(len(shelf["items"]))
+            add_dir("%s (%s)" % (shelf["title"], count),
+                    "shelf", shelf_id=shelf["id"], title=shelf["title"],
+                    cache_key=cache_key, brand=brand)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def add_item(entry):
-    """Add a catalogue entry: shows become folders, everything else plays."""
-    if str(entry.get("type")) == "Show":
-        add_dir(entry["title"], "show", art=entry.get("art"), show_id=entry["id"])
+def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
+    """Add a catalogue entry: shows and rooms are folders, the rest play."""
+    kind = str(entry.get("type"))
+    if kind == "Show":
+        add_dir(entry["title"], "show", art=entry.get("art"),
+                extras_for=(entry["id"], "Show"), show_id=entry["id"])
+    elif kind == "Room":
+        # A room is a browse category (Kids & Family, Sci-Fi, ...) with a
+        # canvas of shelves behind it.
+        add_dir(entry["title"], "room", art=entry.get("art"),
+                room_id=entry["id"], channel_id=channel_id)
+    elif kind == "GrandPrix":
+        # A race weekend: its sessions and highlights, again its own canvas.
+        add_dir(entry["title"], "grandprix", art=entry.get("art"),
+                gp_id=entry["id"], channel_id=channel_id)
+    elif kind == "Team":
+        # A club page, likewise its own canvas. Clubs report whether the
+        # account follows them and the flag updates after a change, so the
+        # menu offers the one action that applies.
+        followed = entry.get("favourite")
+        label = ("* " + entry["title"]) if followed else entry["title"]
+        action = (L("unfollow_team"), "0") if followed else (L("follow_team"), "1")
+        menu = [(action[0], "RunPlugin(%s)" % url(
+            action="follow_team", team_id=entry["id"], on=action[1]))]
+        add_dir(label, "team", art=entry.get("art"), context=menu,
+                team_id=entry["id"], channel_id=channel_id)
     else:
         add_playable(entry)
 
 
-def show_items(items, content="movies"):
+def show_items(items, content="movies", channel_id=APPLE_TV_PLUS_CHANNEL):
     if not items:
         kodiutils.notify(L("no_results"))
     for entry in items:
-        add_item(entry)
+        add_item(entry, channel_id)
     xbmcplugin.setContent(HANDLE, content)
     xbmcplugin.endOfDirectory(HANDLE)
 
@@ -166,30 +301,200 @@ def do_sign_in(auth, api):
         kodiutils.ok_dialog(L("sign_in_failed"))
 
 
-def do_sign_out(auth):
-    if xbmcgui.Dialog().yesno(kodiutils.ADDON_NAME, L("confirm_sign_out")):
-        auth.clear()
-        kodiutils.notify(L("sign_out"))
+def do_sign_out(auth, api):
+    if not xbmcgui.Dialog().yesno(kodiutils.ADDON_NAME, L("confirm_sign_out")):
+        return
+    # Tell Apple the session is over, then forget it here regardless: a
+    # failed call must never leave the addon signed in locally.
+    try:
+        if not api.logout():
+            kodiutils.log("Apple did not acknowledge the sign-out")
+    except Exception as exc:
+        kodiutils.log_error("Sign-out request failed: %s" % exc)
+    auth.clear()
+    kodiutils.notify(L("sign_out"))
+
+
+def do_show(api, show_id):
+    """A show opens to its seasons, or straight to its episodes if it has one."""
+    seasons = api.get_show_seasons(show_id)
+    if not seasons:
+        show_items(api.get_show_episodes(show_id), content="episodes")
+        return
+    for season in seasons:
+        label = season["title"]
+        if season.get("count"):
+            label = "%s (%d)" % (label, season["count"])
+        add_dir(label, "season", show_id=show_id, season=season["number"])
+    xbmcplugin.setContent(HANDLE, "seasons")
+    xbmcplugin.endOfDirectory(HANDLE)
 
 
 def do_search(api):
     query = kodiutils.input_text(L("search_heading"))
     if not query:
-        xbmcplugin.endOfDirectory(HANDLE)
+        # Nothing typed: show Apple's browse page rather than an empty list.
+        show_shelves(api, api.get_search_landing(), "search_landing")
         return
+
+    # Offer Apple's suggestions, with what was typed kept as the first choice.
+    options = [(query, query)]
+    for hint in api.search_hints(query):
+        if hint["term"] != query:
+            options.append((hint["label"], hint["term"]))
+    if len(options) > 1:
+        index = xbmcgui.Dialog().select(L("search_suggestions"),
+                                        [label for label, _ in options])
+        if index < 0:
+            xbmcplugin.endOfDirectory(HANDLE)
+            return
+        query = options[index][1]
     show_items(api.search(query))
 
 
+def choose_feed(api, item_id, item_type):
+    """Let the viewer pick when a match offers more than one feed.
+
+    A game is published as a full replay beside a short recap, and once per
+    commentary language, so picking the first would be arbitrary.
+    """
+    feeds = api.list_playables(item_id, item_type)
+    if not feeds:
+        return None
+    labels = []
+    for feed in feeds:
+        label = feed["title"] or L("play_feed")
+        if feed.get("duration"):
+            mins = int(feed["duration"]) // 60
+            label = "%s (%d min)" % (label, mins)
+        if feed.get("language"):
+            label = "%s - %s" % (label, feed["language"])
+        labels.append(label)
+    index = xbmcgui.Dialog().select(L("choose_feed"), labels)
+    if index < 0:
+        return False  # cancelled, as distinct from "only one feed"
+    return feeds[index]["external_id"]
+
+
 def do_play(api, item_id, item_type):
-    playback = api.get_playback(item_id, item_type)
+    external_id = None
+    if str(item_type) == "SportingEvent":
+        chosen = choose_feed(api, item_id, item_type)
+        if chosen is False:
+            xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+            return
+        external_id = chosen
+    playback = api.get_playback(item_id, item_type, external_id)
     if not playback:
-        kodiutils.ok_dialog(L("playback_failed"))
+        kodiutils.ok_dialog(api.last_error or L("playback_failed"))
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
 
     kodiutils.notify(L("sd_notice"))
+    write_report_context(playback, content_id=item_id)
     play_item = build_isa_listitem(playback)
     xbmcplugin.setResolvedUrl(HANDLE, True, play_item)
+
+
+def write_report_context(playback, duration=None, content_id=None):
+    """Leave the service what it needs to report this stream to Apple.
+
+    Playback runs in a different process from this one, so the ids that mint
+    a now-playing token are handed over on disk. Written empty when a stream
+    cannot be reported, so the service does not report the previous title.
+    """
+    report = dict(playback.get("report") or {})
+    if duration:
+        report["duration"] = duration
+    if content_id:
+        # Also what Continue Watching sends as its playerContentId.
+        report["content_id"] = content_id
+    kodiutils.write_json(PLAYBACK_REPORT_CACHE, report)
+
+
+def do_extras(api, item_id, item_type, kind="trailers"):
+    """Context-menu action: pick a trailer or bonus feature and play it.
+
+    Run via RunPlugin rather than as a resolved item, so it works from any
+    list without disturbing the item the user is standing on.
+    """
+    extras = api.get_extras(item_id, item_type, kind)
+    if not extras:
+        kodiutils.ok_dialog(api.last_error or L(
+            "no_trailer" if kind == "trailers" else "no_bonus"))
+        return
+
+    index = 0
+    if len(extras) > 1:
+        index = xbmcgui.Dialog().select(
+            L("choose_trailer" if kind == "trailers" else "choose_bonus"),
+            [e["label"] for e in extras])
+        if index < 0:
+            return
+    chosen = extras[index]
+
+    playback = api.get_extra_playback(item_id, item_type, chosen["id"])
+    if not playback:
+        kodiutils.ok_dialog(api.last_error or L("playback_failed"))
+        return
+
+    # Trailers and bonus features are not the title itself; reporting them
+    # would put the wrong thing in Continue Watching.
+    write_report_context({})
+    play_item = build_isa_listitem(playback)
+    play_item.setLabel(chosen["title"])
+    if chosen.get("art"):
+        play_item.setArt(chosen["art"])
+    tag = play_item.getVideoInfoTag()
+    tag.setTitle(chosen["title"])
+    tag.setMediaType("video")
+    xbmc.Player().play(playback["manifest"], play_item)
+
+
+def do_subscription(api):
+    """Settings action: report the Apple TV+ subscription state."""
+    status = api.subscription_status()
+    if not status:
+        kodiutils.ok_dialog(L("sub_unknown"))
+        return
+    # Fields Apple actually returns here: status, expireDate (epoch ms),
+    # isPurchaser and isFamilySharable.
+    tv = status.get("tv") or {}
+    expires = tv.get("expireDate")
+    lines = [L("sub_active") if expires else L("sub_none")]
+    if expires:
+        try:
+            import time
+            lines.append(L("sub_renews") % time.strftime(
+                "%d %b %Y", time.localtime(int(expires) / 1000)))
+        except (TypeError, ValueError, OverflowError):
+            pass
+    if tv.get("isFamilySharable"):
+        lines.append(L("sub_family"))
+    if not tv.get("isPurchaser") and expires:
+        # Sharable but not the buyer: the subscription comes from elsewhere.
+        lines.append(L("sub_shared_with_you"))
+    xbmcgui.Dialog().ok(kodiutils.ADDON_NAME, "\n".join(lines))
+
+
+def do_watchlist(api, item_id, add):
+    """Context-menu action: put a title or event on Up Next, or take it off."""
+    if not item_id:
+        return
+    if api.set_watchlisted(item_id, add):
+        kodiutils.notify(L("watchlist_added" if add else "watchlist_removed"))
+    else:
+        kodiutils.ok_dialog(L("watchlist_failed"))
+
+
+def do_follow_team(api, team_id, follow):
+    """Context-menu action: add or remove a club from Apple's favourites."""
+    if not team_id:
+        return
+    if api.set_team_favourite(team_id, follow):
+        kodiutils.notify(L("followed" if follow else "unfollowed"))
+    else:
+        kodiutils.ok_dialog(L("follow_failed"))
 
 
 def build_isa_listitem(playback):
@@ -198,19 +503,12 @@ def build_isa_listitem(playback):
     Widevine key delivery goes through the addon's local licence proxy, which
     wraps the challenge in Apple's JSON envelope (see lib/license_proxy.py).
     """
-    configure_inputstream()
     is_helper_ok = ensure_widevine()
     item = xbmcgui.ListItem(path=playback["manifest"])
-    manifest_type = playback.get("manifest_type", "hls")
 
     item.setProperty("inputstream", "inputstream.adaptive")
     item.setMimeType("application/vnd.apple.mpegurl")
     item.setContentLookup(False)
-
-    isa_major = inputstream_major_version()
-    if isa_major < 22:
-        # Removed in Kodi 22; the mime type is enough for newer ISA.
-        item.setProperty("inputstream.adaptive.manifest_type", manifest_type)
 
     headers = playback.get("stream_headers") or {}
     if headers:
@@ -218,74 +516,38 @@ def build_isa_listitem(playback):
         item.setProperty("inputstream.adaptive.manifest_headers", header_str)
         item.setProperty("inputstream.adaptive.stream_headers", header_str)
 
-    cert = playback.get("certificate_b64")
-    license_url = playback.get("license_url")
+    # The DRM object carries options the older individual licence properties
+    # could not express: secure_decoder applies to this stream alone, and
+    # pre_init_data sets up the decrypter before the first encrypted chapter
+    # (Apple leaves the opening chapters clear, which otherwise leaves
+    # InputStream Adaptive with no decrypter when encryption starts).
+    if not playback.get("encrypted", True):
+        # Nothing to decrypt: with no Widevine key in the manifest, a DRM
+        # session would only stall waiting for a licence that never comes.
+        kodiutils.log("Stream carries no Widevine keys; playing without DRM")
+        if not is_helper_ok:
+            kodiutils.log_error("Widevine CDM not confirmed present")
+        return item
 
-    if isa_major >= 22:
-        # ISA 22 replaced the individual licence properties with one DRM object,
-        # which also carries options the old properties had no way to express:
-        # secure_decoder overrides the user setting for this stream only, and
-        # pre_init_data sets up the decrypter before the first encrypted chapter
-        # (Apple leaves the opening chapters clear, which otherwise leaves ISA
-        # with no decrypter when encryption starts).
-        config = {"priority": 1, "secure_decoder": False, "force_single_session": True}
-        if license_url:
-            config["license"] = {
-                "server_url": license_url,
-                "req_headers": "Content-Type=application%2Foctet-stream",
-            }
-            if cert:
-                config["license"]["server_certificate"] = cert
-        if playback.get("pre_init_data"):
-            config["pre_init_data"] = playback["pre_init_data"]
-        item.setProperty("inputstream.adaptive.drm",
-                         json.dumps({"com.widevine.alpha": config}))
-        kodiutils.log("ISA %d: using drm property (secure_decoder=false, pre_init=%s)"
-                      % (isa_major, bool(playback.get("pre_init_data"))))
-    else:
-        item.setProperty("inputstream.adaptive.license_type", "com.widevine.alpha")
+    config = {"priority": 1, "secure_decoder": False, "force_single_session": True}
+    license_url = playback.get("license_url")
+    if license_url:
+        config["license"] = {
+            "server_url": license_url,
+            "req_headers": "Content-Type=application%2Foctet-stream",
+        }
+        cert = playback.get("certificate_b64")
         if cert:
-            item.setProperty("inputstream.adaptive.server_certificate", cert)
-        if license_url:
-            # ISA posts the raw challenge to our proxy; the proxy returns the raw
-            # licence. Format: url|request_headers|request_data|response_data
-            license_key = "%s|Content-Type=application/octet-stream|R{SSM}|" % license_url
-            item.setProperty("inputstream.adaptive.license_key", license_key)
+            config["license"]["server_certificate"] = cert
+    if playback.get("pre_init_data"):
+        config["pre_init_data"] = playback["pre_init_data"]
+    item.setProperty("inputstream.adaptive.drm",
+                     json.dumps({"com.widevine.alpha": config}))
+    kodiutils.log("DRM property set (pre_init=%s)" % bool(playback.get("pre_init_data")))
 
     if not is_helper_ok:
         kodiutils.log_error("Widevine CDM not confirmed present; playback may fail")
     return item
-
-
-def inputstream_major_version():
-    """Major version of the installed InputStream Adaptive, or 0 if unknown."""
-    try:
-        version = xbmcaddon.Addon("inputstream.adaptive").getAddonInfo("version")
-        return int(version.split(".")[0])
-    except Exception:
-        return 0
-
-
-def configure_inputstream():
-    """Ask InputStream Adaptive not to use the CDM's own video decoder.
-
-    When a test decryption fails, ISA flags the stream SECURE_PATH and decodes
-    video inside the CDM (VideoCodec::Open / DecryptAndDecodeVideo), which is
-    where Apple's video fails with kNoKey while audio -- decrypted the ordinary
-    way and decoded by FFmpeg -- succeeds. ISA checks its NOSECUREDECODER
-    setting on exactly that branch, so enabling it keeps video on the
-    decrypt-only path. Other Widevine addons set this the same way for
-    software (L3) Widevine.
-    """
-    if not kodiutils.get_setting_bool("disable_secure_decoder", False):
-        return
-    try:
-        isa = xbmcaddon.Addon("inputstream.adaptive")
-        if isa.getSetting("NOSECUREDECODER") != "true":
-            isa.setSetting("NOSECUREDECODER", "true")
-            kodiutils.log("Set InputStream Adaptive NOSECUREDECODER=true")
-    except Exception as exc:
-        kodiutils.log_error("Could not set NOSECUREDECODER: %s" % exc)
 
 
 def ensure_widevine():
@@ -314,19 +576,64 @@ def router(paramstring):
         main_menu(auth)
     elif action == "originals":
         show_shelves(api, api.get_originals_shelves())
+    elif action == "channel":
+        channel_id = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
+        show_shelves(api, api.get_channel_shelves(channel_id),
+                     channel_id, channel_id)
+    elif action == "room":
+        room_id = params.get("room_id")
+        brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
+        show_shelves(api, api.get_room_shelves(room_id, brand), room_id, brand)
+    elif action == "team":
+        team_id = params.get("team_id")
+        brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
+        show_shelves(api, api.get_team_shelves(team_id), team_id, brand)
+    elif action == "following":
+        brand = params.get("brand") or APPLE_TV_PLUS_CHANNEL
+        show_items(api.get_followed_teams(params.get("cache_key")),
+                   channel_id=brand)
+    elif action == "grandprix":
+        gp_id = params.get("gp_id")
+        brand = params.get("channel_id") or F1_CHANNEL
+        show_shelves(api, api.get_grand_prix_shelves(gp_id, brand), gp_id, brand)
+    elif action == "follow_team":
+        do_follow_team(api, params.get("team_id"), params.get("on") == "1")
+    elif action == "watchlist":
+        do_watchlist(api, params.get("item_id"), params.get("on") == "1")
+    elif action == "up_next":
+        brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
+        show_items(api.get_watchlist(brand), channel_id=brand)
+    elif action == "related":
+        show_items(api.get_related(params.get("item_id"),
+                                   params.get("league") or None))
+    elif action == "clubs":
+        show_items(api.get_event_clubs(params.get("item_id")),
+                   channel_id=params.get("channel_id") or APPLE_TV_PLUS_CHANNEL)
+    elif action == "subscription":
+        do_subscription(api)
     elif action == "shelf":
-        show_items(api.get_shelf_items(params.get("shelf_id")))
+        brand = params.get("brand") or APPLE_TV_PLUS_CHANNEL
+        show_items(api.get_shelf_items(params.get("shelf_id"),
+                                       params.get("cache_key")),
+                   channel_id=brand)
     elif action == "show":
-        show_items(api.get_show_episodes(params.get("show_id")), content="episodes")
+        do_show(api, params.get("show_id"))
+    elif action == "season":
+        show_items(api.get_show_episodes(params.get("show_id"),
+                                         season=params.get("season")),
+                   content="episodes")
     elif action == "search":
         do_search(api)
     elif action == "play":
         do_play(api, params.get("item_id"), params.get("item_type", "Movie"))
+    elif action == "extras":
+        do_extras(api, params.get("item_id"), params.get("item_type", "Movie"),
+                  params.get("kind", "trailers"))
     elif action == "sign_in":
         do_sign_in(auth, api)
         main_menu(auth)
     elif action == "sign_out":
-        do_sign_out(auth)
+        do_sign_out(auth, api)
         main_menu(auth)
     elif action == "debug_play":
         do_play(api, "debug", "Movie")

@@ -1,4 +1,11 @@
-# Draft report for InputStream Adaptive
+# Notes: HLS + Widevine findings (resolved on ISA 22)
+
+> **Resolved.** Playback works on Kodi 22 with InputStream Adaptive 22 using the
+> `inputstream.adaptive.drm` property (`secure_decoder`, `pre_init_data`),
+> a 360-pixel height cap and H.264-only variants. The report below documents the
+> ISA 21 behaviour and is kept for reference; there is nothing to file.
+
+# Original draft report for InputStream Adaptive
 
 Written up for <https://github.com/xbmc/inputstream.adaptive/issues>. Everything
 below comes from Kodi debug logs and HAR captures of the same title played in a

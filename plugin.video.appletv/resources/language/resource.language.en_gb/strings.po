@@ -65,8 +65,8 @@ msgctxt "#32041"
 msgid "Maximum video height (0 = no limit)"
 msgstr ""
 
-msgctxt "#32042"
-msgid "Disable InputStream Adaptive secure decoder (needed for software Widevine)"
+msgctxt "#32050"
+msgid "This event has not started yet. It begins %s."
 msgstr ""
 
 # --- Menu labels ---
@@ -141,4 +141,128 @@ msgstr ""
 
 msgctxt "#32030"
 msgid "Sign out of your Apple ID?"
+msgstr ""
+
+msgctxt "#32031"
+msgid "Play trailer"
+msgstr ""
+
+msgctxt "#32032"
+msgid "Choose a trailer"
+msgstr ""
+
+msgctxt "#32033"
+msgid "No trailer is available for this title."
+msgstr ""
+
+msgctxt "#32034"
+msgid "Bonus content"
+msgstr ""
+
+msgctxt "#32035"
+msgid "Choose a bonus feature"
+msgstr ""
+
+msgctxt "#32036"
+msgid "No bonus content is available for this title."
+msgstr ""
+
+msgctxt "#32037"
+msgid "Follow club"
+msgstr ""
+
+msgctxt "#32038"
+msgid "Unfollow club"
+msgstr ""
+
+msgctxt "#32039"
+msgid "Club added to your favourites"
+msgstr ""
+
+msgctxt "#32040"
+msgid "Club removed from your favourites"
+msgstr ""
+
+msgctxt "#32042"
+msgid "Could not change your favourite clubs. Make sure you are signed in."
+msgstr ""
+
+msgctxt "#32045"
+msgid "Add to Watchlist"
+msgstr ""
+
+msgctxt "#32046"
+msgid "Added to Up Next"
+msgstr ""
+
+msgctxt "#32047"
+msgid "Could not change Up Next. Make sure you are signed in."
+msgstr ""
+
+msgctxt "#32048"
+msgid "Remove from Watchlist"
+msgstr ""
+
+msgctxt "#32049"
+msgid "Removed from Up Next"
+msgstr ""
+
+msgctxt "#32051"
+msgid "Watchlist"
+msgstr ""
+
+msgctxt "#32052"
+msgid "Apple TV+ subscription: active"
+msgstr ""
+
+msgctxt "#32053"
+msgid "Apple TV+ subscription: none found"
+msgstr ""
+
+msgctxt "#32054"
+msgid "Renews or expires: %s"
+msgstr ""
+
+msgctxt "#32055"
+msgid "Shared with your family"
+msgstr ""
+
+msgctxt "#32056"
+msgid "Could not read your subscription status. Make sure you are signed in."
+msgstr ""
+
+msgctxt "#32058"
+msgid "Included through Family Sharing"
+msgstr ""
+
+msgctxt "#32059"
+msgid "Following"
+msgstr ""
+
+msgctxt "#32060"
+msgid "Continue Watching"
+msgstr ""
+
+msgctxt "#32061"
+msgid "Did you mean"
+msgstr ""
+
+msgctxt "#32062"
+msgid "Choose a feed"
+msgstr ""
+
+msgctxt "#32063"
+msgid "Watch"
+msgstr ""
+
+msgctxt "#32064"
+msgid "Related"
+msgstr ""
+
+msgctxt "#32065"
+msgid "Clubs"
+msgstr ""
+
+msgctxt "#32057"
+msgid "Subscription status"
 msgstr ""
