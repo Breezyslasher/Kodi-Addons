@@ -260,17 +260,23 @@ class ItunesStore(object):
         not.
         """
         self.last_error = None
+        # A pasted session is used when there is one. Otherwise the session
+        # this addon already holds is tried: signing in to Apple TV+ also
+        # calls the store's own web login, so it may carry enough. Whether it
+        # does is a question a capture cannot answer -- the request either
+        # returns a locker or it does not -- so it is asked rather than
+        # assumed, and the log says which.
         cookies = self.pasted_cookies()
         if not cookies:
-            self.last_error = "no store session"
-            return []
+            kodiutils.log("No pasted store session; trying the addon's own")
         params = {"dataOnly": "true", "mt": media_type, "restoreMode": "false"}
         dsid = (kodiutils.get_setting("itunes_sp_dsid") or "").strip()
         if dsid:
             params["spDsid"] = dsid
         headers = dict(self._headers())
-        headers["Cookie"] = cookies
         headers.pop("Content-Type", None)
+        if cookies:
+            headers["Cookie"] = cookies
         try:
             resp = self.session.get(PURCHASES_URL, params=params,
                                     headers=headers, timeout=30)
@@ -289,8 +295,11 @@ class ItunesStore(object):
         except Exception as exc:
             # A signed-out session is answered with the sign-in page rather
             # than an error, so say that instead of a parse failure.
-            self.last_error = ("the store did not return a locker; the pasted "
-                               "session may have expired")
+            self.last_error = (
+                "the store did not return a locker; the pasted session may "
+                "have expired" if cookies else
+                "the store did not accept this addon's own session; paste one "
+                "from a signed-in Apple client instead")
             kodiutils.log_error("iTunes locker was not JSON: %s" % exc)
             return []
         ids = []
