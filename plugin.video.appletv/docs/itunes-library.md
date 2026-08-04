@@ -149,10 +149,15 @@ GET se-edge.itunes.apple.com/WebObjects/MZStoreElements.woa/wa/purchases
   → {"lockerData":{"content":{"1080487524":[1080487524], ...}}}
 ```
 
-`mt` selects the media type -- 1 is music, 6 is films, 4 is something else.
+`mt` selects the media type: 1 music, 3 TV, 6 films, 4 an album-shaped kind.
+The TV value comes from watching the client ask for it; no capture has yet
+returned a TV locker with anything in it, so how shows are grouped there --
+by season, by episode, or both -- is still unknown.
 The values are store ids, sometimes several per title where a film exists in
 more than one edition. Titles then come from
-`client-api.itunes.apple.com/.../MZStorePlatform.woa/wa/lookup?id=<ids>`.
+`client-api.itunes.apple.com/.../MZStorePlatform.woa/wa/lookup?id=<ids>`,
+asked with `p=redownload-image`, which is the profile the library view uses;
+`p=lockup` is what store browsing sends.
 
 **`spDsid` says whose purchases to list, and that is how family sharing
 works.** One capture makes it plain: signed in as one account throughout,

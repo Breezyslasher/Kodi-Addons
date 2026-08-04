@@ -45,7 +45,10 @@ LIBRARY_URL = ("https://pd.itunes.apple.com/WebObjects/MZPurchaseDaap.woa"
 # to read than DMAP. mt selects the media type; observed: 1 music, 4, 6 films.
 PURCHASES_URL = ("https://se-edge.itunes.apple.com/WebObjects"
                  "/MZStoreElements.woa/wa/purchases")
+# mt selects the media type. Observed: 1 music, 3 TV, 4 an album-shaped kind,
+# 6 films.
 PURCHASES_MEDIA_TYPE_MOVIES = "6"
+PURCHASES_MEDIA_TYPE_TV = "3"
 # The locker returns store ids only; their titles come from here. The client
 # also sends X-JS-SP-TOKEN and X-JS-TIMESTAMP, signed by its storefront
 # JavaScript. Whether they are required is not answerable from a capture, so
@@ -322,7 +325,9 @@ class ItunesStore(object):
             try:
                 resp = self.session.get(
                     LOOKUP_URL, headers=headers, timeout=30,
-                    params={"id": ",".join(batch), "p": "lockup",
+                    # redownload-image is the profile the library view asks
+                    # for; lockup is what store browsing uses.
+                    params={"id": ",".join(batch), "p": "redownload-image",
                             "caller": "DI6", "version": "2"})
             except Exception as exc:
                 kodiutils.log_error("iTunes lookup failed: %s" % exc)
@@ -341,9 +346,9 @@ class ItunesStore(object):
             found.update(results)
         return found
 
-    def owned_movies(self):
-        """The account's purchased films, as catalogue entries."""
-        ids = self.locker(PURCHASES_MEDIA_TYPE_MOVIES)
+    def owned(self, media_type=PURCHASES_MEDIA_TYPE_MOVIES):
+        """What the account owns of one media type, as catalogue entries."""
+        ids = self.locker(media_type)
         if not ids:
             return []
         items = []
@@ -355,6 +360,12 @@ class ItunesStore(object):
                 items.append(entry)
         return items
 
+    def owned_movies(self):
+        return self.owned(PURCHASES_MEDIA_TYPE_MOVIES)
+
+    def owned_tv(self):
+        return self.owned(PURCHASES_MEDIA_TYPE_TV)
+
     @staticmethod
     def _from_lookup(store_id, row):
         """One store lookup result as a catalogue entry.
@@ -364,7 +375,8 @@ class ItunesStore(object):
         description, the certificate is nested per rating system, and the
         release date is already a date rather than epoch milliseconds.
         """
-        if row.get("kind") not in (None, "movie"):
+        kind = row.get("kind")
+        if kind not in (None, "movie", "tvSeason", "tvEpisode"):
             return None
         art = ((row.get("artwork") or {}).get("url") or "")
         art = (art.replace("{w}", "600").replace("{h}", "900")
@@ -386,7 +398,11 @@ class ItunesStore(object):
             "adam_id": str(store_id),
             "title": row.get("name"),
             "sort_title": row.get("nameSortValue") or row.get("name"),
-            "type": "Movie",
+            "type": "Episode" if kind == "tvEpisode" else "Movie",
+            # A season is a folder of episodes on Apple's side too, but the
+            # locker lists it as one entry; its own name carries the series.
+            "show_title": row.get("collectionName") or row.get("artistName")
+                          if kind in ("tvSeason", "tvEpisode") else None,
             "plot": plot,
             "genres": row.get("genreNames") or [],
             "mpaa": rating,
