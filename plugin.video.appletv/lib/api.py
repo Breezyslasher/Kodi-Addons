@@ -787,10 +787,28 @@ class AppleTVApi(object):
         return CANVAS_CACHE % ("%s_%s" % (str(channel_id).replace("/", "_"), who))
 
     def search(self, query):
-        data = self._get_json("/search", {"searchTerm": query, "topResultsOnly": "true"})
+        """Everything Apple finds for a term, not just the type-ahead.
+
+        topResultsOnly is what the site sends while someone is still typing:
+        one shelf of ten mixed hits. The full search returns Top Results plus
+        a Movies shelf plus a TV Shows shelf -- for "greatest" that is 19, 27
+        and 27 rather than 10 -- and the store titles an account may already
+        own are in the longer lists rather than the top ten.
+
+        The shelves overlap, so a title in Top Results and again under Movies
+        is listed once.
+        """
+        data = self._get_json("/search", {"searchTerm": query})
         items = []
+        seen = set()
         for shelf in self._extract_shelves(data):
-            items.extend(shelf["items"])
+            for item in shelf["items"]:
+                key = item.get("id")
+                if key:
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                items.append(item)
         return items
 
     def search_hints(self, term):
