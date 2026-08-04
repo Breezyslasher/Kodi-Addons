@@ -144,12 +144,28 @@ Verified by replaying real captures through this code:
   established by parsing `aefl`'s payload and finding it consumes exactly as
   DMAP; the film's 5,678,891 ms comes out as its real 1:34:38
 
-**Not verified, and the whole feature rests on it:** whether Apple accepts a
-`guid` this addon invents. Apple's own is seven groups of eight hex digits and
-belongs to a device registered through `commerce/device/registerSuccess` and
-`commerce/machine/authorize`, both of which appear beside these calls in every
-capture. If registration turns out to be required, sign-in will fail and this
-goes no further without it.
+**Tried, and refused: the store sign-in.** Apple answers `403`. The guid was
+the suspected obstacle; the capture shows something harder. The real request
+carries three headers generated on the device:
+
+```
+X-Apple-ActionSignature   a signed blob, ~200 bytes
+X-Apple-AMD               attestation data
+X-Apple-AMD-M             a longer companion value
+```
+
+These are Apple's device attestation. They are computed by Apple's own client
+from material it holds, and nothing here can produce them -- this is the same
+family of values other projects obtain from an "anisette" provider running on
+genuine Apple software. Aligning everything else that differed (the pod host
+`p18-buy`, the guid in the query string as well as the body, the `com.apple.TV`
+client header, the `t:tv1` storefront suffix, the TV user agent) is done, and
+is worth having, but it is unlikely to be enough on its own.
+
+So the library **listing** is blocked at the account door, and probably stays
+blocked without attestation. What is not blocked is everything reached through
+the ordinary UTS API, which needs none of this -- see family sharing above:
+an iTunes title found by search reports `isEntitledToPlay` and plays.
 
 Also unverified: whether a purchased stream decrypts under Kodi's Widevine
 CDM. Purchases use the same `fpsRequest` licence endpoint as Apple TV+, which

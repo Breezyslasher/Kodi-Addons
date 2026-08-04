@@ -36,7 +36,9 @@ import zlib
 
 from . import kodiutils
 
-STORE_AUTH_URL = "https://buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate"
+# The capture uses a pod-specific host and puts the guid in the query string
+# as well as the body.
+STORE_AUTH_URL = "https://p18-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate"
 LIBRARY_URL = ("https://pd.itunes.apple.com/WebObjects/MZPurchaseDaap.woa"
                "/purchase/databases/101/items")
 BOOKKEEPER_GET_ALL = "https://upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/getAll"
@@ -44,8 +46,10 @@ BOOKKEEPER_PUT = "https://upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/pu
 BOOKKEEPER_DOMAIN = "com.apple.upp"
 
 STORE_SESSION_CACHE = "itunes_session.json"
-STORE_UA = ("AMPLibraryAgent/1.6.4 (Windows 10.0.19045 x64; x64) "
-            "Chromium/151.0.4129.59 build/92 (dt:2)")
+# What the Apple TV client sends. AMPLibraryAgent is the music side's agent
+# and is not what the store sees on these calls.
+STORE_UA = ("TV/1.6.4 (Windows 10.0.19045 x64; x64) "
+            "Chromium/151.0.4129.59 (dt:2)")
 
 # DMAP tags carried on each owned title. The names are Apple's; the meanings
 # are read off a capture of an account with one film in it.
@@ -150,11 +154,14 @@ class ItunesStore(object):
         return guid
 
     def _headers(self):
+        storefront = kodiutils.get_setting("storefront") or "143441"
         return {"User-Agent": STORE_UA,
                 "Content-Type": "application/x-apple-plist",
-                "Accept-Language": "en-us",
-                "X-Apple-Store-Front": "%s-1,42" % kodiutils.get_setting("storefront")
-                                        or "143441-1,42"}
+                "Accept-Language": "en-US",
+                "Accept-Encoding": "gzip, deflate",
+                "X-Apple-Client-Application": "com.apple.TV",
+                "X-Apple-Store-Front": "%s-1,42 t:tv1" % storefront,
+                "Cache-Control": "no-cache"}
 
     def sign_in(self, apple_id, password):
         """Log in to the store. Separate from the Apple TV+ sign-in.
@@ -169,6 +176,7 @@ class ItunesStore(object):
                                "rmp": 0})
         try:
             resp = self.session.post(STORE_AUTH_URL, data=body,
+                                     params={"guid": self._guid()},
                                      headers=self._headers(), timeout=30)
         except Exception as exc:
             self.last_error = str(exc)
@@ -177,6 +185,17 @@ class ItunesStore(object):
         if resp.status_code != 200:
             self.last_error = "HTTP %s" % resp.status_code
             kodiutils.log_error("iTunes sign-in -> %s" % resp.status_code)
+            if resp.status_code == 403:
+                # Apple's own client signs this request with device
+                # attestation -- X-Apple-ActionSignature, X-Apple-AMD and
+                # X-Apple-AMD-M -- which nothing here can produce. A 403 is
+                # very likely that, not a wrong password.
+                self.last_error = ("refused (403): the store appears to want "
+                                   "a signed device attestation")
+                kodiutils.log_error(
+                    "Store sign-in refused. Apple's client signs this call "
+                    "with X-Apple-ActionSignature and X-Apple-AMD headers "
+                    "generated on the device; see docs/itunes-library.md.")
             return False
         try:
             data = plistlib.loads(resp.content)
