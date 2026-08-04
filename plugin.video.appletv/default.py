@@ -12,6 +12,7 @@ from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA, STATUS_ERROR
 from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
                      PLAYBACK_REPORT_CACHE)
+from lib.itunes import ItunesStore
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
@@ -280,6 +281,8 @@ def main_menu(auth):
     for channel_id, name in CHANNELS:
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
+    if ItunesStore(auth.session).is_signed_in():
+        add_dir(L("itunes_library"), "itunes")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
         add_dir("[Debug] Test playback (manifest override)", "debug_play")
@@ -438,6 +441,21 @@ def do_show(api, show_id):
                 media_type="season", show_id=show_id, season=season["number"])
     xbmcplugin.setContent(HANDLE, "seasons")
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_library(api, auth):
+    """What the account owns, from the store rather than the catalogue."""
+    store = ItunesStore(auth.session)
+    items = store.library()
+    if not items:
+        kodiutils.notify(store.last_error or L("no_results"))
+    resume = store.resume_points()
+    for entry in items:
+        position = resume.get(entry.get("adam_id"))
+        if position and entry.get("duration"):
+            entry["resume"] = {"position": position,
+                               "total": float(entry["duration"])}
+    show_items(items)
 
 
 def do_search(api):
@@ -779,6 +797,8 @@ def router(paramstring):
         show_items(api.get_show_episodes(show_id, season=params.get("season")),
                    content="episodes",
                    cast=api.get_cast(show_id, "Show"))
+    elif action == "itunes":
+        do_itunes_library(api, auth)
     elif action == "search":
         do_search(api)
     elif action == "play":
