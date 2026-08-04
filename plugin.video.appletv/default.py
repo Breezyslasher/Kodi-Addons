@@ -292,7 +292,13 @@ def main_menu(auth):
         add_dir(L("itunes_library"), "itunes")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
-        add_dir("[Debug] Test playback (manifest override)", "debug_play")
+        # Not a folder. do_play answers with setResolvedUrl, which Kodi only
+        # honours for a playable item; as a folder it opened a directory that
+        # never ended, which is the "Error getting plugin://" in the log.
+        debug = xbmcgui.ListItem(label="[Debug] Test playback (manifest override)")
+        debug.setProperty("IsPlayable", "true")
+        xbmcplugin.addDirectoryItem(HANDLE, url(action="debug_play"), debug,
+                                    isFolder=False)
     if auth.is_authenticated():
         add_dir(L("sign_out"), "sign_out")
     else:
