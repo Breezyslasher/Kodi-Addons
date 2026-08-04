@@ -139,6 +139,49 @@ session -- so entitlement is visible without signing in, and playback is not.
 Their resume positions are in the bookkeeper -- the adam id above is one of
 the five, at 3669 seconds -- but reading that store also needs the session.
 
+## A second, simpler route: the JSON locker
+
+iTunes for Windows lists the same library as plain JSON rather than DMAP:
+
+```
+GET se-edge.itunes.apple.com/WebObjects/MZStoreElements.woa/wa/purchases
+    ?dataOnly=true&mt=6&restoreMode=false&spDsid=<dsid>
+  → {"lockerData":{"content":{"1080487524":[1080487524], ...}}}
+```
+
+`mt` selects the media type -- 1 is music, 6 is films, 4 is something else.
+The values are store ids, sometimes several per title where a film exists in
+more than one edition. Titles then come from
+`client-api.itunes.apple.com/.../MZStorePlatform.woa/wa/lookup?id=<ids>`.
+
+**`spDsid` says whose purchases to list, and that is how family sharing
+works.** One capture makes it plain: signed in as one account throughout,
+
+| spDsid | items |
+|--------|-------|
+| the signed-in account's own dsid | 0 |
+| a family member's dsid | 511 music, 94 films, 15 other |
+
+So the account in that capture owns one film of its own -- which is exactly
+what the DAAP call returned -- and sees 94 through the family. Apple's TV app
+offers no such switch in its sidebar, which is why family purchases never
+appear there; the limitation is that client's, not the API's.
+
+This route is easier to consume than DMAP and is the one to implement if the
+authentication below is ever solved. It is what the addon uses when a store
+session has been pasted in.
+
+## Borrowing a session instead of minting one
+
+Since Apple's own software proves itself in ways that cannot be reproduced,
+the way round is not to reproduce it. Sign in with a real Apple client, take
+the session it established, and hand it to the addon: two advanced settings
+accept the cookie header and, optionally, a family member's dsid.
+
+That needs no attestation, because a genuine client already did that part.
+What it costs is that the session is captured by hand and expires on Apple's
+schedule rather than the addon's.
+
 ## What is verified, and what is not
 
 Verified by replaying real captures through this code:

@@ -301,3 +301,17 @@ msgstr ""
 msgctxt "#32073"
 msgid "iTunes Store sign-in failed"
 msgstr ""
+
+msgctxt "#32074"
+msgid "iTunes purchases (paste a store session)"
+msgstr ""
+
+
+msgctxt "#32075"
+msgid "Store session cookies"
+msgstr ""
+
+
+msgctxt "#32076"
+msgid "Family member's dsid (blank for your own)"
+msgstr ""

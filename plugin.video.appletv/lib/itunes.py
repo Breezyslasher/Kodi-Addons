@@ -41,6 +41,17 @@ from . import kodiutils
 STORE_AUTH_URL = "https://p18-buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate"
 LIBRARY_URL = ("https://pd.itunes.apple.com/WebObjects/MZPurchaseDaap.woa"
                "/purchase/databases/101/items")
+# iTunes for Windows lists the same locker as plain JSON, which is far easier
+# to read than DMAP. mt selects the media type; observed: 1 music, 4, 6 films.
+PURCHASES_URL = ("https://se-edge.itunes.apple.com/WebObjects"
+                 "/MZStoreElements.woa/wa/purchases")
+PURCHASES_MEDIA_TYPE_MOVIES = "6"
+# The locker returns store ids only; their titles come from here. The client
+# also sends X-JS-SP-TOKEN and X-JS-TIMESTAMP, signed by its storefront
+# JavaScript. Whether they are required is not answerable from a capture, so
+# this asks without them and reports what Apple says.
+LOOKUP_URL = ("https://client-api.itunes.apple.com/WebObjects"
+              "/MZStorePlatform.woa/wa/lookup")
 BOOKKEEPER_GET_ALL = "https://upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/getAll"
 BOOKKEEPER_PUT = "https://upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/put"
 BOOKKEEPER_DOMAIN = "com.apple.upp"
@@ -183,9 +194,20 @@ class ItunesStore(object):
             kodiutils.log_error("iTunes sign-in failed: %s" % exc)
             return False
         if resp.status_code != 200:
-            self.last_error = "HTTP %s" % resp.status_code
-            kodiutils.log_error("iTunes sign-in -> %s" % resp.status_code)
-            if resp.status_code == 403:
+            # Apple often explains itself in the body even on a 4xx, and its
+            # own words beat any guess made here.
+            detail = ""
+            try:
+                said = plistlib.loads(resp.content)
+                detail = (said.get("customerMessage")
+                          or said.get("failureType") or "")
+            except Exception:
+                detail = resp.text[:300].strip()
+            self.last_error = ("HTTP %s%s"
+                               % (resp.status_code, ": " + detail if detail else ""))
+            kodiutils.log_error("iTunes sign-in -> %s %s"
+                                % (resp.status_code, detail or resp.text[:300]))
+            if resp.status_code == 403 and not detail:
                 # Apple's own client signs this request with device
                 # attestation -- X-Apple-ActionSignature, X-Apple-AMD and
                 # X-Apple-AMD-M -- which nothing here can produce. A 403 is
@@ -214,6 +236,127 @@ class ItunesStore(object):
             "stamp": time.time(),
         })
         return True
+
+    def pasted_cookies(self):
+        """A store session captured from a real Apple client, if one is set.
+
+        Apple's own software proves itself with a SAP handshake and signed
+        attestation headers, neither of which can be reproduced here, so the
+        sign-in above is refused. Borrowing a session that a genuine client
+        already established is the way round that: it needs no attestation
+        because the hard part has already happened elsewhere.
+        """
+        return (kodiutils.get_setting("itunes_cookies") or "").strip()
+
+    def locker(self, media_type=PURCHASES_MEDIA_TYPE_MOVIES):
+        """Store ids the account owns, from the JSON purchases endpoint.
+
+        Returns ids only. Their titles come from a separate lookup, which is
+        what the client does too.
+
+        spDsid says whose purchases to list. A family member's dsid returns
+        theirs, which is how iTunes for Windows shows shared purchases and
+        why asking for your own can come back empty while the family's does
+        not.
+        """
+        self.last_error = None
+        cookies = self.pasted_cookies()
+        if not cookies:
+            self.last_error = "no store session"
+            return []
+        params = {"dataOnly": "true", "mt": media_type, "restoreMode": "false"}
+        dsid = (kodiutils.get_setting("itunes_sp_dsid") or "").strip()
+        if dsid:
+            params["spDsid"] = dsid
+        headers = dict(self._headers())
+        headers["Cookie"] = cookies
+        headers.pop("Content-Type", None)
+        try:
+            resp = self.session.get(PURCHASES_URL, params=params,
+                                    headers=headers, timeout=30)
+        except Exception as exc:
+            self.last_error = str(exc)
+            kodiutils.log_error("iTunes locker failed: %s" % exc)
+            return []
+        if resp.status_code != 200:
+            self.last_error = "HTTP %s: %s" % (resp.status_code,
+                                               resp.text[:200].strip())
+            kodiutils.log_error("iTunes locker -> %s %s"
+                                % (resp.status_code, resp.text[:300]))
+            return []
+        try:
+            content = (resp.json().get("lockerData") or {}).get("content") or {}
+        except Exception as exc:
+            # A signed-out session is answered with the sign-in page rather
+            # than an error, so say that instead of a parse failure.
+            self.last_error = ("the store did not return a locker; the pasted "
+                               "session may have expired")
+            kodiutils.log_error("iTunes locker was not JSON: %s" % exc)
+            return []
+        ids = []
+        for key, variants in content.items():
+            ids.append(str(key))
+        kodiutils.log("iTunes locker: %d owned title(s) for mt=%s"
+                      % (len(ids), media_type))
+        return ids
+
+    def lookup(self, ids):
+        """Turn store ids into titles, in batches as the client does."""
+        found = {}
+        cookies = self.pasted_cookies()
+        for start in range(0, len(ids), 50):
+            batch = ids[start:start + 50]
+            headers = dict(self._headers())
+            headers.pop("Content-Type", None)
+            if cookies:
+                headers["Cookie"] = cookies
+            try:
+                resp = self.session.get(
+                    LOOKUP_URL, headers=headers, timeout=30,
+                    params={"id": ",".join(batch), "p": "lockup",
+                            "caller": "DI6", "version": "2"})
+            except Exception as exc:
+                kodiutils.log_error("iTunes lookup failed: %s" % exc)
+                break
+            if resp.status_code != 200:
+                kodiutils.log_error(
+                    "iTunes lookup -> %s %s. If this is rejected, the signed "
+                    "X-JS-SP-TOKEN the storefront sends is likely required."
+                    % (resp.status_code, resp.text[:200]))
+                break
+            try:
+                results = (resp.json() or {}).get("results") or {}
+            except Exception:
+                kodiutils.log_error("iTunes lookup did not return JSON")
+                break
+            found.update(results)
+        return found
+
+    def owned_movies(self):
+        """The account's purchased films, as catalogue entries."""
+        ids = self.locker(PURCHASES_MEDIA_TYPE_MOVIES)
+        if not ids:
+            return []
+        items = []
+        for store_id, row in self.lookup(ids).items():
+            if not isinstance(row, dict) or not row.get("name"):
+                continue
+            art = (row.get("artwork") or {}).get("url") or ""
+            # mzstatic templates ask for the size wanted.
+            art = art.replace("{w}", "600").replace("{h}", "900") \
+                     .replace("{f}", "jpg").replace("{c}", "")
+            items.append({
+                "id": str(store_id),
+                "adam_id": str(store_id),
+                "title": row.get("name"),
+                "sort_title": row.get("nameSortValue") or row.get("name"),
+                "type": "Movie",
+                "plot": (row.get("description") or {}).get("standard")
+                        if isinstance(row.get("description"), dict) else None,
+                "genres": row.get("genreNames") or [],
+                "art": {"poster": art, "thumb": art, "icon": art} if art else None,
+            })
+        return items
 
     def session_info(self):
         return kodiutils.read_json(STORE_SESSION_CACHE, default={}) or {}

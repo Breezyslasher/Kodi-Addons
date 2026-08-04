@@ -286,7 +286,7 @@ def main_menu(auth):
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
     store = ItunesStore(auth.session)
-    if store.is_signed_in():
+    if store.is_signed_in() or store.pasted_cookies():
         add_dir(L("itunes_library"), "itunes")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
@@ -475,7 +475,10 @@ def do_itunes_sign_in(auth):
 def do_itunes_library(api, auth):
     """What the account owns, from the store rather than the catalogue."""
     store = ItunesStore(auth.session)
-    items = store.library()
+    # A pasted store session takes the JSON route, which is what iTunes for
+    # Windows uses and is far simpler than the DAAP one. Signing in here is
+    # refused by Apple, so that route only runs if a session was borrowed.
+    items = store.owned_movies() if store.pasted_cookies() else store.library()
     if not items:
         kodiutils.notify(store.last_error or L("no_results"))
     resume = store.resume_points()
