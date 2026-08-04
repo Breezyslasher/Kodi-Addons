@@ -903,7 +903,10 @@ class AppleTVApi(object):
             kodiutils.log("Using the stream listed inline for %s" % content_id)
             self.last_error = None
             assets = self._prepared_from_assets(inline, self._media_user_token())
-        return self._build_playback(assets)
+        # A manifest pasted into the override setting is not a catalogue
+        # stream, so an Apple TV+ account token is not what authorises it.
+        return self._build_playback(
+            assets, require_user_token=not assets.get("override"))
 
     def _build_playback(self, assets, require_user_token=True):
         """Turn resolved stream assets into the dict default.py plays.
@@ -911,9 +914,10 @@ class AppleTVApi(object):
         Shared by features and trailers: both arrive as the same asset shape
         (an hlsUrl plus the fps key-server details).
         """
+        override = bool(assets.get("override"))
         boot = self._bootstrap()
         bearer = boot.get("developer_token")
-        if not bearer:
+        if not bearer and not override:
             kodiutils.log_error("No developer token; cannot request playback")
             return None
 
@@ -925,13 +929,21 @@ class AppleTVApi(object):
             return None
 
         # Headers the manifest/segment requests need (token-authenticated).
-        stream_headers = {
-            "authorization": "Bearer " + bearer,
-            "Origin": WEB_HOME,
-            "User-Agent": self.session.headers.get("User-Agent", ""),
-        }
-        if mut:
-            stream_headers["media-user-token"] = mut
+        # A pasted manifest gets none of them: whatever authorises it travels
+        # in the url, and sending tv.apple.com's credentials to some other
+        # host would at best be ignored and at worst refused.
+        if override:
+            stream_headers = {
+                "User-Agent": self.session.headers.get("User-Agent", ""),
+            }
+        else:
+            stream_headers = {
+                "authorization": "Bearer " + bearer,
+                "Origin": WEB_HOME,
+                "User-Agent": self.session.headers.get("User-Agent", ""),
+            }
+            if mut:
+                stream_headers["media-user-token"] = mut
         wv_keys = self._collect_widevine_keys(assets["manifest"], stream_headers)
         kodiutils.log("Collected %d Widevine key(s)" % len(wv_keys))
 
@@ -948,7 +960,7 @@ class AppleTVApi(object):
             break
 
         kodiutils.write_json("playback_context.json", {
-            "bearer": bearer,
+            "bearer": bearer or "",
             "media_user_token": mut or "",
             "adam_id": assets.get("adam_id", ""),
             "svc_id": assets.get("svc_id", ""),
@@ -990,7 +1002,12 @@ class AppleTVApi(object):
         if override:
             override = override.replace("&amp;", "&").strip()
             return {"manifest": override, "adam_id": self._q(override, "a"),
-                    "svc_id": self._q(override, "svcId"), "is_external": True}
+                    "svc_id": self._q(override, "svcId"), "is_external": True,
+                    # Says this manifest did not come from the catalogue, so
+                    # the Apple TV+ credentials below do not apply to it.
+                    # is_external cannot carry that: it means something else
+                    # on the licence path.
+                    "override": True}
 
         data, mut = self._detail_json(content_id, item_type)
         if data is None:
