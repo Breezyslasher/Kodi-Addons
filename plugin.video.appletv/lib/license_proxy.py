@@ -491,6 +491,15 @@ class _Handler(BaseHTTPRequestHandler):
         kodiutils.log("License request: challenge=%d bytes, wants KID=%s, known KIDs=[%s]"
                       % (len(challenge), matched_kid or "UNKNOWN",
                          ", ".join(sorted(wv_keys.keys()))))
+        # Which credentials went out matters as much as the challenge did, and
+        # a refusal reads very differently depending on whether Apple was told
+        # who was asking. Neither value is logged, only whether there is one.
+        kodiutils.log("License identity: bearer=%s, media-user-token=%s, "
+                      "adamId=%s, svcId=%s"
+                      % ("yes" if bearer else "NO",
+                         "yes" if mut else "NO",
+                         ctx.get("adam_id") or "none",
+                         ctx.get("svc_id") or "none"))
 
         url = ctx.get("license_server") or FPS_URL
         headers = {

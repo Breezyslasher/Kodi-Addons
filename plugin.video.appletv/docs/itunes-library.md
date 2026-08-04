@@ -191,11 +191,37 @@ session**: it was fetched with no cookies, no `X-Token` and no dsid beyond
 the one already in its query string. The FairPlay certificate is what
 Apple's own client asked for, not the only thing on offer.
 
-What has still not happened is a completed licence exchange, because the
-Windows box used for the test has no Widevine CDM installed
-(`Failed to load library: 126`). So Apple's answer to a licence request for
-a purchase — with this addon's Apple TV+ bearer rather than a store token —
-is the one part of the chain still unobserved.
+### The licence is requested, and refused
+
+Run again on a machine with a Widevine CDM, the exchange completes and Apple
+answers:
+
+```
+Manifest proxy: variant served, 1 KEYID added, 1 init segment(s) routed
+Init segment …_video_gr205_sdr_470x352: patched 1 tenc KID(s)
+  -> 0000000021ca6c756330202020202020
+License request: challenge=1708 bytes, wants KID=0000000021ca6c756330…,
+  known KIDs=[…6330…, …6336…]
+fpsRequest failed: no licence in response
+  {"streaming-response":{"streaming-keys":[{"id":1,"status":-1020}]}}
+```
+
+Worth reading carefully, because it is not a generic failure:
+
+- Apple **accepted and parsed** the challenge. The reply is a well-formed
+  `streaming-response`, not an HTTP error or an auth rejection.
+- The key id is **Apple's own**, read out of the PSSH in its manifest, and
+  the challenge asked for one this addon had already seen. Nothing was
+  invented or mismatched.
+- The refusal is per key: `status: -1020` on key `id: 1`. What that number
+  means is not documented anywhere reachable and is not guessed at here.
+
+The untested variable is **identity**. That request carried an Apple TV+
+developer token and whatever media-user-token the addon held, which on the
+machine tested was none — so Apple was asked to license a purchase without
+being told who was asking. Whether a signed-in account changes the answer is
+the next thing to find out, and the licence proxy now logs which credentials
+it sent so the next refusal can be read against them.
 
 The obstacle is `kbsync`: a device keybag blob on the request, the same class
 of thing as the attestation headers below. The addon sends the request
