@@ -975,6 +975,9 @@ class AppleTVApi(object):
             "manifest": license_proxy.manifest_url(assets["manifest"],
                                                    clear=not wv_keys),
             "manifest_type": "hls",
+            # Says this stream came from the override setting, so callers can
+            # skip the catalogue lookups that only make sense for a real id.
+            "override": override,
             "license_url": license_proxy.license_url(),
             "certificate_b64": self.get_widevine_certificate(),
             "stream_headers": stream_headers,

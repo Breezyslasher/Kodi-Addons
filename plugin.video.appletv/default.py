@@ -607,7 +607,10 @@ def do_play(api, item_id, item_type):
     # Playback resolves from an id, so the item Kodi shows while playing knew
     # nothing about the title and its plot read "Not available". A title's own
     # page carries the description and the cast, which shelf items do not.
-    apply_title_info(play_item, api.get_title_info(item_id, item_type))
+    # A pasted manifest has no catalogue id behind it, so asking would only
+    # log Apple refusing "debug" as an invalid id.
+    if not playback.get("override"):
+        apply_title_info(play_item, api.get_title_info(item_id, item_type))
 
     xbmcplugin.setResolvedUrl(HANDLE, True, play_item)
 

@@ -171,14 +171,31 @@ authorisation — but it is FairPlay encrypted, and the `sinf` boxes bind the
 keys to the requesting device. It also carries the account holder's real name
 in cleartext, which is worth knowing before sharing one.
 
-**Whether the HLS route is playable here is genuinely open.** The key
-certificate Apple hands the Windows client is the FairPlay bundle, which Kodi
-cannot use. But the licence host is `MZPlayLocal/fpsRequest` — the very same
-one this addon already proxies *Widevine* through for Apple TV+, which also
-publishes a Widevine certificate at `MZPlay.woa/wa/widevineCert`. So the host
-serves both, and which one a purchase's playlist offers has not been tested.
-The playlist url is plain, with the adam id in the query string, so this is
-answerable the moment a store session exists.
+**The HLS route offers Widevine, and it was tested.** The suspicion was that
+a purchase would be FairPlay-only, since the key certificate Apple hands the
+Windows client is the FairPlay bundle, which Kodi cannot use. That is not
+what the playlist serves. Pasted into this addon's manifest override and
+played in Kodi:
+
+```
+[plugin.video.appletv] Collected 2 Widevine key(s)
+[plugin.video.appletv] DRM property set (pre_init=True)
+[plugin.video.appletv] Manifest proxy: master served, 24 variant(s) dropped
+inputstream.adaptive: Manifest successfully parsed (Streams: 3)
+```
+
+Two things that matters for. The licence host is `MZPlayLocal/fpsRequest` —
+the very one this addon already proxies Widevine through for Apple TV+, so
+the machinery needs nothing new. And **the playlist itself needs no store
+session**: it was fetched with no cookies, no `X-Token` and no dsid beyond
+the one already in its query string. The FairPlay certificate is what
+Apple's own client asked for, not the only thing on offer.
+
+What has still not happened is a completed licence exchange, because the
+Windows box used for the test has no Widevine CDM installed
+(`Failed to load library: 126`). So Apple's answer to a licence request for
+a purchase — with this addon's Apple TV+ bearer rather than a store token —
+is the one part of the chain still unobserved.
 
 The obstacle is `kbsync`: a device keybag blob on the request, the same class
 of thing as the attestation headers below. The addon sends the request
@@ -327,6 +344,7 @@ same door:
 | resume positions (`MZBookkeeper`) | yes |
 | **knowing a title is owned** (`isEntitledToPlay`) | **no** |
 | **the file a redownload points at** (`accessKey`) | **no** |
+| **the HLS playlist a redownload points at** | **no** |
 
 Only the last is reachable, because it rides the ordinary UTS detail response.
 Search does return store films -- "Green Book" comes back with 14 results
@@ -337,11 +355,11 @@ release date and artwork. Whether one is owned shows only once it is opened.
 So an iTunes title can be found, described and shown as owned. It cannot be
 played, and that is unlikely to change without device attestation.
 
-Also unverified: whether a purchased stream decrypts under Kodi's Widevine
-CDM. Purchases use the same `fpsRequest` licence endpoint as Apple TV+, which
-the addon already proxies, so the machinery is in place — but no purchased
-title has been played through it, and the only DRM a purchase has been
-*observed* using is FairPlay, which Kodi has no CDM for.
+Also unverified: whether a purchased stream *decrypts* under Kodi's Widevine
+CDM. It is now known that one is *offered* a Widevine key — the addon
+collected two from a real purchase's playlist — and that the playlist needs
+no store session. What remains untested is the licence exchange itself,
+which stopped at a machine with no CDM installed.
 
 Verified since, by replaying a redownload capture through this code:
 
