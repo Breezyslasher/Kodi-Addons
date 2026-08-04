@@ -465,6 +465,16 @@ across Top Results, Movies and TV Shows -- but the results carry no
 entitlement or channel at all, only id, title, type, genres, duration,
 release date and artwork. Whether one is owned shows only once it is opened.
 
+**That is true of the store app's caller, and not of the website's.** The
+same search asked as tv.apple.com returns Apple TV+ originals and nothing
+else: "ted" gives Ted Lasso, Shrinking, Wolfs and Ghosted, where the store
+caller for "green book" gives Green Book, Oppenheimer, Hidden Figures and
+BlacKkKlansman -- none of which are on Apple TV+ at all. So the caller
+decides what search will admit exists, exactly as it decides whether
+`personalizedOffers` is sent, and a purchase cannot be opened from a search
+that will not list it. The addon asks as the store app and keeps the
+website's search as a fallback.
+
 So an iTunes title can be found, described and shown as owned. It cannot be
 played, and that is unlikely to change without device attestation.
 

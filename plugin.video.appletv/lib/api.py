@@ -797,8 +797,20 @@ class AppleTVApi(object):
 
         The shelves overlap, so a title in Top Results and again under Movies
         is listed once.
+
+        It is asked as the store app, because tv.apple.com's search answers
+        with Apple TV+ originals and nothing else: "ted" returns Ted Lasso,
+        Shrinking and Wolfs, while the same API asked as the store app returns
+        Green Book, Oppenheimer and Hidden Figures -- titles that exist only
+        as purchases. A film the account owns cannot be opened, let alone
+        played, if search will not admit it exists. The website's search is
+        kept as a fallback so a refusal here leaves search working.
         """
-        data = self._get_json("/search", {"searchTerm": query})
+        data = self._store_json("/search", {"searchTerm": query})
+        if not data:
+            kodiutils.log("Store search unavailable; falling back to the web "
+                          "search, which lists Apple TV+ titles only")
+            data = self._get_json("/search", {"searchTerm": query})
         items = []
         seen = set()
         for shelf in self._extract_shelves(data):
@@ -1425,6 +1437,16 @@ class AppleTVApi(object):
 
     def _store_detail(self, kind, content_id):
         """A title's detail as Apple's desktop TV app asks for it."""
+        return self._store_json("/%s/%s" % (kind, content_id))
+
+    def _store_json(self, path, extra=None):
+        """Ask the UTS API as Apple's desktop TV app rather than the website.
+
+        The caller decides what Apple is willing to say, and on two things it
+        decides a great deal: the website is sent no personalizedOffers for a
+        title, and its search returns Apple TV+ originals only. The same
+        search asked as the store app returns the whole store.
+        """
         params = {
             "caller": UTS_STORE_CALLER,
             "pfm": UTS_STORE_PFM,
@@ -1434,6 +1456,8 @@ class AppleTVApi(object):
             "utscf": UTS_CLIENT_FLAGS,
             "utsk": self._bootstrap().get("utsk") or "",
         }
+        if extra:
+            params.update(extra)
         headers = dict(self._uts_headers())
         # The capture identifies itself to this endpoint with the store dsid
         # and its cookies rather than a bearer. Send those too when a session
@@ -1444,22 +1468,20 @@ class AppleTVApi(object):
             found = re.search(r"amia-(\d+)=", cookies)
             if found:
                 headers["X-DSID"] = found.group(1)
-        url = "%s/%s/%s" % (UTS_STORE_BASE, kind, content_id)
         try:
-            resp = self.session.get(url, params=params, headers=headers,
-                                    timeout=20)
+            resp = self.session.get(UTS_STORE_BASE + path, params=params,
+                                    headers=headers, timeout=20)
         except Exception as exc:
-            kodiutils.log_error("Store detail request failed: %s" % exc)
+            kodiutils.log_error("Store request %s failed: %s" % (path, exc))
             return None
         if resp.status_code != 200:
-            kodiutils.log_error("Store detail %s -> %s %s"
-                                % (content_id, resp.status_code,
-                                   resp.text[:200]))
+            kodiutils.log_error("Store request %s -> %s %s"
+                                % (path, resp.status_code, resp.text[:200]))
             return None
         try:
             return resp.json()
         except ValueError:
-            kodiutils.log_error("Store detail for %s was not JSON" % content_id)
+            kodiutils.log_error("Store response for %s was not JSON" % path)
             return None
 
     @staticmethod
