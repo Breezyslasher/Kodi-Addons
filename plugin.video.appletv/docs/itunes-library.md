@@ -122,14 +122,22 @@ playable  tvs.sbd.9001:1324419603:8804f8d9
    entitlementReason  Unknown        (a purchase reads "Purchase" here)
 ```
 
-So `isEntitledToPlay` is what grants access, not the library listing, and the
-addon's ordinary playback path already prefers entitled playables. A
-family-shared film should therefore play if it is found through search --
-with none of the store sign-in below.
+`isEntitledToPlay` says the account may watch it, and that much is readable
+with no store session at all. It does **not** hand over a stream:
 
-Their resume positions do come through: the adam id above is one of the five
-in the bookkeeper, at 3669 seconds. The store tracks where you are in a shared
-title even though it will not list it.
+```
+playables: tvs.sbd.9001:1324419603:8804f8d9
+           isEntitledToPlay = True
+           assets           = {}        <- empty
+```
+
+An Apple TV+ playable carries `assets.hlsUrl` on this same response, which is
+how the addon resolves playback. An iTunes one carries nothing. The stream for
+a purchase comes from `downloaddispatch/r/redownload`, which needs the store
+session -- so entitlement is visible without signing in, and playback is not.
+
+Their resume positions are in the bookkeeper -- the adam id above is one of
+the five, at 3669 seconds -- but reading that store also needs the session.
 
 ## What is verified, and what is not
 
@@ -162,10 +170,24 @@ genuine Apple software. Aligning everything else that differed (the pod host
 client header, the `t:tv1` storefront suffix, the TV user agent) is done, and
 is worth having, but it is unlikely to be enough on its own.
 
-So the library **listing** is blocked at the account door, and probably stays
-blocked without attestation. What is not blocked is everything reached through
-the ordinary UTS API, which needs none of this -- see family sharing above:
-an iTunes title found by search reports `isEntitledToPlay` and plays.
+This blocks more than the listing. Everything on the store side is behind the
+same door:
+
+| | needs the store session |
+|---|---|
+| listing what the account owns | yes |
+| the stream for a purchase (`redownload`) | yes |
+| resume positions (`MZBookkeeper`) | yes |
+| **knowing a title is owned** (`isEntitledToPlay`) | **no** |
+
+Only the last is reachable, because it rides the ordinary UTS detail response.
+Search does return store films -- "Green Book" comes back with 14 results
+across Top Results, Movies and TV Shows -- but the results carry no
+entitlement or channel at all, only id, title, type, genres, duration,
+release date and artwork. Whether one is owned shows only once it is opened.
+
+So an iTunes title can be found, described and shown as owned. It cannot be
+played, and that is unlikely to change without device attestation.
 
 Also unverified: whether a purchased stream decrypts under Kodi's Widevine
 CDM. Purchases use the same `fpsRequest` licence endpoint as Apple TV+, which

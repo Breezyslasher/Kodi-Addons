@@ -40,6 +40,10 @@ APPLE_TV_PLUS_CHANNEL = "tvs.sbd.4000"
 # The brand tabs tv.apple.com puts along the top of the home page. Each is a
 # canvas of its own under /canvases/channels/{id}; the ids and names are the
 # ones Apple returns in the "channels" map of those responses.
+# Store content. Its playables say whether the account owns a title but carry
+# no assets: the stream comes from the store's own download service, which
+# this addon cannot reach. See docs/itunes-library.md.
+ITUNES_CHANNEL = "tvs.sbd.9001"
 MLS_CHANNEL = "tvs.sbd.7000"
 F1_CHANNEL = "tvs.sbd.241000"
 CHANNELS = (
@@ -1296,6 +1300,18 @@ class AppleTVApi(object):
         for p in candidates:
             if has_stream(p):
                 return self._enrich_assets(p)
+        # An owned iTunes title looks entitled but has no assets at all. Say
+        # so rather than reporting the generic failure, since nothing about
+        # the account or the network is wrong.
+        for p in candidates:
+            if isinstance(p, dict) and not p.get("assets") and (
+                    p.get("isItunes") or p.get("channelId") == ITUNES_CHANNEL):
+                self.last_error = (
+                    "This is an iTunes purchase. Apple sends no stream for "
+                    "these outside its own apps.")
+                kodiutils.log("iTunes playable %s carries no assets"
+                              % p.get("id"))
+                break
         return None
 
     @staticmethod
