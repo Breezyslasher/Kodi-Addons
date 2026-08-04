@@ -264,9 +264,51 @@ the manifest carries Widevine keys, which this addon collected two of.
 The addon now sends the store shape when a store session has been pasted in
 and the stream came from the override: store headers, the library agent's
 user agent, and the `guid` and `dsid` at the levels Apple puts them. What it
-cannot send is `kbsync`. Whether that is required, and whether a Widevine
-challenge is honoured where Apple's client sends a FairPlay one, are the two
-things left to find out — and both need a pasted session to test at all.
+cannot send is `kbsync`.
+
+## The stream is in the detail response after all
+
+That whole FairPlay detour turns out to be Apple's Windows *iTunes* client,
+not its TV app — and it is not how a purchase has to be played. Apple TV on
+Android has no FairPlay at all and plays purchases, so a Widevine path
+exists. Finding it needed one more look at captures already in hand.
+
+**A purchase's stream is not in `assets`.** That field is empty on every
+iTunes playable, whatever the caller. It is in `itunesMediaApiData`, which
+the same `/movies/{id}` detail request the addon already makes returns, split
+into two lists:
+
+```
+data.playables["tvs.sbd.9001:<adamId>:8804f8d9"].itunesMediaApiData
+   offers[]              kind=buy | rent    price=19990   ← everyone gets these
+   personalizedOffers[]  kind=redownload    price=0       ← only the store caller
+      hlsUrl  …/hls/playlist.m3u8?cc=US&a=<adamId>&id=<programId>&aec=SD
+              &l=en&dsid=<dsid>
+```
+
+`personalizedOffers` is the account's own copy, and its `hlsUrl` is the exact
+url Apple's TV app then played. The difference is the caller:
+
+| | `caller=web` on tv.apple.com | `caller=wlk` on uts-api.itunes.apple.com |
+|---|---|---|
+| `itunesMediaApiData` | yes | yes |
+| `offers` (buy/rent) | yes | yes |
+| **`personalizedOffers`** | **no** | **yes** |
+
+So the website is not refused a purchase — it is never offered one. That is
+why tv.apple.com cannot play what an Apple TV app on any other device can,
+and why every earlier reading of "Apple sends no stream for these" was
+looking at the wrong field on the wrong caller.
+
+The addon now falls back to that endpoint whenever an iTunes playable comes
+back with no assets, and plays the redownload offer if Apple names one.
+
+One thing capture cannot settle: Apple's client changed **two** things at
+once — it asks as `wlk` *and* authenticates with `X-DSID` plus store cookies
+rather than a bearer. Whether the caller alone is enough, or the store
+session is needed too, only a live request answers. The addon asks with what
+it holds and adds a pasted store session when one is set, and logs which of
+the two happened.
 
 The obstacle is `kbsync`: a device keybag blob on the request, the same class
 of thing as the attestation headers below. The addon sends the request

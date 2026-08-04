@@ -28,6 +28,15 @@ from . import kodiutils
 from . import license_proxy
 
 UTS_BASE = "https://tv.apple.com/api/uts/v3"
+# The same UTS API, asked as Apple's desktop TV app rather than the website.
+# It matters for one thing only, and it is the thing tv.apple.com cannot do:
+# an owned iTunes title's detail comes back with personalizedOffers, whose
+# hlsUrl is the purchase's own stream. The web caller is sent the buy and rent
+# offers and nothing else, which is why the website will not play a purchase.
+UTS_STORE_BASE = "https://uts-api.itunes.apple.com/uts/v3"
+UTS_STORE_CALLER = "wlk"
+UTS_STORE_PFM = "windows"
+UTS_STORE_VERSION = "94"
 WEB_HOME = "https://tv.apple.com"
 WIDEVINE_CERT_URL = "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/widevineCert"
 
@@ -1329,13 +1338,111 @@ class AppleTVApi(object):
         for p in candidates:
             if isinstance(p, dict) and not p.get("assets") and (
                     p.get("isItunes") or p.get("channelId") == ITUNES_CHANNEL):
-                self.last_error = (
-                    "This is an iTunes purchase. Apple sends no stream for "
-                    "these outside its own apps.")
-                kodiutils.log("iTunes playable %s carries no assets"
+                kodiutils.log("iTunes playable %s carries no assets; asking the "
+                              "store app's endpoint for a redownload offer"
                               % p.get("id"))
+                owned = self._itunes_offer(p)
+                if owned:
+                    return owned
+                self.last_error = (
+                    "This is an iTunes purchase, and Apple offered no "
+                    "redownload for it on this account.")
                 break
         return None
+
+    def _itunes_offer(self, playable):
+        """The owned stream for an iTunes title, if Apple will name one.
+
+        A purchase's stream is not in assets -- that field is empty for every
+        iTunes playable, on every caller. It is in itunesMediaApiData, split
+        two ways: offers are what the title costs to buy or rent, and
+        personalizedOffers is the copy this account already owns, priced at
+        zero and marked redownload. Only the store app's caller is sent the
+        second list, which is exactly why the website cannot play a purchase
+        and an Apple TV app on another device can.
+
+        Whether the personalised list needs the store session as well as the
+        store caller is not answerable from a capture -- Apple's client
+        changed both at once -- so this asks with what the addon holds and
+        adds a pasted store session when there is one.
+        """
+        content_id = playable.get("canonicalId") or playable.get("contentId")
+        if not content_id:
+            return None
+        kind = "episodes" if playable.get("contentType") == "Episode" else "movies"
+        data = self._store_detail(kind, content_id)
+        if not data:
+            return None
+        playables = self._deep_find(data, "playables")
+        if isinstance(playables, dict):
+            candidates = list(playables.values())
+        elif isinstance(playables, list):
+            candidates = playables
+        else:
+            candidates = []
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            media = candidate.get("itunesMediaApiData") or {}
+            offers = media.get("personalizedOffers") or []
+            if not offers:
+                continue
+            # Apple lists the qualities it will serve; take the best.
+            best = None
+            for offer in offers:
+                if not offer.get("hlsUrl"):
+                    continue
+                if best is None or offer.get("variant") == "HD":
+                    best = offer
+            if not best:
+                continue
+            kodiutils.log("iTunes redownload offer found: %s %s"
+                          % (best.get("kind"), best.get("variant")))
+            return {"hlsUrl": best["hlsUrl"],
+                    "adamId": str(media.get("id") or ""),
+                    "isItunes": True}
+        kodiutils.log("No personalizedOffers came back; the store caller alone "
+                      "may not be enough without a store session")
+        return None
+
+    def _store_detail(self, kind, content_id):
+        """A title's detail as Apple's desktop TV app asks for it."""
+        params = {
+            "caller": UTS_STORE_CALLER,
+            "pfm": UTS_STORE_PFM,
+            "v": UTS_STORE_VERSION,
+            "locale": self._locale(),
+            "sf": self._storefront(),
+            "utscf": UTS_CLIENT_FLAGS,
+            "utsk": self._bootstrap().get("utsk") or "",
+        }
+        headers = dict(self._uts_headers())
+        # The capture identifies itself to this endpoint with the store dsid
+        # and its cookies rather than a bearer. Send those too when a session
+        # has been pasted in; the dsid names itself inside the cookie.
+        cookies = (kodiutils.get_setting("itunes_cookies") or "").strip()
+        if cookies:
+            headers["Cookie"] = cookies
+            found = re.search(r"amia-(\d+)=", cookies)
+            if found:
+                headers["X-DSID"] = found.group(1)
+        url = "%s/%s/%s" % (UTS_STORE_BASE, kind, content_id)
+        try:
+            resp = self.session.get(url, params=params, headers=headers,
+                                    timeout=20)
+        except Exception as exc:
+            kodiutils.log_error("Store detail request failed: %s" % exc)
+            return None
+        if resp.status_code != 200:
+            kodiutils.log_error("Store detail %s -> %s %s"
+                                % (content_id, resp.status_code,
+                                   resp.text[:200]))
+            return None
+        try:
+            return resp.json()
+        except ValueError:
+            kodiutils.log_error("Store detail for %s was not JSON" % content_id)
+            return None
 
     @staticmethod
     def _enrich_assets(playable):
