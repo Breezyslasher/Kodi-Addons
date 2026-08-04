@@ -64,9 +64,20 @@ TAG_ARTWORK_ALT = "aeat"
 TAG_SHOW = "assn"
 TAG_COLLECTION = "asal"
 TAG_EXTRAS = "ajEU"         # iTunes Extras, when the title has any
+TAG_DURATION = "astm"       # DAAP's track time, in milliseconds
+
+# Tags whose payload is a number. Guessing from the bytes is not enough: a
+# duration of 5,633,558 ms begins with 0x56, which is "V", so it reads as a
+# string under any is-this-text test.
+DMAP_INTEGERS = ("astm", "asyr", "mtco", "mrco", "mstt", "astn", "astc",
+                 "aeSI", "aeAI", "muty", "ascr", "asdb", "mavl", "aeli")
 
 # Containers rather than values, so their payload is more DMAP.
-DMAP_CONTAINERS = ("adbs", "mlcl", "mlit", "abro", "msrv", "mccr", "mshl")
+# aefl holds one aeif per downloadable asset, and the runtime is in there
+# rather than on the title itself -- confirmed by parsing aefl's payload and
+# finding it consumes exactly as DMAP.
+DMAP_CONTAINERS = ("adbs", "mlcl", "mlit", "abro", "msrv", "mccr", "mshl",
+                   "aefl", "aeif")
 
 # Apple's epoch is 2001-01-01, not 1970.
 MAC_EPOCH_OFFSET = 978307200
@@ -99,7 +110,8 @@ def _dmap_parse(buf):
             else:
                 out[tag] = child
             continue
-        if length in (1, 2, 4, 8) and not any(32 <= b < 127 for b in body):
+        if length in (1, 2, 4, 8) and (
+                tag in DMAP_INTEGERS or not any(32 <= b < 127 for b in body)):
             out[tag] = int.from_bytes(body, "big")
         else:
             out[tag] = body.decode("utf-8", "replace")
@@ -242,6 +254,23 @@ class ItunesStore(object):
         return items
 
     @staticmethod
+    def _duration(entry):
+        """Runtime in seconds, from the asset rather than the title.
+
+        astm is DAAP's track time in milliseconds and sits inside aeif, one
+        of which describes each downloadable asset. A title with several
+        assets lists them all, so the longest is the feature.
+        """
+        assets = (entry.get("aefl") or {}).get("aeif")
+        if assets is None:
+            return None
+        if not isinstance(assets, list):
+            assets = [assets]
+        times = [a.get(TAG_DURATION) for a in assets
+                 if isinstance(a, dict) and isinstance(a.get(TAG_DURATION), int)]
+        return max(times) // 1000 if times else None
+
+    @staticmethod
     def _map(entry):
         """One DMAP title as a catalogue entry."""
         content_id = entry.get(TAG_CONTENT_ID)
@@ -270,6 +299,9 @@ class ItunesStore(object):
             # Already tokenised, so it plays without resolving anything first.
             "stream_url": entry.get(TAG_STREAM),
             "extras_url": entry.get(TAG_EXTRAS),
+            # astm is DAAP's track time in milliseconds. Seconds are what the
+            # rest of the addon and Kodi both work in.
+            "duration": ItunesStore._duration(entry),
         }
 
     # -- resume ----------------------------------------------------------

@@ -282,3 +282,22 @@ msgstr ""
 msgctxt "#32069"
 msgid "Cast & crew"
 msgstr ""
+
+msgctxt "#32070"
+msgid "Sign in to the iTunes Store"
+msgstr ""
+
+
+msgctxt "#32071"
+msgid "Sign out of the iTunes Store"
+msgstr ""
+
+
+msgctxt "#32072"
+msgid "Signed in to the iTunes Store"
+msgstr ""
+
+
+msgctxt "#32073"
+msgid "iTunes Store sign-in failed"
+msgstr ""

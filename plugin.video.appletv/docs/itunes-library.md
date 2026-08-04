@@ -105,6 +105,32 @@ POST upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/put
 
 Marking watched and unwatched differ only in `hbpl` and `plct`.
 
+## Family sharing is not in the library
+
+The DAAP listing holds what **this account bought**. A film shared by a family
+member is absent from it, which matches Apple's own Windows client: it does
+not show family purchases in its sidebar either.
+
+Those titles are still reachable, and by an easier route. Searching for one
+and opening it returns a playable on the iTunes channel:
+
+```
+playable  tvs.sbd.9001:1324419603:8804f8d9
+   channelId          tvs.sbd.9001
+   isItunes           True
+   isEntitledToPlay   True
+   entitlementReason  Unknown        (a purchase reads "Purchase" here)
+```
+
+So `isEntitledToPlay` is what grants access, not the library listing, and the
+addon's ordinary playback path already prefers entitled playables. A
+family-shared film should therefore play if it is found through search --
+with none of the store sign-in below.
+
+Their resume positions do come through: the adam id above is one of the five
+in the bookkeeper, at 3669 seconds. The store tracks where you are in a shared
+title even though it will not list it.
+
 ## What is verified, and what is not
 
 Verified by replaying real captures through this code:
@@ -114,6 +140,9 @@ Verified by replaying real captures through this code:
 - the resume decode — five positions recovered from a live `getAll`, with a
   finished title correctly skipped
 - the resume encode — round-trips through deflate and back
+- the runtime — `astm` is inside `aeif`, not on the title, which was
+  established by parsing `aefl`'s payload and finding it consumes exactly as
+  DMAP; the film's 5,678,891 ms comes out as its real 1:34:38
 
 **Not verified, and the whole feature rests on it:** whether Apple accepts a
 `guid` this addon invents. Apple's own is seven groups of eight hex digits and

@@ -70,6 +70,10 @@ S = {
     "spotlight": 32067,
     "race_weekend": 32068,
     "cast": 32069,
+    "itunes_sign_in": 32070,
+    "itunes_sign_out": 32071,
+    "itunes_sign_in_ok": 32072,
+    "itunes_sign_in_failed": 32073,
 }
 
 
@@ -281,7 +285,8 @@ def main_menu(auth):
     for channel_id, name in CHANNELS:
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
-    if ItunesStore(auth.session).is_signed_in():
+    store = ItunesStore(auth.session)
+    if store.is_signed_in():
         add_dir(L("itunes_library"), "itunes")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
@@ -290,6 +295,10 @@ def main_menu(auth):
         add_dir(L("sign_out"), "sign_out")
     else:
         add_dir(L("sign_in"), "sign_in")
+    # The store is a separate service with its own login, so signing in to
+    # Apple TV+ does not sign in to it.
+    add_dir(L("itunes_sign_out") if store.is_signed_in() else L("itunes_sign_in"),
+            "itunes_sign_out" if store.is_signed_in() else "itunes_sign_in")
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -443,6 +452,26 @@ def do_show(api, show_id):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
+def do_itunes_sign_in(auth):
+    """Sign in to the store, which is not the Apple TV+ sign-in.
+
+    Apple takes the password directly here rather than through the SRP flow
+    the website uses, so this asks for it again rather than reusing anything.
+    """
+    apple_id = kodiutils.input_text(L("enter_apple_id"))
+    if not apple_id:
+        return
+    password = kodiutils.input_text(L("enter_password"), hidden=True)
+    if not password:
+        return
+    store = ItunesStore(auth.session)
+    if store.sign_in(apple_id, password):
+        kodiutils.notify(L("itunes_sign_in_ok"))
+    else:
+        kodiutils.ok_dialog("%s\n%s" % (L("itunes_sign_in_failed"),
+                                        store.last_error or ""))
+
+
 def do_itunes_library(api, auth):
     """What the account owns, from the store rather than the catalogue."""
     store = ItunesStore(auth.session)
@@ -580,6 +609,10 @@ def write_report_context(playback, duration=None, content_id=None):
     if content_id:
         # Also what Continue Watching sends as its playerContentId.
         report["content_id"] = content_id
+    if playback.get("adam_id"):
+        # A purchase reports to the store's key-value bookkeeper instead of
+        # the now-playing service, and is keyed by its store id.
+        report["adam_id"] = playback["adam_id"]
     kodiutils.write_json(PLAYBACK_REPORT_CACHE, report)
 
 
@@ -797,6 +830,12 @@ def router(paramstring):
         show_items(api.get_show_episodes(show_id, season=params.get("season")),
                    content="episodes",
                    cast=api.get_cast(show_id, "Show"))
+    elif action == "itunes_sign_in":
+        do_itunes_sign_in(auth)
+        main_menu(auth)
+    elif action == "itunes_sign_out":
+        ItunesStore(auth.session).sign_out()
+        main_menu(auth)
     elif action == "itunes":
         do_itunes_library(api, auth)
     elif action == "search":
