@@ -325,3 +325,8 @@ msgstr ""
 msgctxt "#32078"
 msgid "TV Shows"
 msgstr ""
+
+
+msgctxt "#32079"
+msgid "Store X-Token (for licensing purchases)"
+msgstr ""

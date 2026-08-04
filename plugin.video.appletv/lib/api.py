@@ -965,6 +965,9 @@ class AppleTVApi(object):
             "adam_id": assets.get("adam_id", ""),
             "svc_id": assets.get("svc_id", ""),
             "is_external": assets.get("is_external", True),
+            # Lets the licence proxy tell a purchase from a catalogue title,
+            # since the two are authorised by different sessions.
+            "override": override,
             "wv_keys": wv_keys,
             "license_server": assets.get("license_server", ""),
             "user_agent": self.session.headers.get("User-Agent", ""),

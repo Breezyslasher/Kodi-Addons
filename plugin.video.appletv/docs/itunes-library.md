@@ -216,12 +216,57 @@ Worth reading carefully, because it is not a generic failure:
 - The refusal is per key: `status: -1020` on key `id: 1`. What that number
   means is not documented anywhere reachable and is not guessed at here.
 
-The untested variable is **identity**. That request carried an Apple TV+
-developer token and whatever media-user-token the addon held, which on the
-machine tested was none — so Apple was asked to license a purchase without
-being told who was asking. Whether a signed-in account changes the answer is
-the next thing to find out, and the licence proxy now logs which credentials
-it sent so the next refusal can be read against them.
+Signing in to Apple TV+ and repeating it changes nothing:
+
+```
+License identity: bearer=yes, media-user-token=yes, adamId=252260696
+… status: -1020
+```
+
+**An Apple TV+ identity does not authorise a purchase.** That is a tested
+result, not an inference.
+
+### What Apple's own client sends instead
+
+Captures of the Windows client streaming a purchase — the `hls/playlist.m3u8`
+with `?a=<adamId>` form, not the `subscription/` one — carry its licence
+request, and it is a different animal:
+
+```
+POST play-edge…/MZPlayLocal.woa/wa/fpsRequest
+     X-Dsid: <dsid>          X-Token: AwIAAAEC…
+     Cookie: <store session>
+     User-Agent: AMPLibraryAgent/1.6.4 …
+     X-Apple-Store-Front: 143441-1,42
+
+{"fairplay-streaming-request":{
+   "streaming-keys":[{"guid":"16D0454F…","id":"1","adamId":"387548805",
+                      "uri":"skd://itunes.apple.com/p1136803310/c1","spc":"…"}],
+   "kbsync":"…","dsid":"…","version":1}}
+
+→ {"fairplay-streaming-response":{"streaming-keys":[
+     {"id":"1","status":"0","ckc":"…","renew-after":"780"}]}}
+```
+
+Four differences, all of them load-bearing:
+
+| | Apple TV+ (works today) | a purchase |
+|---|---|---|
+| authorises with | Bearer + media-user-token | `X-Dsid` + `X-Token` + store cookies |
+| user agent | the web player's | `AMPLibraryAgent` |
+| key system | Widevine (`challenge` → `license`) | FairPlay (`spc` → `ckc`) |
+| extra | — | `kbsync`, a device keybag |
+
+So the licence is gated by the **store** session, the same door the sign-in
+and the locker are behind — and Apple's client asks for FairPlay even though
+the manifest carries Widevine keys, which this addon collected two of.
+
+The addon now sends the store shape when a store session has been pasted in
+and the stream came from the override: store headers, the library agent's
+user agent, and the `guid` and `dsid` at the levels Apple puts them. What it
+cannot send is `kbsync`. Whether that is required, and whether a Widevine
+challenge is honoured where Apple's client sends a FairPlay one, are the two
+things left to find out — and both need a pasted session to test at all.
 
 The obstacle is `kbsync`: a device keybag blob on the request, the same class
 of thing as the attestation headers below. The addon sends the request
