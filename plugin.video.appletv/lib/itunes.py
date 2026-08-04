@@ -350,22 +350,51 @@ class ItunesStore(object):
         for store_id, row in self.lookup(ids).items():
             if not isinstance(row, dict) or not row.get("name"):
                 continue
-            art = (row.get("artwork") or {}).get("url") or ""
-            # mzstatic templates ask for the size wanted.
-            art = art.replace("{w}", "600").replace("{h}", "900") \
-                     .replace("{f}", "jpg").replace("{c}", "")
-            items.append({
-                "id": str(store_id),
-                "adam_id": str(store_id),
-                "title": row.get("name"),
-                "sort_title": row.get("nameSortValue") or row.get("name"),
-                "type": "Movie",
-                "plot": (row.get("description") or {}).get("standard")
-                        if isinstance(row.get("description"), dict) else None,
-                "genres": row.get("genreNames") or [],
-                "art": {"poster": art, "thumb": art, "icon": art} if art else None,
-            })
+            entry = self._from_lookup(store_id, row)
+            if entry:
+                items.append(entry)
         return items
+
+    @staticmethod
+    def _from_lookup(store_id, row):
+        """One store lookup result as a catalogue entry.
+
+        Field names here are the store's, not the UTS API's, and were read off
+        a real response: the synopsis is itunesNotes.standard rather than a
+        description, the certificate is nested per rating system, and the
+        release date is already a date rather than epoch milliseconds.
+        """
+        if row.get("kind") not in (None, "movie"):
+            return None
+        art = ((row.get("artwork") or {}).get("url") or "")
+        art = (art.replace("{w}", "600").replace("{h}", "900")
+                  .replace("{f}", "jpg").replace("{c}", ""))
+        notes = row.get("itunesNotes")
+        plot = notes.get("standard") if isinstance(notes, dict) else None
+        # contentRatingsBySystem is keyed by system; take whichever is there.
+        rating = None
+        for system in (row.get("contentRatingsBySystem") or {}).values():
+            if isinstance(system, dict) and system.get("name"):
+                rating = system["name"]
+                break
+        released = str(row.get("releaseDate") or "")
+        year = None
+        if len(released) >= 4 and released[:4].isdigit():
+            year = int(released[:4])
+        return {
+            "id": str(store_id),
+            "adam_id": str(store_id),
+            "title": row.get("name"),
+            "sort_title": row.get("nameSortValue") or row.get("name"),
+            "type": "Movie",
+            "plot": plot,
+            "genres": row.get("genreNames") or [],
+            "mpaa": rating,
+            "year": year,
+            "premiered": released[:10] or None,
+            "studio": row.get("artistName"),
+            "art": {"poster": art, "thumb": art, "icon": art} if art else None,
+        }
 
     def session_info(self):
         return kodiutils.read_json(STORE_SESSION_CACHE, default={}) or {}
