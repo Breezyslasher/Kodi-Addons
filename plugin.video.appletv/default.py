@@ -74,6 +74,8 @@ S = {
     "itunes_sign_out": 32071,
     "itunes_sign_in_ok": 32072,
     "itunes_sign_in_failed": 32073,
+    "films": 32077,
+    "tv_shows": 32078,
 }
 
 
@@ -473,26 +475,64 @@ def do_itunes_sign_in(auth):
 
 
 def do_itunes_library(api, auth):
-    """What the account owns, from the store rather than the catalogue."""
-    store = ItunesStore(auth.session)
-    # A pasted store session takes the JSON route, which is what iTunes for
-    # Windows uses and is far simpler than the DAAP one. Signing in here is
-    # refused by Apple, so that route only runs if a session was borrowed.
-    # The JSON locker is the better route and works with any session that the
-    # store accepts, pasted or otherwise. The DAAP one needs a store sign-in,
-    # which Apple refuses here, so it is only worth trying if one succeeded.
-    items = store.owned_movies()
-    if not items and store.is_signed_in():
-        items = store.library()
-    if not items:
-        kodiutils.notify(store.last_error or L("no_results"))
+    """The two halves of the store locker, which are separate requests."""
+    add_dir(L("films"), "itunes_movies")
+    add_dir(L("tv_shows"), "itunes_tv")
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def _with_resume(store, items):
+    """Attach where each purchase was left, where the store knows."""
     resume = store.resume_points()
     for entry in items:
         position = resume.get(entry.get("adam_id"))
         if position and entry.get("duration"):
             entry["resume"] = {"position": position,
                                "total": float(entry["duration"])}
-    show_items(items)
+    return items
+
+
+def do_itunes_movies(api, auth):
+    """Films the account owns, from the store rather than the catalogue."""
+    store = ItunesStore(auth.session)
+    # The JSON locker is the better route and works with any session that the
+    # store accepts, pasted or otherwise. The DAAP one needs a store sign-in,
+    # which Apple refuses here, so it is only worth trying if one succeeded.
+    items = store.owned_movies()
+    if not items and store.is_signed_in():
+        items = store.library()
+    # show_items says "nothing here" on its own; this is for when Apple gave a
+    # reason, which is more use than an empty list.
+    if not items and store.last_error:
+        kodiutils.notify(store.last_error)
+    show_items(_with_resume(store, items))
+
+
+def do_itunes_tv(api, auth):
+    """Owned television, as the seasons its episodes belong to.
+
+    Apple's locker lists episodes flat -- fifteen episodes across five
+    seasons of five different shows, in the capture this was built from --
+    so the seasons here are grouped from what the episodes say about
+    themselves rather than fetched as rows of their own.
+    """
+    store = ItunesStore(auth.session)
+    seasons = store.owned_tv_seasons()
+    if not seasons:
+        kodiutils.notify(store.last_error or L("no_results"))
+    for season in seasons:
+        add_dir(season["title"], "itunes_season", art=season.get("art"),
+                info=season, media_type="season", season_id=season["id"])
+    xbmcplugin.setContent(HANDLE, "seasons")
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_season(api, auth, season_id):
+    store = ItunesStore(auth.session)
+    episodes = store.owned_season(season_id)
+    if not episodes and store.last_error:
+        kodiutils.notify(store.last_error)
+    show_items(_with_resume(store, episodes), content="episodes")
 
 
 def do_search(api):
@@ -846,6 +886,12 @@ def router(paramstring):
         main_menu(auth)
     elif action == "itunes":
         do_itunes_library(api, auth)
+    elif action == "itunes_movies":
+        do_itunes_movies(api, auth)
+    elif action == "itunes_tv":
+        do_itunes_tv(api, auth)
+    elif action == "itunes_season":
+        do_itunes_season(api, auth, params.get("season_id"))
     elif action == "search":
         do_search(api)
     elif action == "play":

@@ -29,6 +29,7 @@ up rather than one belonging to a registered device.
 
 import gzip
 import plistlib
+import re
 import struct
 import time
 import uuid
@@ -45,10 +46,13 @@ LIBRARY_URL = ("https://pd.itunes.apple.com/WebObjects/MZPurchaseDaap.woa"
 # to read than DMAP. mt selects the media type; observed: 1 music, 4, 6 films.
 PURCHASES_URL = ("https://se-edge.itunes.apple.com/WebObjects"
                  "/MZStoreElements.woa/wa/purchases")
-# mt selects the media type. Observed: 1 music, 3 TV, 4 an album-shaped kind,
-# 6 films.
+# mt selects the media type, and the numbers are not the ones the tab names
+# suggest. Every value was checked against a real locker: 1 returns songs, 6
+# returns films, and 4 -- not 3 -- returns television. mt=3 answers 200 with
+# an empty locker on every account tried, including the one that owns 94
+# films and 15 episodes, so whatever it selects, this account has none of it.
 PURCHASES_MEDIA_TYPE_MOVIES = "6"
-PURCHASES_MEDIA_TYPE_TV = "3"
+PURCHASES_MEDIA_TYPE_TV = "4"
 # The locker returns store ids only; their titles come from here. The client
 # also sends X-JS-SP-TOKEN and X-JS-TIMESTAMP, signed by its storefront
 # JavaScript. Whether they are required is not answerable from a capture, so
@@ -58,8 +62,15 @@ LOOKUP_URL = ("https://client-api.itunes.apple.com/WebObjects"
 BOOKKEEPER_GET_ALL = "https://upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/getAll"
 BOOKKEEPER_PUT = "https://upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/put"
 BOOKKEEPER_DOMAIN = "com.apple.upp"
+# Asking for a purchase again -- what the cloud-download button does. It is a
+# purchase call with the price set to zero and STDRDL for "standard
+# redownload"; there is no separate redownload endpoint.
+REDOWNLOAD_URL = "https://p18-buy.itunes.apple.com/WebObjects/MZBuy.woa/wa/buyProduct"
+REDOWNLOAD_PRICING = "STDRDL"
+PRODUCT_TYPE_VIDEO = "V"
 
 STORE_SESSION_CACHE = "itunes_session.json"
+TV_LOCKER_CACHE = "itunes_tv.json"
 # What the Apple TV client sends. AMPLibraryAgent is the music side's agent
 # and is not what the store sees on these calls.
 STORE_UA = ("TV/1.6.4 (Windows 10.0.19045 x64; x64) "
@@ -251,6 +262,21 @@ class ItunesStore(object):
         """
         return (kodiutils.get_setting("itunes_cookies") or "").strip()
 
+    def account_dsid(self):
+        """The signed-in account's own dsid.
+
+        A store session names its account in the cookie itself: the capture
+        carries ``amia-12305910250=...``, and 12305910250 is exactly what the
+        client then sends as X-Dsid. So a pasted session needs no second
+        setting to say whose it is. This is not the same number as the family
+        dsid used for spDsid -- that one says whose purchases to list.
+        """
+        info = self.session_info()
+        if info.get("dsid"):
+            return str(info["dsid"])
+        found = re.search(r"amia-(\d+)=", self.pasted_cookies())
+        return found.group(1) if found else ""
+
     def locker(self, media_type=PURCHASES_MEDIA_TYPE_MOVIES):
         """Store ids the account owns, from the JSON purchases endpoint.
 
@@ -364,7 +390,63 @@ class ItunesStore(object):
         return self.owned(PURCHASES_MEDIA_TYPE_MOVIES)
 
     def owned_tv(self):
-        return self.owned(PURCHASES_MEDIA_TYPE_TV)
+        """Owned episodes, cached so a season can be opened without refetching.
+
+        Kodi starts a new process for every navigation, so the grouping below
+        would otherwise have to ask Apple again just to list one season.
+        """
+        episodes = self.owned(PURCHASES_MEDIA_TYPE_TV)
+        if episodes:
+            kodiutils.write_json(TV_LOCKER_CACHE,
+                                 {"stamp": time.time(), "items": episodes})
+        return episodes
+
+    def owned_tv_cached(self):
+        cached = kodiutils.read_json(TV_LOCKER_CACHE, default={}) or {}
+        return cached.get("items") or []
+
+    def owned_tv_seasons(self):
+        """Owned episodes gathered into the seasons they belong to.
+
+        The television locker lists episodes and nothing else -- no season
+        rows, no series rows -- so the seasons here are built rather than
+        fetched. Each episode names its own in collectionId and
+        collectionName, and that name already reads "Show, Season 1", so a
+        season needs no extra call to describe itself.
+        """
+        seasons = {}
+        for episode in self.owned_tv():
+            key = episode.get("season_id") or episode.get("show_id") or ""
+            group = seasons.get(key)
+            if group is None:
+                group = seasons[key] = {
+                    "id": key,
+                    "type": "Season",
+                    "title": (episode.get("season_title")
+                              or episode.get("show_title") or ""),
+                    "sort_title": (episode.get("season_title")
+                                   or episode.get("show_title") or ""),
+                    "show_title": episode.get("show_title"),
+                    "show_id": episode.get("show_id"),
+                    "season": episode.get("season"),
+                    "year": episode.get("year"),
+                    "genres": episode.get("genres") or [],
+                    "mpaa": episode.get("mpaa"),
+                    "studio": episode.get("studio"),
+                    "art": episode.get("art"),
+                    "episode_count": 0,
+                }
+            group["episode_count"] += 1
+        return sorted(seasons.values(), key=lambda s: s["sort_title"].lower())
+
+    def owned_season(self, season_id):
+        """The owned episodes of one season, in order."""
+        episodes = [e for e in self.owned_tv_cached()
+                    if str(e.get("season_id") or "") == str(season_id)]
+        if not episodes:
+            episodes = [e for e in self.owned_tv()
+                        if str(e.get("season_id") or "") == str(season_id)]
+        return sorted(episodes, key=lambda e: e.get("episode") or 0)
 
     @staticmethod
     def _from_lookup(store_id, row):
@@ -376,8 +458,9 @@ class ItunesStore(object):
         release date is already a date rather than epoch milliseconds.
         """
         kind = row.get("kind")
-        if kind not in (None, "movie", "tvSeason", "tvEpisode"):
+        if kind not in (None, "movie", "movieBundle", "tvSeason", "tvEpisode"):
             return None
+        television = kind in ("tvSeason", "tvEpisode")
         art = ((row.get("artwork") or {}).get("url") or "")
         art = (art.replace("{w}", "600").replace("{h}", "900")
                   .replace("{f}", "jpg").replace("{c}", ""))
@@ -398,17 +481,29 @@ class ItunesStore(object):
             "adam_id": str(store_id),
             "title": row.get("name"),
             "sort_title": row.get("nameSortValue") or row.get("name"),
-            "type": "Episode" if kind == "tvEpisode" else "Movie",
-            # A season is a folder of episodes on Apple's side too, but the
-            # locker lists it as one entry; its own name carries the series.
-            "show_title": row.get("collectionName") or row.get("artistName")
-                          if kind in ("tvSeason", "tvEpisode") else None,
+            "type": "Episode" if kind == "tvEpisode" else (
+                "Season" if kind == "tvSeason" else "Movie"),
+            # artistName is the series for television and the director for a
+            # film -- the same field meaning two different things, so which
+            # one it is has to be decided by kind.
+            "show_title": row.get("artistName") if television else None,
+            # Only an episode carries its season; a season row is the season.
+            "season": row.get("episodeSeasonNumber"),
+            "episode": row.get("episodeNumber") or row.get("trackNumber")
+                       if kind == "tvEpisode" else None,
+            "season_id": str(row.get("collectionId") or "") or None,
+            "season_title": row.get("collectionName"),
+            "show_id": str(row.get("artistId") or "") or None,
+            # An episode count, on a season row.
+            "track_count": row.get("trackCount"),
+            # Television rows carry no synopsis under this profile -- not an
+            # empty one, the field is simply absent. Only films have notes.
             "plot": plot,
             "genres": row.get("genreNames") or [],
             "mpaa": rating,
             "year": year,
             "premiered": released[:10] or None,
-            "studio": row.get("artistName"),
+            "studio": row.get("copyright") if television else row.get("artistName"),
             "art": {"poster": art, "thumb": art, "icon": art} if art else None,
         }
 
@@ -416,7 +511,13 @@ class ItunesStore(object):
         return kodiutils.read_json(STORE_SESSION_CACHE, default={}) or {}
 
     def is_signed_in(self):
-        return bool(self.session_info().get("dsid"))
+        """Whether there is a store session at all, minted or borrowed.
+
+        The sign-in above is refused, so in practice this is true only when a
+        session has been pasted in from a real Apple client -- but the calls
+        below do not care which of the two they got.
+        """
+        return bool(self.session_info().get("dsid") or self.pasted_cookies())
 
     def sign_out(self):
         kodiutils.write_json(STORE_SESSION_CACHE, {})
@@ -424,10 +525,14 @@ class ItunesStore(object):
     def _store_headers(self):
         info = self.session_info()
         headers = self._headers()
-        if info.get("dsid"):
-            headers["X-Dsid"] = info["dsid"]
+        dsid = self.account_dsid()
+        if dsid:
+            headers["X-Dsid"] = dsid
         if info.get("password_token"):
             headers["X-Token"] = info["password_token"]
+        cookies = self.pasted_cookies()
+        if cookies:
+            headers["Cookie"] = cookies
         return headers
 
     # -- library ---------------------------------------------------------
@@ -518,6 +623,144 @@ class ItunesStore(object):
             # astm is DAAP's track time in milliseconds. Seconds are what the
             # rest of the addon and Kodi both work in.
             "duration": ItunesStore._duration(entry),
+        }
+
+    # -- playback --------------------------------------------------------
+
+    def redownload(self, adam_id, owner_dsid=None):
+        """Ask the store for a purchase again, and read where it may be got.
+
+        This is the cloud-download button. There is no endpoint named
+        "redownload": it is an ordinary purchase with the price at zero and
+        STDRDL as the pricing parameter, and Apple answers with both a
+        progressive file and a streaming playlist.
+
+        ``owner_dsid`` is whose copy to fetch, and a family member's number is
+        accepted there -- the capture this was read from redownloads a film
+        the signed-in account does not own itself.
+
+        The open question is ``kbsync``: the real request carries a device
+        keybag blob, which is the same class of thing as the attestation
+        headers the sign-in wants and cannot be produced here. This asks
+        without it rather than assuming the answer.
+        """
+        self.last_error = None
+        if not self.is_signed_in():
+            self.last_error = "not signed in to the store"
+            return None
+        body = plistlib.dumps({
+            "guid": self._guid(),
+            "salableAdamId": str(adam_id),
+            "productType": PRODUCT_TYPE_VIDEO,
+            "pricingParameters": REDOWNLOAD_PRICING,
+            "price": "0",
+            "pg": "default",
+            "needDiv": "1",
+            "machineName": kodiutils.get_setting("itunes_machine_name") or "Kodi",
+            "ownerDsid": str(owner_dsid or self.account_dsid() or ""),
+            "supportsGpuContentProtection": True,
+        })
+        try:
+            resp = self.session.post(REDOWNLOAD_URL, data=body,
+                                     headers=self._store_headers(), timeout=30)
+        except Exception as exc:
+            self.last_error = str(exc)
+            kodiutils.log_error("iTunes redownload failed: %s" % exc)
+            return None
+        try:
+            data = plistlib.loads(resp.content)
+        except Exception:
+            self.last_error = "HTTP %s: %s" % (resp.status_code,
+                                               resp.text[:200].strip())
+            kodiutils.log_error("iTunes redownload -> %s %s"
+                                % (resp.status_code, resp.text[:300]))
+            return None
+        # A refusal comes back as a 200 with the reason in the body, the same
+        # way the sign-in does.
+        songs = data.get("songList") or []
+        if not songs:
+            self.last_error = (data.get("customerMessage")
+                               or data.get("failureType")
+                               or "the store returned no download")
+            kodiutils.log_error("iTunes redownload refused: %s" % self.last_error)
+            return None
+        return self._from_redownload(songs[0])
+
+    @staticmethod
+    def _from_redownload(song):
+        """The parts of a redownload answer that playback could use.
+
+        Two routes come back. ``URL`` is a progressive .m4v carrying its own
+        access key -- it needs no cookies, and it is FairPlay encrypted, with
+        the keys wrapped into sinf boxes for the device that asked.
+        ``hls-playlist-url`` is the streaming route, and it is an ordinary url
+        with the adam id in the query string.
+
+        Which DRM that playlist offers is the thing worth knowing and is not
+        settled here: the key certificate Apple hands the Windows client is
+        the FairPlay bundle, but the licence host is the very same
+        MZPlayLocal/fpsRequest this addon already proxies Widevine through for
+        Apple TV+. So the playlist is returned as found, unjudged.
+        """
+        return {
+            "adam_id": str(song.get("songId") or ""),
+            "download_url": song.get("URL"),
+            "hls_url": song.get("hls-playlist-url"),
+            "key_server": song.get("hls-key-server-url"),
+            "key_cert": song.get("hls-key-cert-url"),
+            "artwork": song.get("artworkURL"),
+            "is_redownload": bool(song.get("isRedownload")),
+            "has_4k": bool(song.get("has-4k")),
+            "has_hdr": bool(song.get("has-hdr")),
+            "has_dolby_vision": bool(song.get("has-dolby-vision")),
+            # Present when the answer is FairPlay-protected, which the
+            # progressive file always is.
+            "fairplay": bool(song.get("sinfs")),
+            "info": ItunesStore._from_store_metadata(song.get("metadata")),
+        }
+
+    @staticmethod
+    def _from_store_metadata(md):
+        """The store's own metadata block, as a catalogue entry.
+
+        This travels with a redownload and is the fullest description the
+        store side gives of a title -- fuller than the lookup, and the only
+        place a purchased episode says which show and season it belongs to.
+        The field names are this block's own: hyphenated where the lookup is
+        camel-cased, and a season is ``playlistName`` rather than a
+        collection.
+        """
+        if not isinstance(md, dict):
+            return None
+        kind = md.get("kind") or ""
+        episode = md.get("kind") == "tv-episode"
+        rating = md.get("rating")
+        released = str(md.get("releaseDate") or "")
+        duration = md.get("duration")
+        return {
+            "id": str(md.get("itemId") or ""),
+            "adam_id": str(md.get("itemId") or ""),
+            "title": md.get("itemName"),
+            "sort_title": md.get("sort-name") or md.get("itemName"),
+            "type": "Episode" if episode else "Movie",
+            "plot": md.get("longDescription") or md.get("description"),
+            "genres": [md["genre"]] if md.get("genre") else [],
+            # us-tv gives "TV-G", the film systems give their own labels.
+            "mpaa": rating.get("label") if isinstance(rating, dict) else None,
+            "year": md.get("year"),
+            "premiered": released[:10] or None,
+            # A film credits its studio here; an episode credits its network.
+            "studio": md.get("network-name") or md.get("copyright"),
+            "show_title": md.get("show-name") or md.get("playlistArtistName"),
+            "season": md.get("season-number"),
+            # episode-number is "S1E1"; episode-sort-id is the number alone.
+            "episode": md.get("episode-sort-id") or md.get("trackNumber"),
+            # The store counts in milliseconds; Kodi counts in seconds.
+            "duration": duration // 1000 if isinstance(duration, int) else None,
+            # The season this episode belongs to, as a store id of its own.
+            "season_id": str(md.get("playlistId") or "") or None,
+            "show_id": str(md.get("artistId") or "") or None,
+            "kind": kind,
         }
 
     # -- resume ----------------------------------------------------------

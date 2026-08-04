@@ -133,8 +133,79 @@ playables: tvs.sbd.9001:1324419603:8804f8d9
 
 An Apple TV+ playable carries `assets.hlsUrl` on this same response, which is
 how the addon resolves playback. An iTunes one carries nothing. The stream for
-a purchase comes from `downloaddispatch/r/redownload`, which needs the store
-session -- so entitlement is visible without signing in, and playback is not.
+a purchase comes from the redownload below, which needs the store session --
+so entitlement is visible without signing in, and playback is not.
+
+## Getting a purchase back
+
+There is no endpoint called "redownload". The cloud-download button is an
+ordinary purchase with the price set to zero:
+
+```
+POST p18-buy.itunes.apple.com/WebObjects/MZBuy.woa/wa/buyProduct
+     Content-Type: application/x-apple-plist
+
+     salableAdamId, productType=V, pricingParameters=STDRDL, price=0,
+     ownerDsid, guid, kbsync, machineName, supportsGpuContentProtection
+  →  status=0, authorized, keybag, songList[]
+```
+
+`ownerDsid` takes a **family member's** dsid, and the capture this was read
+from redownloads a film the signed-in account does not own itself. So family
+sharing is not a listing quirk — shared titles are genuinely fetchable.
+
+Each `songList` entry carries two routes and a description:
+
+| key | what it is |
+|-----|------------|
+| `URL` | a progressive `.m4v`, with an `accessKey` in the query string |
+| `hls-playlist-url` | `play-edge…/MZPlayLocal.woa/hls/playlist.m3u8?a=<adam id>&…` |
+| `hls-key-server-url` | `play-edge…/MZPlayLocal.woa/wa/fpsRequest` |
+| `hls-key-cert-url` | `s.mzstatic.com/skdtool_2021_certbundle.bin` |
+| `sinfs` | FairPlay key blobs, wrapped to the device that asked |
+| `metadata` | the fullest description the store gives of a title |
+| `has-4k` `has-hdr` `has-dolby-vision` | what editions exist |
+
+The progressive file needs no cookies — its access key is the whole
+authorisation — but it is FairPlay encrypted, and the `sinf` boxes bind the
+keys to the requesting device. It also carries the account holder's real name
+in cleartext, which is worth knowing before sharing one.
+
+**Whether the HLS route is playable here is genuinely open.** The key
+certificate Apple hands the Windows client is the FairPlay bundle, which Kodi
+cannot use. But the licence host is `MZPlayLocal/fpsRequest` — the very same
+one this addon already proxies *Widevine* through for Apple TV+, which also
+publishes a Widevine certificate at `MZPlay.woa/wa/widevineCert`. So the host
+serves both, and which one a purchase's playlist offers has not been tested.
+The playlist url is plain, with the adam id in the query string, so this is
+answerable the moment a store session exists.
+
+The obstacle is `kbsync`: a device keybag blob on the request, the same class
+of thing as the attestation headers below. The addon sends the request
+without it and reports what Apple says rather than assuming.
+
+### `metadata` is the best description of a purchase
+
+Fuller than the lookup, and the only place an owned episode says which show
+and season it belongs to:
+
+```
+kind              tv-episode
+itemName          High Rise Hair Raiser
+show-name         The Scooby-Doo Show
+playlistName      The Scooby-Doo Show, Season 1
+season-number     1
+episode-number    S1E1        episode-sort-id  1
+network-name      CBS         trackCount       16
+duration          1463505     (milliseconds)
+rating            {label: TV-G, system: us-tv, rank: 300}
+longDescription   …
+releaseDate       1976-09-11T07:00:00Z
+```
+
+Note the naming: this block is hyphenated where the lookup is camel-cased,
+and a season is `playlistName` rather than a collection. They are two
+different schemas for the same thing and cannot share a mapper.
 
 Their resume positions are in the bookkeeper -- the adam id above is one of
 the five, at 3669 seconds -- but reading that store also needs the session.
@@ -149,10 +220,38 @@ GET se-edge.itunes.apple.com/WebObjects/MZStoreElements.woa/wa/purchases
   → {"lockerData":{"content":{"1080487524":[1080487524], ...}}}
 ```
 
-`mt` selects the media type: 1 music, 3 TV, 6 films, 4 an album-shaped kind.
-The TV value comes from watching the client ask for it; no capture has yet
-returned a TV locker with anything in it, so how shows are grouped there --
-by season, by episode, or both -- is still unknown.
+`mt` selects the media type, and the numbers are not what the tab names
+suggest. Each was checked by looking up what the locker returned:
+
+| mt | what comes back |
+|----|-----------------|
+| 1 | songs |
+| 4 | **television**, as `tvEpisode` rows |
+| 6 | films |
+| 3 | nothing — 200 with an empty locker on every account tried |
+
+`mt=3` was the earlier guess for television, taken from watching the client
+ask for it while the TV Shows tab was open. It is wrong: that request returns
+an empty locker even for the account that owns fifteen episodes, and those
+fifteen arrive under `mt=4` instead.
+
+**Television is listed as episodes, never as seasons or series.** The fifteen
+owned episodes span five seasons of five different shows, and no season row
+appears anywhere in the locker. Each episode does say where it belongs —
+`collectionId`, `collectionName` ("Treasure Quest, Season 1"),
+`episodeSeasonNumber`, `episodeNumber` — so seasons can be grouped from the
+episodes without another request, which is what this addon does.
+
+One thing television does not carry: a synopsis. Under the
+`redownload-image` profile the field is absent rather than empty on both
+`tvSeason` and `tvEpisode` rows, while films have `itunesNotes.standard`. The
+fuller description of an episode exists, but it arrives with a redownload
+rather than a lookup.
+
+`artistName` also means two different things by kind — the director of a
+film, the series of an episode — so it cannot be read without checking
+`kind` first.
+
 The values are store ids, sometimes several per title where a film exists in
 more than one edition. Titles then come from
 `client-api.itunes.apple.com/.../MZStorePlatform.woa/wa/lookup?id=<ids>`,
@@ -224,9 +323,10 @@ same door:
 | | needs the store session |
 |---|---|
 | listing what the account owns | yes |
-| the stream for a purchase (`redownload`) | yes |
+| the stream for a purchase (`buyProduct`) | yes |
 | resume positions (`MZBookkeeper`) | yes |
 | **knowing a title is owned** (`isEntitledToPlay`) | **no** |
+| **the file a redownload points at** (`accessKey`) | **no** |
 
 Only the last is reachable, because it rides the ordinary UTS detail response.
 Search does return store films -- "Green Book" comes back with 14 results
@@ -240,7 +340,17 @@ played, and that is unlikely to change without device attestation.
 Also unverified: whether a purchased stream decrypts under Kodi's Widevine
 CDM. Purchases use the same `fpsRequest` licence endpoint as Apple TV+, which
 the addon already proxies, so the machinery is in place — but no purchased
-title has been played through it.
+title has been played through it, and the only DRM a purchase has been
+*observed* using is FairPlay, which Kodi has no CDM for.
+
+Verified since, by replaying a redownload capture through this code:
+
+- the redownload parse — one film's two routes, both certificate urls, and
+  every edition flag
+- the metadata mapper — an owned episode resolving to show, season, episode
+  number, network, certificate and a 1463-second runtime
+- the television grouping — fifteen locker episodes gathering into their
+  five real seasons, with the right episode counts
 
 ## How the capture was taken
 
@@ -264,6 +374,9 @@ markup, and worth re-reading whenever something breaks.
 ## Security
 
 A capture of this chain contains the account's password in the sign-in
-request and its session tokens everywhere after. Run
+request, its session tokens everywhere after, and — in a redownload — the
+account holder's name inside the `sinf` blobs. Nothing here is ever written
+into the repository: sessions live only in Kodi's settings at runtime, and
+are pasted by hand rather than minted or stored by this addon. Run
 `tools/sanitize_har.py` over anything before sharing it, and treat an
 unsanitised capture as the account itself.

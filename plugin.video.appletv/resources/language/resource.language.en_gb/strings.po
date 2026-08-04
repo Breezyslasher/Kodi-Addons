@@ -315,3 +315,13 @@ msgstr ""
 msgctxt "#32076"
 msgid "Family member's dsid (blank for your own)"
 msgstr ""
+
+
+msgctxt "#32077"
+msgid "Films"
+msgstr ""
+
+
+msgctxt "#32078"
+msgid "TV Shows"
+msgstr ""
