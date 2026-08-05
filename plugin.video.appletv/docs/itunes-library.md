@@ -395,7 +395,7 @@ the lockers settles it:
 | locker | contains 1324419603 |
 |---|---|
 | `spDsid=12305910250` (own, 2 films) | no |
-| `spDsid=210495396` (family, 94 films) | **yes** |
+| `spDsid=210495396` (family, 93 films) | **yes** |
 
 Yet its `personalizedOffers` came back priced at zero, marked `redownload`,
 with `dsid=12305910250` — the asking account's own number — in the url.
@@ -479,7 +479,11 @@ film, the series of an episode — so it cannot be read without checking
 `kind` first.
 
 The values are store ids, sometimes several per title where a film exists in
-more than one edition. Titles then come from
+more than one edition. **Not every key is an id**: `content` also holds an
+`orderedKeys` entry giving the display order, and counting it as a title asks
+Apple to look up an id called "orderedKeys", which it rejects -- taking the
+real ids down with it, since they travel in the same batch. Only the film
+lockers carry it; the music and television ones do not. Titles then come from
 `client-api.itunes.apple.com/.../MZStorePlatform.woa/wa/lookup?id=<ids>`,
 asked with `p=redownload-image`, which is the profile the library view uses;
 `p=lockup` is what store browsing sends.
@@ -507,10 +511,10 @@ works.** One capture makes it plain: signed in as one account throughout,
 | spDsid | items |
 |--------|-------|
 | the signed-in account's own dsid | 0 |
-| a family member's dsid | 511 music, 94 films, 15 other |
+| a family member's dsid | 511 music, 93 films, 15 episodes |
 
 So the account in that capture owns one film of its own -- which is exactly
-what the DAAP call returned -- and sees 94 through the family. Apple's TV app
+what the DAAP call returned -- and sees 93 through the family. Apple's TV app
 offers no such switch in its sidebar, which is why family purchases never
 appear there; the limitation is that client's, not the API's.
 

@@ -407,9 +407,16 @@ class ItunesStore(object):
                 "from a signed-in Apple client instead")
             kodiutils.log_error("iTunes locker was not JSON: %s" % exc)
             return []
-        ids = []
-        for key, variants in content.items():
-            ids.append(str(key))
+        # content is not purely ids: alongside them sits an orderedKeys entry
+        # holding the display order, and treating that as a title sends Apple
+        # a lookup for an id named "orderedKeys" -- which it rejects, taking
+        # the real ids down with it. Use the order Apple gives when it is
+        # there, and otherwise whatever keys are actually numeric.
+        ordered = content.get("orderedKeys")
+        if isinstance(ordered, list) and ordered:
+            ids = [str(i) for i in ordered]
+        else:
+            ids = [str(k) for k in content if str(k).isdigit()]
         kodiutils.log("iTunes locker: %d owned title(s) for mt=%s"
                       % (len(ids), media_type))
         return ids
