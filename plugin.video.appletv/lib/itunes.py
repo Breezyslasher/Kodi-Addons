@@ -580,13 +580,22 @@ class ItunesStore(object):
             "copyright": row.get("copyright"),
         }
 
-    def owned(self, media_type=PURCHASES_MEDIA_TYPE_MOVIES):
+    def owned(self, media_type=PURCHASES_MEDIA_TYPE_MOVIES, resolver=None):
         """What the account owns of one media type, as catalogue entries."""
         ids = self.locker(media_type)
         if not ids:
             return []
+        rows = self.lookup(ids)
+        if not rows and resolver:
+            # Neither lookup would name these ids. The catalogue can: it maps
+            # a store id to its canonical one, which is also the id this addon
+            # opens titles by, so entries resolved that way are usable rather
+            # than merely listed.
+            kodiutils.log("Falling back to the catalogue to name %d id(s)"
+                          % len(ids))
+            return [e for e in (resolver(i) for i in ids) if e]
         items = []
-        for store_id, row in self.lookup(ids).items():
+        for store_id, row in rows.items():
             if not isinstance(row, dict) or not row.get("name"):
                 continue
             entry = self._from_lookup(store_id, row)
@@ -594,16 +603,16 @@ class ItunesStore(object):
                 items.append(entry)
         return items
 
-    def owned_movies(self):
-        return self.owned(PURCHASES_MEDIA_TYPE_MOVIES)
+    def owned_movies(self, resolver=None):
+        return self.owned(PURCHASES_MEDIA_TYPE_MOVIES, resolver)
 
-    def owned_tv(self):
+    def owned_tv(self, resolver=None):
         """Owned episodes, cached so a season can be opened without refetching.
 
         Kodi starts a new process for every navigation, so the grouping below
         would otherwise have to ask Apple again just to list one season.
         """
-        episodes = self.owned(PURCHASES_MEDIA_TYPE_TV)
+        episodes = self.owned(PURCHASES_MEDIA_TYPE_TV, resolver)
         if episodes:
             kodiutils.write_json(TV_LOCKER_CACHE,
                                  {"stamp": time.time(), "items": episodes})
@@ -613,7 +622,7 @@ class ItunesStore(object):
         cached = kodiutils.read_json(TV_LOCKER_CACHE, default={}) or {}
         return cached.get("items") or []
 
-    def owned_tv_seasons(self):
+    def owned_tv_seasons(self, resolver=None):
         """Owned episodes gathered into the seasons they belong to.
 
         The television locker lists episodes and nothing else -- no season
@@ -623,7 +632,7 @@ class ItunesStore(object):
         season needs no extra call to describe itself.
         """
         seasons = {}
-        for episode in self.owned_tv():
+        for episode in self.owned_tv(resolver):
             key = episode.get("season_id") or episode.get("show_id") or ""
             group = seasons.get(key)
             if group is None:

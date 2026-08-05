@@ -504,8 +504,11 @@ def do_itunes_movies(api, auth):
     # The JSON locker is the better route and works with any session that the
     # store accepts, pasted or otherwise. The DAAP one needs a store sign-in,
     # which Apple refuses here, so it is only worth trying if one succeeded.
-    items = store.owned_movies()
-    if not items and store.is_signed_in():
+    items = store.owned_movies(api.resolve_store_id)
+    # The DAAP listing needs a store sign-in Apple refuses here, and a pasted
+    # session is not one -- asking anyway only logged a 500 that read like a
+    # fault. It is worth trying only if a sign-in actually succeeded.
+    if not items and store.session_info().get("password_token"):
         items = store.library()
     # show_items says "nothing here" on its own; this is for when Apple gave a
     # reason, which is more use than an empty list.
@@ -523,7 +526,7 @@ def do_itunes_tv(api, auth):
     themselves rather than fetched as rows of their own.
     """
     store = ItunesStore(auth.session)
-    seasons = store.owned_tv_seasons()
+    seasons = store.owned_tv_seasons(api.resolve_store_id)
     if not seasons:
         kodiutils.notify(store.last_error or L("no_results"))
     for season in seasons:

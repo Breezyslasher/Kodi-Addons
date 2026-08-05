@@ -1479,6 +1479,49 @@ class AppleTVApi(object):
                       "may not be enough without a store session")
         return None
 
+    def resolve_store_id(self, adam_id):
+        """A catalogue entry for a store id, via the id the catalogue uses.
+
+        The locker names purchases by store id, and neither lookup service
+        would turn those into titles here -- Apple's own wants a signed token,
+        and the public one answered with nothing. The catalogue knows the
+        mapping though: asked about a store id on the iTunes brand it returns
+        the canonical umc id, the type, and the page url.
+
+        That canonical id is the one this addon opens titles by, so an entry
+        built from it behaves like any other -- which a bare store id never
+        could.
+
+        The request Apple's client makes also carries a playablePassthrough
+        naming an internal leg id, which cannot be known for an arbitrary
+        store id. This asks without it and reports what comes back.
+        """
+        data = self._store_json("/contents/play-metadata/vod",
+                                {"brandId": ITUNES_CHANNEL,
+                                 "externalId": str(adam_id)})
+        row = (data or {}).get("data") or {}
+        canonical = row.get("canonicalId")
+        if not canonical:
+            kodiutils.log_error("Catalogue did not map store id %s%s"
+                                % (adam_id,
+                                   ": " + json.dumps(row)[:120] if row else ""))
+            return None
+        # The page url ends in a slug and the canonical id; the slug is the
+        # title as Apple writes it in a url, which is enough to list by until
+        # the title's own page is opened.
+        title = ""
+        url = row.get("url") or ""
+        parts = [p for p in url.split("/") if p]
+        if len(parts) >= 2:
+            title = parts[-2].replace("-", " ").strip().title()
+        return {
+            "id": canonical,
+            "adam_id": str(adam_id),
+            "title": title or str(adam_id),
+            "sort_title": title or str(adam_id),
+            "type": row.get("type") or "Movie",
+        }
+
     @staticmethod
     def _fps_params(data):
         """The key-server parameters a detail document names for its title.
