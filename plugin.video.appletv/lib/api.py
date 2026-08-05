@@ -1496,39 +1496,43 @@ class AppleTVApi(object):
         naming an internal leg id, which cannot be known for an arbitrary
         store id. This asks without it and reports what comes back.
         """
-        # Apple requires a duration on this call -- "valid
-        # hlsAssetDurationInSeconds is required" -- and names it differently
-        # from the hlsAssetDuration the capture sends, so both are given. It
-        # describes the stream being played rather than selecting anything,
-        # and nothing here knows a title's runtime before resolving it, so a
-        # nominal value stands in.
-        data = self._store_json("/contents/play-metadata/vod",
-                                {"brandId": ITUNES_CHANNEL,
-                                 "externalId": str(adam_id),
-                                 "hlsAssetDuration": "1",
-                                 "hlsAssetDurationInSeconds": "1"})
-        row = (data or {}).get("data") or {}
-        canonical = row.get("canonicalId")
-        if not canonical:
-            kodiutils.log_error("Catalogue did not map store id %s%s"
-                                % (adam_id,
-                                   ": " + json.dumps(row)[:120] if row else ""))
-            return None
-        # The page url ends in a slug and the canonical id; the slug is the
-        # title as Apple writes it in a url, which is enough to list by until
-        # the title's own page is opened.
-        title = ""
-        url = row.get("url") or ""
-        parts = [p for p in url.split("/") if p]
-        if len(parts) >= 2:
-            title = parts[-2].replace("-", " ").strip().title()
-        return {
-            "id": canonical,
-            "adam_id": str(adam_id),
-            "title": title or str(adam_id),
-            "sort_title": title or str(adam_id),
-            "type": row.get("type") or "Movie",
-        }
+        # The detail endpoint answers to a store id directly -- playing a
+        # library entry proved it, resolving item_id 1610717981 to its
+        # playable without any umc id involved. play-metadata was tried first
+        # and wants a duration matching the real asset, which is not knowable
+        # before the title is resolved; this needs nothing but the id.
+        for kind in ("movies", "episodes"):
+            data = self._store_detail(kind, str(adam_id))
+            content = ((data or {}).get("data") or {}).get("content") or {}
+            if not content.get("title"):
+                continue
+            released = self._release_date(content.get("releaseDate"))
+            rating = content.get("rating")
+            return {
+                # The store id is what opens it, since that is what resolved
+                # here and what the locker knows it by.
+                "id": str(adam_id),
+                "adam_id": str(adam_id),
+                "title": content.get("title"),
+                "sort_title": content.get("title"),
+                "type": "Episode" if kind == "episodes" else "Movie",
+                "plot": (content.get("description")
+                         or content.get("heroDescription")),
+                "genres": [g.get("name")
+                           for g in self._as_list(content.get("genres"))
+                           if isinstance(g, dict) and g.get("name")],
+                "mpaa": (rating.get("displayName")
+                         if isinstance(rating, dict) else None),
+                "premiered": released,
+                "year": int(released[:4]) if released[:4].isdigit() else None,
+                "show_title": content.get("showTitle"),
+                "season": content.get("seasonNumber"),
+                "episode": content.get("episodeNumber"),
+                "art": self._item_art(content.get("images") or {},
+                                      "Episode" if kind == "episodes" else "Movie"),
+            }
+        kodiutils.log_error("Catalogue would not name store id %s" % adam_id)
+        return None
 
     @staticmethod
     def _fps_params(data):

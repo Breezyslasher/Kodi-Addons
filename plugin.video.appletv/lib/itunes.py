@@ -652,10 +652,22 @@ class ItunesStore(object):
             if entry:
                 items.append(entry)
         missing = [i for i in ids if i not in rows]
-        if missing:
-            # Not every owned id is in the public index -- some titles resolve
-            # and some do not -- so say which were lost rather than quietly
-            # returning a shorter list than the locker reported.
+        if missing and resolver:
+            # Not every owned id is in the public index: one whole season of
+            # eleven episodes resolved none of them while the single-episode
+            # shows resolved fine. The catalogue answers to a store id
+            # directly, so it names what the lookup would not -- at one
+            # request each, which is why it is only asked about the leftovers.
+            kodiutils.log("Asking the catalogue about %d id(s) no lookup would "
+                          "name" % len(missing))
+            named = 0
+            for store_id in missing:
+                entry = resolver(store_id)
+                if entry:
+                    items.append(entry)
+                    named += 1
+            kodiutils.log("Catalogue named %d of %d" % (named, len(missing)))
+        elif missing:
             kodiutils.log("%d owned id(s) no lookup would name: %s"
                           % (len(missing), ", ".join(missing[:10])))
         return items
