@@ -1435,12 +1435,47 @@ class AppleTVApi(object):
                 continue
             kodiutils.log("iTunes redownload offer found: %s %s"
                           % (best.get("kind"), best.get("variant")))
+            # A redownload offer names no key server, but the document it
+            # arrives in does: every fpsKeyServerQueryParameters in it carries
+            # the same svcId, paired with this title's own adam id. Every
+            # licence request Apple has been seen to grant carries one, and
+            # the ones this addon was refused carried none, so it is taken
+            # from the response rather than left empty.
+            qp = self._fps_params(data)
+            if qp:
+                kodiutils.log("iTunes key-server parameters: %s" % qp)
             return {"hlsUrl": best["hlsUrl"],
                     "adamId": str(media.get("id") or ""),
+                    "fpsKeyServerQueryParameters": qp or {},
                     "isItunes": True}
         kodiutils.log("No personalizedOffers came back; the store caller alone "
                       "may not be enough without a store session")
         return None
+
+    @staticmethod
+    def _fps_params(data):
+        """The key-server parameters a detail document names for its title.
+
+        They hang off other playables' assets -- a trailer, the background
+        video -- rather than off the purchase, which has no assets at all.
+        Within one document they agree: the same svcId and the title's own
+        adam id every time.
+        """
+        found = []
+
+        def walk(node):
+            if isinstance(node, dict):
+                params = node.get("fpsKeyServerQueryParameters")
+                if isinstance(params, dict) and params.get("svcId"):
+                    found.append(params)
+                for value in node.values():
+                    walk(value)
+            elif isinstance(node, list):
+                for value in node:
+                    walk(value)
+
+        walk(data)
+        return found[0] if found else None
 
     def _store_detail(self, kind, content_id):
         """A title's detail as Apple's desktop TV app asks for it."""
