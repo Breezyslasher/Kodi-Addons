@@ -534,6 +534,43 @@ those ids into titles is where it stops, and all three routes were tried:
 | `itunes.apple.com/lookup` (public) | **works, but not for everything** |
 | `uts/v3/contents/play-metadata/vod` | **460**, content does not match condition |
 
+#### What the token actually is
+
+The storefront bundle is in the captures — `di6-storefront-bootstrap_modern.js`,
+2.2 MB — and it contains the whole construction:
+
+```js
+_setSignedRequestQueryParams: function (url) {
+  var n = Math.round(new Date().getTime() / 1e3)
+  var whitelist = its.serverData.properties["SF6.StorePlatform.whitelistParams"]
+  var o = ""                                  // sort the query, concatenate
+  ...  u = url.split("?")[1].split("&").sort() //   the VALUES of whitelisted keys
+       if (whitelist[key]) o += value
+  var f = [n, iTunes.storefront, decodeURIComponent(o)].join("")
+  return url + "&X-JS-SP-TOKEN=" + encodeURIComponent(
+                 iTunes.signStorePlatformRequestData(f))
+             + "&X-JS-TIMESTAMP=" + n
+}
+```
+
+The whitelist is served alongside it: `["caller", "dsid", "id", "p"]`. So the
+signed string is fully known — timestamp, storefront, then the values of those
+four parameters in sorted-key order.
+
+**What is not known is the signing.** `signStorePlatformRequestData` appears
+exactly once in 2.2 MB, as a call on the native `iTunes` bridge, and is never
+defined in JavaScript. It is in the client binary.
+
+Its output is 16 bytes, which is MD5-shaped, so that was worth testing: 720
+combinations of MD5, SHA-1, SHA-256, SHA-512 and BLAKE2s over six storefront
+spellings, four separators, three field orders and two encodings. None
+reproduce a captured token. It is keyed or proprietary, not a bare hash of a
+string anyone can assemble.
+
+That is as far as captures go. Recovering it would mean reversing the native
+function or running a real client, which is a different kind of work from
+anything else here.
+
 The first is refused. `X-JS-SP-TOKEN` is the obvious suspect — 142 captured
 lookups carry 142 distinct tokens across only 26 timestamps, so it signs each
 request rather than the session — but that is a suspicion, not a finding. The
