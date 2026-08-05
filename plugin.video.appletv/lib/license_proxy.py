@@ -29,6 +29,10 @@ import requests
 from . import kodiutils
 
 FPS_URL = "https://play-edge.itunes.apple.com/WebObjects/MZPlayLocal.woa/wa/fpsRequest"
+# What Apple's Windows client calls this endpoint as when licensing a
+# purchase -- the library agent, not the TV app.
+STORE_AGENT = ("AMPLibraryAgent/1.6.4 (Windows 10.0.19045 x64; x64) "
+               "Chromium/151.0.4129.59")
 CONTEXT_FILE = "playback_context.json"
 BIND_HOST = "127.0.0.1"
 DEFAULT_PORT = 57812
@@ -461,7 +465,10 @@ class _Handler(BaseHTTPRequestHandler):
         ctx = _context()
         bearer = ctx.get("bearer")
         mut = ctx.get("media_user_token")
-        if not bearer or not mut:
+        # A purchase is licensed with a store session instead, so the Apple
+        # TV+ pair is only required when that is what will be sent.
+        if (not bearer or not mut) and not (ctx.get("override")
+                                            or ctx.get("itunes")):
             kodiutils.log_error("License proxy missing bearer/media-user-token")
             return None
 
@@ -491,16 +498,60 @@ class _Handler(BaseHTTPRequestHandler):
         kodiutils.log("License request: challenge=%d bytes, wants KID=%s, known KIDs=[%s]"
                       % (len(challenge), matched_kid or "UNKNOWN",
                          ", ".join(sorted(wv_keys.keys()))))
+        # Which credentials went out matters as much as the challenge did, and
+        # a refusal reads very differently depending on whether Apple was told
+        # who was asking. Neither value is logged, only whether there is one.
+        kodiutils.log("License identity: bearer=%s, media-user-token=%s, "
+                      "adamId=%s, svcId=%s"
+                      % ("yes" if bearer else "NO",
+                         "yes" if mut else "NO",
+                         ctx.get("adam_id") or "none",
+                         ctx.get("svc_id") or "none"))
 
         url = ctx.get("license_server") or FPS_URL
-        headers = {
-            "Content-Type": "application/json",
-            "Origin": "https://tv.apple.com",
-            "Referer": "https://tv.apple.com/",
-            "authorization": "Bearer " + bearer,
-            "x-apple-music-user-token": mut,
-            "x-apple-renewal": "true",
-        }
+        # An iTunes purchase is not authorised by an Apple TV+ identity. A
+        # capture of Apple's own client licensing one sends store credentials
+        # instead -- X-Dsid, X-Token and the store cookies, under the library
+        # agent's user agent -- and a TV+ bearer plus media-user-token is
+        # refused with status -1020. So when a store session has been pasted
+        # in and this stream came from the override, send what Apple's client
+        # sends. The dsid names itself inside the cookie.
+        store_cookies = (kodiutils.get_setting("itunes_cookies") or "").strip()
+        store_token = (kodiutils.get_setting("itunes_token") or "").strip()
+        as_store = bool((ctx.get("override") or ctx.get("itunes"))
+                        and (store_cookies or store_token))
+        if as_store:
+            # A store session names its account in more than one cookie: the
+            # store page's is amia-<dsid>, the TV app's carries X-Dsid
+            # outright, and the music token is mt-tkn-<dsid>. Any of them will
+            # do, and which are present depends on which client was captured.
+            found = re.search(r"(?:amia-|mt-tkn-|mz_at0-)(\d+)=", store_cookies) \
+                or re.search(r"X-Dsid=(\d+)", store_cookies)
+            dsid = found.group(1) if found else ""
+            headers = {
+                "Content-Type": "application/json; charset=utf-8",
+                "User-Agent": STORE_AGENT,
+                "X-Apple-Store-Front": "%s-1,42" % (
+                    kodiutils.get_setting("storefront") or "143441"),
+            }
+            if dsid:
+                headers["X-Dsid"] = dsid
+            if store_token:
+                headers["X-Token"] = store_token
+            if store_cookies:
+                headers["Cookie"] = store_cookies
+            kodiutils.log("License identity: store session (dsid=%s, token=%s)"
+                          % ("yes" if dsid else "NO",
+                             "yes" if store_token else "NO"))
+        else:
+            headers = {
+                "Content-Type": "application/json",
+                "Origin": "https://tv.apple.com",
+                "Referer": "https://tv.apple.com/",
+                "authorization": "Bearer " + bearer,
+                "x-apple-music-user-token": mut,
+                "x-apple-renewal": "true",
+            }
         last_error = None
         for attempt, candidate in enumerate(candidates):
             key = {
@@ -514,7 +565,17 @@ class _Handler(BaseHTTPRequestHandler):
             }
             if candidate:
                 key["uri"] = candidate
-            envelope = {"streaming-request": {"version": 1, "streaming-keys": [key]}}
+            request = {"version": 1, "streaming-keys": [key]}
+            if as_store:
+                # Mirror the shape Apple's client uses for a purchase: the
+                # guid and dsid it identifies itself by, at the levels it puts
+                # them. kbsync -- a device keybag blob -- is also on the real
+                # request and cannot be produced here, so this finds out
+                # whether it is required rather than assuming either way.
+                key["guid"] = kodiutils.get_setting("itunes_guid") or ""
+                if headers.get("X-Dsid"):
+                    request["dsid"] = headers["X-Dsid"]
+            envelope = {"streaming-request": request}
             resp = requests.post(url, data=json.dumps(envelope), headers=headers, timeout=30)
             if resp.status_code != 200:
                 last_error = "HTTP %s %s" % (resp.status_code, resp.text[:150])

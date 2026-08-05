@@ -266,3 +266,72 @@ msgstr ""
 msgctxt "#32057"
 msgid "Subscription status"
 msgstr ""
+
+msgctxt "#32066"
+msgid "Highlights"
+msgstr ""
+
+msgctxt "#32067"
+msgid "Spotlight"
+msgstr ""
+
+msgctxt "#32068"
+msgid "Race weekend"
+msgstr ""
+
+msgctxt "#32069"
+msgid "Cast & crew"
+msgstr ""
+
+msgctxt "#32070"
+msgid "Sign in to the iTunes Store"
+msgstr ""
+
+
+msgctxt "#32071"
+msgid "Sign out of the iTunes Store"
+msgstr ""
+
+
+msgctxt "#32072"
+msgid "Signed in to the iTunes Store"
+msgstr ""
+
+
+msgctxt "#32073"
+msgid "iTunes Store sign-in failed"
+msgstr ""
+
+msgctxt "#32074"
+msgid "iTunes purchases (paste a store session)"
+msgstr ""
+
+
+msgctxt "#32075"
+msgid "Store session cookies"
+msgstr ""
+
+
+msgctxt "#32076"
+msgid "Family member's dsid (blank for your own)"
+msgstr ""
+
+
+msgctxt "#32077"
+msgid "Films"
+msgstr ""
+
+
+msgctxt "#32078"
+msgid "TV Shows"
+msgstr ""
+
+
+msgctxt "#32079"
+msgid "Store X-Token (for licensing purchases)"
+msgstr ""
+
+
+msgctxt "#32080"
+msgid "Search Apple TV+ only (store purchases cannot be played)"
+msgstr ""

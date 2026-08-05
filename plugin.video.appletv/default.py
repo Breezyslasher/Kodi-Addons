@@ -12,6 +12,7 @@ from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA, STATUS_ERROR
 from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
                      PLAYBACK_REPORT_CACHE)
+from lib.itunes import ItunesStore
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
@@ -65,6 +66,16 @@ S = {
     "play_feed": 32063,
     "related": 32064,
     "clubs": 32065,
+    "highlights": 32066,
+    "spotlight": 32067,
+    "race_weekend": 32068,
+    "cast": 32069,
+    "itunes_sign_in": 32070,
+    "itunes_sign_out": 32071,
+    "itunes_sign_in_ok": 32072,
+    "itunes_sign_in_failed": 32073,
+    "films": 32077,
+    "tv_shows": 32078,
 }
 
 
@@ -85,12 +96,18 @@ def extras_context_menu(item, item_id, item_type):
             action="extras", kind="bonus", item_id=item_id, item_type=item_type)),
         (L("related"), "Container.Update(%s)" % url(
             action="related", item_id=item_id)),
+        (L("cast"), "Container.Update(%s)" % url(
+            action="cast", item_id=item_id, item_type=item_type)),
     ] + watchlist_menu_items(item_id))
 
 
 def watchlist_menu_items(item_id):
-    """Both directions are offered: Apple exposes no way to read back what is
-    already on the list, so a single accurate toggle is not possible."""
+    """Add and remove are both offered rather than one toggle.
+
+    Apple does report membership, as inUpNext, but only on a title's own page
+    and on an episode list -- never on the shelf items most of the addon
+    lists, so the state is unknown where the menu is usually opened.
+    """
     return [
         (L("add_watchlist"), "RunPlugin(%s)" % url(
             action="watchlist", item_id=item_id, on="1")),
@@ -99,32 +116,19 @@ def watchlist_menu_items(item_id):
     ]
 
 
-def add_dir(label, action, art=None, extras_for=None, context=None, **params):
-    item = xbmcgui.ListItem(label=label)
-    if art:
-        item.setArt(art)
-    if extras_for:
-        extras_context_menu(item, extras_for[0], extras_for[1])
-    if context:
-        item.addContextMenuItems(context)
-    xbmcplugin.addDirectoryItem(
-        HANDLE, url(action=action, **params), item, isFolder=True
-    )
-
-
-def add_playable(entry):
-    item = xbmcgui.ListItem(label=entry["title"])
-    if entry.get("art"):
-        item.setArt(entry["art"])
-    tag = item.getVideoInfoTag()
-    tag.setTitle(entry.get("sort_title") or entry["title"])
-    kind = str(entry.get("type"))
-    tag.setMediaType("episode" if kind == "Episode" else "movie")
-    if entry.get("start_time"):
+def apply_entry_info(tag, entry):
+    """Set what Apple sends about a title on any item, folder or not."""
+    if entry.get("show_title"):
+        # An episode listed away from its show -- Continue Watching does this
+        # -- has no other way of saying which show it belongs to.
         try:
-            import time
-            tag.setFirstAired(time.strftime("%Y-%m-%d", time.localtime(entry["start_time"])))
-        except (TypeError, ValueError, OverflowError):
+            tag.setTvShowTitle(entry["show_title"])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if entry.get("title") or entry.get("sort_title"):
+        try:
+            tag.setTitle(entry.get("sort_title") or entry["title"])
+        except (TypeError, ValueError, AttributeError, KeyError):
             pass
     if entry.get("plot"):
         tag.setPlot(entry["plot"])
@@ -143,17 +147,102 @@ def add_playable(entry):
             tag.setEpisode(int(entry["episode"]))
         except (TypeError, ValueError):
             pass
+    if entry.get("genres"):
+        try:
+            tag.setGenres(list(entry["genres"]))
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if entry.get("mpaa"):
+        try:
+            tag.setMpaa(entry["mpaa"])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if entry.get("tagline"):
+        try:
+            tag.setTagLine(entry["tagline"])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if entry.get("studio"):
+        try:
+            tag.setStudios([entry["studio"]])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if entry.get("premiered"):
+        try:
+            tag.setPremiered(entry["premiered"])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if entry.get("watched"):
+        # Apple says whether the account has finished a title; Kodi shows that
+        # as a watched tick beside it.
+        try:
+            tag.setPlaycount(1)
+        except (TypeError, ValueError, AttributeError):
+            pass
     if entry.get("duration"):
         try:
             tag.setDuration(int(entry["duration"]))
         except (TypeError, ValueError):
             pass
+
+
+def add_dir(label, action, art=None, extras_for=None, context=None,
+            info=None, media_type=None, **params):
+    item = xbmcgui.ListItem(label=label)
+    if art:
+        item.setArt(art)
+    # A folder with no info tag gets no Info dialog at all, which is why shows
+    # and seasons had none. Apple describes them the same as anything else.
+    if info or media_type:
+        tag = item.getVideoInfoTag()
+        if media_type:
+            try:
+                tag.setMediaType(media_type)
+            except (TypeError, ValueError, AttributeError):
+                pass
+        if info:
+            apply_entry_info(tag, info)
+    if extras_for:
+        extras_context_menu(item, extras_for[0], extras_for[1])
+    if context:
+        item.addContextMenuItems(context)
+    xbmcplugin.addDirectoryItem(
+        HANDLE, url(action=action, **params), item, isFolder=True
+    )
+
+
+def add_playable(entry, cast=None):
+    item = xbmcgui.ListItem(label=entry["title"])
+    if entry.get("art"):
+        item.setArt(entry["art"])
+    tag = item.getVideoInfoTag()
+    tag.setTitle(entry.get("sort_title") or entry["title"])
+    kind = str(entry.get("type"))
+    tag.setMediaType("episode" if kind == "Episode" else "movie")
+    if entry.get("start_time"):
+        try:
+            import time
+            tag.setFirstAired(time.strftime("%Y-%m-%d", time.localtime(entry["start_time"])))
+        except (TypeError, ValueError, OverflowError):
+            pass
+    apply_entry_info(tag, entry)
     # Apple reports how far the account already is into a title, so it can be
     # resumed here at the point another Apple client left it.
     resume = entry.get("resume") or {}
     if resume.get("position") and resume.get("total"):
         try:
             tag.setResumePoint(resume["position"], resume["total"])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    # Kodi has a cast area of its own, so the people credited on a title fill
+    # it in rather than only being listed. Apple keeps them on the title's
+    # page, not on each item, so the caller fetches them once and passes them
+    # to every entry instead of asking per episode.
+    if cast:
+        try:
+            tag.setCast([xbmc.Actor(person["name"], person.get("role") or "",
+                                    order, (person.get("art") or {}).get("thumb") or "")
+                         for order, person in enumerate(cast)])
         except (TypeError, ValueError, AttributeError):
             pass
     item.setProperty("IsPlayable", "true")
@@ -169,9 +258,20 @@ def add_playable(entry):
                 league=entry.get("league_id") or "")),
             (L("clubs"), "Container.Update(%s)" % url(
                 action="clubs", item_id=entry["id"])),
-        ] + watchlist_menu_items(entry["id"]))
-    else:
-        item.addContextMenuItems(watchlist_menu_items(entry["id"]))
+            (L("highlights"), "Container.Update(%s)" % url(
+                action="event_extras", kind="highlights", item_id=entry["id"])),
+            (L("spotlight"), "Container.Update(%s)" % url(
+                action="event_extras", kind="spotlight", item_id=entry["id"])),
+        ] + ([(L("race_weekend"), "Container.Update(%s)" % url(
+                action="event_extras", kind="weekend", item_id=entry["id"]))]
+             # Only Motorsports fixtures have a weekend of sessions; a match
+             # in any other sport carries clubs and no weekend at all.
+             if entry.get("sport") == "Motorsports" else [])
+          + watchlist_menu_items(entry["id"]))
+    # Everything else -- episodes, and the sports clip types that carry their
+    # stream inline -- gets no watchlist entry: Apple's watchlist takes films,
+    # shows and fixtures only, which is what every captured write sends, so
+    # offering it on an episode was offering something that cannot work.
     xbmcplugin.addDirectoryItem(
         HANDLE,
         url(action="play", item_id=entry["id"], item_type=entry.get("type", "Movie")),
@@ -187,13 +287,26 @@ def main_menu(auth):
     for channel_id, name in CHANNELS:
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
+    store = ItunesStore(auth.session)
+    if store.is_signed_in() or store.pasted_cookies() or auth.is_authenticated():
+        add_dir(L("itunes_library"), "itunes")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
-        add_dir("[Debug] Test playback (manifest override)", "debug_play")
+        # Not a folder. do_play answers with setResolvedUrl, which Kodi only
+        # honours for a playable item; as a folder it opened a directory that
+        # never ended, which is the "Error getting plugin://" in the log.
+        debug = xbmcgui.ListItem(label="[Debug] Test playback (manifest override)")
+        debug.setProperty("IsPlayable", "true")
+        xbmcplugin.addDirectoryItem(HANDLE, url(action="debug_play"), debug,
+                                    isFolder=False)
     if auth.is_authenticated():
         add_dir(L("sign_out"), "sign_out")
     else:
         add_dir(L("sign_in"), "sign_in")
+    # The store is a separate service with its own login, so signing in to
+    # Apple TV+ does not sign in to it.
+    add_dir(L("itunes_sign_out") if store.is_signed_in() else L("itunes_sign_in"),
+            "itunes_sign_out" if store.is_signed_in() else "itunes_sign_in")
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -207,11 +320,6 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
     """
     if not shelves:
         kodiutils.notify(L("no_results"))
-    # The watchlist is fetched with a ctx_brand, so it belongs to a tab
-    # rather than to the addon as a whole. cache_key only equals brand on a
-    # channel's own canvas; a room further down carries its own id.
-    if cache_key == brand and api.auth.is_authenticated():
-        add_dir(L("watchlist"), "up_next", channel_id=brand)
     # Apple's own favourites shelf is an empty marker the website fills in
     # itself; the club tiles say who is followed, so do the same here.
     followed = [i for s in shelves for i in s.get("items") or []
@@ -231,12 +339,13 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
+def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL, cast=None):
     """Add a catalogue entry: shows and rooms are folders, the rest play."""
     kind = str(entry.get("type"))
     if kind == "Show":
         add_dir(entry["title"], "show", art=entry.get("art"),
-                extras_for=(entry["id"], "Show"), show_id=entry["id"])
+                extras_for=(entry["id"], "Show"), info=entry,
+                media_type="tvshow", show_id=entry["id"])
     elif kind == "Room":
         # A room is a browse category (Kids & Family, Sci-Fi, ...) with a
         # canvas of shelves behind it.
@@ -258,14 +367,30 @@ def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL):
         add_dir(label, "team", art=entry.get("art"), context=menu,
                 team_id=entry["id"], channel_id=channel_id)
     else:
-        add_playable(entry)
+        add_playable(entry, cast)
 
 
-def show_items(items, content="movies", channel_id=APPLE_TV_PLUS_CHANNEL):
+def show_people(people):
+    """List a title's cast and crew. Nobody here is playable."""
+    if not people:
+        kodiutils.notify(L("no_results"))
+    for person in people:
+        label = person["name"]
+        if person.get("role"):
+            label = "%s - %s" % (label, person["role"])
+        entry = xbmcgui.ListItem(label=label)
+        if person.get("art"):
+            entry.setArt(person["art"])
+        xbmcplugin.addDirectoryItem(HANDLE, "", entry, isFolder=False)
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def show_items(items, content="movies", channel_id=APPLE_TV_PLUS_CHANNEL,
+               cast=None):
     if not items:
         kodiutils.notify(L("no_results"))
     for entry in items:
-        add_item(entry, channel_id)
+        add_item(entry, channel_id, cast)
     xbmcplugin.setContent(HANDLE, content)
     xbmcplugin.endOfDirectory(HANDLE)
 
@@ -318,16 +443,105 @@ def do_sign_out(auth, api):
 def do_show(api, show_id):
     """A show opens to its seasons, or straight to its episodes if it has one."""
     seasons = api.get_show_seasons(show_id)
+    show_info = api.get_title_info(show_id, "Show") if seasons else None
     if not seasons:
-        show_items(api.get_show_episodes(show_id), content="episodes")
+        show_items(api.get_show_episodes(show_id), content="episodes",
+                   cast=api.get_cast(show_id, "Show"))
         return
     for season in seasons:
         label = season["title"]
         if season.get("count"):
             label = "%s (%d)" % (label, season["count"])
-        add_dir(label, "season", show_id=show_id, season=season["number"])
+        # Seasons carry only a number and a count of their own, so the show's
+        # own description travels with them rather than leaving them bare.
+        add_dir(label, "season", info=dict(show_info or {}, title=season["title"]),
+                media_type="season", show_id=show_id, season=season["number"])
     xbmcplugin.setContent(HANDLE, "seasons")
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_sign_in(auth):
+    """Sign in to the store, which is not the Apple TV+ sign-in.
+
+    Apple takes the password directly here rather than through the SRP flow
+    the website uses, so this asks for it again rather than reusing anything.
+    """
+    apple_id = kodiutils.input_text(L("enter_apple_id"))
+    if not apple_id:
+        return
+    password = kodiutils.input_text(L("enter_password"), hidden=True)
+    if not password:
+        return
+    store = ItunesStore(auth.session)
+    if store.sign_in(apple_id, password):
+        kodiutils.notify(L("itunes_sign_in_ok"))
+    else:
+        kodiutils.ok_dialog("%s\n%s" % (L("itunes_sign_in_failed"),
+                                        store.last_error or ""))
+
+
+def do_itunes_library(api, auth):
+    """The two halves of the store locker, which are separate requests."""
+    add_dir(L("films"), "itunes_movies")
+    add_dir(L("tv_shows"), "itunes_tv")
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def _with_resume(store, items):
+    """Attach where each purchase was left, where the store knows."""
+    resume = store.resume_points()
+    for entry in items:
+        position = resume.get(entry.get("adam_id"))
+        if position and entry.get("duration"):
+            entry["resume"] = {"position": position,
+                               "total": float(entry["duration"])}
+    return items
+
+
+def do_itunes_movies(api, auth):
+    """Films the account owns, from the store rather than the catalogue."""
+    store = ItunesStore(auth.session)
+    # The JSON locker is the better route and works with any session that the
+    # store accepts, pasted or otherwise. The DAAP one needs a store sign-in,
+    # which Apple refuses here, so it is only worth trying if one succeeded.
+    items = store.owned_movies(api.resolve_store_id)
+    # The DAAP listing needs a store sign-in Apple refuses here, and a pasted
+    # session is not one -- asking anyway only logged a 500 that read like a
+    # fault. It is worth trying only if a sign-in actually succeeded.
+    if not items and store.session_info().get("password_token"):
+        items = store.library()
+    # show_items says "nothing here" on its own; this is for when Apple gave a
+    # reason, which is more use than an empty list.
+    if not items and store.last_error:
+        kodiutils.notify(store.last_error)
+    show_items(_with_resume(store, items))
+
+
+def do_itunes_tv(api, auth):
+    """Owned television, as the seasons its episodes belong to.
+
+    Apple's locker lists episodes flat -- fifteen episodes across five
+    seasons of five different shows, in the capture this was built from --
+    so the seasons here are grouped from what the episodes say about
+    themselves rather than fetched as rows of their own.
+    """
+    store = ItunesStore(auth.session)
+    seasons = store.owned_tv_seasons(api.resolve_store_id)
+    if not seasons:
+        kodiutils.notify(store.last_error or L("no_results"))
+    for season in seasons:
+        add_dir(season["title"], "itunes_season", art=season.get("art"),
+                info=season, media_type="season", season_id=season["id"])
+    xbmcplugin.setContent(HANDLE, "seasons")
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_season(api, auth, season_id):
+    store = ItunesStore(auth.session)
+    episodes = store.owned_season(season_id)
+    if not episodes and store.last_error:
+        kodiutils.notify(store.last_error)
+    show_items(_with_resume(store, episodes), content="episodes")
 
 
 def do_search(api):
@@ -393,7 +607,53 @@ def do_play(api, item_id, item_type):
     kodiutils.notify(L("sd_notice"))
     write_report_context(playback, content_id=item_id)
     play_item = build_isa_listitem(playback)
+    # Playback resolves from an id, so the item Kodi shows while playing knew
+    # nothing about the title and its plot read "Not available". A title's own
+    # page carries the description and the cast, which shelf items do not.
+    # A pasted manifest has no catalogue id behind it, so asking would only
+    # log Apple refusing "debug" as an invalid id.
+    if not playback.get("override"):
+        apply_title_info(play_item, api.get_title_info(item_id, item_type))
+
     xbmcplugin.setResolvedUrl(HANDLE, True, play_item)
+
+
+def apply_title_info(item, info):
+    """Fill a playing item's info screen from a title's own page."""
+    if not info:
+        return
+    tag = item.getVideoInfoTag()
+    for value, setter in (
+            (info.get("title"), "setTitle"),
+            (info.get("plot"), "setPlot"),
+            (info.get("mpaa"), "setMpaa"),
+            (info.get("tagline"), "setTagLine"),
+            (info.get("premiered"), "setPremiered"),
+            (info.get("year"), "setYear"),
+            (info.get("show_title"), "setTvShowTitle")):
+        if not value:
+            continue
+        try:
+            getattr(tag, setter)(value)
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if info.get("genres"):
+        try:
+            tag.setGenres(list(info["genres"]))
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if info.get("studio"):
+        try:
+            tag.setStudios([info["studio"]])
+        except (TypeError, ValueError, AttributeError):
+            pass
+    if info.get("cast"):
+        try:
+            tag.setCast([xbmc.Actor(p["name"], p.get("role") or "", order,
+                                    (p.get("art") or {}).get("thumb") or "")
+                         for order, p in enumerate(info["cast"])])
+        except (TypeError, ValueError, AttributeError):
+            pass
 
 
 def write_report_context(playback, duration=None, content_id=None):
@@ -409,6 +669,10 @@ def write_report_context(playback, duration=None, content_id=None):
     if content_id:
         # Also what Continue Watching sends as its playerContentId.
         report["content_id"] = content_id
+    if playback.get("adam_id"):
+        # A purchase reports to the store's key-value bookkeeper instead of
+        # the now-playing service, and is keyed by its store id.
+        report["adam_id"] = playback["adam_id"]
     kodiutils.write_json(PLAYBACK_REPORT_CACHE, report)
 
 
@@ -600,12 +864,15 @@ def router(paramstring):
         do_follow_team(api, params.get("team_id"), params.get("on") == "1")
     elif action == "watchlist":
         do_watchlist(api, params.get("item_id"), params.get("on") == "1")
-    elif action == "up_next":
-        brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
-        show_items(api.get_watchlist(brand), channel_id=brand)
     elif action == "related":
         show_items(api.get_related(params.get("item_id"),
                                    params.get("league") or None))
+    elif action == "cast":
+        show_people(api.get_cast(params.get("item_id"),
+                                 params.get("item_type", "Movie")))
+    elif action == "event_extras":
+        show_items(api.get_event_extras(params.get("item_id"),
+                                        params.get("kind", "highlights")))
     elif action == "clubs":
         show_items(api.get_event_clubs(params.get("item_id")),
                    channel_id=params.get("channel_id") or APPLE_TV_PLUS_CHANNEL)
@@ -619,9 +886,24 @@ def router(paramstring):
     elif action == "show":
         do_show(api, params.get("show_id"))
     elif action == "season":
-        show_items(api.get_show_episodes(params.get("show_id"),
-                                         season=params.get("season")),
-                   content="episodes")
+        show_id = params.get("show_id")
+        show_items(api.get_show_episodes(show_id, season=params.get("season")),
+                   content="episodes",
+                   cast=api.get_cast(show_id, "Show"))
+    elif action == "itunes_sign_in":
+        do_itunes_sign_in(auth)
+        main_menu(auth)
+    elif action == "itunes_sign_out":
+        ItunesStore(auth.session).sign_out()
+        main_menu(auth)
+    elif action == "itunes":
+        do_itunes_library(api, auth)
+    elif action == "itunes_movies":
+        do_itunes_movies(api, auth)
+    elif action == "itunes_tv":
+        do_itunes_tv(api, auth)
+    elif action == "itunes_season":
+        do_itunes_season(api, auth, params.get("season_id"))
     elif action == "search":
         do_search(api)
     elif action == "play":
