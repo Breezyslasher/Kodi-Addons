@@ -593,7 +593,13 @@ class ItunesStore(object):
             # than merely listed.
             kodiutils.log("Falling back to the catalogue to name %d id(s)"
                           % len(ids))
-            return [e for e in (resolver(i) for i in ids) if e]
+            named = [e for e in (resolver(i) for i in ids) if e]
+            if not named:
+                self.last_error = (
+                    "Apple named %d purchase(s) but would not say what they "
+                    "are: its lookup needs a signed token, and the public one "
+                    "does not carry them." % len(ids))
+            return named
         items = []
         for store_id, row in rows.items():
             if not isinstance(row, dict) or not row.get("name"):

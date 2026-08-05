@@ -522,6 +522,40 @@ This route is easier to consume than DMAP and is the one to implement if the
 authentication below is ever solved. It is what the addon uses when a store
 session has been pasted in.
 
+### The locker works; naming what is in it does not
+
+With a pasted session the locker answers properly — the roster parses, four
+members with three sharing, and the film locker returns its ids. Turning
+those ids into titles is where it stops, and all three routes were tried:
+
+| route | answer |
+|---|---|
+| `MZStorePlatform/lookup` (Apple's own) | **403** |
+| `itunes.apple.com/lookup` (public) | **200, `resultCount: 0`** |
+| `uts/v3/contents/play-metadata/vod` | **460**, content does not match condition |
+
+The first wants `X-JS-SP-TOKEN`. 142 captured lookups carry 142 distinct
+tokens across only 26 timestamps, so it signs each request rather than the
+session, and pasting cannot substitute for it.
+
+The second simply has no record of the id — for *Despicable Me*, a title the
+addon's own search finds without difficulty. So this is not a delisted-title
+story; the two services index different things.
+
+The third maps a store id to its canonical one, which would be ideal, and it
+negotiates: without a duration it says `hlsAssetDurationInSeconds is
+required`, and with a nominal one it says the content does not match a
+condition — most likely that the duration must match the real asset, which is
+not knowable before the title is resolved. Apple's client also sends a
+`playablePassthrough` carrying an internal leg id that cannot be derived for
+an arbitrary store id.
+
+So the library lists how many purchases the account has and cannot say what
+they are. Given purchases do not play either, this is recorded rather than
+worked around. What does work, and needs none of it: **search finds
+purchases, and opening one says whether the account owns it** — the
+`personalizedOffers` test, which needs no store session at all.
+
 ## Borrowing a session instead of minting one
 
 Since Apple's own software proves itself in ways that cannot be reproduced,
