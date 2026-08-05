@@ -1010,6 +1010,7 @@ class AppleTVApi(object):
             # Lets the licence proxy tell a purchase from a catalogue title,
             # since the two are authorised by different sessions.
             "override": override,
+            "itunes": assets.get("itunes", False),
             "wv_keys": wv_keys,
             "license_server": assets.get("license_server", ""),
             "user_agent": self.session.headers.get("User-Agent", ""),
@@ -1135,6 +1136,9 @@ class AppleTVApi(object):
             "adam_id": str(assets.get("assetAdamId") or qp.get("adamId") or self._q(hls, "a")),
             "svc_id": qp.get("svcId") or self._q(hls, "svcId"),
             "is_external": qp.get("isExternal", True),
+            # An iTunes purchase, so the licence proxy can offer the store
+            # credentials Apple's own client licenses these with.
+            "itunes": bool(assets.get("isItunes")),
             # Carried through for watch-history reporting.
             "playable_passthrough": assets.get("_playablePassThrough"),
             "external_id": assets.get("_externalId"),

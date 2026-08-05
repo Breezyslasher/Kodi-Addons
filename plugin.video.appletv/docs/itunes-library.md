@@ -303,6 +303,46 @@ looking at the wrong field on the wrong caller.
 The addon now falls back to that endpoint whenever an iTunes playable comes
 back with no assets, and plays the redownload offer if Apple names one.
 
+### Where this stands, tested
+
+Everything up to the licence works, with **no store session at all** — the
+Apple TV+ bearer and media-user-token are enough:
+
+```
+iTunes playable tvs.sbd.9001:1324419603:8804f8d9 carries no assets;
+  asking the store app's endpoint for a redownload offer
+iTunes redownload offer found: redownload SD
+iTunes key-server parameters: {adamId 1324419603, isExternal True,
+                               svcId tvs.vds.9023}
+Collected 3 Widevine key(s)
+Manifest parsed (Streams: 30)          ← a real feature, 138 variants
+Init segment P544700800_A1324419603_FF_video_…
+License request: … adamId=1324419603, svcId=tvs.vds.9023
+  → status -1020
+```
+
+`personalizedOffers` also turns out to be a dependable **ownership test**.
+Asked for a title nobody in the family owns it returns nothing, and asked for
+the family-shared one it returns the redownload — so "do I own this" is
+answerable without the locker, and therefore without a store session.
+
+What is left is the licence alone. Every field that can be read off Apple's
+own responses now matches what its granted requests carry: the key id out of
+its PSSH, the adam id, and an svcId taken from the title's own document
+rather than assumed. It is still refused.
+
+The differences that remain are ones nothing here can supply:
+
+- the **store session** — `X-Dsid` and `X-Token`, which the addon will now
+  send on a purchase's licence request if one has been pasted in
+- **`kbsync`**, the device keybag, which is not reproducible
+- **the key system itself.** Every granted Widevine licence observed is for
+  an Apple TV+ title. No capture exists of Apple granting a *Widevine*
+  licence for a purchase — its own clients on Windows and macOS ask in
+  FairPlay. That Apple TV on Android plays purchases, and Android has no
+  FairPlay, is good reason to believe the path exists; it is not the same
+  thing as having seen it.
+
 One thing capture cannot settle: Apple's client changed **two** things at
 once — it asks as `wlk` *and* authenticates with `X-DSID` plus store cookies
 rather than a bearer. Whether the caller alone is enough, or the store

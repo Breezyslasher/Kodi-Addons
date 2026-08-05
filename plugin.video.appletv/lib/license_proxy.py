@@ -467,7 +467,8 @@ class _Handler(BaseHTTPRequestHandler):
         mut = ctx.get("media_user_token")
         # A purchase is licensed with a store session instead, so the Apple
         # TV+ pair is only required when that is what will be sent.
-        if (not bearer or not mut) and not ctx.get("override"):
+        if (not bearer or not mut) and not (ctx.get("override")
+                                            or ctx.get("itunes")):
             kodiutils.log_error("License proxy missing bearer/media-user-token")
             return None
 
@@ -517,7 +518,8 @@ class _Handler(BaseHTTPRequestHandler):
         # sends. The dsid names itself inside the cookie.
         store_cookies = (kodiutils.get_setting("itunes_cookies") or "").strip()
         store_token = (kodiutils.get_setting("itunes_token") or "").strip()
-        as_store = bool(ctx.get("override") and (store_cookies or store_token))
+        as_store = bool((ctx.get("override") or ctx.get("itunes"))
+                        and (store_cookies or store_token))
         if as_store:
             found = re.search(r"amia-(\d+)=", store_cookies)
             dsid = found.group(1) if found else ""
