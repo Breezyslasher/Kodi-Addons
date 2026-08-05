@@ -519,12 +519,28 @@ class ItunesStore(object):
             except Exception:
                 kodiutils.log_error("Public lookup did not return JSON")
                 break
+            if not results:
+                # A 200 with nothing in it is a different problem from a
+                # refusal, and the body says which: the service reports a
+                # resultCount, and returns none for an id it does not carry.
+                kodiutils.log_error(
+                    "Public lookup returned no results for %d id(s): %s"
+                    % (len(batch), resp.text[:200].strip().replace("\n", " ")))
             for row in results:
                 if not isinstance(row, dict):
                     continue
                 store_id = str(row.get("trackId") or row.get("collectionId") or "")
-                if store_id:
-                    found[store_id] = self._store_shape(row)
+                if not store_id:
+                    kodiutils.log_error("Public lookup row had no id: %s"
+                                        % sorted(row)[:12])
+                    continue
+                found[store_id] = self._store_shape(row)
+                # The locker's id and the id the lookup answers with are not
+                # always the same number, and a title filed under the one the
+                # locker gave is what the caller will go looking for.
+                for asked in batch:
+                    if asked not in found and str(row.get("collectionId") or "") == asked:
+                        found[asked] = found[store_id]
         kodiutils.log("Public lookup: %d of %d id(s) resolved"
                       % (len(found), len(ids)))
         return found
