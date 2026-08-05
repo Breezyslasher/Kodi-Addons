@@ -138,12 +138,16 @@ PLAYBACK_REPORT_CACHE = "now_playing.json"
 # The Up Next list is served as an ordinary shelf, with the context values
 # below rather than ones taken from a canvas (nothing links to it from one).
 WATCHLIST_SHELF = "uts.col.Watchlist"
-# The account-wide resume row. Apple's own configurations document names the
-# endpoint outright -- getContinueWatchingShelf -> /uts/v3/shelves/
-# continue-watching -- and unlike the per-channel ChannelUpNext shelf (which is
-# scoped to tvs.sbd.4000 and so is Apple TV+ only) this one carries every
-# service the account is mid-way through, iTunes purchases included.
-CONTINUE_WATCHING_SHELF = "continue-watching"
+# The account-wide resume row. Unlike the per-channel ChannelUpNext shelf
+# (scoped to tvs.sbd.4000, so Apple TV+ only) this one carries every service
+# the account is mid-way through, iTunes purchases included. Two identifiers
+# name it: the shelf's own id, which a capture of the populated shelf gives as
+# uts.col.ContinueWatching -- and which is how the addon's other personalised
+# shelves (Watchlist, ChannelUpNext) are fetched -- and the slug the
+# configurations document lists for getContinueWatchingShelf. The id is tried
+# first because the slug came back an empty shell.
+CONTINUE_WATCHING_SHELF = "uts.col.ContinueWatching"
+CONTINUE_WATCHING_SLUG = "continue-watching"
 WATCHLIST_CVS = "uts.tcvs.tv-plus-personalized-canvas-adaptive"
 WATCHLIST_CTX_SHELF = "uts.shlf.gen.Watchlist_%s"
 
@@ -429,30 +433,43 @@ class AppleTVApi(object):
         iTunes films the account is part-way through -- The Greatest Showman
         among them in a capture of it.
 
-        The capture came from a store-authenticated client, and the website's
-        own caller is served a narrower catalogue elsewhere (its search returns
-        Apple TV+ only, its Up Next is TV+ only), so the web caller may be sent
-        an empty shelf here too. It is tried first all the same, and the store
-        caller -- the one the capture used -- is the fallback, mirroring how
-        search widens from web to store. Whichever returns rows is listed; an
+        The website's own caller is served a narrower catalogue elsewhere (its
+        search returns Apple TV+ only, its Up Next is TV+ only), and the
+        populated capture came from a store-authenticated client, so both the
+        request shape and the caller can decide what comes back. Rather than
+        assume either, a few shapes -- built from real identifiers, not
+        invented -- are tried through the web caller and then the store caller,
+        and the first that returns rows is listed. Each attempt's raw count is
+        logged so the shape Apple populates is found from the responses. An
         iTunes film resumes through the same purchase path as the library.
         """
-        items = self._continue_watching_via(self._get_json, "web", max_pages)
-        if not items:
-            items = self._continue_watching_via(self._store_json, "store",
-                                                 max_pages)
-        kodiutils.log("Continue Watching: %d item(s)" % len(items))
-        return items
+        # (path, extra ctx). The shelf id fetched the way Watchlist and
+        # ChannelUpNext are; the same with the personalised-canvas ctx those
+        # working shelves send; the configurations slug last.
+        candidates = [
+            (CONTINUE_WATCHING_SHELF, {"ctx_brand": APPLE_TV_PLUS_CHANNEL}),
+            (CONTINUE_WATCHING_SHELF, {"ctx_brand": APPLE_TV_PLUS_CHANNEL,
+                                       "ctx_cvs": WATCHLIST_CVS}),
+            (CONTINUE_WATCHING_SLUG, {"ctx_brand": APPLE_TV_PLUS_CHANNEL}),
+        ]
+        for getter, label in ((self._get_json, "web"), (self._store_json, "store")):
+            for path, ctx in candidates:
+                items = self._page_continue_watching(getter, label, path, ctx,
+                                                      max_pages)
+                if items:
+                    kodiutils.log("Continue Watching: %d item(s) via %s %s"
+                                  % (len(items), label, path))
+                    return items
+        kodiutils.log("Continue Watching: 0 item(s)")
+        return []
 
-    def _continue_watching_via(self, getter, label, max_pages):
-        """Page the continue-watching shelf through one caller.
+    def _page_continue_watching(self, getter, label, path, ctx, max_pages):
+        """Page one (caller, path, ctx) shape, logging its raw outcome.
 
-        Logs why a caller came back empty -- no shelf in the response at all
-        (the caller is not served this endpoint) versus a shelf present but
-        carrying no items (served, but this identity's row is empty) -- so a
-        zero is diagnosable rather than silent.
+        Distinguishes no shelf at all (that shape is not served) from a shelf
+        with no items (served, but empty as asked), so each attempt is
+        diagnosable rather than a silent zero.
         """
-        ctx = {"ctx_brand": APPLE_TV_PLUS_CHANNEL}
         items = []
         seen = set()
         token = None
@@ -462,7 +479,7 @@ class AppleTVApi(object):
             params = dict(ctx)
             if token:
                 params["nextToken"] = token
-            data = getter("/shelves/%s" % CONTINUE_WATCHING_SHELF, params)
+            data = getter("/shelves/%s" % path, params)
             shelf = ((data or {}).get("data") or {}).get("shelf")
             if not isinstance(shelf, dict):
                 break
@@ -476,9 +493,9 @@ class AppleTVApi(object):
             token = shelf.get("nextToken") or None
             if not token or not raw:
                 break
-        kodiutils.log("Continue Watching (%s caller): shelf=%s, raw items=%d, "
-                      "listed=%d" % (label, "yes" if saw_shelf else "no",
-                                     raw_total, len(items)))
+        kodiutils.log("Continue Watching try (%s %s): shelf=%s, raw=%d, listed=%d"
+                      % (label, path, "yes" if saw_shelf else "no",
+                         raw_total, len(items)))
         return items
 
     def get_followed_teams(self, channel_id):
