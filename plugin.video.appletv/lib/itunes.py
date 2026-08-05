@@ -36,6 +36,8 @@ import time
 import uuid
 import zlib
 
+import requests
+
 from . import kodiutils
 
 # The capture uses a pod-specific host and puts the guid in the query string
@@ -478,16 +480,32 @@ class ItunesStore(object):
         country = (kodiutils.get_setting("locale") or "en-US").split("-")[-1].lower()
         for start in range(0, len(ids), 100):
             batch = ids[start:start + 100]
-            try:
-                resp = self.session.get(
-                    PUBLIC_LOOKUP_URL, timeout=30,
-                    params={"id": ",".join(batch), "country": country,
-                            "entity": "movie,tvSeason,tvEpisode"})
-            except Exception as exc:
-                kodiutils.log_error("Public lookup failed: %s" % exc)
-                break
-            if resp.status_code != 200:
-                kodiutils.log_error("Public lookup -> %s" % resp.status_code)
+            # Looking up by id needs nothing else. An entity filter is for
+            # searches and is what a 400 here means, so it is not sent; the
+            # country is dropped too if Apple still objects, since the ids
+            # already identify their storefront.
+            attempts = [{"id": ",".join(batch), "country": country},
+                        {"id": ",".join(batch)}]
+            resp = None
+            for params in attempts:
+                try:
+                    # Deliberately not self.session: that one carries
+                    # tv.apple.com's cookies and headers, and this is a
+                    # different service that has no use for them.
+                    resp = requests.get(PUBLIC_LOOKUP_URL, timeout=30,
+                                        params=params,
+                                        headers={"User-Agent": STORE_UA,
+                                                 "Accept": "*/*"})
+                except Exception as exc:
+                    kodiutils.log_error("Public lookup failed: %s" % exc)
+                    resp = None
+                    break
+                if resp.status_code == 200:
+                    break
+                kodiutils.log_error("Public lookup -> %s %s"
+                                    % (resp.status_code,
+                                       resp.text[:160].strip().replace("\n", " ")))
+            if resp is None or resp.status_code != 200:
                 break
             try:
                 results = (resp.json() or {}).get("results") or []
