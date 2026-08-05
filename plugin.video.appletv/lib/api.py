@@ -475,6 +475,25 @@ class AppleTVApi(object):
         kodiutils.log("Continue Watching: 0 item(s)")
         return []
 
+    @staticmethod
+    def _header_safe(value):
+        """A cookie value HTTP can actually send, or '' if it cannot.
+
+        HTTP headers are latin-1, so a value pasted with a stray character an
+        editor introduced -- an ellipsis from a truncated copy, a smart quote
+        -- makes requests raise rather than send, and the whole shelf fails
+        with an opaque codec error. Catch it here and say what it is, so a bad
+        paste reads as a clear instruction rather than a traceback.
+        """
+        try:
+            value.encode("latin-1")
+            return value
+        except (UnicodeEncodeError, AttributeError):
+            kodiutils.log_error("Store cookie contains a character HTTP cannot "
+                                "send -- a truncated paste with an ellipsis? "
+                                "Re-paste the full cookie value.")
+            return ""
+
     def _vz_json(self, path, extra=None, quiet=False):
         """Ask the UTS API as the Android TV app (caller=vz).
 
@@ -485,9 +504,11 @@ class AppleTVApi(object):
         than a bearer. So this sends the pasted store session under that shape;
         with no session it cannot ask, and says so by returning nothing.
         """
-        cookies = (kodiutils.get_setting("itunes_cookies") or "").strip()
+        cookies = self._header_safe(
+            (kodiutils.get_setting("itunes_cookies") or "").strip())
         if not cookies:
-            kodiutils.log("Android caller needs a store session; none pasted")
+            kodiutils.log("Android caller needs a valid store session; none "
+                          "pasted (or the pasted value has bad characters)")
             return None
         params = {
             "caller": UTS_ANDROID_CALLER,
@@ -1769,10 +1790,11 @@ class AppleTVApi(object):
         # The capture identifies itself to this endpoint with the store dsid
         # and its cookies rather than a bearer. Send those too when a session
         # has been pasted in; the dsid names itself inside the cookie.
-        cookies = (kodiutils.get_setting("itunes_cookies") or "").strip()
+        cookies = self._header_safe(
+            (kodiutils.get_setting("itunes_cookies") or "").strip())
         if cookies:
             headers["Cookie"] = cookies
-            found = re.search(r"(?:amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
+            found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
                 or re.search(r"X-Dsid=(\d+)", cookies)
             if found:
                 headers["X-DSID"] = found.group(1)
