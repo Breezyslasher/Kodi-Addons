@@ -303,6 +303,29 @@ looking at the wrong field on the wrong caller.
 The addon now falls back to that endpoint whenever an iTunes playable comes
 back with no assets, and plays the redownload offer if Apple names one.
 
+### Surfacing purchases in Continue Watching
+
+The home page's resume row is `uts.col.ChannelUpNext.tvs.sbd.4000` — scoped
+to the Apple TV+ channel, so an in-progress iTunes film never shows in it (a
+capture of it came back with `isItunes:true` count zero, only
+`channelId tvs.sbd.4000`). Apple keeps a **second, account-wide** resume shelf
+that does mix the two, and its own `configurations` document names the
+endpoint rather than leaving it to be guessed:
+
+```
+getContinueWatchingShelf  →  /uts/v3/shelves/continue-watching
+```
+
+A capture of that shelf (from the TV app) carried The Greatest Showman — an
+iTunes purchase — beside Apple TV+ episodes, each item the ordinary UTS shape
+the shelf parser already reads. The addon adds a **Continue Watching** entry
+to its top menu that asks this shelf as the signed-in account and lists what
+comes back; an iTunes film there opens through the same redownload path as
+opening it from the library. Whether Apple serves *this* identity the iTunes
+rows or only the Apple TV+ ones is left to the response to answer rather than
+assumed — the shelf exists and mixes services, which the capture proves; that
+the web bearer is shown the same mix is what a run confirms.
+
 ### Where this stands, tested
 
 Everything up to the licence works, with **no store session at all** — the

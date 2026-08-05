@@ -138,6 +138,12 @@ PLAYBACK_REPORT_CACHE = "now_playing.json"
 # The Up Next list is served as an ordinary shelf, with the context values
 # below rather than ones taken from a canvas (nothing links to it from one).
 WATCHLIST_SHELF = "uts.col.Watchlist"
+# The account-wide resume row. Apple's own configurations document names the
+# endpoint outright -- getContinueWatchingShelf -> /uts/v3/shelves/
+# continue-watching -- and unlike the per-channel ChannelUpNext shelf (which is
+# scoped to tvs.sbd.4000 and so is Apple TV+ only) this one carries every
+# service the account is mid-way through, iTunes purchases included.
+CONTINUE_WATCHING_SHELF = "continue-watching"
 WATCHLIST_CVS = "uts.tcvs.tv-plus-personalized-canvas-adaptive"
 WATCHLIST_CTX_SHELF = "uts.shlf.gen.Watchlist_%s"
 
@@ -412,6 +418,43 @@ class AppleTVApi(object):
             token = shelf.get("nextToken") or None
             if not token or not page:
                 break
+        return items
+
+    def get_continue_watching(self, max_pages=10):
+        """The account-wide Continue Watching row, across every service.
+
+        The per-channel Up Next the home page shows is scoped to Apple TV+, so
+        it never lists an iTunes purchase. This asks Apple's account-wide shelf
+        instead, the one the TV apps show, which mixes Apple TV+ episodes with
+        iTunes films the account is part-way through -- The Greatest Showman
+        among them in a capture of it.
+
+        Whether Apple serves this identity the iTunes rows or only the Apple
+        TV+ ones is answered by the response, not assumed: the shelf is asked
+        for as the account and whatever comes back is listed. An iTunes film
+        resumes through the same purchase path as opening it from the library.
+        """
+        ctx = {"ctx_brand": APPLE_TV_PLUS_CHANNEL}
+        items = []
+        seen = set()
+        token = None
+        for _ in range(max_pages):
+            params = dict(ctx)
+            if token:
+                params["nextToken"] = token
+            data = self._get_json("/shelves/%s" % CONTINUE_WATCHING_SHELF, params)
+            shelf = ((data or {}).get("data") or {}).get("shelf")
+            if not isinstance(shelf, dict):
+                break
+            page = self._extract_items(shelf.get("items"))
+            for item in page:
+                if item.get("id") not in seen:
+                    seen.add(item.get("id"))
+                    items.append(item)
+            token = shelf.get("nextToken") or None
+            if not token or not page:
+                break
+        kodiutils.log("Continue Watching: %d item(s)" % len(items))
         return items
 
     def get_followed_teams(self, channel_id):

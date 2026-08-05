@@ -54,6 +54,7 @@ S = {
     "remove_watchlist": 32048,
     "watchlist_removed": 32049,
     "watchlist": 32051,
+    "continue_watching": 32060,
     "sub_active": 32052,
     "sub_none": 32053,
     "sub_renews": 32054,
@@ -288,6 +289,10 @@ def main_menu(auth):
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
     store = ItunesStore(auth.session)
+    # The account-wide resume row: personalised, so only when signed in to
+    # Apple TV+. It mixes Apple TV+ episodes with iTunes films in progress.
+    if auth.is_authenticated():
+        add_dir(L("continue_watching"), "continue_watching")
     if store.is_signed_in() or store.pasted_cookies() or auth.is_authenticated():
         add_dir(L("itunes_library"), "itunes")
     add_dir(L("search"), "search")
@@ -876,6 +881,8 @@ def router(paramstring):
     elif action == "clubs":
         show_items(api.get_event_clubs(params.get("item_id")),
                    channel_id=params.get("channel_id") or APPLE_TV_PLUS_CHANNEL)
+    elif action == "continue_watching":
+        show_items(api.get_continue_watching())
     elif action == "subscription":
         do_subscription(api)
     elif action == "shelf":
