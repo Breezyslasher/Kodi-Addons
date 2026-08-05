@@ -1462,17 +1462,32 @@ class AppleTVApi(object):
                 continue
             kodiutils.log("iTunes redownload offer found: %s %s"
                           % (best.get("kind"), best.get("variant")))
-            # A redownload offer names no key server, but the document it
-            # arrives in does: every fpsKeyServerQueryParameters in it carries
-            # the same svcId, paired with this title's own adam id. Every
-            # licence request Apple has been seen to grant carries one, and
-            # the ones this addon was refused carried none, so it is taken
-            # from the response rather than left empty.
-            qp = self._fps_params(data)
-            if qp:
-                kodiutils.log("iTunes key-server parameters: %s" % qp)
+            # The svcId the licence request must carry is the purchase's own
+            # service, and the playable states it outright: serviceId is
+            # tvs.vds.9023 on an iTunes-catalogue purchase (seen in a capture of
+            # this title in the Continue Watching shelf, "iTunes US Catalog").
+            # A purchase has no assets of its own, so its own
+            # fpsKeyServerQueryParameters do not exist; the ones _fps_params
+            # finds by walking the document belong to other playables -- a
+            # trailer, the background loop -- which are Apple TV+ studio assets
+            # on a different service (tvs.vds.4105 in the same capture). Taking
+            # svcId from there would licence the purchase against the wrong
+            # service, so the playable's serviceId is preferred and the walked
+            # params are only a last resort.
+            svc_id = best.get("svcId") or candidate.get("serviceId")
+            adam_id = str(media.get("id")
+                          or self._q(best["hlsUrl"], "a") or "")
+            if svc_id:
+                qp = {"svcId": svc_id, "adamId": adam_id, "isExternal": True}
+                kodiutils.log("iTunes key-server parameters (from serviceId): %s"
+                              % qp)
+            else:
+                qp = self._fps_params(data)
+                if qp:
+                    kodiutils.log("iTunes key-server parameters (from document "
+                                  "walk): %s" % qp)
             return {"hlsUrl": best["hlsUrl"],
-                    "adamId": str(media.get("id") or ""),
+                    "adamId": adam_id,
                     "fpsKeyServerQueryParameters": qp or {},
                     "isItunes": True}
         kodiutils.log("No personalizedOffers came back; the store caller alone "

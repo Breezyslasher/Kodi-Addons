@@ -331,6 +331,20 @@ own responses now matches what its granted requests carry: the key id out of
 its PSSH, the adam id, and an svcId taken from the title's own document
 rather than assumed. It is still refused.
 
+The svcId source was later pinned down exactly. A capture of The Greatest
+Showman in the **Continue Watching** shelf carries the purchase playable with
+`serviceId: tvs.vds.9023` ("iTunes US Catalog") stated outright, while a
+studio title beside it in the same shelf carries `tvs.vds.4105`. A purchase
+has no assets of its own, so `fpsKeyServerQueryParameters` for it do not
+exist; walking the detail document for *some* svcId can therefore pick up a
+neighbouring playable's — a trailer, the background loop — on a different
+service. The addon now prefers the purchase playable's own `serviceId` and
+only walks the document as a last resort. For this title both paths yield
+`tvs.vds.9023`, so it changes no outcome here; it stops a wrong svcId being
+sent for a title whose page mixes services. The licence is still `-1020` with
+the correct svcId, under both the account's identities — so svcId was never
+what it turned on.
+
 **A pasted store session was then tried, and refused identically.** With
 `X-Dsid`, `X-Token` and the store cookies on the licence request — the exact
 credentials Apple's own client uses — the answer is still `-1020`. So the
@@ -357,9 +371,19 @@ Two things keep it from being flatly impossible, both worth recording:
   the licence decision is being made per request, not per title.
 - Apple TV on **Android** plays purchases, and Android has no FairPlay. Either
   Apple issues Widevine to that client where it refuses this one, or that app
-  is given a different playlist entirely. A capture from it would say which.
-  That capture does not exist here: the Android TV app's native layer rejects
-  any substitute CA, which is where that route ended.
+  is given a different playlist entirely. The Android TV app was then run on a
+  rooted LineageOS build (Raspberry Pi 4) with a substitute CA injected into
+  the conscrypt trust store, and its traffic did decrypt — but only the browse
+  calls. Its own `WVCdm` logcat confirms it licenses through a **Widevine L3
+  software CDM** (`form_factor: L3`, `soc_model: Software`, `AddKey` succeeds),
+  so a generic CDM is enough for that client. What never crossed the proxy is
+  the licence HTTP POST itself: it rides Apple's native, certificate-pinned
+  (and partly QUIC) path, so the endpoint, headers and body that turn a
+  Widevine challenge into a granted purchase key were not captured. The one
+  `AddKey` that was visible carried a placeholder PSSH
+  (`0123456789012345ABCDEFGHIJKLMNOP`) — the app's start-up DRM self-check,
+  not a title. So the Android route confirmed *that* a generic Widevine CDM is
+  licensed, without revealing *how* the request is signed.
 
 Everything short of the licence works, and is worth keeping: store search
 finds purchases, `personalizedOffers` says whether the account owns one,
