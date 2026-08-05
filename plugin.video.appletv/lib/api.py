@@ -37,6 +37,16 @@ UTS_STORE_BASE = "https://uts-api.itunes.apple.com/uts/v3"
 UTS_STORE_CALLER = "wlk"
 UTS_STORE_PFM = "windows"
 UTS_STORE_VERSION = "94"
+# The Android TV app's caller. A capture of it shows the account-wide Continue
+# Watching shelf populated only for this caller -- caller=vz with vz=true,
+# pfm=vz and mfr=AndroidTV -- while the web and Windows-store callers get an
+# empty shell. It authenticates with the mz_at_ssl store cookie and X-Dsid,
+# not a bearer.
+UTS_ANDROID_CALLER = "vz"
+UTS_ANDROID_PFM = "vz"
+UTS_ANDROID_VERSION = "76"
+UTS_ANDROID_UA = ("ATVE/16.4.0 Android/16 build/34A30 maker/Raspberry "
+                  "model/Pi4ModelBRev1.1")
 # The placeholder id the debug menu entry plays under. Only this id gets the
 # pasted manifest; a real title always resolves through the catalogue.
 DEBUG_CONTENT_ID = "debug"
@@ -443,25 +453,80 @@ class AppleTVApi(object):
         logged so the shape Apple populates is found from the responses. An
         iTunes film resumes through the same purchase path as the library.
         """
-        # (path, extra ctx). The shelf id fetched the way Watchlist and
-        # ChannelUpNext are; the same with the personalised-canvas ctx those
-        # working shelves send; the configurations slug last.
-        candidates = [
-            (CONTINUE_WATCHING_SHELF, {"ctx_brand": APPLE_TV_PLUS_CHANNEL}),
-            (CONTINUE_WATCHING_SHELF, {"ctx_brand": APPLE_TV_PLUS_CHANNEL,
-                                       "ctx_cvs": WATCHLIST_CVS}),
-            (CONTINUE_WATCHING_SLUG, {"ctx_brand": APPLE_TV_PLUS_CHANNEL}),
+        # (getter, label, path, extra ctx). The Android caller with the slug
+        # is the exact shape a capture of the app shows returning the full
+        # cross-service row; it is tried first. The web and Windows-store
+        # callers, which a capture shows getting only an empty shell, follow
+        # as fallbacks against the shelf's own id.
+        attempts = [
+            (self._vz_json, "vz", CONTINUE_WATCHING_SLUG, {}),
+            (self._get_json, "web", CONTINUE_WATCHING_SHELF,
+             {"ctx_brand": APPLE_TV_PLUS_CHANNEL}),
+            (self._store_json, "store", CONTINUE_WATCHING_SHELF,
+             {"ctx_brand": APPLE_TV_PLUS_CHANNEL}),
         ]
-        for getter, label in ((self._get_json, "web"), (self._store_json, "store")):
-            for path, ctx in candidates:
-                items = self._page_continue_watching(getter, label, path, ctx,
-                                                      max_pages)
-                if items:
-                    kodiutils.log("Continue Watching: %d item(s) via %s %s"
-                                  % (len(items), label, path))
-                    return items
+        for getter, label, path, ctx in attempts:
+            items = self._page_continue_watching(getter, label, path, ctx,
+                                                  max_pages)
+            if items:
+                kodiutils.log("Continue Watching: %d item(s) via %s %s"
+                              % (len(items), label, path))
+                return items
         kodiutils.log("Continue Watching: 0 item(s)")
         return []
+
+    def _vz_json(self, path, extra=None, quiet=False):
+        """Ask the UTS API as the Android TV app (caller=vz).
+
+        The account-wide Continue Watching shelf is served to this caller and
+        not to the web or Windows-store ones. A capture of the app's request
+        shows caller=vz with vz=true, pfm=vz and mfr=AndroidTV, on the store
+        host, authenticated by the mz_at_ssl store cookie and X-Dsid rather
+        than a bearer. So this sends the pasted store session under that shape;
+        with no session it cannot ask, and says so by returning nothing.
+        """
+        cookies = (kodiutils.get_setting("itunes_cookies") or "").strip()
+        if not cookies:
+            kodiutils.log("Android caller needs a store session; none pasted")
+            return None
+        params = {
+            "caller": UTS_ANDROID_CALLER,
+            "vz": "true",
+            "pfm": UTS_ANDROID_PFM,
+            "mfr": "AndroidTV",
+            "v": UTS_ANDROID_VERSION,
+            "sf": self._storefront(),
+            "locale": self._locale(),
+        }
+        if extra:
+            params.update(extra)
+        headers = {
+            "User-Agent": UTS_ANDROID_UA,
+            "Content-Type": "application/json",
+            "Cookie": cookies,
+        }
+        # The dsid names itself in the mz_at_ssl cookie; fall back to the other
+        # store cookies and to an explicit X-Dsid the same way _store_json does.
+        found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
+            or re.search(r"X-Dsid=(\d+)", cookies)
+        if found:
+            headers["X-Dsid"] = found.group(1)
+        try:
+            resp = self.session.get(UTS_STORE_BASE + path, params=params,
+                                    headers=headers, timeout=20)
+        except Exception as exc:
+            kodiutils.log_error("Android UTS request %s failed: %s" % (path, exc))
+            return None
+        if resp.status_code != 200:
+            if not quiet:
+                kodiutils.log_error("Android UTS %s -> %s %s"
+                                    % (path, resp.status_code, resp.text[:200]))
+            return None
+        try:
+            return resp.json()
+        except ValueError:
+            kodiutils.log_error("Android UTS response for %s was not JSON" % path)
+            return None
 
     def _page_continue_watching(self, getter, label, path, ctx, max_pages):
         """Page one (caller, path, ctx) shape, logging its raw outcome.
