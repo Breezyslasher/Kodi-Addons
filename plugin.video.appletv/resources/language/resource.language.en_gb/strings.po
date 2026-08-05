@@ -335,3 +335,8 @@ msgstr ""
 msgctxt "#32080"
 msgid "Search Apple TV+ only (store purchases cannot be played)"
 msgstr ""
+
+
+msgctxt "#32081"
+msgid "Continue Watching session (paste an Android TV app mz_at_ssl session)"
+msgstr ""

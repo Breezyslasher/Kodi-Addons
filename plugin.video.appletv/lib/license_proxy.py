@@ -522,7 +522,11 @@ class _Handler(BaseHTTPRequestHandler):
         # refused with status -1020. So when a store session has been pasted
         # in and this stream came from the override, send what Apple's client
         # sends. The dsid names itself inside the cookie.
-        store_cookies = (kodiutils.get_setting("itunes_cookies") or "").strip()
+        # The Android mz_at_ssl session may live in its own setting now; prefer
+        # it for the licence, since it is the identity that reaches the licence
+        # decision (rather than a 403), falling back to the store session.
+        store_cookies = (kodiutils.get_setting("itunes_uts_cookies") or "").strip() \
+            or (kodiutils.get_setting("itunes_cookies") or "").strip()
         store_token = (kodiutils.get_setting("itunes_token") or "").strip()
         as_store = bool((ctx.get("override") or ctx.get("itunes"))
                         and (store_cookies or store_token))

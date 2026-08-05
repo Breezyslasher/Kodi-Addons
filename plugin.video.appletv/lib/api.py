@@ -504,10 +504,16 @@ class AppleTVApi(object):
         than a bearer. So this sends the pasted store session under that shape;
         with no session it cannot ask, and says so by returning nothing.
         """
+        # The UTS/Android service (Continue Watching) authenticates with an
+        # mz_at_ssl cookie, while the MZStoreElements locker wants the store
+        # cookies -- two different sessions. Keep them apart: prefer a session
+        # pasted specifically for this caller, and fall back to the store one
+        # only so a single combined paste still works.
         cookies = self._header_safe(
-            (kodiutils.get_setting("itunes_cookies") or "").strip())
+            (kodiutils.get_setting("itunes_uts_cookies") or "").strip()
+            or (kodiutils.get_setting("itunes_cookies") or "").strip())
         if not cookies:
-            kodiutils.log("Android caller needs a valid store session; none "
+            kodiutils.log("Android caller needs a valid mz_at_ssl session; none "
                           "pasted (or the pasted value has bad characters)")
             return None
         params = {
