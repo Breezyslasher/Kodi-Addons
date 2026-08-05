@@ -72,6 +72,10 @@ LOOKUP_STOREFRONT_SUFFIX = "-1,32"
 # when the store's own lookup refuses, so a locker of ids can still be turned
 # into titles.
 PUBLIC_LOOKUP_URL = "https://itunes.apple.com/lookup"
+# The lookups in the captures are made by iTunes rather than the TV app, and
+# the user agent is one of several things that differed.
+LOOKUP_UA = ("iTunes/12.13.10 (Windows; Microsoft Windows 10 x64 "
+             "(Build 19045); x64) AppleWebKit/7613.2007.1014.14 (dt:2)")
 BOOKKEEPER_GET_ALL = "https://upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/getAll"
 BOOKKEEPER_PUT = "https://upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/put"
 BOOKKEEPER_DOMAIN = "com.apple.upp"
@@ -343,7 +347,7 @@ class ItunesStore(object):
                       % (len(members), sum(1 for m in members if m["shares"])))
         return members
 
-    def locker(self, media_type=PURCHASES_MEDIA_TYPE_MOVIES):
+    def locker(self, media_type=PURCHASES_MEDIA_TYPE_MOVIES, dsid=None):
         """Store ids the account owns, from the JSON purchases endpoint.
 
         Returns ids only. Their titles come from a separate lookup, which is
@@ -365,19 +369,8 @@ class ItunesStore(object):
         if not cookies:
             kodiutils.log("No pasted store session; trying the addon's own")
         params = {"dataOnly": "true", "mt": media_type, "restoreMode": "false"}
-        dsid = (kodiutils.get_setting("itunes_sp_dsid") or "").strip()
         if dsid:
-            params["spDsid"] = dsid
-        elif cookies:
-            # Asking for one's own purchases can come back empty while the
-            # family's is full, and the number that says whose to list is not
-            # something anyone knows offhand. The roster names them, so say
-            # what the choices are rather than leaving an empty list
-            # unexplained.
-            for member in self.family_members():
-                if member["shares"] and not member["is_me"]:
-                    kodiutils.log("Family member sharing purchases: %s (dsid %s)"
-                                  % (member["name"], member["dsid"]))
+            params["spDsid"] = str(dsid)
         headers = dict(self._headers())
         headers.pop("Content-Type", None)
         if cookies:
@@ -417,8 +410,9 @@ class ItunesStore(object):
             ids = [str(i) for i in ordered]
         else:
             ids = [str(k) for k in content if str(k).isdigit()]
-        kodiutils.log("iTunes locker: %d owned title(s) for mt=%s"
-                      % (len(ids), media_type))
+        kodiutils.log("iTunes locker: %d owned title(s) for mt=%s%s"
+                      % (len(ids), media_type,
+                         " (dsid %s)" % dsid if dsid else " (own)"))
         return ids
 
     def lookup(self, ids):
@@ -441,6 +435,14 @@ class ItunesStore(object):
             headers["X-Apple-Store-Front"] = storefront + LOOKUP_STOREFRONT_SUFFIX
             headers["Origin"] = "https://se-edge.itunes.apple.com"
             headers["Referer"] = "https://se-edge.itunes.apple.com/"
+            # The captured lookups come from iTunes, not the TV app, and carry
+            # neither the TV client header nor a plist content type. Saying
+            # the 403 is about the signed token is a guess while the request
+            # still differs in ways that can be fixed, so these are matched.
+            headers["User-Agent"] = LOOKUP_UA
+            headers["Accept"] = "*/*"
+            headers.pop("X-Apple-Client-Application", None)
+            headers.pop("Cache-Control", None)
             if cookies:
                 headers["Cookie"] = cookies
             dsid = self.account_dsid()
@@ -580,9 +582,35 @@ class ItunesStore(object):
             "copyright": row.get("copyright"),
         }
 
+    def all_ids(self, media_type=PURCHASES_MEDIA_TYPE_MOVIES):
+        """Store ids from every locker this account can see.
+
+        One locker holds one person's purchases, so asking only for one's own
+        shows only one's own -- which for this account is a single film while
+        the family between them own ninety-odd. The setting still wins when it
+        names somebody, and otherwise every member the roster says is sharing
+        is asked, own included.
+        """
+        chosen = (kodiutils.get_setting("itunes_sp_dsid") or "").strip()
+        if chosen:
+            return self.locker(media_type, chosen)
+        dsids = [None]
+        for member in self.family_members():
+            if member["shares"] and not member["is_me"]:
+                dsids.append(member["dsid"])
+        ids = []
+        for dsid in dsids:
+            for store_id in self.locker(media_type, dsid):
+                if store_id not in ids:
+                    ids.append(store_id)
+        if len(dsids) > 1:
+            kodiutils.log("iTunes locker: %d title(s) across %d locker(s)"
+                          % (len(ids), len(dsids)))
+        return ids
+
     def owned(self, media_type=PURCHASES_MEDIA_TYPE_MOVIES, resolver=None):
         """What the account owns of one media type, as catalogue entries."""
-        ids = self.locker(media_type)
+        ids = self.all_ids(media_type)
         if not ids:
             return []
         rows = self.lookup(ids)
