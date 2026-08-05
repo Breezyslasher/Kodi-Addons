@@ -429,32 +429,56 @@ class AppleTVApi(object):
         iTunes films the account is part-way through -- The Greatest Showman
         among them in a capture of it.
 
-        Whether Apple serves this identity the iTunes rows or only the Apple
-        TV+ ones is answered by the response, not assumed: the shelf is asked
-        for as the account and whatever comes back is listed. An iTunes film
-        resumes through the same purchase path as opening it from the library.
+        The capture came from a store-authenticated client, and the website's
+        own caller is served a narrower catalogue elsewhere (its search returns
+        Apple TV+ only, its Up Next is TV+ only), so the web caller may be sent
+        an empty shelf here too. It is tried first all the same, and the store
+        caller -- the one the capture used -- is the fallback, mirroring how
+        search widens from web to store. Whichever returns rows is listed; an
+        iTunes film resumes through the same purchase path as the library.
+        """
+        items = self._continue_watching_via(self._get_json, "web", max_pages)
+        if not items:
+            items = self._continue_watching_via(self._store_json, "store",
+                                                 max_pages)
+        kodiutils.log("Continue Watching: %d item(s)" % len(items))
+        return items
+
+    def _continue_watching_via(self, getter, label, max_pages):
+        """Page the continue-watching shelf through one caller.
+
+        Logs why a caller came back empty -- no shelf in the response at all
+        (the caller is not served this endpoint) versus a shelf present but
+        carrying no items (served, but this identity's row is empty) -- so a
+        zero is diagnosable rather than silent.
         """
         ctx = {"ctx_brand": APPLE_TV_PLUS_CHANNEL}
         items = []
         seen = set()
         token = None
+        saw_shelf = False
+        raw_total = 0
         for _ in range(max_pages):
             params = dict(ctx)
             if token:
                 params["nextToken"] = token
-            data = self._get_json("/shelves/%s" % CONTINUE_WATCHING_SHELF, params)
+            data = getter("/shelves/%s" % CONTINUE_WATCHING_SHELF, params)
             shelf = ((data or {}).get("data") or {}).get("shelf")
             if not isinstance(shelf, dict):
                 break
-            page = self._extract_items(shelf.get("items"))
-            for item in page:
+            saw_shelf = True
+            raw = self._as_list(shelf.get("items"))
+            raw_total += len(raw)
+            for item in self._extract_items(raw):
                 if item.get("id") not in seen:
                     seen.add(item.get("id"))
                     items.append(item)
             token = shelf.get("nextToken") or None
-            if not token or not page:
+            if not token or not raw:
                 break
-        kodiutils.log("Continue Watching: %d item(s)" % len(items))
+        kodiutils.log("Continue Watching (%s caller): shelf=%s, raw items=%d, "
+                      "listed=%d" % (label, "yes" if saw_shelf else "no",
+                                     raw_total, len(items)))
         return items
 
     def get_followed_teams(self, channel_id):
