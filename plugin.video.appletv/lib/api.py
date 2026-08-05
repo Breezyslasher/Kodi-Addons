@@ -1496,9 +1496,17 @@ class AppleTVApi(object):
         naming an internal leg id, which cannot be known for an arbitrary
         store id. This asks without it and reports what comes back.
         """
+        # Apple requires a duration on this call -- "valid
+        # hlsAssetDurationInSeconds is required" -- and names it differently
+        # from the hlsAssetDuration the capture sends, so both are given. It
+        # describes the stream being played rather than selecting anything,
+        # and nothing here knows a title's runtime before resolving it, so a
+        # nominal value stands in.
         data = self._store_json("/contents/play-metadata/vod",
                                 {"brandId": ITUNES_CHANNEL,
-                                 "externalId": str(adam_id)})
+                                 "externalId": str(adam_id),
+                                 "hlsAssetDuration": "1",
+                                 "hlsAssetDurationInSeconds": "1"})
         row = (data or {}).get("data") or {}
         canonical = row.get("canonicalId")
         if not canonical:
