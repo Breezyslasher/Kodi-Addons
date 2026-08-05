@@ -310,6 +310,26 @@ session is needed too, only a live request answers. The addon asks with what
 it holds and adds a pasted store session when one is set, and logs which of
 the two happened.
 
+### Family sharing needs nothing extra here
+
+The title that produced that offer — The Greatest Showman, adam id
+1324419603 — is **not owned by the account that asked**. Cross-referencing
+the lockers settles it:
+
+| locker | contains 1324419603 |
+|---|---|
+| `spDsid=12305910250` (own, 2 films) | no |
+| `spDsid=210495396` (family, 94 films) | **yes** |
+
+Yet its `personalizedOffers` came back priced at zero, marked `redownload`,
+with `dsid=12305910250` — the asking account's own number — in the url.
+
+So Apple resolves the family entitlement on its side and issues the offer to
+whoever is signed in. Playing a family-shared purchase needs no `spDsid`, no
+family member's number, and no separate code path: it is the same request as
+playing one's own. `spDsid` and `ownerDsid` matter for *listing* a library
+and for the store's own redownload call, not for this.
+
 The obstacle is `kbsync`: a device keybag blob on the request, the same class
 of thing as the attestation headers below. The addon sends the request
 without it and reports what Apple says rather than assuming.
