@@ -37,6 +37,9 @@ UTS_STORE_BASE = "https://uts-api.itunes.apple.com/uts/v3"
 UTS_STORE_CALLER = "wlk"
 UTS_STORE_PFM = "windows"
 UTS_STORE_VERSION = "94"
+# The placeholder id the debug menu entry plays under. Only this id gets the
+# pasted manifest; a real title always resolves through the catalogue.
+DEBUG_CONTENT_ID = "debug"
 WEB_HOME = "https://tv.apple.com"
 WIDEVINE_CERT_URL = "https://play.itunes.apple.com/WebObjects/MZPlay.woa/wa/widevineCert"
 
@@ -1043,8 +1046,12 @@ class AppleTVApi(object):
         manifest with its ?t= token), fpsKeyServerUrl and the asset ids. This
         avoids scraping the HTML page.
         """
+        # Only the debug entry plays the pasted manifest. It used to apply to
+        # everything, which meant a set override silently substituted itself
+        # for whatever title was actually chosen -- picking one film and
+        # playing another, with nothing on screen to say so.
         override = kodiutils.get_setting("manifest_url_override")
-        if override:
+        if override and str(content_id) == DEBUG_CONTENT_ID:
             override = override.replace("&amp;", "&").strip()
             return {"manifest": override, "adam_id": self._q(override, "a"),
                     "svc_id": self._q(override, "svcId"), "is_external": True,
