@@ -331,7 +331,43 @@ own responses now matches what its granted requests carry: the key id out of
 its PSSH, the adam id, and an svcId taken from the title's own document
 rather than assumed. It is still refused.
 
-The differences that remain are ones nothing here can supply:
+**A pasted store session was then tried, and refused identically.** With
+`X-Dsid`, `X-Token` and the store cookies on the licence request — the exact
+credentials Apple's own client uses — the answer is still `-1020`. So the
+refusal is not about who is asking. Both identities the account has were
+offered and both were declined.
+
+What the captures say instead is that the key system splits cleanly by
+playlist, without a single exception:
+
+| playlist | licensed with |
+|---|---|
+| `hls/subscription/…` — Apple TV+ | **Widevine**, in 4 captures |
+| `hls/playlist.m3u8?a=…` — a purchase | **FairPlay**, in 3 captures |
+
+Kodi has no FairPlay CDM, and cannot have one. **So an iTunes purchase does
+not play in this addon**, and that is the conclusion rather than a step
+towards one.
+
+Two things keep it from being flatly impossible, both worth recording:
+
+- The purchase manifest **carries Widevine keys** — three were collected from
+  it. Apple would not provision Widevine PSSHs into a manifest nothing is
+  ever meant to decrypt under Widevine, so the content is prepared for it and
+  the licence decision is being made per request, not per title.
+- Apple TV on **Android** plays purchases, and Android has no FairPlay. Either
+  Apple issues Widevine to that client where it refuses this one, or that app
+  is given a different playlist entirely. A capture from it would say which.
+  That capture does not exist here: the Android TV app's native layer rejects
+  any substitute CA, which is where that route ended.
+
+Everything short of the licence works, and is worth keeping: store search
+finds purchases, `personalizedOffers` says whether the account owns one,
+family-shared titles resolve like any other, and the stream that comes back
+is the same feature manifest Apple's own client plays.
+
+The differences that remain, beyond the key system, are ones nothing here can
+supply:
 
 - the **store session** — `X-Dsid` and `X-Token`, which the addon will now
   send on a purchase's licence request if one has been pasted in
