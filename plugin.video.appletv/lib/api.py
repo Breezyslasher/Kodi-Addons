@@ -807,19 +807,36 @@ class AppleTVApi(object):
         The shelves overlap, so a title in Top Results and again under Movies
         is listed once.
 
-        It is asked as the store app, because tv.apple.com's search answers
-        with Apple TV+ originals and nothing else: "ted" returns Ted Lasso,
-        Shrinking and Wolfs, while the same API asked as the store app returns
-        Green Book, Oppenheimer and Hidden Figures -- titles that exist only
-        as purchases. A film the account owns cannot be opened, let alone
-        played, if search will not admit it exists. The website's search is
-        kept as a fallback so a refusal here leaves search working.
+        Which catalogue is searched is the caller's doing. tv.apple.com's
+        search answers with Apple TV+ originals and nothing else -- "ted"
+        returns Ted Lasso, Shrinking and Wolfs -- while the same API asked as
+        the store app also returns Green Book, Oppenheimer and Hidden Figures,
+        titles that exist only as purchases.
+
+        Purchases do not play here (see docs/itunes-library.md: they license
+        under FairPlay, which Kodi has no CDM for), so by default the store is
+        left out and search lists what can actually be watched. Turning the
+        setting off searches everything.
+
+        Filtering the store results down to the ones the account owns is not
+        possible cheaply, and is deliberately not attempted: a search result
+        carries no channel and no entitlement -- only id, title, type, genres,
+        duration, release date, artwork and a playbackModes that reads
+        "Monoscopic" for everything -- so ownership would mean one extra
+        request per result, seventy-odd for a broad search.
         """
+        if kodiutils.get_setting_bool("search_appletv_only", True):
+            return self._search_results(
+                self._get_json("/search", {"searchTerm": query}))
         data = self._store_json("/search", {"searchTerm": query})
         if not data:
             kodiutils.log("Store search unavailable; falling back to the web "
                           "search, which lists Apple TV+ titles only")
             data = self._get_json("/search", {"searchTerm": query})
+        return self._search_results(data)
+
+    def _search_results(self, data):
+        """Flatten a search response's shelves, keeping each title once."""
         items = []
         seen = set()
         for shelf in self._extract_shelves(data):

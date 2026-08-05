@@ -330,3 +330,8 @@ msgstr ""
 msgctxt "#32079"
 msgid "Store X-Token (for licensing purchases)"
 msgstr ""
+
+
+msgctxt "#32080"
+msgid "Search Apple TV+ only (store purchases cannot be played)"
+msgstr ""
