@@ -569,6 +569,18 @@ handful no lookup will name, and its entries open: a title picked from it
 resolves its redownload offer and reaches the licence exactly as one picked
 from search does.
 
+Two ids in a hundred cannot be listed at all, and the reason is not a bug to
+fix. The public index misses some -- five films and eleven episodes here --
+and the catalogue names every missing film but none of the episodes, with a
+404 reading `Content Not Available`. The eleven are one thing: Treasure Quest
+Season 1, complete. So a title an account owns can outlive Apple's listing of
+it, and nothing reachable will name one that has. The addon says which ids
+those are rather than quietly returning a shorter list.
+
+Worth knowing for anything built on these endpoints: `/movies/<store id>`
+works, and `/episodes/<store id>` answers **400**, a malformed request rather
+than a missing title. Only the film endpoint takes a numeric id.
+
 **A locker holds one person's purchases**, which is easy to miss and was
 missed here for a while: asking only for the signed-in account returned a
 single film while the family between them own ninety-odd. The roster is read

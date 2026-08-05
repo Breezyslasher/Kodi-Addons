@@ -1501,8 +1501,12 @@ class AppleTVApi(object):
         # playable without any umc id involved. play-metadata was tried first
         # and wants a duration matching the real asset, which is not knowable
         # before the title is resolved; this needs nothing but the id.
-        for kind in ("movies", "episodes"):
-            data = self._store_detail(kind, str(adam_id))
+        # Only /movies/ takes a store id. /episodes/ answers 400 to a numeric
+        # one -- a malformed request rather than a missing title -- so asking
+        # it is noise, and a 404 from /movies/ is the real answer: the
+        # catalogue does not carry that id at all.
+        for kind in ("movies",):
+            data = self._store_detail(kind, str(adam_id), quiet=True)
             content = ((data or {}).get("data") or {}).get("content") or {}
             if not content.get("title"):
                 continue
@@ -1531,7 +1535,9 @@ class AppleTVApi(object):
                 "art": self._item_art(content.get("images") or {},
                                       "Episode" if kind == "episodes" else "Movie"),
             }
-        kodiutils.log_error("Catalogue would not name store id %s" % adam_id)
+        # 404 rather than a refusal: the account owns it and Apple no longer
+        # lists it. Nothing reachable can name a title the catalogue has
+        # dropped.
         return None
 
     @staticmethod
@@ -1559,11 +1565,11 @@ class AppleTVApi(object):
         walk(data)
         return found[0] if found else None
 
-    def _store_detail(self, kind, content_id):
+    def _store_detail(self, kind, content_id, quiet=False):
         """A title's detail as Apple's desktop TV app asks for it."""
-        return self._store_json("/%s/%s" % (kind, content_id))
+        return self._store_json("/%s/%s" % (kind, content_id), quiet=quiet)
 
-    def _store_json(self, path, extra=None):
+    def _store_json(self, path, extra=None, quiet=False):
         """Ask the UTS API as Apple's desktop TV app rather than the website.
 
         The caller decides what Apple is willing to say, and on two things it
@@ -1600,8 +1606,11 @@ class AppleTVApi(object):
             kodiutils.log_error("Store request %s failed: %s" % (path, exc))
             return None
         if resp.status_code != 200:
-            kodiutils.log_error("Store request %s -> %s %s"
-                                % (path, resp.status_code, resp.text[:200]))
+            # A caller sweeping many ids expects some to be absent and says so
+            # itself, so it is not worth a line each.
+            if not quiet:
+                kodiutils.log_error("Store request %s -> %s %s"
+                                    % (path, resp.status_code, resp.text[:200]))
             return None
         try:
             return resp.json()

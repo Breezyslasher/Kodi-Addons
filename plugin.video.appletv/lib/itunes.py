@@ -666,7 +666,18 @@ class ItunesStore(object):
                 if entry:
                     items.append(entry)
                     named += 1
-            kodiutils.log("Catalogue named %d of %d" % (named, len(missing)))
+            if named < len(missing):
+                # Both services answering nothing means the title is gone from
+                # Apple's catalogue, not that the request was wrong: the store
+                # detail says 404 Content Not Available for these, and the
+                # public index has no record either. The account still owns
+                # them; there is simply nothing left to name them with.
+                kodiutils.log(
+                    "%d owned title(s) are in no catalogue Apple still "
+                    "publishes, so they cannot be listed: %s"
+                    % (len(missing) - named, ", ".join(missing[:10])))
+            else:
+                kodiutils.log("Catalogue named %d of %d" % (named, len(missing)))
         elif missing:
             kodiutils.log("%d owned id(s) no lookup would name: %s"
                           % (len(missing), ", ".join(missing[:10])))
