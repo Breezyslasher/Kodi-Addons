@@ -511,12 +511,25 @@ class AppleTVApi(object):
             or re.search(r"X-Dsid=(\d+)", cookies)
         if found:
             headers["X-Dsid"] = found.group(1)
+        # This shelf fills in only when the session is accepted, and the store
+        # cookie that carries that acceptance is mz_at_ssl -- the one the app's
+        # request used. A session pasted from another client (the Windows
+        # library login) may not have it, which reads as an empty shelf rather
+        # than an error, so name up front what is being sent.
+        kodiutils.log("Android caller: mz_at_ssl cookie=%s, X-Dsid=%s"
+                      % ("yes" if "mz_at_ssl" in cookies else "NO",
+                         "yes" if headers.get("X-Dsid") else "NO"))
         try:
             resp = self.session.get(UTS_STORE_BASE + path, params=params,
                                     headers=headers, timeout=20)
         except Exception as exc:
             kodiutils.log_error("Android UTS request %s failed: %s" % (path, exc))
             return None
+        # Apple states whether it accepted the session in a response header;
+        # a false here with an empty shelf means the cookie, not the request.
+        kodiutils.log("Android caller: auth-token-valid=%s, utsk-expired=%s"
+                      % (resp.headers.get("X-Apple-Auth-Token-Valid", "?"),
+                         resp.headers.get("X-Apple-utsk-expired", "?")))
         if resp.status_code != 200:
             if not quiet:
                 kodiutils.log_error("Android UTS %s -> %s %s"
