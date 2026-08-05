@@ -78,7 +78,13 @@ STREAM_CACHE_LIMIT = 600
 # Shelf entries that are navigation, not something to play. Apple gives these
 # no playables at all, so listing them as items would only produce dead ones.
 # Room, Team and GrandPrix are not here: each has a canvas of its own.
-CONTAINER_TYPES = ("Brand", "Upsell", "Preview", "Person", "Originals", "MLS")
+# MovieBundle is a store collection -- a trilogy pack, a director's set --
+# and store search returns them alongside films. It is not playable: its id is
+# umc.cmr.its.bun.*, which /movies/ answers with "movie not found", and no
+# capture shows any client fetching one, so there is nothing to copy. Listed
+# as a container so it is skipped rather than offered as a dead end.
+CONTAINER_TYPES = ("Brand", "Upsell", "Preview", "Person", "Originals", "MLS",
+                   "MovieBundle")
 
 # Canvas shelves on a title's detail page that hold its extra videos.
 TRAILER_SHELF_PREFIX = "uts.col.Trailers"
