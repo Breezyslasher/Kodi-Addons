@@ -487,14 +487,33 @@ class ItunesStore(object):
         """
         found = {}
         country = (kodiutils.get_setting("locale") or "en-US").split("-")[-1].lower()
+        self._public_batch(ids, country, found, None)
+        # Films resolve almost completely without an entity hint -- 89 of 94 --
+        # and television barely at all -- 4 of 15 -- so the unresolved are
+        # asked for again as episodes and then as seasons. The hint was
+        # dropped earlier for the wrong reason: the 400 that prompted it came
+        # from an id called "orderedKeys", not from this parameter.
+        for entity in ("tvEpisode", "tvSeason"):
+            missing = [i for i in ids if i not in found]
+            if not missing:
+                break
+            self._public_batch(missing, country, found, entity)
+        kodiutils.log("Public lookup: %d of %d id(s) resolved"
+                      % (len(found), len(ids)))
+        return found
+
+    def _public_batch(self, ids, country, found, entity):
+        """One pass of the public lookup, filling `found` in place."""
         for start in range(0, len(ids), 100):
             batch = ids[start:start + 100]
             # Looking up by id needs nothing else. An entity filter is for
             # searches and is what a 400 here means, so it is not sent; the
             # country is dropped too if Apple still objects, since the ids
             # already identify their storefront.
-            attempts = [{"id": ",".join(batch), "country": country},
-                        {"id": ",".join(batch)}]
+            base = {"id": ",".join(batch), "country": country}
+            if entity:
+                base["entity"] = entity
+            attempts = [base, {k: v for k, v in base.items() if k != "country"}]
             resp = None
             for params in attempts:
                 try:
@@ -543,9 +562,6 @@ class ItunesStore(object):
                 for asked in batch:
                     if asked not in found and str(row.get("collectionId") or "") == asked:
                         found[asked] = found[store_id]
-        kodiutils.log("Public lookup: %d of %d id(s) resolved"
-                      % (len(found), len(ids)))
-        return found
 
     @staticmethod
     def _store_shape(row):
@@ -635,6 +651,13 @@ class ItunesStore(object):
             entry = self._from_lookup(store_id, row)
             if entry:
                 items.append(entry)
+        missing = [i for i in ids if i not in rows]
+        if missing:
+            # Not every owned id is in the public index -- some titles resolve
+            # and some do not -- so say which were lost rather than quietly
+            # returning a shorter list than the locker reported.
+            kodiutils.log("%d owned id(s) no lookup would name: %s"
+                          % (len(missing), ", ".join(missing[:10])))
         return items
 
     def owned_movies(self, resolver=None):

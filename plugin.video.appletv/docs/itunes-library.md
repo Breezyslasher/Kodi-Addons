@@ -531,16 +531,29 @@ those ids into titles is where it stops, and all three routes were tried:
 | route | answer |
 |---|---|
 | `MZStorePlatform/lookup` (Apple's own) | **403** |
-| `itunes.apple.com/lookup` (public) | **200, `resultCount: 0`** |
+| `itunes.apple.com/lookup` (public) | **works, but not for everything** |
 | `uts/v3/contents/play-metadata/vod` | **460**, content does not match condition |
 
-The first wants `X-JS-SP-TOKEN`. 142 captured lookups carry 142 distinct
-tokens across only 26 timestamps, so it signs each request rather than the
-session, and pasting cannot substitute for it.
+The first is refused. `X-JS-SP-TOKEN` is the obvious suspect — 142 captured
+lookups carry 142 distinct tokens across only 26 timestamps, so it signs each
+request rather than the session — but that is a suspicion, not a finding. The
+request was also being sent as the TV app rather than iTunes, with a plist
+content type and a client header the real one does not have; those are fixed
+now, and the device values Apple's client carries (`X-Apple-I-MD` and its
+companions, `X-Apple-Cuid`) are still missing. Blaming the token before
+accounting for those would be guessing.
 
-The second simply has no record of the id — for *Despicable Me*, a title the
-addon's own search finds without difficulty. So this is not a delisted-title
-story; the two services index different things.
+**The second carries the library, and one measurement of it was badly
+misleading.** Asked for a single id it answered `resultCount: 0`, which read
+like a service that cannot do this at all. Asked for the real library — 94
+ids across four lockers — it resolved **89**. It works; that first id is
+simply not in its index, along with four others.
+
+The id that misled was *Despicable Me*, which the addon's own search finds
+without difficulty. Both facts hold at once: the public service and the UTS
+catalogue are different indexes, and a title can sit in one and not the
+other. A sample of one said "impossible" where a sample of ninety-four says
+"mostly".
 
 The third maps a store id to its canonical one, which would be ideal, and it
 negotiates: without a duration it says `hlsAssetDurationInSeconds is
@@ -550,11 +563,21 @@ not knowable before the title is resolved. Apple's client also sends a
 `playablePassthrough` carrying an internal leg id that cannot be derived for
 an arbitrary store id.
 
-So the library lists how many purchases the account has and cannot say what
-they are. Given purchases do not play either, this is recorded rather than
-worked around. What does work, and needs none of it: **search finds
-purchases, and opening one says whether the account owns it** — the
-`personalizedOffers` test, which needs no store session at all.
+So the library works. It lists what the account owns and what its family
+shares — 89 of 94 in the run this describes, across four lockers — logs the
+handful no lookup will name, and its entries open: a title picked from it
+resolves its redownload offer and reaches the licence exactly as one picked
+from search does.
+
+**A locker holds one person's purchases**, which is easy to miss and was
+missed here for a while: asking only for the signed-in account returned a
+single film while the family between them own ninety-odd. The roster is read
+anyway, so every member who shares is asked and the ids merged.
+
+It stops where everything else stops, at the licence. What needs no store
+session at all, and is the more useful half: **search finds purchases, and
+opening one says whether the account owns it** — the `personalizedOffers`
+test.
 
 ## Borrowing a session instead of minting one
 
