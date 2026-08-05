@@ -33,6 +33,12 @@ FPS_URL = "https://play-edge.itunes.apple.com/WebObjects/MZPlayLocal.woa/wa/fpsR
 # purchase -- the library agent, not the TV app.
 STORE_AGENT = ("AMPLibraryAgent/1.6.4 (Windows 10.0.19045 x64; x64) "
                "Chromium/151.0.4129.59")
+# The Android TV app's user agent. When the pasted session is the Android
+# one (an mz_at_ssl cookie), the licence request is made to look like that
+# client rather than mixing it with the Windows agent and an X-Token that
+# belong to a different session.
+ANDROID_AGENT = ("ATVE/16.4.0 Android/16 build/34A30 maker/Raspberry "
+                 "model/Pi4ModelBRev1.1")
 CONTEXT_FILE = "playback_context.json"
 BIND_HOST = "127.0.0.1"
 DEFAULT_PORT = 57812
@@ -533,21 +539,28 @@ class _Handler(BaseHTTPRequestHandler):
                               store_cookies) \
                 or re.search(r"X-Dsid=(\d+)", store_cookies)
             dsid = found.group(1) if found else ""
+            # An mz_at_ssl cookie is the Android TV app's session, and that
+            # client authenticates by cookie and X-Dsid alone. Pairing it with
+            # the Windows agent and a stale X-Token from a different capture is
+            # incoherent and is itself a way to earn a 403, so when the session
+            # is the Android one send only what that client sends.
+            android = "mz_at_ssl" in store_cookies
             headers = {
                 "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": STORE_AGENT,
+                "User-Agent": ANDROID_AGENT if android else STORE_AGENT,
                 "X-Apple-Store-Front": "%s-1,42" % (
                     kodiutils.get_setting("storefront") or "143441"),
             }
             if dsid:
                 headers["X-Dsid"] = dsid
-            if store_token:
+            if store_token and not android:
                 headers["X-Token"] = store_token
             if store_cookies:
                 headers["Cookie"] = store_cookies
-            kodiutils.log("License identity: store session (dsid=%s, token=%s)"
-                          % ("yes" if dsid else "NO",
-                             "yes" if store_token else "NO"))
+            kodiutils.log("License identity: %s session (dsid=%s, token=%s)"
+                          % ("android" if android else "store",
+                             "yes" if dsid else "NO",
+                             "yes" if headers.get("X-Token") else "NO"))
         else:
             headers = {
                 "Content-Type": "application/json",
@@ -584,6 +597,16 @@ class _Handler(BaseHTTPRequestHandler):
             resp = requests.post(url, data=json.dumps(envelope), headers=headers, timeout=30)
             if resp.status_code != 200:
                 last_error = "HTTP %s %s" % (resp.status_code, resp.text[:150])
+                # An empty 403 from an Apple media endpoint is what a request
+                # missing device attestation earns; the response headers say
+                # whether the session was even read, which separates "not
+                # authorised" from "not signed". Logged once, on the first miss.
+                if attempt == 0:
+                    kodiutils.log(
+                        "License %s: auth-token-valid=%s, body=%r"
+                        % (resp.status_code,
+                           resp.headers.get("X-Apple-Auth-Token-Valid", "?"),
+                           resp.text[:120]))
                 continue
             try:
                 keys = (resp.json().get("streaming-response", {}) or {}).get("streaming-keys", [])
