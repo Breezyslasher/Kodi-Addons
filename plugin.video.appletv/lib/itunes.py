@@ -675,9 +675,10 @@ class ItunesStore(object):
                 # answers 403 here, so the gap is the signed token, not the
                 # titles.
                 kodiutils.log(
-                    "%d owned title(s) are no longer published, so only "
-                    "Apple's own library lookup can name them -- and it is "
-                    "the one refused: %s"
+                    "%d owned title(s) could not be named. Apple's own "
+                    "library lookup has them all and is the one refused; the "
+                    "catalogue takes a store id for a film but answers 400 "
+                    "for an episode, so there is nothing left to ask: %s"
                     % (len(missing) - named, ", ".join(missing[:10])))
             else:
                 kodiutils.log("Catalogue named %d of %d" % (named, len(missing)))

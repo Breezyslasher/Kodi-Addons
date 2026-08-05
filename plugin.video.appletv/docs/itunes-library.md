@@ -591,10 +591,23 @@ So this is one blocker wearing two faces, not two problems. An iPhone lists
 these titles because Apple's client can call that service; this cannot,
 because each call is signed per request.
 
-Worth knowing for anything built on these endpoints: `/movies/<store id>`
-works and answers 404 for a title outside the current catalogue, while
-`/episodes/<store id>` answers **400** -- a malformed request rather than a
-missing title. Only the film endpoint takes a numeric id.
+Which is why the five films could be rescued and the eleven episodes could
+not, and the difference is about **ids, not availability**:
+
+| | asked with a store id | answer |
+|---|---|---|
+| `/movies/<id>` | accepted | the five films, in full |
+| `/episodes/<id>` | **400, malformed** | never gets as far as looking |
+
+So `/movies/<episode id>` answering 404 says only *"that id is not a movie"*,
+which is true and useless. It is not evidence the episode is unpublished, and
+reading it that way was a mistake. Whether those episodes are in the current
+catalogue is simply **not known** -- no endpoint here accepts an episode's
+store id to ask with.
+
+A season would be the way in, since an episode's lookup names its
+`collectionId`. That id comes from the lookup that is refused, so it is out of
+reach for exactly the titles that need it.
 
 **A locker holds one person's purchases**, which is easy to miss and was
 missed here for a while: asking only for the signed-in account returned a
