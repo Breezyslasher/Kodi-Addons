@@ -60,6 +60,16 @@ PURCHASES_MEDIA_TYPE_TV = "4"
 # this asks without them and reports what Apple says.
 LOOKUP_URL = ("https://client-api.itunes.apple.com/WebObjects"
               "/MZStorePlatform.woa/wa/lookup")
+# The profile the library view asks for. Not "redownload-image": every
+# captured library lookup sends this longer name.
+LOOKUP_PROFILE = "redownload-image-tracklist-item"
+# Every lookup in every capture sends this storefront suffix -- ,32 rather
+# than the ,42 t:tv1 the TV app uses elsewhere.
+LOOKUP_STOREFRONT_SUFFIX = "-1,32"
+# The public iTunes lookup, which needs no session and no signed token. Used
+# when the store's own lookup refuses, so a locker of ids can still be turned
+# into titles.
+PUBLIC_LOOKUP_URL = "https://itunes.apple.com/lookup"
 BOOKKEEPER_GET_ALL = "https://upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/getAll"
 BOOKKEEPER_PUT = "https://upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/put"
 BOOKKEEPER_DOMAIN = "com.apple.upp"
@@ -403,38 +413,131 @@ class ItunesStore(object):
         return ids
 
     def lookup(self, ids):
-        """Turn store ids into titles, in batches as the client does."""
+        """Turn store ids into titles, in batches as the client does.
+
+        Apple's own lookup wants a signed token, so this may be refused; the
+        public lookup below needs nothing and stands in when it is.
+        """
         found = {}
         cookies = self.pasted_cookies()
+        storefront = (kodiutils.get_setting("storefront") or "143441")
+        refused = False
         for start in range(0, len(ids), 50):
             batch = ids[start:start + 50]
             headers = dict(self._headers())
             headers.pop("Content-Type", None)
+            # The capture's lookups differ from the rest of the store calls:
+            # a plain storefront suffix, and an Origin on the store front-end
+            # rather than the TV app.
+            headers["X-Apple-Store-Front"] = storefront + LOOKUP_STOREFRONT_SUFFIX
+            headers["Origin"] = "https://se-edge.itunes.apple.com"
+            headers["Referer"] = "https://se-edge.itunes.apple.com/"
             if cookies:
                 headers["Cookie"] = cookies
+            dsid = self.account_dsid()
+            if dsid:
+                headers["X-Dsid"] = dsid
             try:
                 resp = self.session.get(
                     LOOKUP_URL, headers=headers, timeout=30,
-                    # redownload-image is the profile the library view asks
-                    # for; lockup is what store browsing uses.
-                    params={"id": ",".join(batch), "p": "redownload-image",
+                    params={"id": ",".join(batch), "p": LOOKUP_PROFILE,
                             "caller": "DI6", "version": "2"})
             except Exception as exc:
                 kodiutils.log_error("iTunes lookup failed: %s" % exc)
+                refused = True
                 break
             if resp.status_code != 200:
+                # Every captured lookup carries X-JS-SP-TOKEN, and no two
+                # requests share one even within the same second, so it signs
+                # the request rather than the session and cannot be made here.
                 kodiutils.log_error(
-                    "iTunes lookup -> %s %s. If this is rejected, the signed "
-                    "X-JS-SP-TOKEN the storefront sends is likely required."
-                    % (resp.status_code, resp.text[:200]))
+                    "iTunes lookup -> %s; falling back to the public lookup, "
+                    "which needs no signed token" % resp.status_code)
+                refused = True
                 break
             try:
                 results = (resp.json() or {}).get("results") or {}
             except Exception:
                 kodiutils.log_error("iTunes lookup did not return JSON")
+                refused = True
                 break
             found.update(results)
+        if refused and not found:
+            return self.public_lookup(ids)
         return found
+
+    def public_lookup(self, ids):
+        """Titles for store ids from the public lookup service.
+
+        A different service with a different shape -- flat results keyed by
+        nothing, camelCase names, trackId rather than id -- so it is mapped
+        into the same shape the store lookup returns rather than handled
+        separately downstream.
+        """
+        found = {}
+        country = (kodiutils.get_setting("locale") or "en-US").split("-")[-1].lower()
+        for start in range(0, len(ids), 100):
+            batch = ids[start:start + 100]
+            try:
+                resp = self.session.get(
+                    PUBLIC_LOOKUP_URL, timeout=30,
+                    params={"id": ",".join(batch), "country": country,
+                            "entity": "movie,tvSeason,tvEpisode"})
+            except Exception as exc:
+                kodiutils.log_error("Public lookup failed: %s" % exc)
+                break
+            if resp.status_code != 200:
+                kodiutils.log_error("Public lookup -> %s" % resp.status_code)
+                break
+            try:
+                results = (resp.json() or {}).get("results") or []
+            except Exception:
+                kodiutils.log_error("Public lookup did not return JSON")
+                break
+            for row in results:
+                if not isinstance(row, dict):
+                    continue
+                store_id = str(row.get("trackId") or row.get("collectionId") or "")
+                if store_id:
+                    found[store_id] = self._store_shape(row)
+        kodiutils.log("Public lookup: %d of %d id(s) resolved"
+                      % (len(found), len(ids)))
+        return found
+
+    @staticmethod
+    def _store_shape(row):
+        """One public-lookup result in the store lookup's shape."""
+        kind = {"feature-movie": "movie", "tv-episode": "tvEpisode",
+                "tv-season": "tvSeason"}.get(row.get("kind") or "", "movie")
+        if row.get("wrapperType") == "collection":
+            kind = "tvSeason"
+        art = row.get("artworkUrl100") or row.get("artworkUrl60") or ""
+        # The public service sizes artwork in the path; ask for something a
+        # poster can use rather than a 100px thumbnail.
+        art = art.replace("100x100", "600x600").replace("60x60", "600x600")
+        rating = row.get("contentAdvisoryRating")
+        return {
+            "id": str(row.get("trackId") or row.get("collectionId") or ""),
+            "kind": kind,
+            "name": row.get("trackName") or row.get("collectionName"),
+            "nameSortValue": row.get("trackName") or row.get("collectionName"),
+            "artistName": row.get("artistName"),
+            "collectionName": row.get("collectionName"),
+            "collectionId": row.get("collectionId"),
+            "artistId": row.get("artistId"),
+            "releaseDate": (row.get("releaseDate") or "")[:10],
+            "genreNames": [row["primaryGenreName"]] if row.get("primaryGenreName") else [],
+            "itunesNotes": {"standard": row.get("longDescription")
+                            or row.get("shortDescription")}
+                           if (row.get("longDescription")
+                               or row.get("shortDescription")) else None,
+            "contentRatingsBySystem": {"public": {"name": rating}} if rating else {},
+            "artwork": {"url": art} if art else {},
+            "trackNumber": row.get("trackNumber"),
+            "episodeNumber": row.get("trackNumber"),
+            "trackCount": row.get("trackCount"),
+            "copyright": row.get("copyright"),
+        }
 
     def owned(self, media_type=PURCHASES_MEDIA_TYPE_MOVIES):
         """What the account owns of one media type, as catalogue entries."""
