@@ -569,17 +569,32 @@ handful no lookup will name, and its entries open: a title picked from it
 resolves its redownload offer and reaches the licence exactly as one picked
 from search does.
 
-Two ids in a hundred cannot be listed at all, and the reason is not a bug to
-fix. The public index misses some -- five films and eleven episodes here --
-and the catalogue names every missing film but none of the episodes, with a
-404 reading `Content Not Available`. The eleven are one thing: Treasure Quest
-Season 1, complete. So a title an account owns can outlive Apple's listing of
-it, and nothing reachable will name one that has. The addon says which ids
-those are rather than quietly returning a shorter list.
+Sixteen ids across the two lockers resolve through neither public route --
+five films and one complete season of eleven episodes. That is **not**
+because Apple has dropped them. Its own lookup names every one of them:
+
+```
+387548805   Despicable Me            302596216  The Merchant Royal
+1538303219  Greenland                303292916  Pirates!
+1140582200  Kubo and the Two Strings 303885799  The Legend
+779516213   Last Vegas               …           Treasure Quest, Season 1
+826848074   Mr. Peabody & Sherman       (all eleven episodes)
+```
+
+That endpoint is the one refused with a 403, and its profile name says what
+it is for: `redownload-image-tracklist-item`. It is the **library** service,
+and it describes what an account owns whether or not the title is still
+published. The public lookup and the catalogue describe what is currently on
+sale, which is a different question and a smaller set.
+
+So this is one blocker wearing two faces, not two problems. An iPhone lists
+these titles because Apple's client can call that service; this cannot,
+because each call is signed per request.
 
 Worth knowing for anything built on these endpoints: `/movies/<store id>`
-works, and `/episodes/<store id>` answers **400**, a malformed request rather
-than a missing title. Only the film endpoint takes a numeric id.
+works and answers 404 for a title outside the current catalogue, while
+`/episodes/<store id>` answers **400** -- a malformed request rather than a
+missing title. Only the film endpoint takes a numeric id.
 
 **A locker holds one person's purchases**, which is easy to miss and was
 missed here for a while: asking only for the signed-in account returned a

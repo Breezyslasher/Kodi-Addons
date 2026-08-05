@@ -667,14 +667,17 @@ class ItunesStore(object):
                     items.append(entry)
                     named += 1
             if named < len(missing):
-                # Both services answering nothing means the title is gone from
-                # Apple's catalogue, not that the request was wrong: the store
-                # detail says 404 Content Not Available for these, and the
-                # public index has no record either. The account still owns
-                # them; there is simply nothing left to name them with.
+                # These are not gone: Apple's own lookup names every one of
+                # them. That service is the library one -- its profile is
+                # redownload-image-tracklist-item -- and it describes what an
+                # account owns whether or not the title is still published,
+                # which is why an iPhone lists them. It is the endpoint that
+                # answers 403 here, so the gap is the signed token, not the
+                # titles.
                 kodiutils.log(
-                    "%d owned title(s) are in no catalogue Apple still "
-                    "publishes, so they cannot be listed: %s"
+                    "%d owned title(s) are no longer published, so only "
+                    "Apple's own library lookup can name them -- and it is "
+                    "the one refused: %s"
                     % (len(missing) - named, ", ".join(missing[:10])))
             else:
                 kodiutils.log("Catalogue named %d of %d" % (named, len(missing)))
