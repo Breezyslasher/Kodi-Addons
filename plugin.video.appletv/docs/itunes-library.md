@@ -408,6 +408,23 @@ more than one edition. Titles then come from
 asked with `p=redownload-image`, which is the profile the library view uses;
 `p=lockup` is what store browsing sends.
 
+### Where the family dsids come from
+
+There is no endpoint for this. The bag lists `commerce/family/permission/get`
+and the sharing toggles, but nothing that enumerates members. The roster is
+embedded in the purchases **page** instead, as JSON:
+
+```json
+{"iCloudDsid":"…","iTunesPreferredDsid":"…","accountName":"…",
+ "displayName":"…","sharingPurchases":true,"isMe":false}
+```
+
+`iTunesPreferredDsid` is what `spDsid` wants and `sharingPurchases` says
+whether asking will return anything. Parsing one real page gives four
+members, all sharing — and two of those dsids are the ones the client was
+seen asking with, which is corroboration rather than coincidence. So the
+number never has to be typed in by hand, given a store session.
+
 **`spDsid` says whose purchases to list, and that is how family sharing
 works.** One capture makes it plain: signed in as one account throughout,
 

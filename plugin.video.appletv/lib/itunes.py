@@ -28,6 +28,7 @@ up rather than one belonging to a registered device.
 """
 
 import gzip
+import json
 import plistlib
 import re
 import struct
@@ -277,6 +278,57 @@ class ItunesStore(object):
         found = re.search(r"amia-(\d+)=", self.pasted_cookies())
         return found.group(1) if found else ""
 
+    def family_members(self):
+        """Who shares purchases with this account, and their dsids.
+
+        There is no endpoint for this -- the bag lists family permission and
+        sharing toggles, but nothing that enumerates members. The roster is
+        embedded in the purchases page itself as JSON, one object per person:
+
+            iCloudDsid, iTunesPreferredDsid, accountName, displayName,
+            sharingPurchases, isMe
+
+        iTunesPreferredDsid is what spDsid wants, and sharingPurchases says
+        whether asking for theirs will return anything. So a family member's
+        number never has to be typed in by hand -- as long as there is a store
+        session, which is the same thing everything else here waits on.
+        """
+        self.last_error = None
+        cookies = self.pasted_cookies()
+        headers = dict(self._headers())
+        headers.pop("Content-Type", None)
+        if cookies:
+            headers["Cookie"] = cookies
+        try:
+            resp = self.session.get(PURCHASES_URL, headers=headers, timeout=30)
+        except Exception as exc:
+            self.last_error = str(exc)
+            kodiutils.log_error("Family roster request failed: %s" % exc)
+            return []
+        if resp.status_code != 200:
+            self.last_error = "HTTP %s" % resp.status_code
+            kodiutils.log_error("Family roster -> %s" % resp.status_code)
+            return []
+        members = []
+        for blob in re.finditer(r'\{[^{}]*"iCloudDsid"[^{}]*\}', resp.text):
+            try:
+                row = json.loads(blob.group(0))
+            except ValueError:
+                continue
+            dsid = str(row.get("iTunesPreferredDsid")
+                       or row.get("iCloudDsid") or "")
+            if not dsid:
+                continue
+            members.append({
+                "dsid": dsid,
+                "name": row.get("displayName") or row.get("accountName") or dsid,
+                "is_me": bool(row.get("isMe")),
+                "shares": bool(row.get("sharingPurchases")),
+            })
+        kodiutils.log("Family roster: %d member(s), %d sharing purchases"
+                      % (len(members), sum(1 for m in members if m["shares"])))
+        return members
+
     def locker(self, media_type=PURCHASES_MEDIA_TYPE_MOVIES):
         """Store ids the account owns, from the JSON purchases endpoint.
 
@@ -302,6 +354,16 @@ class ItunesStore(object):
         dsid = (kodiutils.get_setting("itunes_sp_dsid") or "").strip()
         if dsid:
             params["spDsid"] = dsid
+        elif cookies:
+            # Asking for one's own purchases can come back empty while the
+            # family's is full, and the number that says whose to list is not
+            # something anyone knows offhand. The roster names them, so say
+            # what the choices are rather than leaving an empty list
+            # unexplained.
+            for member in self.family_members():
+                if member["shares"] and not member["is_me"]:
+                    kodiutils.log("Family member sharing purchases: %s (dsid %s)"
+                                  % (member["name"], member["dsid"]))
         headers = dict(self._headers())
         headers.pop("Content-Type", None)
         if cookies:
