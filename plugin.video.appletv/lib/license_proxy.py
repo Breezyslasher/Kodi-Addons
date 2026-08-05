@@ -522,10 +522,15 @@ class _Handler(BaseHTTPRequestHandler):
                         and (store_cookies or store_token))
         if as_store:
             # A store session names its account in more than one cookie: the
-            # store page's is amia-<dsid>, the TV app's carries X-Dsid
-            # outright, and the music token is mt-tkn-<dsid>. Any of them will
+            # store page's is amia-<dsid>, the TV app's SSL auto-login is
+            # mz_at_ssl-<dsid>, and the music token is mt-tkn-<dsid>. Any will
             # do, and which are present depends on which client was captured.
-            found = re.search(r"(?:amia-|mt-tkn-|mz_at0-)(\d+)=", store_cookies) \
+            # mz_at_ssl matters most: it is the cookie the Android TV app
+            # authenticates its UTS calls with, the one that a fresh capture
+            # proved valid for Continue Watching -- and without it here the
+            # licence request went out with no account id at all.
+            found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=",
+                              store_cookies) \
                 or re.search(r"X-Dsid=(\d+)", store_cookies)
             dsid = found.group(1) if found else ""
             headers = {
