@@ -374,6 +374,38 @@ credentials Apple's own client uses — the answer is still `-1020`. So the
 refusal is not about who is asking. Both identities the account has were
 offered and both were declined.
 
+### The Android session narrows it to the device, not the credentials
+
+Continue Watching later gave a way to prove the store session was genuinely
+valid, not stale: it populates (7 items, `auth-token-valid=true`) only for the
+Android caller with a fresh `mz_at_ssl` cookie. Taking that same proven-good
+session to the licence request settled what `-1020` is not:
+
+| licence request | result |
+|---|---|
+| web bearer + media-user-token | `-1020` |
+| Android `mz_at_ssl` cookie **+ Windows `X-Token`** | empty `403` |
+| Android `mz_at_ssl` + `X-Dsid`, ATVE agent, no `X-Token` | `-1020` |
+
+Two things fall out. The `mz_at_ssl` dsid was being dropped by a cookie regex
+that matched `amia-`/`mt-tkn-`/`mz_at0-` but not `mz_at_ssl-`, so a licence
+request under that session went out with no `X-Dsid` at all; that is fixed. And
+mixing the Android cookie with a Windows `X-Token` earns an **empty 403** — the
+same shape Apple's store sign-in returns to a request missing device
+attestation — whereas the **coherent** Android identity (cookie + `X-Dsid`, its
+own agent, no foreign token) is *accepted and processed*, and declined at the
+licence decision with `-1020`.
+
+So with a fresh, proven-valid session, the correct `X-Dsid`, the right svcId,
+adam id and key id, and no credential mismatch, Apple still returns `-1020`. It
+is not auth, not the caller, not the request shape — every one of those is now
+correct. What remains is what the request cannot carry: `kbsync`, the device
+keybag, and the per-request signing Apple's native clients (the Android app's
+Luna SDK among them) attach. `-1020` is a licence-decision refusal for not
+being a provisioned device, the same class of wall as the store sign-in's
+attestation — and the end of the road for a pure-Python client on purchase
+playback.
+
 What the captures say instead is that the key system splits cleanly by
 playlist, without a single exception:
 
