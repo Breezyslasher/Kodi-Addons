@@ -275,7 +275,9 @@ class ItunesStore(object):
         info = self.session_info()
         if info.get("dsid"):
             return str(info["dsid"])
-        found = re.search(r"amia-(\d+)=", self.pasted_cookies())
+        cookies = self.pasted_cookies()
+        found = re.search(r"(?:amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
+            or re.search(r"X-Dsid=(\d+)", cookies)
         return found.group(1) if found else ""
 
     def family_members(self):

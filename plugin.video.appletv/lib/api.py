@@ -1517,7 +1517,8 @@ class AppleTVApi(object):
         cookies = (kodiutils.get_setting("itunes_cookies") or "").strip()
         if cookies:
             headers["Cookie"] = cookies
-            found = re.search(r"amia-(\d+)=", cookies)
+            found = re.search(r"(?:amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
+                or re.search(r"X-Dsid=(\d+)", cookies)
             if found:
                 headers["X-DSID"] = found.group(1)
         try:

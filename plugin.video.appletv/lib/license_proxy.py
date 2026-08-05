@@ -521,7 +521,12 @@ class _Handler(BaseHTTPRequestHandler):
         as_store = bool((ctx.get("override") or ctx.get("itunes"))
                         and (store_cookies or store_token))
         if as_store:
-            found = re.search(r"amia-(\d+)=", store_cookies)
+            # A store session names its account in more than one cookie: the
+            # store page's is amia-<dsid>, the TV app's carries X-Dsid
+            # outright, and the music token is mt-tkn-<dsid>. Any of them will
+            # do, and which are present depends on which client was captured.
+            found = re.search(r"(?:amia-|mt-tkn-|mz_at0-)(\d+)=", store_cookies) \
+                or re.search(r"X-Dsid=(\d+)", store_cookies)
             dsid = found.group(1) if found else ""
             headers = {
                 "Content-Type": "application/json; charset=utf-8",
