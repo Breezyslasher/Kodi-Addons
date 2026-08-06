@@ -158,6 +158,11 @@ WATCHLIST_SHELF = "uts.col.Watchlist"
 # first because the slug came back an empty shell.
 CONTINUE_WATCHING_SHELF = "uts.col.ContinueWatching"
 CONTINUE_WATCHING_SLUG = "continue-watching"
+# The featured hero shelf the TV app shows across the top ("Apple Original
+# Shows and Movies"). A capture names the slug and shows it returns editorial
+# Apple Originals with X-Apple-Auth-Token-Valid: false -- so it is public and
+# needs no session.
+FEATURED_SLUG = "top-shelf"
 WATCHLIST_CVS = "uts.tcvs.tv-plus-personalized-canvas-adaptive"
 WATCHLIST_CTX_SHELF = "uts.shlf.gen.Watchlist_%s"
 
@@ -473,6 +478,29 @@ class AppleTVApi(object):
                               % (len(items), label, path))
                 return items
         kodiutils.log("Continue Watching: 0 item(s)")
+        return []
+
+    def get_featured(self):
+        """Apple's featured hero shelf -- the "Apple Original Shows and Movies"
+        row the TV app shows across the top.
+
+        A capture returns it under the top-shelf slug for the Android caller,
+        with editorial Apple Originals and X-Apple-Auth-Token-Valid: false --
+        so it is public and needs no session. The Android caller is tried first
+        (the one the capture used) and the web caller next, which does not need
+        the store session, so the row shows for a signed-in-to-TV+ account with
+        no iTunes session at all.
+        """
+        for getter, label in ((self._vz_json, "vz"), (self._get_json, "web")):
+            data = getter("/shelves/%s" % FEATURED_SLUG,
+                          {"ctx_brand": APPLE_TV_PLUS_CHANNEL})
+            shelf = ((data or {}).get("data") or {}).get("shelf")
+            if isinstance(shelf, dict):
+                items = self._extract_items(shelf.get("items"))
+                if items:
+                    kodiutils.log("Featured: %d item(s) via %s" % (len(items), label))
+                    return items
+        kodiutils.log("Featured: 0 item(s)")
         return []
 
     @staticmethod

@@ -55,6 +55,7 @@ S = {
     "watchlist_removed": 32049,
     "watchlist": 32051,
     "continue_watching": 32060,
+    "featured": 32082,
     "sub_active": 32052,
     "sub_none": 32053,
     "sub_renews": 32054,
@@ -284,6 +285,8 @@ def add_playable(entry, cast=None):
 # -- menus ---------------------------------------------------------------
 
 def main_menu(auth):
+    # The featured Apple Originals hero shelf, as the TV app leads with it.
+    add_dir(L("featured"), "featured")
     # One entry per brand tab along the top of tv.apple.com's home page.
     for channel_id, name in CHANNELS:
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
@@ -883,6 +886,8 @@ def router(paramstring):
                    channel_id=params.get("channel_id") or APPLE_TV_PLUS_CHANNEL)
     elif action == "continue_watching":
         show_items(api.get_continue_watching())
+    elif action == "featured":
+        show_items(api.get_featured())
     elif action == "subscription":
         do_subscription(api)
     elif action == "shelf":

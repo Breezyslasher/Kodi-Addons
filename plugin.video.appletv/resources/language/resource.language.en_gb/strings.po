@@ -340,3 +340,8 @@ msgstr ""
 msgctxt "#32081"
 msgid "Continue Watching session (paste an Android TV app mz_at_ssl session)"
 msgstr ""
+
+
+msgctxt "#32082"
+msgid "Featured"
+msgstr ""
