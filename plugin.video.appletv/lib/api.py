@@ -1833,6 +1833,23 @@ class AppleTVApi(object):
                           "had no title (data=%s)"
                           % (adam_id, canonical, hit.get("type"),
                              "yes" if data else "none"))
+            # Probe (logged only): the episode's detail 404s, but the season it
+            # belongs to might resolve where the episode does not. The config
+            # names getSeasonMetadataById -> /uts/v3/seasons/{seasonId}/metadata,
+            # reachable with the seasonId the reverse-lookup already gave us.
+            sid = hit.get("season_id")
+            if sid:
+                sdata = self._get_json("/seasons/%s/metadata" % sid)
+                root = (sdata or {}).get("data") or {}
+                sc = root.get("content") if isinstance(root, dict) else None
+                title = ""
+                if isinstance(sc, dict):
+                    title = (sc.get("title") or sc.get("name")
+                             or sc.get("showTitle") or "")
+                kodiutils.log("Season probe %s -> data=%s, title=%s, data keys=%s"
+                              % (sid, "yes" if sdata else "none", title or "-",
+                                 list(root.keys())[:12] if isinstance(root, dict)
+                                 else type(root).__name__))
         # Fallback: the detail endpoint answers to a film's store id directly --
         # playing a library entry proved it, resolving item_id 1610717981 to
         # its playable without any umc id involved. Only /movies/ takes a store
