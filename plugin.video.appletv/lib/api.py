@@ -1736,8 +1736,13 @@ class AppleTVApi(object):
         if isinstance(content, dict):
             for ext_id, row in content.items():
                 if isinstance(row, dict) and row.get("id"):
+                    # The row also names the season the episode belongs to,
+                    # which the season grouping wants and would otherwise have
+                    # to derive; keep it.
                     out[str(ext_id)] = {"canonical_id": row["id"],
-                                        "type": row.get("type")}
+                                        "type": row.get("type"),
+                                        "season_id": row.get("seasonId"),
+                                        "reference_id": row.get("referenceId")}
         kodiutils.log("Reverse-lookup: %d/%d store id(s) -> canonical"
                       % (len(out), len(ids)))
         # The response shape here was read off the client's code, not a
@@ -1785,20 +1790,24 @@ class AppleTVApi(object):
         # Reverse-lookup first: it is the only path that names an episode.
         hit = self._reverse_lookup([adam_id]).get(str(adam_id))
         if hit and hit.get("canonical_id"):
+            canonical = str(hit["canonical_id"])
             is_tv = str(media_type) == "4" or hit.get("type") == "Episode"
-            kind = "episodes" if is_tv else "movies"
-            data = self._store_detail(kind, str(hit["canonical_id"]), quiet=True)
+            item_type = "Episode" if is_tv else "Movie"
+            # The canonical's detail is served by the web caller, not the store
+            # one -- the store caller returned nothing for an episode canonical
+            # (data=none in the log). This is the addon's ordinary detail path.
+            data, _mut = self._detail_json(canonical, item_type)
             content = ((data or {}).get("data") or {}).get("content") or {}
             if content.get("title"):
                 released = self._release_date(content.get("releaseDate"))
                 rating = content.get("rating")
                 return {
                     # Opened by the canonical id, like any other title.
-                    "id": str(hit["canonical_id"]),
+                    "id": canonical,
                     "adam_id": str(adam_id),
                     "title": content.get("title"),
                     "sort_title": content.get("title"),
-                    "type": "Episode" if kind == "episodes" else "Movie",
+                    "type": item_type,
                     "plot": (content.get("description")
                              or content.get("heroDescription")),
                     "genres": [g.get("name")
@@ -1809,19 +1818,21 @@ class AppleTVApi(object):
                     "premiered": released,
                     "year": int(released[:4]) if released[:4].isdigit() else None,
                     "show_title": content.get("showTitle"),
+                    "show_id": content.get("showId"),
+                    # The reverse-lookup already named the season; prefer it so
+                    # episodes group without another request.
+                    "season_id": hit.get("season_id") or content.get("seasonId"),
                     "season": content.get("seasonNumber"),
                     "episode": content.get("episodeNumber"),
-                    "art": self._item_art(content.get("images") or {},
-                                          "Episode" if kind == "episodes" else "Movie"),
+                    "art": self._item_art(content.get("images") or {}, item_type),
                 }
-            # Reverse-lookup named a canonical id but the detail by it had no
-            # title -- the wrong endpoint for its type, or the store caller does
-            # not answer for it. Say so with the id, type and endpoint tried, so
-            # the fix is aimed rather than guessed.
-            kodiutils.log("resolve_store_id %s: canonical=%s type=%s, but "
-                          "/%s/ detail had no title (data=%s)"
-                          % (adam_id, hit.get("canonical_id"), hit.get("type"),
-                             kind, "yes" if data else "none"))
+            # Named a canonical but its detail had no title. Say so with the id,
+            # type and whether the request returned anything, so the fix is
+            # aimed rather than guessed.
+            kodiutils.log("resolve_store_id %s: canonical=%s type=%s, web detail "
+                          "had no title (data=%s)"
+                          % (adam_id, canonical, hit.get("type"),
+                             "yes" if data else "none"))
         # Fallback: the detail endpoint answers to a film's store id directly --
         # playing a library entry proved it, resolving item_id 1610717981 to
         # its playable without any umc id involved. Only /movies/ takes a store
