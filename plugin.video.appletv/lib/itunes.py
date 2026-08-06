@@ -422,6 +422,12 @@ class ItunesStore(object):
             if str(key).isdigit() and isinstance(value, dict):
                 kodiutils.log("iTunes locker row %s fields: %s"
                               % (key, ", ".join(sorted(value.keys()))))
+                # The catalogue has no streamable detail for a purchased
+                # episode (its /episodes/<canonical> answers 404), so the
+                # store's own row is the only source of its title. Dump the
+                # whole row once to see what naming it directly needs.
+                kodiutils.log("iTunes locker row %s sample: %s"
+                              % (key, json.dumps(value)[:600]))
                 break
         return ids
 
