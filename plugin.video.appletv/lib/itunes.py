@@ -783,6 +783,24 @@ class ItunesStore(object):
                     gained += 1
             kodiutils.log("Collection lookup named %d of %d unnamed"
                           % (gained, len(unnamed)))
+        # A delisted episode comes back named only by its season, so eleven of
+        # them would read alike. The locker's order is the only episode order
+        # there is; number them by it within each season and fold the number
+        # into the title -- as a position, not an asserted episode name.
+        order = {sid: i for i, sid in enumerate(ids)}
+        by_season = {}
+        for entry in items:
+            if entry.get("delisted") and not entry.get("episode"):
+                by_season.setdefault(entry.get("season_id") or "", []).append(entry)
+        for group in by_season.values():
+            group.sort(key=lambda e: order.get(str(e.get("adam_id")), 0))
+            for number, entry in enumerate(group, 1):
+                entry["episode"] = number
+                base = (entry.get("show_title") or entry.get("season_title")
+                        or entry.get("title") or "")
+                entry["title"] = ("%s – Episode %d" % (base, number)
+                                  if base else "Episode %d" % number)
+                entry["sort_title"] = entry["title"]
         still = [i for i in ids if i not in have]
         if still:
             # These are genuinely unnamed: dropped from the catalogue, absent

@@ -1742,7 +1742,20 @@ class AppleTVApi(object):
                     out[str(ext_id)] = {"canonical_id": row["id"],
                                         "type": row.get("type"),
                                         "season_id": row.get("seasonId"),
-                                        "reference_id": row.get("referenceId")}
+                                        "reference_id": row.get("referenceId"),
+                                        # The one identity signal that survives
+                                        # a delisting: Apple's own URL for the
+                                        # season, whose slug carries the show
+                                        # name. Kept so a title dropped from
+                                        # every content endpoint can still be
+                                        # named from the address of its page.
+                                        "season_url": (row.get("seasonUrl")
+                                                       or row.get("showUrl")
+                                                       or row.get("url")),
+                                        "title": (row.get("title")
+                                                  or row.get("name")
+                                                  or row.get("showTitle")
+                                                  or row.get("showName"))}
         kodiutils.log("Reverse-lookup: %d/%d store id(s) -> canonical"
                       % (len(out), len(ids)))
         # The response shape here was read off the client's code, not a
@@ -1766,8 +1779,11 @@ class AppleTVApi(object):
             # type, and the raw row -- so the detail step after it can be
             # pointed at the right endpoint rather than assumed.
             k = next(iter(content))
+            # Full row, untruncated: the season URL and any title-bearing field
+            # sit past the 200-char cut, and they are exactly what names a
+            # delisted episode, so the whole row is shown rather than its head.
             kodiutils.log("Reverse-lookup sample: %s -> %s"
-                          % (k, json.dumps(content[k])[:200]))
+                          % (k, json.dumps(content[k])))
         return out
 
     def resolve_store_id(self, adam_id, media_type=None):
@@ -1827,15 +1843,36 @@ class AppleTVApi(object):
                     "art": self._item_art(content.get("images") or {}, item_type),
                 }
             # Named a canonical but its detail had no title: a purchased
-            # episode Apple has dropped from the streamable catalogue. Its
-            # season metadata 404s the same way (tested), so nothing under
-            # /uts names it -- the public store collection lookup does that,
-            # back in the locker code. Say what happened, with the ids.
-            kodiutils.log("resolve_store_id %s: canonical=%s type=%s, web detail "
-                          "had no title (data=%s); leaving it for the collection "
-                          "lookup"
+            # episode Apple has dropped from every content endpoint (its detail
+            # 404s, its season metadata 404s, and the public store carries
+            # neither the episode nor its collection). One identity signal
+            # still survives though -- the reverse-lookup returns the season's
+            # own URL, and Apple's slug carries the show name -- so the episode
+            # is named from that rather than dropped.
+            name, season_no = self._name_from_season_url(
+                hit.get("season_url"), hit.get("title"))
+            kodiutils.log("resolve_store_id %s: canonical=%s type=%s, no content "
+                          "detail; naming from season url -> %s (season %s)"
                           % (adam_id, canonical, hit.get("type"),
-                             "yes" if data else "none"))
+                             name or "-", season_no or "-"))
+            if name:
+                return {
+                    "id": canonical,
+                    "adam_id": str(adam_id),
+                    # The episode's own title is gone; the season names it, and
+                    # the locker orders the episodes so a number can be added
+                    # there. Marked delisted so the listing can say as much.
+                    "title": name,
+                    "sort_title": name,
+                    "type": "Episode",
+                    "show_title": name,
+                    "season_title": (name + (" Season %s" % season_no)
+                                     if season_no else name),
+                    "season_id": hit.get("season_id"),
+                    "season": season_no,
+                    "episode": None,
+                    "delisted": True,
+                }
         # Fallback: the detail endpoint answers to a film's store id directly --
         # playing a library entry proved it, resolving item_id 1610717981 to
         # its playable without any umc id involved. Only /movies/ takes a store
@@ -1874,6 +1911,63 @@ class AppleTVApi(object):
         # lists it. Nothing reachable can name a title the catalogue has
         # dropped.
         return None
+
+    @staticmethod
+    def _name_from_season_url(season_url, explicit_title=None):
+        """A show name and season number from a season's Apple TV URL.
+
+        The reverse-lookup returns a URL like
+        https://tv.apple.com/us/season/<slug>/<umc id>, and Apple builds the
+        slug from the show's name and the season -- "severance-season-1",
+        "the-morning-show-season-3". So a title dropped from every content
+        endpoint can still be named from the address of its page. An explicit
+        title field, if the response carried one, wins over the slug.
+
+        Returns (name, season_number). name is None when neither a title nor a
+        usable slug is there -- a slug that is only "season-1" carries no name,
+        and a made-up one is worse than none, so it is left blank.
+        """
+        if explicit_title:
+            # A title field beats parsing a slug; still try the slug only for
+            # the season number, which a bare title would not carry.
+            season_no = None
+            if season_url:
+                m = re.search(r"season-(\d+)", season_url)
+                if m:
+                    season_no = int(m.group(1))
+            return explicit_title, season_no
+        if not season_url:
+            return None, None
+        # The slug is the path segment before the umc id.
+        parts = [p for p in str(season_url).split("/") if p]
+        slug = ""
+        for i, part in enumerate(parts):
+            if part.startswith("umc.") and i > 0:
+                slug = parts[i - 1]
+                break
+        if not slug:
+            slug = parts[-2] if len(parts) >= 2 else ""
+        if not slug:
+            return None, None
+        tokens = slug.split("-")
+        season_no = None
+        # Strip a trailing "season N" (or "-N") off the slug so it does not
+        # land in the name; keep the number for the season field.
+        if len(tokens) >= 2 and tokens[-2] == "season" and tokens[-1].isdigit():
+            season_no = int(tokens[-1])
+            tokens = tokens[:-2]
+        elif len(tokens) >= 1 and tokens[-1].isdigit() and len(tokens) > 1:
+            season_no = int(tokens[-1])
+            tokens = tokens[:-1]
+        if not tokens:
+            # The slug was only "season-1": no name in it, so do not invent one.
+            return None, season_no
+        name = " ".join(tokens).strip()
+        # De-slugged words are lower case; title-case them, but leave a word
+        # that is already mixed or all caps (an acronym) alone.
+        name = " ".join(w if (w != w.lower()) else w.capitalize()
+                        for w in name.split())
+        return (name or None), season_no
 
     @staticmethod
     def _fps_params(data):
