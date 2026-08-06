@@ -1711,32 +1711,90 @@ class AppleTVApi(object):
                       "may not be enough without a store session")
         return None
 
-    def resolve_store_id(self, adam_id):
+    def _reverse_lookup(self, external_ids):
+        """Map iTunes store (external) ids to their canonical umc ids.
+
+        Apple's own client resolves a locker's store ids through the route it
+        names getReverseLookupCanonicalIdsByExternalId. Its configurations
+        document gives that route's path outright --
+        /uts/v3/contents/lookup?ids=<comma-separated> -- and its LibraryPage
+        code shows the call: a GET whose response maps each external id to an
+        object carrying the canonical id (content[<externalId>].id). Unlike
+        /movies/<id>, which answers only for films, this resolves episodes too,
+        which is why a whole owned season would come back unnamed before.
+        """
+        ids = [str(i) for i in external_ids if i]
+        if not ids:
+            return {}
+        data = self._get_json("/contents/lookup", {"ids": ",".join(ids)})
+        content = None
+        if isinstance(data, dict):
+            content = data.get("content")
+            if content is None and isinstance(data.get("data"), dict):
+                content = data["data"].get("content")
+        out = {}
+        if isinstance(content, dict):
+            for ext_id, row in content.items():
+                if isinstance(row, dict) and row.get("id"):
+                    out[str(ext_id)] = {"canonical_id": row["id"],
+                                        "type": row.get("type")}
+        kodiutils.log("Reverse-lookup: %d/%d store id(s) -> canonical"
+                      % (len(out), len(ids)))
+        return out
+
+    def resolve_store_id(self, adam_id, media_type=None):
         """A catalogue entry for a store id, via the id the catalogue uses.
 
         The locker names purchases by store id, and neither lookup service
         would turn those into titles here -- Apple's own wants a signed token,
         and the public one answered with nothing. The catalogue knows the
-        mapping though: asked about a store id on the iTunes brand it returns
-        the canonical umc id, the type, and the page url.
+        mapping though, and it is asked two ways. First the reverse-lookup the
+        client itself uses -- /uts/v3/contents/lookup -- which resolves a store
+        id to its canonical umc id for a film or an episode alike; the detail
+        is then fetched by that canonical id. Failing that, the older path:
+        the detail endpoint answers to a film's store id directly.
 
-        That canonical id is the one this addon opens titles by, so an entry
-        built from it behaves like any other -- which a bare store id never
-        could.
-
-        The request Apple's client makes also carries a playablePassthrough
-        naming an internal leg id, which cannot be known for an arbitrary
-        store id. This asks without it and reports what comes back.
+        media_type, when the caller knows it (the locker does), picks the
+        detail endpoint for the canonical id -- episodes for television, movies
+        otherwise -- since /episodes/ takes a canonical id but 400s on a bare
+        store one.
         """
-        # The detail endpoint answers to a store id directly -- playing a
-        # library entry proved it, resolving item_id 1610717981 to its
-        # playable without any umc id involved. play-metadata was tried first
-        # and wants a duration matching the real asset, which is not knowable
-        # before the title is resolved; this needs nothing but the id.
-        # Only /movies/ takes a store id. /episodes/ answers 400 to a numeric
-        # one -- a malformed request rather than a missing title -- so asking
-        # it is noise, and a 404 from /movies/ is the real answer: the
-        # catalogue does not carry that id at all.
+        # Reverse-lookup first: it is the only path that names an episode.
+        hit = self._reverse_lookup([adam_id]).get(str(adam_id))
+        if hit and hit.get("canonical_id"):
+            is_tv = str(media_type) == "4" or hit.get("type") == "Episode"
+            kind = "episodes" if is_tv else "movies"
+            data = self._store_detail(kind, str(hit["canonical_id"]), quiet=True)
+            content = ((data or {}).get("data") or {}).get("content") or {}
+            if content.get("title"):
+                released = self._release_date(content.get("releaseDate"))
+                rating = content.get("rating")
+                return {
+                    # Opened by the canonical id, like any other title.
+                    "id": str(hit["canonical_id"]),
+                    "adam_id": str(adam_id),
+                    "title": content.get("title"),
+                    "sort_title": content.get("title"),
+                    "type": "Episode" if kind == "episodes" else "Movie",
+                    "plot": (content.get("description")
+                             or content.get("heroDescription")),
+                    "genres": [g.get("name")
+                               for g in self._as_list(content.get("genres"))
+                               if isinstance(g, dict) and g.get("name")],
+                    "mpaa": (rating.get("displayName")
+                             if isinstance(rating, dict) else None),
+                    "premiered": released,
+                    "year": int(released[:4]) if released[:4].isdigit() else None,
+                    "show_title": content.get("showTitle"),
+                    "season": content.get("seasonNumber"),
+                    "episode": content.get("episodeNumber"),
+                    "art": self._item_art(content.get("images") or {},
+                                          "Episode" if kind == "episodes" else "Movie"),
+                }
+        # Fallback: the detail endpoint answers to a film's store id directly --
+        # playing a library entry proved it, resolving item_id 1610717981 to
+        # its playable without any umc id involved. Only /movies/ takes a store
+        # id; a 404 there is the real answer that the catalogue dropped it.
         for kind in ("movies",):
             data = self._store_detail(kind, str(adam_id), quiet=True)
             content = ((data or {}).get("data") or {}).get("content") or {}

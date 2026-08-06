@@ -647,7 +647,7 @@ class ItunesStore(object):
             # than merely listed.
             kodiutils.log("Falling back to the catalogue to name %d id(s)"
                           % len(ids))
-            named = [e for e in (resolver(i) for i in ids) if e]
+            named = [e for e in (resolver(i, media_type) for i in ids) if e]
             if not named:
                 self.last_error = (
                     "Apple named %d purchase(s) but would not say what they "
@@ -672,7 +672,7 @@ class ItunesStore(object):
                           "name" % len(missing))
             named = 0
             for store_id in missing:
-                entry = resolver(store_id)
+                entry = resolver(store_id, media_type)
                 if entry:
                     items.append(entry)
                     named += 1
