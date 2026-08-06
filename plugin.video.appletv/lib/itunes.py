@@ -413,6 +413,16 @@ class ItunesStore(object):
         kodiutils.log("iTunes locker: %d owned title(s) for mt=%s%s"
                       % (len(ids), media_type,
                          " (dsid %s)" % dsid if dsid else " (own)"))
+        # Diagnostic: the locker carries more than ids -- each title's own row
+        # sits under its id -- and a title no lookup will name might be built
+        # from that instead. What a video row holds is not in any capture here
+        # (only a music locker was), so reveal its fields once rather than
+        # guess them; a real _from_locker can then be written against them.
+        for key, value in content.items():
+            if str(key).isdigit() and isinstance(value, dict):
+                kodiutils.log("iTunes locker row %s fields: %s"
+                              % (key, ", ".join(sorted(value.keys()))))
+                break
         return ids
 
     def lookup(self, ids):
