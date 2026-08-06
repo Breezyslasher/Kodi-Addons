@@ -1740,6 +1740,22 @@ class AppleTVApi(object):
                                         "type": row.get("type")}
         kodiutils.log("Reverse-lookup: %d/%d store id(s) -> canonical"
                       % (len(out), len(ids)))
+        # The response shape here was read off the client's code, not a
+        # capture, so if it resolves nothing do not fail silently into the
+        # films-only fallback: log what actually came back, so a shape that
+        # differs from the assumption is corrected rather than masked.
+        if not out:
+            if data is None:
+                kodiutils.log("Reverse-lookup: no response (request failed)")
+            else:
+                top = list(data.keys()) if isinstance(data, dict) else type(data).__name__
+                sample = ""
+                if isinstance(content, dict) and content:
+                    k = next(iter(content))
+                    sample = " first entry %s=%s" % (
+                        k, json.dumps(content[k])[:160])
+                kodiutils.log("Reverse-lookup: 0 resolved; response top-level=%s%s"
+                              % (top, sample))
         return out
 
     def resolve_store_id(self, adam_id, media_type=None):
