@@ -1756,6 +1756,13 @@ class AppleTVApi(object):
                         k, json.dumps(content[k])[:160])
                 kodiutils.log("Reverse-lookup: 0 resolved; response top-level=%s%s"
                               % (top, sample))
+        elif isinstance(content, dict):
+            # Show one resolved entry outright: the canonical it names, its
+            # type, and the raw row -- so the detail step after it can be
+            # pointed at the right endpoint rather than assumed.
+            k = next(iter(content))
+            kodiutils.log("Reverse-lookup sample: %s -> %s"
+                          % (k, json.dumps(content[k])[:200]))
         return out
 
     def resolve_store_id(self, adam_id, media_type=None):
@@ -1807,6 +1814,14 @@ class AppleTVApi(object):
                     "art": self._item_art(content.get("images") or {},
                                           "Episode" if kind == "episodes" else "Movie"),
                 }
+            # Reverse-lookup named a canonical id but the detail by it had no
+            # title -- the wrong endpoint for its type, or the store caller does
+            # not answer for it. Say so with the id, type and endpoint tried, so
+            # the fix is aimed rather than guessed.
+            kodiutils.log("resolve_store_id %s: canonical=%s type=%s, but "
+                          "/%s/ detail had no title (data=%s)"
+                          % (adam_id, hit.get("canonical_id"), hit.get("type"),
+                             kind, "yes" if data else "none"))
         # Fallback: the detail endpoint answers to a film's store id directly --
         # playing a library entry proved it, resolving item_id 1610717981 to
         # its playable without any umc id involved. Only /movies/ takes a store
