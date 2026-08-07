@@ -1005,10 +1005,13 @@ class AppleTVApi(object):
             "adam_id": assets.get("adam_id", ""),
             "svc_id": assets.get("svc_id", ""),
             "is_external": assets.get("is_external", True),
-            # Lets the licence proxy tell a purchase from a catalogue title,
-            # since the two are authorised by different sessions.
+            # Apple names the exact licence-request key parameters in
+            # fpsKeyServerQueryParameters, and their names differ by content:
+            # a VOD title carries svcId/adamId, a live event service-id/
+            # reference-id. Passing them through verbatim lets the proxy send
+            # what Apple asked for rather than a fixed, VOD-shaped set.
+            "fps_params": assets.get("fps_params") or {},
             "override": override,
-            "itunes": assets.get("itunes", False),
             "wv_keys": wv_keys,
             "license_server": assets.get("license_server", ""),
             "user_agent": self.session.headers.get("User-Agent", ""),
@@ -1127,26 +1130,19 @@ class AppleTVApi(object):
         """Normalise an Apple playable's assets into what _build_playback wants."""
         hls = assets["hlsUrl"].encode("utf-8").decode("unicode_escape").replace("&amp;", "&")
         qp = assets.get("fpsKeyServerQueryParameters") or {}
-        svc_id = qp.get("svcId") or self._q(hls, "svcId")
-        # A licence sent with no svcId is refused (-1020): the key server cannot
-        # tell which service to license against. It has been seen empty on a
-        # live sporting event, where the id may sit somewhere other than the two
-        # places read here. Rather than assume where, reveal the asset shape and
-        # the fps params outright when it is missing, so the real location (or
-        # its genuine absence) is read from the response.
-        if not svc_id:
-            kodiutils.log("svcId missing: fpsKeyServerQueryParameters=%s; asset "
-                          "keys=%s; fpsKeyServerUrl=%s; hls params=%s"
-                          % (json.dumps(qp)[:300],
-                             ", ".join(sorted(assets.keys())),
-                             assets.get("fpsKeyServerUrl"),
-                             hls.split("?", 1)[1][:200] if "?" in hls else "-"))
+        # svcId is named svcId on a VOD title and service-id on a live event;
+        # kept here only for the (VOD-shaped) context fields. The proxy sends
+        # the whole of fps_params, so the live names reach the key server too.
+        svc_id = qp.get("svcId") or qp.get("service-id") or self._q(hls, "svcId") \
+            or self._q(hls, "serviceId")
         return {
             "manifest": hls,
             "user_token": mut,
             "license_server": assets.get("fpsKeyServerUrl"),
             "adam_id": str(assets.get("assetAdamId") or qp.get("adamId") or self._q(hls, "a")),
             "svc_id": svc_id,
+            # Apple's own list of licence-request key parameters, sent verbatim.
+            "fps_params": qp,
             "is_external": qp.get("isExternal", True),
             # An iTunes purchase, so the licence proxy can offer the store
             # credentials Apple's own client licenses these with.

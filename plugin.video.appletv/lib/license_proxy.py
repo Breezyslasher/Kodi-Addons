@@ -495,14 +495,16 @@ class _Handler(BaseHTTPRequestHandler):
         # a refusal reads very differently depending on whether Apple was told
         # who was asking. Neither value is logged, only whether there is one.
         kodiutils.log("License identity: bearer=%s, media-user-token=%s, "
-                      "adamId=%s, svcId=%s"
+                      "adamId=%s, svcId=%s, fps_params=%s"
                       % ("yes" if bearer else "NO",
                          "yes" if mut else "NO",
                          ctx.get("adam_id") or "none",
-                         ctx.get("svc_id") or "none"))
+                         ctx.get("svc_id") or "none",
+                         sorted((ctx.get("fps_params") or {}).keys()) or "none"))
 
         url = ctx.get("license_server") or FPS_URL
         headers = {
+            "Accept": "application/json",
             "Content-Type": "application/json",
             "Origin": "https://tv.apple.com",
             "Referer": "https://tv.apple.com/",
@@ -517,12 +519,23 @@ class _Handler(BaseHTTPRequestHandler):
                 "id": 1,
                 "challenge": base64.b64encode(challenge).decode("ascii"),
                 "key-system": "com.widevine.alpha",
-                "adamId": ctx.get("adam_id", ""),
-                "isExternal": bool(ctx.get("is_external", True)),
-                "svcId": ctx.get("svc_id", ""),
             }
             if candidate:
                 key["uri"] = candidate
+            # A live event names its key parameters differently from a VOD title
+            # -- service-id/reference-id (hyphenated) rather than svcId/adamId --
+            # and licensing it with the VOD names (or an empty svcId) is what
+            # earns -1020 from the linear key server. When Apple's own
+            # fpsKeyServerQueryParameters carries the live names, send them
+            # verbatim; otherwise keep the VOD-shaped fields exactly as before
+            # (a VOD adamId comes from assetAdamId, not necessarily these params).
+            fps_params = ctx.get("fps_params") or {}
+            if fps_params.get("service-id") or fps_params.get("reference-id"):
+                key.update(fps_params)
+            else:
+                key["adamId"] = ctx.get("adam_id", "")
+                key["isExternal"] = bool(ctx.get("is_external", True))
+                key["svcId"] = ctx.get("svc_id", "")
             envelope = {"streaming-request": {"version": 1, "streaming-keys": [key]}}
             resp = requests.post(url, data=json.dumps(envelope), headers=headers, timeout=30)
             if resp.status_code != 200:
