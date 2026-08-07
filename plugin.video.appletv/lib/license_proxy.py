@@ -618,7 +618,25 @@ class _Handler(BaseHTTPRequestHandler):
                 last_error = "non-JSON response %s" % resp.text[:150]
                 continue
             if not keys or "license" not in keys[0]:
-                last_error = "no licence in response %s" % resp.text[:150]
+                status = keys[0].get("status") if keys else None
+                # -1020 is the FairPlay key server's answer to a request that
+                # authenticated but carries no device keybag (kbsync): the
+                # session was accepted (HTTP 200, not the 403 an expired one
+                # gets) and the key was still refused. This was tested with a
+                # fresh, valid mz_at_ssl session and still returned -1020, which
+                # answers the open question the store-detail code left: the
+                # keybag is required, and it is a native Apple-device
+                # attestation that cannot be produced off the device. This is
+                # the final wall for purchase playback, distinct from anything a
+                # session or token fixes.
+                if status == -1020:
+                    last_error = ("status -1020: key server refused -- request "
+                                  "authenticated but has no device keybag "
+                                  "(kbsync), a native Apple-device attestation "
+                                  "not reproducible here")
+                else:
+                    last_error = ("no licence in response (status=%s) %s"
+                                  % (status, resp.text[:150]))
                 continue
             licence = base64.b64decode(keys[0]["license"])
             kodiutils.log("License OK (attempt %d/%d), contains KIDs=[%s]"

@@ -406,6 +406,23 @@ being a provisioned device, the same class of wall as the store sign-in's
 attestation — and the end of the road for a pure-Python client on purchase
 playback.
 
+Final confirmation, two back-to-back runs on one owned film, same build, the
+only variable the session:
+
+| `mz_at_ssl` session | licence result |
+|---|---|
+| expired (`auth-token-valid=false`) | HTTP **403**, empty body — rejected at auth |
+| freshly captured, valid | HTTP **200**, `streaming-keys:[{status:-1020}]` — accepted, key refused |
+
+This separates the two walls cleanly and for good. The `403` was only ever the
+stale cookie: a fresh session is *accepted and processed* (200), the licence
+pipeline runs end to end — redownload offer, three Widevine keys, manifest,
+DRM init — and Apple declines at the last step with `-1020` for the missing
+device keybag. Refreshing the session is necessary and it is not sufficient;
+nothing a non-Apple client can send changes the `-1020`. Purchase *naming* is
+complete (films and delisted TV alike); purchase *playback* stops here, at the
+device attestation, by design.
+
 What the captures say instead is that the key system splits cleanly by
 playlist, without a single exception:
 
