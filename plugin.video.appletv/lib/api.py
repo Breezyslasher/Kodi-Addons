@@ -1861,6 +1861,72 @@ class AppleTVApi(object):
                     "episode": content.get("episodeNumber"),
                     "art": self._item_art(content.get("images") or {}, item_type),
                 }
+            # The web caller 404s on a delisted purchase, but the callers that
+            # are sent account-owned content might not: the Apple TV app on an
+            # Android TV plays this very title through the Android (vz) caller
+            # with an mz_at_ssl session, and the desktop store (wlk) caller is
+            # the one Apple sends personalizedOffers -- the owned copy's own
+            # hlsUrl. The web path was never these. So the owned-content callers
+            # are asked here before falling back to naming from the url slug,
+            # and what each returns is logged outright: a title, an owned
+            # Widevine stream, another 404, or an auth error -- so whether a
+            # delisted purchase is reachable is answered from the response
+            # rather than assumed.
+            path = "/%s/%s" % ("episodes" if is_tv else "movies", canonical)
+            for label, data2 in (("vz", self._vz_json(path, quiet=True)),
+                                  ("store", self._store_json(path, quiet=True))):
+                if not data2:
+                    kodiutils.log("Owned-caller probe (%s) %s: no response/404"
+                                  % (label, canonical))
+                    continue
+                c2 = self._deep_find(data2, "content")
+                if not isinstance(c2, dict):
+                    c2 = ((data2.get("data") or {}).get("content")
+                          if isinstance(data2, dict) else None) or {}
+                playables = self._deep_find(data2, "playables")
+                has_stream = False
+                if isinstance(playables, (list, dict)):
+                    seq = (playables.values() if isinstance(playables, dict)
+                           else playables)
+                    for p in seq:
+                        if not isinstance(p, dict):
+                            continue
+                        offers = (p.get("itunesMediaApiData") or {}).get(
+                            "personalizedOffers") or []
+                        if any(o.get("hlsUrl") for o in offers
+                               if isinstance(o, dict)):
+                            has_stream = True
+                            break
+                kodiutils.log("Owned-caller probe (%s) %s: title=%s, "
+                              "personalizedOffers hlsUrl=%s"
+                              % (label, canonical, c2.get("title") or "-",
+                                 "YES" if has_stream else "no"))
+                if c2.get("title"):
+                    released = self._release_date(c2.get("releaseDate"))
+                    rating = c2.get("rating")
+                    return {
+                        "id": canonical,
+                        "adam_id": str(adam_id),
+                        "title": c2.get("title"),
+                        "sort_title": c2.get("title"),
+                        "type": item_type,
+                        "plot": (c2.get("description")
+                                 or c2.get("heroDescription")),
+                        "genres": [g.get("name")
+                                   for g in self._as_list(c2.get("genres"))
+                                   if isinstance(g, dict) and g.get("name")],
+                        "mpaa": (rating.get("displayName")
+                                 if isinstance(rating, dict) else None),
+                        "premiered": released,
+                        "year": (int(released[:4])
+                                 if released[:4].isdigit() else None),
+                        "show_title": c2.get("showTitle"),
+                        "show_id": c2.get("showId"),
+                        "season_id": hit.get("season_id") or c2.get("seasonId"),
+                        "season": c2.get("seasonNumber"),
+                        "episode": c2.get("episodeNumber"),
+                        "art": self._item_art(c2.get("images") or {}, item_type),
+                    }
             # Named a canonical but its detail had no title: a purchase Apple
             # has dropped from every content endpoint (detail 404s, season
             # metadata 404s, and the public store carries neither the item nor
