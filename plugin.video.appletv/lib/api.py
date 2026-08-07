@@ -1687,7 +1687,27 @@ class AppleTVApi(object):
             return None
 
     @staticmethod
-    def _resume_point(raw):
+    def _resume_playable(raw):
+        """The playable whose playEvent holds the account's watch position.
+
+        Apple hangs the same playEvent off three different shapes: a single
+        "playable" on most shelf items, a "playables" list on others, and on
+        a title's own page a "playables" map keyed by playable id. Return the
+        first playable that carries one rather than assuming a shape.
+        """
+        for node in (raw.get("playable"), raw.get("playables")):
+            if isinstance(node, dict) and isinstance(node.get("playEvent"), dict):
+                return node
+            candidates = (list(node.values()) if isinstance(node, dict)
+                          else node if isinstance(node, list) else [])
+            for candidate in candidates:
+                if isinstance(candidate, dict) and isinstance(
+                        candidate.get("playEvent"), dict):
+                    return candidate
+        return None
+
+    @classmethod
+    def _resume_point(cls, raw):
         """How far into a title the account already is, from playEvent.
 
         Apple states the position twice, once for the whole media and once
@@ -1703,24 +1723,8 @@ class AppleTVApi(object):
         the one Kodi's resume point wants; the inner pair skips whatever
         Apple counts as leading material.
         """
-        # Apple hangs the same playEvent off three different shapes: a single
-        # "playable" on most shelf items, a "playables" list on others, and on
-        # a title's own page a "playables" map keyed by playable id. Take the
-        # first that carries one rather than assuming a shape.
-        event = None
-        for node in (raw.get("playable"), raw.get("playables")):
-            if isinstance(node, dict) and isinstance(node.get("playEvent"), dict):
-                event = node["playEvent"]
-                break
-            candidates = (list(node.values()) if isinstance(node, dict)
-                          else node if isinstance(node, list) else [])
-            for candidate in candidates:
-                if isinstance(candidate, dict) and isinstance(
-                        candidate.get("playEvent"), dict):
-                    event = candidate["playEvent"]
-                    break
-            if event:
-                break
+        node = cls._resume_playable(raw)
+        event = node.get("playEvent") if isinstance(node, dict) else None
         if not isinstance(event, dict):
             return None
         position = event.get("playCursorInSeconds")
@@ -1798,6 +1802,25 @@ class AppleTVApi(object):
                 duration = p["duration"]
             if is_resume and not external_id and p.get("externalId"):
                 external_id = p["externalId"]
+        resume = self._resume_point(raw)
+        # A resume position belongs to one specific feed -- the one Apple was
+        # tracking -- and its length is that feed's length. If the item is left
+        # on its picker, Kodi shows the resume dialog before a feed is chosen
+        # and then applies that position to whatever feed is picked, which for
+        # a shorter feed (a 30-minute race against an hour-long replay) seeks
+        # clean past the end. Bind the item to the feed the position belongs
+        # to, so resuming plays that feed and the position stays within it.
+        if resume and not external_id:
+            node = self._resume_playable(raw)
+            if node and node.get("externalId"):
+                external_id = node["externalId"]
+            elif item_type == "SportingEvent":
+                # The feed the position belongs to cannot be identified, and a
+                # sporting event's feeds differ in length, so a resume dialog
+                # here could seek past the end of whichever feed the picker
+                # lands on. Drop the resume rather than risk it; a single-feed
+                # title (a film or episode) has no such ambiguity and keeps it.
+                resume = None
         return {
             "id": item_id,
             "title": label,
@@ -1836,7 +1859,7 @@ class AppleTVApi(object):
             # Which sport a fixture belongs to: a Grand Prix weekend exists
             # only for Motorsports, where MLS matches carry clubs instead.
             "sport": raw.get("sportName"),
-            "resume": self._resume_point(raw),
+            "resume": resume,
             "art": self._item_art(raw.get("images") or {}, item_type),
             # Harvested by _extract_shelves, never kept on the listed entry.
             "stream_assets": self._playable_assets(raw),

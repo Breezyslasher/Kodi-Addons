@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.21" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.22" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,14 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.22 - Resuming a match plays the feed it belongs to
+- FIX: A sporting event you had part-watched offered Resume before asking
+  which feed to play, and then applied that position to whichever feed you
+  picked -- so resuming an hour into the full replay could seek clean past
+  the end of the half-hour race. The saved position belongs to one feed, so
+  the event now plays that feed when you resume, its length matching the
+  position. Where the feed cannot be identified, the resume is dropped rather
+  than risk seeking past the end.
 2026.8.21 - A flaky manifest fetch no longer breaks a fresh play
 - FIX: Starting a title the instant the previous one closed sometimes hit a
   transient 500 from Apple's manifest server while collecting keys. That was
