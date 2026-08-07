@@ -423,6 +423,25 @@ nothing a non-Apple client can send changes the `-1020`. Purchase *naming* is
 complete (films and delisted TV alike); purchase *playback* stops here, at the
 device attestation, by design.
 
+The full licence response was then captured (valid session, `auth-token-valid=
+true`) to read Apple's own reason rather than infer it. Verbatim:
+
+```
+HTTP 200
+apple-tk: false
+x-apple-jingle-correlation-key: YMVKPMNLNRG7ERIENCAEHG2WQA
+X-Apple-Jingle-Responding-Instance: MZPlayLocal-mzplay-main-…
+{"streaming-response":{"streaming-keys":[{"id":1,"status":-1020}],"version":1}}
+```
+
+Fact, not read into: the request reached Apple's play/licence backend
+(`MZPlay…`) and was answered with the bare `-1020` and no explanatory field —
+no dialog, customerMessage, failureType, or auth challenge. The response
+carries a header `apple-tk: false`; its meaning is not documented here and is
+not guessed. This run also used a *delisted* film (adam 387548805), which still
+resolved a redownload HD offer and keys, so delisted content reaches the same
+`-1020`, not an earlier block.
+
 What the captures say instead is that the key system splits cleanly by
 playlist, without a single exception:
 
