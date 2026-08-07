@@ -264,9 +264,14 @@ def add_playable(entry, cast=None):
     # stream inline -- gets no watchlist entry: Apple's watchlist takes films,
     # shows and fixtures only, which is what every captured write sends, so
     # offering it on an episode was offering something that cannot work.
+    play_params = {"item_id": entry["id"], "item_type": entry.get("type", "Movie")}
+    # A sporting event listed with its own feed (Continue Watching gives one)
+    # plays that feed directly, so resuming does not re-open the feed picker.
+    if entry.get("external_id"):
+        play_params["external_id"] = entry["external_id"]
     xbmcplugin.addDirectoryItem(
         HANDLE,
-        url(action="play", item_id=entry["id"], item_type=entry.get("type", "Movie")),
+        url(action="play", **play_params),
         item,
         isFolder=False,
     )
@@ -491,9 +496,11 @@ def choose_feed(api, item_id, item_type):
     return feeds[index]["external_id"]
 
 
-def do_play(api, item_id, item_type):
-    external_id = None
-    if str(item_type) == "SportingEvent":
+def do_play(api, item_id, item_type, external_id=None):
+    # An event carried in with its own feed (Continue Watching) plays that
+    # feed directly. Only when the feed is not already known is the picker
+    # offered, and only for an event that has more than one.
+    if str(item_type) == "SportingEvent" and not external_id:
         chosen = choose_feed(api, item_id, item_type)
         if chosen is False:
             xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -794,7 +801,8 @@ def router(paramstring):
     elif action == "search":
         do_search(api)
     elif action == "play":
-        do_play(api, params.get("item_id"), params.get("item_type", "Movie"))
+        do_play(api, params.get("item_id"), params.get("item_type", "Movie"),
+                params.get("external_id"))
     elif action == "extras":
         do_extras(api, params.get("item_id"), params.get("item_type", "Movie"),
                   params.get("kind", "trailers"))

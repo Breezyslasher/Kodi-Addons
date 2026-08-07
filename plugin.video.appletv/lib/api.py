@@ -1737,13 +1737,23 @@ class AppleTVApi(object):
         # Movies and episodes carry their runtime on the shelf item; a sporting
         # event does not -- it sits on the item's playable instead (verified:
         # playables[0].duration on a Continue Watching event) -- so fall back
-        # to it, and a match shows its length like everything else.
+        # to it, and a match shows its length like everything else. The same
+        # playable names the exact feed the item is (its externalId), which
+        # Continue Watching needs so resuming plays that feed rather than
+        # re-asking which one.
         duration = raw.get("duration")
-        if not duration:
-            for p in self._as_list(raw.get("playables")):
-                if isinstance(p, dict) and p.get("duration"):
-                    duration = p["duration"]
-                    break
+        external_id = None
+        # Only a resume item (Continue Watching, context "Continue") names the
+        # one feed to play; a normal event tile keeps its picker so a race's
+        # other feeds stay reachable.
+        is_resume = raw.get("context") == "Continue"
+        for p in self._as_list(raw.get("playables")):
+            if not isinstance(p, dict):
+                continue
+            if not duration and p.get("duration"):
+                duration = p["duration"]
+            if is_resume and not external_id and p.get("externalId"):
+                external_id = p["externalId"]
         return {
             "id": item_id,
             "title": label,
@@ -1760,6 +1770,9 @@ class AppleTVApi(object):
             "show_title": raw.get("showTitle"),
             "show_id": raw.get("showId"),
             "duration": duration,
+            # The feed this event item already represents (Continue Watching),
+            # so playing it resumes that feed without a picker.
+            "external_id": external_id,
             "start_time": start_time,
             # Clubs carry whether the account follows them; the canvas is
             # invalidated on a FAVORITE event, so it comes back up to date.
