@@ -45,6 +45,10 @@ def _context():
 # match the exact key a challenge asks for. Both handlers run in the service
 # process, so a module-level dict is shared between them.
 _DISCOVERED_KEYS = {}
+# The last master manifest served, so a new play (a different master url) can
+# clear keys discovered for the previous one -- a live event rotates its keys
+# per play, and a stale one standing in gives -1002/-1004.
+_LAST_MASTER = None
 
 
 def variant_unwanted(tag, max_h, sdr_only, avc_only):
@@ -181,6 +185,14 @@ class _Handler(BaseHTTPRequestHandler):
         ctx = _context()
         is_master = "u=" in parsed.query and parse_qs(parsed.query).get("m", ["0"])[0] == "1"
         is_clear = parse_qs(parsed.query).get("c", ["0"])[0] == "1"
+        # A master for a url not seen before means a new play: drop the keys
+        # discovered for the last one so a live event's rotated keys cannot
+        # linger. The master is served before any variant, so this clears
+        # before this play's keys are collected.
+        global _LAST_MASTER
+        if is_master and target != _LAST_MASTER:
+            _DISCOVERED_KEYS.clear()
+            _LAST_MASTER = target
         headers = {
             "User-Agent": ctx.get("user_agent") or "Mozilla/5.0",
             "Origin": "https://tv.apple.com",
@@ -469,9 +481,15 @@ class _Handler(BaseHTTPRequestHandler):
         # (video and audio have different keys); a wrong or missing uri gives a
         # 500. Match by the key id embedded in the challenge, then fall back to
         # the other known keys rather than failing outright.
-        # Keys found up front plus every key seen while serving variants.
+        # Keys found up front for this play, plus any seen while serving its
+        # variants -- but the fresh per-play keys win. A live event reuses a
+        # key id across plays with a different contentId each time, so letting
+        # a discovered key from an earlier play override this play's fresh one
+        # sent a stale uri and earned -1002/-1004. Discovered keys only fill a
+        # gap the up-front collection missed, never replace a fresh key.
         wv_keys = dict(ctx.get("wv_keys") or {})
-        wv_keys.update(_DISCOVERED_KEYS)
+        for kid, uri in _DISCOVERED_KEYS.items():
+            wv_keys.setdefault(kid, uri)
 
         candidates = []
         matched_kid = None
