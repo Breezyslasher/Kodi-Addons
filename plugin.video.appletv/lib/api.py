@@ -380,6 +380,33 @@ class AppleTVApi(object):
         """Follow or unfollow a club, as the heart on its page does."""
         return self._list_request("/favorite-teams", team_id, favourite)
 
+    def mark_cached_favourite(self, team_id, favourite):
+        """Flip a club's cached follow flag so a follow shows on refresh.
+
+        The Following folder and the club tiles read the follow state from the
+        canvas cache, not the server, so following a club otherwise shows no
+        change until the tab is fetched afresh (leaving to the main menu and
+        back). Patch every cached canvas that lists the club, which is what
+        lets a refresh of the current screen reflect the change at once.
+        """
+        if not team_id:
+            return
+        for channel_id, _name in CHANNELS:
+            cache_name = self._canvas_cache_name(channel_id)
+            cache = kodiutils.read_json(cache_name, default=None)
+            if not isinstance(cache, dict):
+                continue
+            changed = False
+            for entry in cache.values():
+                items = entry.get("items") if isinstance(entry, dict) else entry
+                for item in items or []:
+                    if (isinstance(item, dict) and item.get("id") == team_id
+                            and item.get("favourite") != favourite):
+                        item["favourite"] = favourite
+                        changed = True
+            if changed:
+                kodiutils.write_json(cache_name, cache)
+
     def set_watchlisted(self, content_id, watchlisted=True):
         """Add a title or event to the account's Up Next list, or remove it."""
         return self._list_request("/watchlist", content_id, watchlisted)

@@ -655,6 +655,9 @@ def do_watchlist(api, item_id, add):
         return
     if api.set_watchlisted(item_id, add):
         kodiutils.notify(L("watchlist_added" if add else "watchlist_removed"))
+        # The Watchlist list is fetched fresh from Apple, so reloading the
+        # current screen shows the change without leaving the tab first.
+        xbmc.executebuiltin("Container.Refresh")
     else:
         kodiutils.ok_dialog(L("watchlist_failed"))
 
@@ -664,7 +667,12 @@ def do_follow_team(api, team_id, follow):
     if not team_id:
         return
     if api.set_team_favourite(team_id, follow):
+        # The Following folder and the club tiles read the follow state from
+        # the cached canvas, so patch it before refreshing the screen -- else
+        # the change would not show until the tab was fetched again.
+        api.mark_cached_favourite(team_id, follow)
         kodiutils.notify(L("followed" if follow else "unfollowed"))
+        xbmc.executebuiltin("Container.Refresh")
     else:
         kodiutils.ok_dialog(L("follow_failed"))
 

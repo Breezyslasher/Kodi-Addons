@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.24" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.25" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,12 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.25 - Following and Watchlist update on the spot
+- FIX: Following or unfollowing a club, or adding or removing a Watchlist
+  title, showed no change until you left to the main menu and came back into
+  the tab. The screen now refreshes in place: the Watchlist is re-read from
+  Apple, and a club's follow state is updated in the cached tab so the
+  Following folder and the club tiles reflect it at once.
 2026.8.24 - Clubs show their crest
 - NEW: A football club now shows its crest. Apple ships the badge as a square
   logo, the one shape the artwork sort treated as "not artwork", so clubs
