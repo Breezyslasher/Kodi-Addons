@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.23" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.24" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,10 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.24 - Clubs show their crest
+- NEW: A football club now shows its crest. Apple ships the badge as a square
+  logo, the one shape the artwork sort treated as "not artwork", so clubs
+  were listed blank; the crest is used for them now (as a transparent png).
 2026.8.23 - Fix a stray settings entry, and name the list consistently
 - FIX: "Add to Watchlist" in a title's context menu showed the text of the
   new live-events height setting instead. The setting had been given a label

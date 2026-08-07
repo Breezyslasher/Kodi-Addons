@@ -1894,6 +1894,10 @@ class AppleTVApi(object):
         The show's poster is set aside for those, leaving the episode's still,
         which is what Apple's own client shows.
         """
+        # A club (Team) has no poster or still, only its crest, which the
+        # portrait/wide sort below drops as square. Give it the crest instead.
+        if str(item_type) == "Team":
+            return self._team_art(images)
         if str(item_type) == "Episode" and isinstance(images, dict):
             images = {k: v for k, v in images.items()
                       if "showposter" not in k.lower()}
@@ -1919,6 +1923,42 @@ class AppleTVApi(object):
         if art.get("thumb"):
             art["icon"] = art["thumb"]
         return art or None
+
+    def _team_art(self, images):
+        """A club crest for a Team tile, which _item_art otherwise discards.
+
+        A club carries its badge as square logo artwork -- teamLogo is a
+        3840x3840 crest, alongside light/dark variants and a near-square
+        masterArtLogo -- which is exactly the shape the portrait/wide sort
+        treats as "not artwork" and the key denylist filters out by name. Take
+        the crest here so a club shows its badge rather than a blank tile,
+        requested as png so its transparency survives.
+        """
+        if not isinstance(images, dict):
+            return None
+        entry = None
+        for key in ("teamLogo", "teamLogoLight", "teamLogoDark", "masterArtLogo"):
+            candidate = images.get(key)
+            if isinstance(candidate, dict) and candidate.get("url"):
+                entry = candidate
+                break
+        if entry is None:
+            # Another league may name its crest differently; take any roughly
+            # square image, the shape a badge always is.
+            for candidate in images.values():
+                if not isinstance(candidate, dict) or not candidate.get("url"):
+                    continue
+                try:
+                    w, h = float(candidate.get("width")), float(candidate.get("height"))
+                except (TypeError, ValueError):
+                    continue
+                if w > 0 and h > 0 and 0.85 <= w / h <= 1.25:
+                    entry = candidate
+                    break
+        if entry is None:
+            return None
+        url = self._sized_url(entry, height=POSTER_HEIGHT, fmt="png")
+        return {"thumb": url, "icon": url, "poster": url}
 
     @staticmethod
     def _image_shape(key, entry):
@@ -1956,8 +1996,12 @@ class AppleTVApi(object):
         return None
 
     @staticmethod
-    def _sized_url(entry, width=None, height=None):
-        """Fill an mzstatic {w}x{h} template, keeping the source's aspect."""
+    def _sized_url(entry, width=None, height=None, fmt="jpg"):
+        """Fill an mzstatic {w}x{h} template, keeping the source's aspect.
+
+        fmt is the image format the {f} slot asks for; a crest is requested as
+        png so its transparency survives, artwork as jpg.
+        """
         try:
             src_w, src_h = float(entry.get("width")), float(entry.get("height"))
             ratio = src_w / src_h if src_w > 0 and src_h > 0 else None
@@ -1969,7 +2013,7 @@ class AppleTVApi(object):
             height = int(round(width / ratio)) if ratio else width
         return (entry["url"].replace("{w}", str(int(width)))
                 .replace("{h}", str(int(height)))
-                .replace("{f}", "jpg").replace("{c}", "").replace("{cropcode}", ""))
+                .replace("{f}", fmt).replace("{c}", "").replace("{cropcode}", ""))
 
     @staticmethod
     def _as_list(value):
