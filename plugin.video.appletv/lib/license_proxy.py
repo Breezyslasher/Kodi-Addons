@@ -127,6 +127,34 @@ def _license_key_ids(licence):
     return ids
 
 
+def _log_license_diagnostic(resp):
+    """Log the full licence response so Apple's own reason is read, not guessed.
+
+    The status number (-1020) is only a code; Apple's media endpoints usually
+    say more -- a dialog or customerMessage aimed at the user, a failureType,
+    an m-allowed / metrics field, or diagnostic headers. With a valid session
+    this is Apple answering "what is wrong with this call", so it is captured
+    in full (body untruncated to a sane cap, plus every X-Apple-* header and a
+    handful of other named ones) rather than thrown away.
+    """
+    try:
+        interesting = ("x-apple-jingle-correlation-key",
+                       "x-apple-application-error-code", "x-apple-reason",
+                       "x-apple-auth-token-valid", "x-apple-request-uuid",
+                       "apple-tk", "x-apple-orig-url", "www-authenticate",
+                       "x-apple-fairplay-error", "x-apple-ams-error")
+        hdrs = {k: v for k, v in resp.headers.items()
+                if k.lower().startswith("x-apple") or k.lower() in interesting}
+        body = resp.text or ""
+        kodiutils.log("License diagnostic: HTTP %s" % resp.status_code)
+        kodiutils.log("License diagnostic headers: %s" % hdrs)
+        # Full body up to a generous cap: a dialog/customerMessage explaining
+        # the refusal would sit here, and it is the whole point of asking.
+        kodiutils.log("License diagnostic body: %s" % body[:2000])
+    except Exception as exc:
+        kodiutils.log("License diagnostic failed to read response: %s" % exc)
+
+
 def _patch_tenc_kid(data, kid_hex):
     """Replace an all-zero default_KID in every tenc box with the real key id.
 
@@ -599,18 +627,15 @@ class _Handler(BaseHTTPRequestHandler):
                     request["dsid"] = headers["X-Dsid"]
             envelope = {"streaming-request": request}
             resp = requests.post(url, data=json.dumps(envelope), headers=headers, timeout=30)
+            if attempt == 0:
+                # Ask Apple, with a valid session, exactly what it objects to:
+                # its media endpoints often say more than the status number --
+                # a dialog/customerMessage, a failureType, or diagnostic
+                # X-Apple-* headers. The full body and those headers are dumped
+                # once so the real reason is read, not inferred from -1020.
+                _log_license_diagnostic(resp)
             if resp.status_code != 200:
                 last_error = "HTTP %s %s" % (resp.status_code, resp.text[:150])
-                # An empty 403 from an Apple media endpoint is what a request
-                # missing device attestation earns; the response headers say
-                # whether the session was even read, which separates "not
-                # authorised" from "not signed". Logged once, on the first miss.
-                if attempt == 0:
-                    kodiutils.log(
-                        "License %s: auth-token-valid=%s, body=%r"
-                        % (resp.status_code,
-                           resp.headers.get("X-Apple-Auth-Token-Valid", "?"),
-                           resp.text[:120]))
                 continue
             try:
                 keys = (resp.json().get("streaming-response", {}) or {}).get("streaming-keys", [])
