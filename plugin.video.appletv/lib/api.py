@@ -1861,23 +1861,39 @@ class AppleTVApi(object):
                     "episode": content.get("episodeNumber"),
                     "art": self._item_art(content.get("images") or {}, item_type),
                 }
-            # Named a canonical but its detail had no title: a purchased
-            # episode Apple has dropped from every content endpoint (its detail
-            # 404s, its season metadata 404s, and the public store carries
-            # neither the episode nor its collection). The reverse-lookup's own
-            # URLs still name it though -- the episode url slug is the episode
-            # title, the show url is the series, the season url the number --
-            # so it is named from those rather than dropped.
-            ep_title, _ = self._name_from_season_url(hit.get("episode_url"))
+            # Named a canonical but its detail had no title: a purchase Apple
+            # has dropped from every content endpoint (detail 404s, season
+            # metadata 404s, and the public store carries neither the item nor
+            # its collection). The reverse-lookup's own URLs still name it --
+            # the item's `url` slug is its title, `showUrl` the series and
+            # `seasonUrl` the season number for an episode -- so it is named
+            # from those rather than dropped. A film has a `url` and no show,
+            # so the same slugs name it too; only the shape it is built into
+            # differs, decided by whether the lookup called it an episode.
+            own_title, _ = self._name_from_season_url(hit.get("episode_url"))
             show_name, _ = self._name_from_season_url(hit.get("show_url"))
             _, season_no = self._name_from_season_url(hit.get("season_url"))
+            is_episode = (hit.get("type") == "Episode"
+                          or bool(hit.get("show_url") or hit.get("season_id")))
             kodiutils.log("resolve_store_id %s: canonical=%s, no content detail; "
-                          "naming from url -> %s / %s (season %s)"
+                          "naming from url -> %s / %s (season %s, %s)"
                           % (adam_id, canonical, show_name or "-",
-                             ep_title or "-", season_no or "-"))
-            if ep_title or show_name:
-                title = ep_title or show_name
-                season_title = show_name or ep_title
+                             own_title or "-", season_no or "-",
+                             "episode" if is_episode else "movie"))
+            if own_title or show_name:
+                if not is_episode:
+                    # A delisted film: named by its own url slug, opened by the
+                    # canonical, no show or season to it.
+                    return {
+                        "id": canonical,
+                        "adam_id": str(adam_id),
+                        "title": own_title or show_name,
+                        "sort_title": own_title or show_name,
+                        "type": "Movie",
+                        "delisted": True,
+                    }
+                title = own_title or show_name
+                season_title = show_name or own_title
                 if show_name and season_no:
                     season_title = "%s, Season %d" % (show_name, season_no)
                 return {
