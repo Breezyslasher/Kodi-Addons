@@ -15,7 +15,6 @@ import xbmc
 
 from lib import kodiutils
 from lib.api import AppleTVApi, PLAYBACK_REPORT_CACHE
-from lib.itunes import ItunesStore
 from lib.auth import AppleAuth
 from lib.license_proxy import LicenseProxy
 
@@ -32,7 +31,6 @@ class WatchHistory(object):
 
     def __init__(self):
         self._api = None
-        self._adam_id = None
         self._token = None
         self._active = False
         self._last_report = 0
@@ -56,15 +54,6 @@ class WatchHistory(object):
             duration = 0
         if not duration:
             duration = context.get("duration") or 0
-        # A purchase reports to the store instead, and needs no token: the
-        # store is keyed by the title's own id rather than by a play session.
-        if context.get("adam_id"):
-            self._adam_id = context["adam_id"]
-            self._duration = duration
-            self._active = True
-            self._last_report = time.monotonic()
-            kodiutils.log("Watch history: reporting this purchase to the store")
-            return
         if not context.get("playable_passthrough"):
             return
         try:
@@ -109,15 +98,6 @@ class WatchHistory(object):
         self.reset()
 
     def _send(self, position, finished):
-        # A purchase is not in the now-playing service at all; its position
-        # lives in the store's key-value bookkeeper, keyed by store id.
-        if self._adam_id:
-            try:
-                ItunesStore(self._lazy_api().session).report_position(
-                    self._adam_id, position, finished)
-            except Exception as exc:
-                kodiutils.log_error("iTunes position report failed: %s" % exc)
-            return
         try:
             self._lazy_api().report_now_playing(
                 self._token, position, self._duration, finished)
@@ -125,7 +105,6 @@ class WatchHistory(object):
             kodiutils.log_error("Watch history report failed: %s" % exc)
 
     def reset(self):
-        self._adam_id = None
         self._token = None
         self._active = False
         self._last_report = 0

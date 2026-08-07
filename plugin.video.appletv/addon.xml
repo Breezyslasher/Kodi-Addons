@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.11" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.12" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -11,15 +11,14 @@
 	</extension>
 	<extension point="xbmc.service" library="service.py"/>
 	<extension point="xbmc.addon.metadata">
-		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
-		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals and your iTunes movie library, playing back through InputStream Adaptive with Widevine DRM.
+		<summary lang="en_GB">Apple TV+ client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, playing back through InputStream Adaptive with Widevine DRM.
 
-EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
 
 Features:
 * Apple ID sign-in with two-factor authentication
 * Browse Apple TV+ Originals (shows and movies)
-* Browse your iTunes purchased/rented movie library
 * Search the Apple TV catalogue
 * Widevine playback via InputStream Adaptive</description>
 		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
@@ -32,6 +31,11 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.12 - Streamlined to a clean Apple TV+ client
+- This build is the Apple TV+ web client on its own: sign-in, Originals and
+  the brand tabs, Search, and Widevine playback. The iTunes purchase
+  library, Continue Watching and the Featured row have been removed for a
+  focused, dependable core.
 2026.8.4 - Owned TV names itself, and a token escape hatch
 - Your purchased TV episodes now show their real titles and show name even
   when Apple has pulled the title from sale. Apple keeps no catalogue entry

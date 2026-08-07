@@ -29,20 +29,6 @@ import requests
 from . import kodiutils
 
 FPS_URL = "https://play-edge.itunes.apple.com/WebObjects/MZPlayLocal.woa/wa/fpsRequest"
-# What Apple's Windows client calls this endpoint as when licensing a
-# purchase -- the library agent, not the TV app.
-STORE_AGENT = ("AMPLibraryAgent/1.6.4 (Windows 10.0.19045 x64; x64) "
-               "Chromium/151.0.4129.59")
-# The Android TV app's user agent. When the pasted session is the Android
-# one (an mz_at_ssl cookie), the licence request is made to look like that
-# client rather than mixing it with the Windows agent and an X-Token that
-# belong to a different session.
-# The exact UA the Android TV app sends, from a capture of its vz request --
-# matched here so the licence call carries the same client identity. (Fidelity
-# only: the licence 403/-1020 is the device keybag, not the agent string.)
-ANDROID_AGENT = ("ATVE/16.4.0 Android/11 build/34A30 maker/Raspberry "
-                 "model/RaspberryPi4 FW/RQ3A.211001.001eng.tuomas."
-                 "20211123.165647")
 CONTEXT_FILE = "playback_context.json"
 BIND_HOST = "127.0.0.1"
 DEFAULT_PORT = 57812
@@ -129,34 +115,6 @@ def _license_key_ids(licence):
                 ids.append(hexed)
         pos += 2
     return ids
-
-
-def _log_license_diagnostic(resp):
-    """Log the full licence response so Apple's own reason is read, not guessed.
-
-    The status number (-1020) is only a code; Apple's media endpoints usually
-    say more -- a dialog or customerMessage aimed at the user, a failureType,
-    an m-allowed / metrics field, or diagnostic headers. With a valid session
-    this is Apple answering "what is wrong with this call", so it is captured
-    in full (body untruncated to a sane cap, plus every X-Apple-* header and a
-    handful of other named ones) rather than thrown away.
-    """
-    try:
-        interesting = ("x-apple-jingle-correlation-key",
-                       "x-apple-application-error-code", "x-apple-reason",
-                       "x-apple-auth-token-valid", "x-apple-request-uuid",
-                       "apple-tk", "x-apple-orig-url", "www-authenticate",
-                       "x-apple-fairplay-error", "x-apple-ams-error")
-        hdrs = {k: v for k, v in resp.headers.items()
-                if k.lower().startswith("x-apple") or k.lower() in interesting}
-        body = resp.text or ""
-        kodiutils.log("License diagnostic: HTTP %s" % resp.status_code)
-        kodiutils.log("License diagnostic headers: %s" % hdrs)
-        # Full body up to a generous cap: a dialog/customerMessage explaining
-        # the refusal would sit here, and it is the whole point of asking.
-        kodiutils.log("License diagnostic body: %s" % body[:2000])
-    except Exception as exc:
-        kodiutils.log("License diagnostic failed to read response: %s" % exc)
 
 
 def _patch_tenc_kid(data, kid_hex):
@@ -503,10 +461,7 @@ class _Handler(BaseHTTPRequestHandler):
         ctx = _context()
         bearer = ctx.get("bearer")
         mut = ctx.get("media_user_token")
-        # A purchase is licensed with a store session instead, so the Apple
-        # TV+ pair is only required when that is what will be sent.
-        if (not bearer or not mut) and not (ctx.get("override")
-                                            or ctx.get("itunes")):
+        if (not bearer or not mut) and not ctx.get("override"):
             kodiutils.log_error("License proxy missing bearer/media-user-token")
             return None
 
@@ -547,80 +502,14 @@ class _Handler(BaseHTTPRequestHandler):
                          ctx.get("svc_id") or "none"))
 
         url = ctx.get("license_server") or FPS_URL
-        # An iTunes purchase is not authorised by an Apple TV+ identity. A
-        # capture of Apple's own client licensing one sends store credentials
-        # instead -- X-Dsid, X-Token and the store cookies, under the library
-        # agent's user agent -- and a TV+ bearer plus media-user-token is
-        # refused with status -1020. So when a store session has been pasted
-        # in and this stream came from the override, send what Apple's client
-        # sends. The dsid names itself inside the cookie.
-        # The Android mz_at_ssl session may live in its own setting now; prefer
-        # it for the licence, since it is the identity that reaches the licence
-        # decision (rather than a 403), falling back to the store session.
-        store_cookies = (kodiutils.get_setting("itunes_uts_cookies") or "").strip() \
-            or (kodiutils.get_setting("itunes_cookies") or "").strip()
-        store_token = (kodiutils.get_setting("itunes_token") or "").strip()
-        # Diagnostic: force the Android/store session onto this licence request
-        # even for TV+ content, which normally uses the web bearer. This asks
-        # one question and only that -- does the Android mz_at_ssl session
-        # license content whose key server does NOT need a keybag? TV+ keys come
-        # from a service (tvs.vds.4105) that issues without one, so if TV+ plays
-        # under the Android session the session is a valid licensing credential
-        # and the purchase -1020 is purely the purchase service's keybag; if TV+
-        # also -1020s here, the Android session is simply the wrong auth for
-        # that service. The key server and svcId stay the title's own; only the
-        # identity is swapped.
-        force_store = kodiutils.get_setting("diag_force_store_license") == "true"
-        as_store = bool((ctx.get("override") or ctx.get("itunes") or force_store)
-                        and (store_cookies or store_token))
-        if force_store and as_store and not (ctx.get("override") or ctx.get("itunes")):
-            kodiutils.log("DIAGNOSTIC: forcing Android/store session onto a "
-                          "non-purchase (TV+) licence request, svcId=%s"
-                          % (ctx.get("svc_id") or "none"))
-        if as_store:
-            # A store session names its account in more than one cookie: the
-            # store page's is amia-<dsid>, the TV app's SSL auto-login is
-            # mz_at_ssl-<dsid>, and the music token is mt-tkn-<dsid>. Any will
-            # do, and which are present depends on which client was captured.
-            # mz_at_ssl matters most: it is the cookie the Android TV app
-            # authenticates its UTS calls with, the one that a fresh capture
-            # proved valid for Continue Watching -- and without it here the
-            # licence request went out with no account id at all.
-            found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=",
-                              store_cookies) \
-                or re.search(r"X-Dsid=(\d+)", store_cookies)
-            dsid = found.group(1) if found else ""
-            # An mz_at_ssl cookie is the Android TV app's session, and that
-            # client authenticates by cookie and X-Dsid alone. Pairing it with
-            # the Windows agent and a stale X-Token from a different capture is
-            # incoherent and is itself a way to earn a 403, so when the session
-            # is the Android one send only what that client sends.
-            android = "mz_at_ssl" in store_cookies
-            headers = {
-                "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": ANDROID_AGENT if android else STORE_AGENT,
-                "X-Apple-Store-Front": "%s-1,42" % (
-                    kodiutils.get_setting("storefront") or "143441"),
-            }
-            if dsid:
-                headers["X-Dsid"] = dsid
-            if store_token and not android:
-                headers["X-Token"] = store_token
-            if store_cookies:
-                headers["Cookie"] = store_cookies
-            kodiutils.log("License identity: %s session (dsid=%s, token=%s)"
-                          % ("android" if android else "store",
-                             "yes" if dsid else "NO",
-                             "yes" if headers.get("X-Token") else "NO"))
-        else:
-            headers = {
-                "Content-Type": "application/json",
-                "Origin": "https://tv.apple.com",
-                "Referer": "https://tv.apple.com/",
-                "authorization": "Bearer " + bearer,
-                "x-apple-music-user-token": mut,
-                "x-apple-renewal": "true",
-            }
+        headers = {
+            "Content-Type": "application/json",
+            "Origin": "https://tv.apple.com",
+            "Referer": "https://tv.apple.com/",
+            "authorization": "Bearer " + (bearer or ""),
+            "x-apple-music-user-token": mut or "",
+            "x-apple-renewal": "true",
+        }
         last_error = None
         for attempt, candidate in enumerate(candidates):
             key = {
@@ -634,25 +523,8 @@ class _Handler(BaseHTTPRequestHandler):
             }
             if candidate:
                 key["uri"] = candidate
-            request = {"version": 1, "streaming-keys": [key]}
-            if as_store:
-                # Mirror the shape Apple's client uses for a purchase: the
-                # guid and dsid it identifies itself by, at the levels it puts
-                # them. kbsync -- a device keybag blob -- is also on the real
-                # request and cannot be produced here, so this finds out
-                # whether it is required rather than assuming either way.
-                key["guid"] = kodiutils.get_setting("itunes_guid") or ""
-                if headers.get("X-Dsid"):
-                    request["dsid"] = headers["X-Dsid"]
-            envelope = {"streaming-request": request}
+            envelope = {"streaming-request": {"version": 1, "streaming-keys": [key]}}
             resp = requests.post(url, data=json.dumps(envelope), headers=headers, timeout=30)
-            if attempt == 0:
-                # Ask Apple, with a valid session, exactly what it objects to:
-                # its media endpoints often say more than the status number --
-                # a dialog/customerMessage, a failureType, or diagnostic
-                # X-Apple-* headers. The full body and those headers are dumped
-                # once so the real reason is read, not inferred from -1020.
-                _log_license_diagnostic(resp)
             if resp.status_code != 200:
                 last_error = "HTTP %s %s" % (resp.status_code, resp.text[:150])
                 continue
@@ -663,24 +535,7 @@ class _Handler(BaseHTTPRequestHandler):
                 continue
             if not keys or "license" not in keys[0]:
                 status = keys[0].get("status") if keys else None
-                # -1020 is the FairPlay key server's answer to a request that
-                # authenticated but carries no device keybag (kbsync): the
-                # session was accepted (HTTP 200, not the 403 an expired one
-                # gets) and the key was still refused. This was tested with a
-                # fresh, valid mz_at_ssl session and still returned -1020, which
-                # answers the open question the store-detail code left: the
-                # keybag is required, and it is a native Apple-device
-                # attestation that cannot be produced off the device. This is
-                # the final wall for purchase playback, distinct from anything a
-                # session or token fixes.
-                if status == -1020:
-                    last_error = ("status -1020: key server refused -- request "
-                                  "authenticated but has no device keybag "
-                                  "(kbsync), a native Apple-device attestation "
-                                  "not reproducible here")
-                else:
-                    last_error = ("no licence in response (status=%s) %s"
-                                  % (status, resp.text[:150]))
+                last_error = "no licence in response (status=%s)" % status
                 continue
             licence = base64.b64decode(keys[0]["license"])
             kodiutils.log("License OK (attempt %d/%d), contains KIDs=[%s]"
@@ -690,19 +545,6 @@ class _Handler(BaseHTTPRequestHandler):
 
         kodiutils.log_error("fpsRequest failed after %d attempt(s): %s"
                             % (len(candidates), last_error))
-        # A 403 here has two very different causes, and they need different
-        # fixes: an expired store/mz_at_ssl session (re-paste a fresh one) or a
-        # request Apple will not honour without device attestation (a wall no
-        # session fixes). Say which is more likely from what was sent, so the
-        # next step is aimed rather than guessed: a purchase licensed on the
-        # android session with no token is the session-expiry case until a
-        # fresh session proves otherwise.
-        if "403" in (last_error or ""):
-            kodiutils.log(
-                "License 403 guidance: if the Continue Watching session read "
-                "auth-token-valid=false this run, the mz_at_ssl session is "
-                "expired -- refresh it and retry; only a 403 that persists with "
-                "a fresh, valid session is the device-attestation wall.")
         return None
 
 
