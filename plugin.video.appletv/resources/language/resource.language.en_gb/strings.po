@@ -349,3 +349,7 @@ msgstr ""
 msgctxt "#32083"
 msgid "Developer token override (advanced; paste a tv.apple.com Bearer if the bootstrap scrape breaks)"
 msgstr ""
+
+msgctxt "#32084"
+msgid "Diagnostic: license TV+ playback with the Android store session (test only)"
+msgstr ""

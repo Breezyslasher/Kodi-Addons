@@ -560,8 +560,23 @@ class _Handler(BaseHTTPRequestHandler):
         store_cookies = (kodiutils.get_setting("itunes_uts_cookies") or "").strip() \
             or (kodiutils.get_setting("itunes_cookies") or "").strip()
         store_token = (kodiutils.get_setting("itunes_token") or "").strip()
-        as_store = bool((ctx.get("override") or ctx.get("itunes"))
+        # Diagnostic: force the Android/store session onto this licence request
+        # even for TV+ content, which normally uses the web bearer. This asks
+        # one question and only that -- does the Android mz_at_ssl session
+        # license content whose key server does NOT need a keybag? TV+ keys come
+        # from a service (tvs.vds.4105) that issues without one, so if TV+ plays
+        # under the Android session the session is a valid licensing credential
+        # and the purchase -1020 is purely the purchase service's keybag; if TV+
+        # also -1020s here, the Android session is simply the wrong auth for
+        # that service. The key server and svcId stay the title's own; only the
+        # identity is swapped.
+        force_store = kodiutils.get_setting("diag_force_store_license") == "true"
+        as_store = bool((ctx.get("override") or ctx.get("itunes") or force_store)
                         and (store_cookies or store_token))
+        if force_store and as_store and not (ctx.get("override") or ctx.get("itunes")):
+            kodiutils.log("DIAGNOSTIC: forcing Android/store session onto a "
+                          "non-purchase (TV+) licence request, svcId=%s"
+                          % (ctx.get("svc_id") or "none"))
         if as_store:
             # A store session names its account in more than one cookie: the
             # store page's is amia-<dsid>, the TV app's SSL auto-login is
