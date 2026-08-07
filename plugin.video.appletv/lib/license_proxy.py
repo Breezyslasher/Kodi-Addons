@@ -549,6 +549,16 @@ class _Handler(BaseHTTPRequestHandler):
             if not keys or "license" not in keys[0]:
                 status = keys[0].get("status") if keys else None
                 last_error = "no licence in response (status=%s)" % status
+                # Read Apple's own answer rather than infer from the status
+                # number: on the first miss, log the full response body and the
+                # exact key parameters sent, and the KID this attempt was for.
+                if attempt == 0:
+                    kodiutils.log("License refused: sent key params=%s, wanted "
+                                  "KID=%s; response=%s"
+                                  % ({k: v for k, v in key.items()
+                                      if k != "challenge"},
+                                     matched_kid or "?",
+                                     (resp.text or "")[:600]))
                 continue
             licence = base64.b64decode(keys[0]["license"])
             kodiutils.log("License OK (attempt %d/%d), contains KIDs=[%s]"
