@@ -442,6 +442,27 @@ not guessed. This run also used a *delisted* film (adam 387548805), which still
 resolved a redownload HD offer and keys, so delisted content reaches the same
 `-1020`, not an earlier block.
 
+The last cell — does the Android session itself license anything, or is it the
+wrong credential — was then filled directly. A TV+ Original was played with the
+Android `mz_at_ssl` session forced onto its licence request (its own key server
+and `svcId tvs.vds.4105` kept, only the identity swapped):
+
+| content | identity on the licence request | key server | result |
+|---|---|---|---|
+| TV+ Original | web bearer + media-user-token | `tvs.vds.4105` | `status 0`, plays |
+| TV+ Original | **Android `mz_at_ssl`** | `tvs.vds.4105` | **`status 0`, plays** |
+| iTunes purchase | web bearer + media-user-token | `tvs.vds.9023` | `-1020` |
+| iTunes purchase | Android `mz_at_ssl` | `tvs.vds.9023` | `-1020` |
+
+So the Android session is a fully valid *licensing* credential — it issued a
+real licence (both keys, `status 0`) for TV+ content and the stream played. The
+credential, the caller, the request shape are all fine. The only thing that
+changes the answer is the **key server**: `tvs.vds.4105` (TV+/studio) issues
+without a keybag; `tvs.vds.9023` (iTunes catalogue) refuses without one. The
+`-1020` is entirely the purchase key server's keybag requirement, on either
+session — nothing about the token or the path. A purchase's keys exist only on
+`9023`, and `9023` wants the device keybag, full stop.
+
 What the captures say instead is that the key system splits cleanly by
 playlist, without a single exception:
 
