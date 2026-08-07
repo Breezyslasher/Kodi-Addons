@@ -442,27 +442,6 @@ class AppleTVApi(object):
                 break
         return items
 
-    def get_followed_teams(self, channel_id):
-        """Clubs the account follows, from the tabs already fetched.
-
-        Apple's own favourites shelf on the page is an empty marker that the
-        website fills in client-side, so this does the same: every club tile
-        reports whether it is followed.
-        """
-        cache = kodiutils.read_json(self._canvas_cache_name(channel_id),
-                                    default={}) or {}
-        followed = []
-        seen = set()
-        for entry in cache.values():
-            items = entry.get("items") if isinstance(entry, dict) else entry
-            for item in items or []:
-                if not isinstance(item, dict) or item.get("type") != "Team":
-                    continue
-                if item.get("favourite") and item.get("id") not in seen:
-                    seen.add(item["id"])
-                    followed.append(item)
-        return followed
-
     def get_related(self, content_id, league_id=None):
         """"More like this" for a title, or the other games in a league.
 

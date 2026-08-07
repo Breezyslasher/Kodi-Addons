@@ -58,7 +58,6 @@ S = {
     "sub_family": 32055,
     "sub_unknown": 32056,
     "sub_shared_with_you": 32058,
-    "following": 32059,
     "search_suggestions": 32061,
     "choose_feed": 32062,
     "play_feed": 32063,
@@ -310,13 +309,6 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
     """
     if not shelves:
         kodiutils.notify(L("no_results"))
-    # Apple's own favourites shelf is an empty marker the website fills in
-    # itself; the club tiles say who is followed, so do the same here.
-    followed = [i for s in shelves for i in s.get("items") or []
-                if str(i.get("type")) == "Team" and i.get("favourite")]
-    if followed:
-        add_dir("%s (%d)" % (L("following"), len(followed)),
-                "following", cache_key=cache_key, brand=brand)
     for shelf in shelves:
         if shelf.get("items"):
             # A shelf with a paging token has more than the canvas returned;
@@ -768,10 +760,6 @@ def router(paramstring):
         team_id = params.get("team_id")
         brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
         show_shelves(api, api.get_team_shelves(team_id), team_id, brand)
-    elif action == "following":
-        brand = params.get("brand") or APPLE_TV_PLUS_CHANNEL
-        show_items(api.get_followed_teams(params.get("cache_key")),
-                   channel_id=brand)
     elif action == "grandprix":
         gp_id = params.get("gp_id")
         brand = params.get("channel_id") or F1_CHANNEL

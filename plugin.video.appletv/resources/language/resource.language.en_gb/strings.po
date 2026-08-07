@@ -239,10 +239,6 @@ msgctxt "#32058"
 msgid "Included through Family Sharing"
 msgstr ""
 
-msgctxt "#32059"
-msgid "Following"
-msgstr ""
-
 msgctxt "#32060"
 msgid "Continue Watching"
 msgstr ""
