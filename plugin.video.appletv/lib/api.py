@@ -935,6 +935,11 @@ class AppleTVApi(object):
         self.last_error = None
         assets = self._prepare_playback(content_id, item_type, external_id)
         if not assets:
+            # A deliberate reason was given -- an event that has not started
+            # yet -- so stop and let the caller show it, rather than falling
+            # through to an inline stream that does not exist and 404s.
+            if self.last_error:
+                return None
             # Sports clips have no detail endpoint; fall back to the stream the
             # shelf listed inline, which is the only one Apple ever offers.
             inline = self._cached_stream(content_id)

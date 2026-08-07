@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.18" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.19" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,12 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.19 - A future event says so instead of erroring
+- FIX: Playing a sporting event that has not started yet showed a stream
+  download error and a DRM failure. It now shows the kick-off time, as it
+  was meant to: when the detail lookup withholds a stream because the event
+  is still to come, playback stops on that reason instead of falling through
+  to an inline stream that Apple has not published yet.
 2026.8.12 - Streamlined to a clean Apple TV+ client
 - This build is the Apple TV+ web client on its own: sign-in, Originals and
   the brand tabs, Search, and Widevine playback. The iTunes purchase
