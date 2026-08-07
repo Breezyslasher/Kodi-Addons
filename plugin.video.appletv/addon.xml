@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.2" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.25" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -11,15 +11,14 @@
 	</extension>
 	<extension point="xbmc.service" library="service.py"/>
 	<extension point="xbmc.addon.metadata">
-		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
-		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals and your iTunes movie library, playing back through InputStream Adaptive with Widevine DRM.
+		<summary lang="en_GB">Apple TV+ client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, playing back through InputStream Adaptive with Widevine DRM.
 
-EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
 
 Features:
 * Apple ID sign-in with two-factor authentication
 * Browse Apple TV+ Originals (shows and movies)
-* Browse your iTunes purchased/rented movie library
 * Search the Apple TV catalogue
 * Widevine playback via InputStream Adaptive</description>
 		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
@@ -32,6 +31,66 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.25 - Following and Watchlist update on the spot
+- FIX: Following or unfollowing a club, or adding or removing a Watchlist
+  title, showed no change until you left to the main menu and came back into
+  the tab. The screen now refreshes in place: the Watchlist is re-read from
+  Apple, and a club's follow state is updated in the cached tab so the
+  Following folder and the club tiles reflect it at once.
+2026.8.24 - Clubs show their crest
+- NEW: A football club now shows its crest. Apple ships the badge as a square
+  logo, the one shape the artwork sort treated as "not artwork", so clubs
+  were listed blank; the crest is used for them now (as a transparent png).
+2026.8.23 - Fix a stray settings entry, and name the list consistently
+- FIX: "Add to Watchlist" in a title's context menu showed the text of the
+  new live-events height setting instead. The setting had been given a label
+  number already in use, so the two collided; it now has its own.
+- FIX: The pop-up after adding or removing a title still said "Up Next"
+  though the menu and folder call the list "Watchlist", as Apple does. All
+  three now say "Watchlist".
+2026.8.22 - Resuming a match plays the feed it belongs to
+- FIX: A sporting event you had part-watched offered Resume before asking
+  which feed to play, and then applied that position to whichever feed you
+  picked -- so resuming an hour into the full replay could seek clean past
+  the end of the half-hour race. The saved position belongs to one feed, so
+  the event now plays that feed when you resume, its length matching the
+  position. Where the feed cannot be identified, the resume is dropped rather
+  than risk seeking past the end.
+2026.8.21 - A flaky manifest fetch no longer breaks a fresh play
+- FIX: Starting a title the instant the previous one closed sometimes hit a
+  transient 500 from Apple's manifest server while collecting keys. That was
+  misread as "this stream has no DRM", so it played in the clear and failed
+  ("license server url has not been configured"). The manifest fetch now
+  retries a server error, and if it still cannot be read the stream is
+  treated as encrypted -- the licence proxy finds the keys as it serves the
+  variants -- rather than played in the clear.
+2026.8.20 - Live events play in HD, where Apple grants the key
+- FIX: A live event (Formula 1, MLS) failed with a DRM error (-1004). Apple
+  licenses a live event's keys per quality band, and for these it does not
+  grant the SD band's key at all -- only the HD H.264 band, which is the tier
+  its own web player uses. The addon was capped to SD, as it is for on-demand
+  titles, so it asked for the one key Apple refuses. Live events now use a
+  separate, higher cap (1080p by default, in Settings) and reach the tier
+  Apple actually licenses.
+2026.8.19 - A future event says so instead of erroring
+- FIX: Playing a sporting event that has not started yet showed a stream
+  download error and a DRM failure. It now shows the kick-off time, as it
+  was meant to: when the detail lookup withholds a stream because the event
+  is still to come, playback stops on that reason instead of falling through
+  to an inline stream that Apple has not published yet.
+2026.8.12 - Streamlined to a clean Apple TV+ client
+- This build is the Apple TV+ web client on its own: sign-in, Originals and
+  the brand tabs, Search, and Widevine playback. The iTunes purchase
+  library, Continue Watching and the Featured row have been removed for a
+  focused, dependable core.
+2026.8.4 - Owned TV names itself, and a token escape hatch
+- Your purchased TV episodes now show their real titles and show name even
+  when Apple has pulled the title from sale. Apple keeps no catalogue entry
+  for a delisted purchase, so the episode is named from the address of its
+  own page, which still carries the name.
+- NEW: An advanced "Developer token override" setting. If Apple ever
+  changes its website so the addon can no longer read its own session
+  token, paste one from a browser and the addon keeps working.
 2026.8.2 - Resume where you left off, trailers fixed
 - NEW: A title part-watched on another Apple device now resumes at the
   right place here. Apple states the position on each item of the

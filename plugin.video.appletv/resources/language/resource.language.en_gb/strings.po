@@ -65,6 +65,10 @@ msgctxt "#32041"
 msgid "Maximum video height (0 = no limit)"
 msgstr ""
 
+msgctxt "#32085"
+msgid "Maximum video height for live events (F1/MLS license only their HD H.264 tier)"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""
@@ -192,11 +196,11 @@ msgid "Add to Watchlist"
 msgstr ""
 
 msgctxt "#32046"
-msgid "Added to Up Next"
+msgid "Added to Watchlist"
 msgstr ""
 
 msgctxt "#32047"
-msgid "Could not change Up Next. Make sure you are signed in."
+msgid "Could not change your Watchlist. Make sure you are signed in."
 msgstr ""
 
 msgctxt "#32048"
@@ -204,7 +208,7 @@ msgid "Remove from Watchlist"
 msgstr ""
 
 msgctxt "#32049"
-msgid "Removed from Up Next"
+msgid "Removed from Watchlist"
 msgstr ""
 
 msgctxt "#32051"
@@ -334,4 +338,22 @@ msgstr ""
 
 msgctxt "#32080"
 msgid "Search Apple TV+ only (store purchases cannot be played)"
+msgstr ""
+
+
+msgctxt "#32081"
+msgid "Continue Watching session (paste an Android TV app mz_at_ssl session)"
+msgstr ""
+
+
+msgctxt "#32082"
+msgid "Featured"
+msgstr ""
+
+msgctxt "#32083"
+msgid "Developer token override (advanced; paste a tv.apple.com Bearer if the bootstrap scrape breaks)"
+msgstr ""
+
+msgctxt "#32084"
+msgid "Diagnostic: license TV+ playback with the Android store session (test only)"
 msgstr ""

@@ -28,15 +28,6 @@ from . import kodiutils
 from . import license_proxy
 
 UTS_BASE = "https://tv.apple.com/api/uts/v3"
-# The same UTS API, asked as Apple's desktop TV app rather than the website.
-# It matters for one thing only, and it is the thing tv.apple.com cannot do:
-# an owned iTunes title's detail comes back with personalizedOffers, whose
-# hlsUrl is the purchase's own stream. The web caller is sent the buy and rent
-# offers and nothing else, which is why the website will not play a purchase.
-UTS_STORE_BASE = "https://uts-api.itunes.apple.com/uts/v3"
-UTS_STORE_CALLER = "wlk"
-UTS_STORE_PFM = "windows"
-UTS_STORE_VERSION = "94"
 # The placeholder id the debug menu entry plays under. Only this id gets the
 # pasted manifest; a real title always resolves through the catalogue.
 DEBUG_CONTENT_ID = "debug"
@@ -52,10 +43,6 @@ APPLE_TV_PLUS_CHANNEL = "tvs.sbd.4000"
 # The brand tabs tv.apple.com puts along the top of the home page. Each is a
 # canvas of its own under /canvases/channels/{id}; the ids and names are the
 # ones Apple returns in the "channels" map of those responses.
-# Store content. Its playables say whether the account owns a title but carry
-# no assets: the stream comes from the store's own download service, which
-# this addon cannot reach. See docs/itunes-library.md.
-ITUNES_CHANNEL = "tvs.sbd.9001"
 MLS_CHANNEL = "tvs.sbd.7000"
 F1_CHANNEL = "tvs.sbd.241000"
 CHANNELS = (
@@ -160,6 +147,14 @@ class AppleTVApi(object):
         if self._boot is not None and not force:
             return self._boot
 
+        # A pasted developer token wins over anything scraped or cached: it is
+        # the escape hatch for the day tv.apple.com changes its shell and the
+        # scrape below stops finding one. The scrape is the front door and the
+        # API sits behind the very token it yields, so there is no way to ask
+        # Apple for a developer token -- a hand-supplied one is the only
+        # fallback that does not depend on the scrape still working.
+        override = (kodiutils.get_setting("developer_token") or "").strip()
+
         # Kodi runs a fresh process for every navigation, so an in-memory
         # cache saves nothing between screens. Apple says a utsk lasts two
         # hours (expirationInSeconds on /configurations), so a token kept on
@@ -172,7 +167,7 @@ class AppleTVApi(object):
                 if 0 <= age < BOOT_CACHE_SECONDS:
                     self._boot = {
                         "utsk": cached["utsk"],
-                        "developer_token": cached["developer_token"],
+                        "developer_token": override or cached["developer_token"],
                         "storefront": cached.get("storefront") or DEFAULT_STOREFRONT,
                         "user_token": self.auth.tokens.get("media_user_token"),
                     }
@@ -210,6 +205,12 @@ class AppleTVApi(object):
                 self.auth.save()
         except Exception as exc:
             kodiutils.log_error("Bootstrap scrape failed: %s" % exc)
+        # The pasted token wins over the scrape: if it is set, use it even when
+        # the scrape found one, since the point of overriding is to replace a
+        # token the scrape can no longer be trusted to read.
+        if override:
+            boot["developer_token"] = override
+            kodiutils.log("Using pasted developer token override")
         # Fall back to the last good tokens if this scrape came up empty.
         cached = self.auth.tokens.get("boot") or {}
         if not boot["utsk"]:
@@ -378,6 +379,33 @@ class AppleTVApi(object):
     def set_team_favourite(self, team_id, favourite=True):
         """Follow or unfollow a club, as the heart on its page does."""
         return self._list_request("/favorite-teams", team_id, favourite)
+
+    def mark_cached_favourite(self, team_id, favourite):
+        """Flip a club's cached follow flag so a follow shows on refresh.
+
+        The Following folder and the club tiles read the follow state from the
+        canvas cache, not the server, so following a club otherwise shows no
+        change until the tab is fetched afresh (leaving to the main menu and
+        back). Patch every cached canvas that lists the club, which is what
+        lets a refresh of the current screen reflect the change at once.
+        """
+        if not team_id:
+            return
+        for channel_id, _name in CHANNELS:
+            cache_name = self._canvas_cache_name(channel_id)
+            cache = kodiutils.read_json(cache_name, default=None)
+            if not isinstance(cache, dict):
+                continue
+            changed = False
+            for entry in cache.values():
+                items = entry.get("items") if isinstance(entry, dict) else entry
+                for item in items or []:
+                    if (isinstance(item, dict) and item.get("id") == team_id
+                            and item.get("favourite") != favourite):
+                        item["favourite"] = favourite
+                        changed = True
+            if changed:
+                kodiutils.write_json(cache_name, cache)
 
     def set_watchlisted(self, content_id, watchlisted=True):
         """Add a title or event to the account's Up Next list, or remove it."""
@@ -800,40 +828,14 @@ class AppleTVApi(object):
 
         topResultsOnly is what the site sends while someone is still typing:
         one shelf of ten mixed hits. The full search returns Top Results plus
-        a Movies shelf plus a TV Shows shelf -- for "greatest" that is 19, 27
-        and 27 rather than 10 -- and the store titles an account may already
-        own are in the longer lists rather than the top ten.
+        a Movies shelf plus a TV Shows shelf, and the shelves overlap, so a
+        title in Top Results and again under Movies is listed once.
 
-        The shelves overlap, so a title in Top Results and again under Movies
-        is listed once.
-
-        Which catalogue is searched is the caller's doing. tv.apple.com's
-        search answers with Apple TV+ originals and nothing else -- "ted"
-        returns Ted Lasso, Shrinking and Wolfs -- while the same API asked as
-        the store app also returns Green Book, Oppenheimer and Hidden Figures,
-        titles that exist only as purchases.
-
-        Purchases do not play here (see docs/itunes-library.md: they license
-        under FairPlay, which Kodi has no CDM for), so by default the store is
-        left out and search lists what can actually be watched. Turning the
-        setting off searches everything.
-
-        Filtering the store results down to the ones the account owns is not
-        possible cheaply, and is deliberately not attempted: a search result
-        carries no channel and no entitlement -- only id, title, type, genres,
-        duration, release date, artwork and a playbackModes that reads
-        "Monoscopic" for everything -- so ownership would mean one extra
-        request per result, seventy-odd for a broad search.
+        tv.apple.com's search answers with Apple TV+ titles, which is what this
+        client plays.
         """
-        if kodiutils.get_setting_bool("search_appletv_only", True):
-            return self._search_results(
-                self._get_json("/search", {"searchTerm": query}))
-        data = self._store_json("/search", {"searchTerm": query})
-        if not data:
-            kodiutils.log("Store search unavailable; falling back to the web "
-                          "search, which lists Apple TV+ titles only")
-            data = self._get_json("/search", {"searchTerm": query})
-        return self._search_results(data)
+        return self._search_results(
+            self._get_json("/search", {"searchTerm": query}))
 
     def _search_results(self, data):
         """Flatten a search response's shelves, keeping each title once."""
@@ -960,6 +962,11 @@ class AppleTVApi(object):
         self.last_error = None
         assets = self._prepare_playback(content_id, item_type, external_id)
         if not assets:
+            # A deliberate reason was given -- an event that has not started
+            # yet -- so stop and let the caller show it, rather than falling
+            # through to an inline stream that does not exist and 404s.
+            if self.last_error:
+                return None
             # Sports clips have no detail endpoint; fall back to the stream the
             # shelf listed inline, which is the only one Apple ever offers.
             inline = self._cached_stream(content_id)
@@ -1009,8 +1016,22 @@ class AppleTVApi(object):
             }
             if mut:
                 stream_headers["media-user-token"] = mut
-        wv_keys = self._collect_widevine_keys(assets["manifest"], stream_headers)
-        kodiutils.log("Collected %d Widevine key(s)" % len(wv_keys))
+        fps = assets.get("fps_params") or {}
+        live = bool(fps.get("service-id") or fps.get("reference-id"))
+        wv_keys = self._collect_widevine_keys(
+            assets["manifest"], stream_headers, live=live)
+        # None means the manifest could not be fetched to check for keys, not
+        # that there are none. Assume DRM and let the proxy discover the keys as
+        # it serves the variants, rather than playing in the clear and failing
+        # on a stream that is in fact encrypted.
+        keys_unknown = wv_keys is None
+        if keys_unknown:
+            wv_keys = {}
+        kodiutils.log("Collected %d Widevine key(s)%s"
+                      % (len(wv_keys),
+                         " (manifest fetch failed; assuming DRM)"
+                         if keys_unknown else ""))
+        encrypted = bool(wv_keys) or keys_unknown
 
         # First key collected is the video variant's; used to pre-initialise DRM
         # so a decrypter exists before the first encrypted chapter.
@@ -1030,10 +1051,13 @@ class AppleTVApi(object):
             "adam_id": assets.get("adam_id", ""),
             "svc_id": assets.get("svc_id", ""),
             "is_external": assets.get("is_external", True),
-            # Lets the licence proxy tell a purchase from a catalogue title,
-            # since the two are authorised by different sessions.
+            # Apple names the exact licence-request key parameters in
+            # fpsKeyServerQueryParameters, and their names differ by content:
+            # a VOD title carries svcId/adamId, a live event service-id/
+            # reference-id. Passing them through verbatim lets the proxy send
+            # what Apple asked for rather than a fixed, VOD-shaped set.
+            "fps_params": assets.get("fps_params") or {},
             "override": override,
-            "itunes": assets.get("itunes", False),
             "wv_keys": wv_keys,
             "license_server": assets.get("license_server", ""),
             "user_agent": self.session.headers.get("User-Agent", ""),
@@ -1042,7 +1066,7 @@ class AppleTVApi(object):
             # Served through the local proxy so the KEYID Apple omits can be
             # added; without it ISA decrypts with an all-zero key id.
             "manifest": license_proxy.manifest_url(assets["manifest"],
-                                                   clear=not wv_keys),
+                                                   clear=not encrypted),
             "manifest_type": "hls",
             # Says this stream came from the override setting, so callers can
             # skip the catalogue lookups that only make sense for a real id.
@@ -1054,7 +1078,7 @@ class AppleTVApi(object):
             # Trailers and some extras are served in the clear. Asking
             # InputStream Adaptive for a Widevine session on an unencrypted
             # stream leaves it waiting for a licence that can never arrive.
-            "encrypted": bool(wv_keys),
+            "encrypted": encrypted,
             "report": {
                 "playable_passthrough": assets.get("playable_passthrough"),
                 "external_id": assets.get("external_id"),
@@ -1152,12 +1176,19 @@ class AppleTVApi(object):
         """Normalise an Apple playable's assets into what _build_playback wants."""
         hls = assets["hlsUrl"].encode("utf-8").decode("unicode_escape").replace("&amp;", "&")
         qp = assets.get("fpsKeyServerQueryParameters") or {}
+        # svcId is named svcId on a VOD title and service-id on a live event;
+        # kept here only for the (VOD-shaped) context fields. The proxy sends
+        # the whole of fps_params, so the live names reach the key server too.
+        svc_id = qp.get("svcId") or qp.get("service-id") or self._q(hls, "svcId") \
+            or self._q(hls, "serviceId")
         return {
             "manifest": hls,
             "user_token": mut,
             "license_server": assets.get("fpsKeyServerUrl"),
             "adam_id": str(assets.get("assetAdamId") or qp.get("adamId") or self._q(hls, "a")),
-            "svc_id": qp.get("svcId") or self._q(hls, "svcId"),
+            "svc_id": svc_id,
+            # Apple's own list of licence-request key parameters, sent verbatim.
+            "fps_params": qp,
             "is_external": qp.get("isExternal", True),
             # An iTunes purchase, so the licence proxy can offer the store
             # credentials Apple's own client licenses these with.
@@ -1396,227 +1427,7 @@ class AppleTVApi(object):
         for p in candidates:
             if has_stream(p):
                 return self._enrich_assets(p)
-        # An owned iTunes title looks entitled but has no assets at all. Say
-        # so rather than reporting the generic failure, since nothing about
-        # the account or the network is wrong.
-        for p in candidates:
-            if isinstance(p, dict) and not p.get("assets") and (
-                    p.get("isItunes") or p.get("channelId") == ITUNES_CHANNEL):
-                kodiutils.log("iTunes playable %s carries no assets; asking the "
-                              "store app's endpoint for a redownload offer"
-                              % p.get("id"))
-                owned = self._itunes_offer(p)
-                if owned:
-                    return owned
-                self.last_error = (
-                    "This is an iTunes purchase, and Apple offered no "
-                    "redownload for it on this account.")
-                break
         return None
-
-    def _itunes_offer(self, playable):
-        """The owned stream for an iTunes title, if Apple will name one.
-
-        A purchase's stream is not in assets -- that field is empty for every
-        iTunes playable, on every caller. It is in itunesMediaApiData, split
-        two ways: offers are what the title costs to buy or rent, and
-        personalizedOffers is the copy this account already owns, priced at
-        zero and marked redownload. Only the store app's caller is sent the
-        second list, which is exactly why the website cannot play a purchase
-        and an Apple TV app on another device can.
-
-        Whether the personalised list needs the store session as well as the
-        store caller is not answerable from a capture -- Apple's client
-        changed both at once -- so this asks with what the addon holds and
-        adds a pasted store session when there is one.
-        """
-        content_id = playable.get("canonicalId") or playable.get("contentId")
-        if not content_id:
-            return None
-        kind = "episodes" if playable.get("contentType") == "Episode" else "movies"
-        data = self._store_detail(kind, content_id)
-        if not data:
-            return None
-        playables = self._deep_find(data, "playables")
-        if isinstance(playables, dict):
-            candidates = list(playables.values())
-        elif isinstance(playables, list):
-            candidates = playables
-        else:
-            candidates = []
-        for candidate in candidates:
-            if not isinstance(candidate, dict):
-                continue
-            media = candidate.get("itunesMediaApiData") or {}
-            offers = media.get("personalizedOffers") or []
-            if not offers:
-                continue
-            # Apple lists the qualities it will serve; take the best.
-            best = None
-            for offer in offers:
-                if not offer.get("hlsUrl"):
-                    continue
-                if best is None or offer.get("variant") == "HD":
-                    best = offer
-            if not best:
-                continue
-            kodiutils.log("iTunes redownload offer found: %s %s"
-                          % (best.get("kind"), best.get("variant")))
-            # A redownload offer names no key server, but the document it
-            # arrives in does: every fpsKeyServerQueryParameters in it carries
-            # the same svcId, paired with this title's own adam id. Every
-            # licence request Apple has been seen to grant carries one, and
-            # the ones this addon was refused carried none, so it is taken
-            # from the response rather than left empty.
-            qp = self._fps_params(data)
-            if qp:
-                kodiutils.log("iTunes key-server parameters: %s" % qp)
-            return {"hlsUrl": best["hlsUrl"],
-                    "adamId": str(media.get("id") or ""),
-                    "fpsKeyServerQueryParameters": qp or {},
-                    "isItunes": True}
-        kodiutils.log("No personalizedOffers came back; the store caller alone "
-                      "may not be enough without a store session")
-        return None
-
-    def resolve_store_id(self, adam_id):
-        """A catalogue entry for a store id, via the id the catalogue uses.
-
-        The locker names purchases by store id, and neither lookup service
-        would turn those into titles here -- Apple's own wants a signed token,
-        and the public one answered with nothing. The catalogue knows the
-        mapping though: asked about a store id on the iTunes brand it returns
-        the canonical umc id, the type, and the page url.
-
-        That canonical id is the one this addon opens titles by, so an entry
-        built from it behaves like any other -- which a bare store id never
-        could.
-
-        The request Apple's client makes also carries a playablePassthrough
-        naming an internal leg id, which cannot be known for an arbitrary
-        store id. This asks without it and reports what comes back.
-        """
-        # The detail endpoint answers to a store id directly -- playing a
-        # library entry proved it, resolving item_id 1610717981 to its
-        # playable without any umc id involved. play-metadata was tried first
-        # and wants a duration matching the real asset, which is not knowable
-        # before the title is resolved; this needs nothing but the id.
-        # Only /movies/ takes a store id. /episodes/ answers 400 to a numeric
-        # one -- a malformed request rather than a missing title -- so asking
-        # it is noise, and a 404 from /movies/ is the real answer: the
-        # catalogue does not carry that id at all.
-        for kind in ("movies",):
-            data = self._store_detail(kind, str(adam_id), quiet=True)
-            content = ((data or {}).get("data") or {}).get("content") or {}
-            if not content.get("title"):
-                continue
-            released = self._release_date(content.get("releaseDate"))
-            rating = content.get("rating")
-            return {
-                # The store id is what opens it, since that is what resolved
-                # here and what the locker knows it by.
-                "id": str(adam_id),
-                "adam_id": str(adam_id),
-                "title": content.get("title"),
-                "sort_title": content.get("title"),
-                "type": "Episode" if kind == "episodes" else "Movie",
-                "plot": (content.get("description")
-                         or content.get("heroDescription")),
-                "genres": [g.get("name")
-                           for g in self._as_list(content.get("genres"))
-                           if isinstance(g, dict) and g.get("name")],
-                "mpaa": (rating.get("displayName")
-                         if isinstance(rating, dict) else None),
-                "premiered": released,
-                "year": int(released[:4]) if released[:4].isdigit() else None,
-                "show_title": content.get("showTitle"),
-                "season": content.get("seasonNumber"),
-                "episode": content.get("episodeNumber"),
-                "art": self._item_art(content.get("images") or {},
-                                      "Episode" if kind == "episodes" else "Movie"),
-            }
-        # 404 rather than a refusal: the account owns it and Apple no longer
-        # lists it. Nothing reachable can name a title the catalogue has
-        # dropped.
-        return None
-
-    @staticmethod
-    def _fps_params(data):
-        """The key-server parameters a detail document names for its title.
-
-        They hang off other playables' assets -- a trailer, the background
-        video -- rather than off the purchase, which has no assets at all.
-        Within one document they agree: the same svcId and the title's own
-        adam id every time.
-        """
-        found = []
-
-        def walk(node):
-            if isinstance(node, dict):
-                params = node.get("fpsKeyServerQueryParameters")
-                if isinstance(params, dict) and params.get("svcId"):
-                    found.append(params)
-                for value in node.values():
-                    walk(value)
-            elif isinstance(node, list):
-                for value in node:
-                    walk(value)
-
-        walk(data)
-        return found[0] if found else None
-
-    def _store_detail(self, kind, content_id, quiet=False):
-        """A title's detail as Apple's desktop TV app asks for it."""
-        return self._store_json("/%s/%s" % (kind, content_id), quiet=quiet)
-
-    def _store_json(self, path, extra=None, quiet=False):
-        """Ask the UTS API as Apple's desktop TV app rather than the website.
-
-        The caller decides what Apple is willing to say, and on two things it
-        decides a great deal: the website is sent no personalizedOffers for a
-        title, and its search returns Apple TV+ originals only. The same
-        search asked as the store app returns the whole store.
-        """
-        params = {
-            "caller": UTS_STORE_CALLER,
-            "pfm": UTS_STORE_PFM,
-            "v": UTS_STORE_VERSION,
-            "locale": self._locale(),
-            "sf": self._storefront(),
-            "utscf": UTS_CLIENT_FLAGS,
-            "utsk": self._bootstrap().get("utsk") or "",
-        }
-        if extra:
-            params.update(extra)
-        headers = dict(self._uts_headers())
-        # The capture identifies itself to this endpoint with the store dsid
-        # and its cookies rather than a bearer. Send those too when a session
-        # has been pasted in; the dsid names itself inside the cookie.
-        cookies = (kodiutils.get_setting("itunes_cookies") or "").strip()
-        if cookies:
-            headers["Cookie"] = cookies
-            found = re.search(r"(?:amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
-                or re.search(r"X-Dsid=(\d+)", cookies)
-            if found:
-                headers["X-DSID"] = found.group(1)
-        try:
-            resp = self.session.get(UTS_STORE_BASE + path, params=params,
-                                    headers=headers, timeout=20)
-        except Exception as exc:
-            kodiutils.log_error("Store request %s failed: %s" % (path, exc))
-            return None
-        if resp.status_code != 200:
-            # A caller sweeping many ids expects some to be absent and says so
-            # itself, so it is not worth a line each.
-            if not quiet:
-                kodiutils.log_error("Store request %s -> %s %s"
-                                    % (path, resp.status_code, resp.text[:200]))
-            return None
-        try:
-            return resp.json()
-        except ValueError:
-            kodiutils.log_error("Store response for %s was not JSON" % path)
-            return None
 
     @staticmethod
     def _enrich_assets(playable):
@@ -1643,7 +1454,7 @@ class AppleTVApi(object):
             kodiutils.log_error("UTS request error %s: %s" % (path, exc))
             return None
 
-    def _collect_widevine_keys(self, manifest_url, headers=None):
+    def _collect_widevine_keys(self, manifest_url, headers=None, live=False):
         """Map each Widevine key id (hex) to its data: URI from the manifest.
 
         Apple's licence server needs the URI of the exact key a challenge is
@@ -1658,12 +1469,31 @@ class AppleTVApi(object):
         plain = {k: v for k, v in (headers or {}).items()
                  if k.lower() in ("user-agent", "origin")}
         try:
-            resp = self.session.get(manifest_url, headers=headers, timeout=30)
-            if resp.status_code != 200:
-                kodiutils.log_error("Master manifest -> %s for key collection"
-                                    % resp.status_code)
-                return keys
-            master = resp.text
+            # Apple's live manifest endpoint returns a transient 500 now and
+            # then -- notably when a title is opened the instant the last one
+            # closed -- so retry a server error a couple of times before giving
+            # up rather than misreading one flaky response as a keyless stream.
+            master = None
+            for attempt in range(3):
+                resp = self.session.get(manifest_url, headers=headers, timeout=30)
+                if resp.status_code == 200:
+                    master = resp.text
+                    break
+                retrying = resp.status_code >= 500 and attempt < 2
+                kodiutils.log_error("Master manifest -> %s for key collection%s"
+                                    % (resp.status_code,
+                                       " (retrying)" if retrying else ""))
+                if not retrying:
+                    break
+                time.sleep(0.5 * (attempt + 1))
+            if master is None:
+                # A fetch failure is not the same as the stream having no keys.
+                # Returning an empty map here would make the caller play in the
+                # clear, and then fail on a stream that is in fact encrypted.
+                # Signal "could not determine" so the caller assumes DRM and
+                # lets the licence proxy match keys from what it discovers while
+                # serving the variants.
+                return None
             base = manifest_url.rsplit("/", 1)[0] + "/"
 
             def absolute(u):
@@ -1672,7 +1502,13 @@ class AppleTVApi(object):
             # Read keys from the variants that will actually be played: Apple
             # keys each tier separately, so a key taken from a tier the proxy
             # drops is never the one InputStream Adaptive asks to decrypt.
-            max_h = kodiutils.get_setting_int("max_height", 360)
+            # A live event's HD H.264 band is the only tier Apple licenses (its
+            # SD key answers -1004), so collect this play's keys from that band,
+            # matching the tier the manifest proxy will actually serve.
+            if live:
+                max_h = kodiutils.get_setting_int("live_max_height", 1080)
+            else:
+                max_h = kodiutils.get_setting_int("max_height", 360)
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
             avc_only = kodiutils.get_setting_bool("avc_only", True)
 
@@ -1878,7 +1714,27 @@ class AppleTVApi(object):
             return None
 
     @staticmethod
-    def _resume_point(raw):
+    def _resume_playable(raw):
+        """The playable whose playEvent holds the account's watch position.
+
+        Apple hangs the same playEvent off three different shapes: a single
+        "playable" on most shelf items, a "playables" list on others, and on
+        a title's own page a "playables" map keyed by playable id. Return the
+        first playable that carries one rather than assuming a shape.
+        """
+        for node in (raw.get("playable"), raw.get("playables")):
+            if isinstance(node, dict) and isinstance(node.get("playEvent"), dict):
+                return node
+            candidates = (list(node.values()) if isinstance(node, dict)
+                          else node if isinstance(node, list) else [])
+            for candidate in candidates:
+                if isinstance(candidate, dict) and isinstance(
+                        candidate.get("playEvent"), dict):
+                    return candidate
+        return None
+
+    @classmethod
+    def _resume_point(cls, raw):
         """How far into a title the account already is, from playEvent.
 
         Apple states the position twice, once for the whole media and once
@@ -1894,24 +1750,8 @@ class AppleTVApi(object):
         the one Kodi's resume point wants; the inner pair skips whatever
         Apple counts as leading material.
         """
-        # Apple hangs the same playEvent off three different shapes: a single
-        # "playable" on most shelf items, a "playables" list on others, and on
-        # a title's own page a "playables" map keyed by playable id. Take the
-        # first that carries one rather than assuming a shape.
-        event = None
-        for node in (raw.get("playable"), raw.get("playables")):
-            if isinstance(node, dict) and isinstance(node.get("playEvent"), dict):
-                event = node["playEvent"]
-                break
-            candidates = (list(node.values()) if isinstance(node, dict)
-                          else node if isinstance(node, list) else [])
-            for candidate in candidates:
-                if isinstance(candidate, dict) and isinstance(
-                        candidate.get("playEvent"), dict):
-                    event = candidate["playEvent"]
-                    break
-            if event:
-                break
+        node = cls._resume_playable(raw)
+        event = node.get("playEvent") if isinstance(node, dict) else None
         if not isinstance(event, dict):
             return None
         position = event.get("playCursorInSeconds")
@@ -1969,6 +1809,45 @@ class AppleTVApi(object):
                 label = "%s · %s" % (when, title)
             extra = " · ".join(x for x in (league, when) if x)
             plot = "\n".join(x for x in (extra, plot) if x)
+        # Movies and episodes carry their runtime on the shelf item; a sporting
+        # event does not -- it sits on the item's playable instead (verified:
+        # playables[0].duration on a Continue Watching event) -- so fall back
+        # to it, and a match shows its length like everything else. The same
+        # playable names the exact feed the item is (its externalId), which
+        # Continue Watching needs so resuming plays that feed rather than
+        # re-asking which one.
+        duration = raw.get("duration")
+        external_id = None
+        # Only a resume item (Continue Watching, context "Continue") names the
+        # one feed to play; a normal event tile keeps its picker so a race's
+        # other feeds stay reachable.
+        is_resume = raw.get("context") == "Continue"
+        for p in self._as_list(raw.get("playables")):
+            if not isinstance(p, dict):
+                continue
+            if not duration and p.get("duration"):
+                duration = p["duration"]
+            if is_resume and not external_id and p.get("externalId"):
+                external_id = p["externalId"]
+        resume = self._resume_point(raw)
+        # A resume position belongs to one specific feed -- the one Apple was
+        # tracking -- and its length is that feed's length. If the item is left
+        # on its picker, Kodi shows the resume dialog before a feed is chosen
+        # and then applies that position to whatever feed is picked, which for
+        # a shorter feed (a 30-minute race against an hour-long replay) seeks
+        # clean past the end. Bind the item to the feed the position belongs
+        # to, so resuming plays that feed and the position stays within it.
+        if resume and not external_id:
+            node = self._resume_playable(raw)
+            if node and node.get("externalId"):
+                external_id = node["externalId"]
+            elif item_type == "SportingEvent":
+                # The feed the position belongs to cannot be identified, and a
+                # sporting event's feeds differ in length, so a resume dialog
+                # here could seek past the end of whichever feed the picker
+                # lands on. Drop the resume rather than risk it; a single-feed
+                # title (a film or episode) has no such ambiguity and keeps it.
+                resume = None
         return {
             "id": item_id,
             "title": label,
@@ -1984,7 +1863,10 @@ class AppleTVApi(object):
             # own page is fetched.
             "show_title": raw.get("showTitle"),
             "show_id": raw.get("showId"),
-            "duration": raw.get("duration"),
+            "duration": duration,
+            # The feed this event item already represents (Continue Watching),
+            # so playing it resumes that feed without a picker.
+            "external_id": external_id,
             "start_time": start_time,
             # Clubs carry whether the account follows them; the canvas is
             # invalidated on a FAVORITE event, so it comes back up to date.
@@ -2004,7 +1886,7 @@ class AppleTVApi(object):
             # Which sport a fixture belongs to: a Grand Prix weekend exists
             # only for Motorsports, where MLS matches carry clubs instead.
             "sport": raw.get("sportName"),
-            "resume": self._resume_point(raw),
+            "resume": resume,
             "art": self._item_art(raw.get("images") or {}, item_type),
             # Harvested by _extract_shelves, never kept on the listed entry.
             "stream_assets": self._playable_assets(raw),
@@ -2039,6 +1921,10 @@ class AppleTVApi(object):
         The show's poster is set aside for those, leaving the episode's still,
         which is what Apple's own client shows.
         """
+        # A club (Team) has no poster or still, only its crest, which the
+        # portrait/wide sort below drops as square. Give it the crest instead.
+        if str(item_type) == "Team":
+            return self._team_art(images)
         if str(item_type) == "Episode" and isinstance(images, dict):
             images = {k: v for k, v in images.items()
                       if "showposter" not in k.lower()}
@@ -2064,6 +1950,42 @@ class AppleTVApi(object):
         if art.get("thumb"):
             art["icon"] = art["thumb"]
         return art or None
+
+    def _team_art(self, images):
+        """A club crest for a Team tile, which _item_art otherwise discards.
+
+        A club carries its badge as square logo artwork -- teamLogo is a
+        3840x3840 crest, alongside light/dark variants and a near-square
+        masterArtLogo -- which is exactly the shape the portrait/wide sort
+        treats as "not artwork" and the key denylist filters out by name. Take
+        the crest here so a club shows its badge rather than a blank tile,
+        requested as png so its transparency survives.
+        """
+        if not isinstance(images, dict):
+            return None
+        entry = None
+        for key in ("teamLogo", "teamLogoLight", "teamLogoDark", "masterArtLogo"):
+            candidate = images.get(key)
+            if isinstance(candidate, dict) and candidate.get("url"):
+                entry = candidate
+                break
+        if entry is None:
+            # Another league may name its crest differently; take any roughly
+            # square image, the shape a badge always is.
+            for candidate in images.values():
+                if not isinstance(candidate, dict) or not candidate.get("url"):
+                    continue
+                try:
+                    w, h = float(candidate.get("width")), float(candidate.get("height"))
+                except (TypeError, ValueError):
+                    continue
+                if w > 0 and h > 0 and 0.85 <= w / h <= 1.25:
+                    entry = candidate
+                    break
+        if entry is None:
+            return None
+        url = self._sized_url(entry, height=POSTER_HEIGHT, fmt="png")
+        return {"thumb": url, "icon": url, "poster": url}
 
     @staticmethod
     def _image_shape(key, entry):
@@ -2101,8 +2023,12 @@ class AppleTVApi(object):
         return None
 
     @staticmethod
-    def _sized_url(entry, width=None, height=None):
-        """Fill an mzstatic {w}x{h} template, keeping the source's aspect."""
+    def _sized_url(entry, width=None, height=None, fmt="jpg"):
+        """Fill an mzstatic {w}x{h} template, keeping the source's aspect.
+
+        fmt is the image format the {f} slot asks for; a crest is requested as
+        png so its transparency survives, artwork as jpg.
+        """
         try:
             src_w, src_h = float(entry.get("width")), float(entry.get("height"))
             ratio = src_w / src_h if src_w > 0 and src_h > 0 else None
@@ -2114,7 +2040,7 @@ class AppleTVApi(object):
             height = int(round(width / ratio)) if ratio else width
         return (entry["url"].replace("{w}", str(int(width)))
                 .replace("{h}", str(int(height)))
-                .replace("{f}", "jpg").replace("{c}", "").replace("{cropcode}", ""))
+                .replace("{f}", fmt).replace("{c}", "").replace("{cropcode}", ""))
 
     @staticmethod
     def _as_list(value):

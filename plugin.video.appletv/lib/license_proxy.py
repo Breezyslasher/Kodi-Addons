@@ -29,10 +29,6 @@ import requests
 from . import kodiutils
 
 FPS_URL = "https://play-edge.itunes.apple.com/WebObjects/MZPlayLocal.woa/wa/fpsRequest"
-# What Apple's Windows client calls this endpoint as when licensing a
-# purchase -- the library agent, not the TV app.
-STORE_AGENT = ("AMPLibraryAgent/1.6.4 (Windows 10.0.19045 x64; x64) "
-               "Chromium/151.0.4129.59")
 CONTEXT_FILE = "playback_context.json"
 BIND_HOST = "127.0.0.1"
 DEFAULT_PORT = 57812
@@ -42,6 +38,20 @@ def _context():
     return kodiutils.read_json(CONTEXT_FILE, default={}) or {}
 
 
+def _is_live(ctx):
+    """A live event names its key parameters service-id/reference-id.
+
+    Apple licenses a live event's keys per tier-band, not per tier, and for at
+    least some events (an F1 session was captured doing exactly this) the low
+    band's content key is simply not granted -- the key server answers -1004 --
+    while the HD band (720/1080 H.264) is. The web client plays that HD band, so
+    the addon has to reach it too rather than sit on the SD tier it uses for
+    on-demand titles.
+    """
+    fp = ctx.get("fps_params") or {}
+    return bool(fp.get("service-id") or fp.get("reference-id"))
+
+
 # Widevine keys discovered while serving variant playlists, keyed by key id.
 # A title has a separate key per variant/rendition and the master playlist can
 # list hundreds of them, so the set collected up front is not complete: record
@@ -49,6 +59,10 @@ def _context():
 # match the exact key a challenge asks for. Both handlers run in the service
 # process, so a module-level dict is shared between them.
 _DISCOVERED_KEYS = {}
+# The last master manifest served, so a new play (a different master url) can
+# clear keys discovered for the previous one -- a live event rotates its keys
+# per play, and a stale one standing in gives -1002/-1004.
+_LAST_MASTER = None
 
 
 def variant_unwanted(tag, max_h, sdr_only, avc_only):
@@ -185,6 +199,14 @@ class _Handler(BaseHTTPRequestHandler):
         ctx = _context()
         is_master = "u=" in parsed.query and parse_qs(parsed.query).get("m", ["0"])[0] == "1"
         is_clear = parse_qs(parsed.query).get("c", ["0"])[0] == "1"
+        # A master for a url not seen before means a new play: drop the keys
+        # discovered for the last one so a live event's rotated keys cannot
+        # linger. The master is served before any variant, so this clears
+        # before this play's keys are collected.
+        global _LAST_MASTER
+        if is_master and target != _LAST_MASTER:
+            _DISCOVERED_KEYS.clear()
+            _LAST_MASTER = target
         headers = {
             "User-Agent": ctx.get("user_agent") or "Mozilla/5.0",
             "Origin": "https://tv.apple.com",
@@ -358,7 +380,13 @@ class _Handler(BaseHTTPRequestHandler):
             max_h, avc_only = 0, False
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
         else:
-            max_h = kodiutils.get_setting_int("max_height", 360)
+            # A live event's SD key is refused (-1004); its HD H.264 band is the
+            # tier the web client plays and the only one Apple licenses, so cap
+            # higher for live than for on-demand, where the SD tier is correct.
+            if _is_live(_context()):
+                max_h = kodiutils.get_setting_int("live_max_height", 1080)
+            else:
+                max_h = kodiutils.get_setting_int("max_height", 360)
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
             avc_only = kodiutils.get_setting_bool("avc_only", True)
         lines = text.splitlines()
@@ -465,10 +493,7 @@ class _Handler(BaseHTTPRequestHandler):
         ctx = _context()
         bearer = ctx.get("bearer")
         mut = ctx.get("media_user_token")
-        # A purchase is licensed with a store session instead, so the Apple
-        # TV+ pair is only required when that is what will be sent.
-        if (not bearer or not mut) and not (ctx.get("override")
-                                            or ctx.get("itunes")):
+        if (not bearer or not mut) and not ctx.get("override"):
             kodiutils.log_error("License proxy missing bearer/media-user-token")
             return None
 
@@ -476,9 +501,15 @@ class _Handler(BaseHTTPRequestHandler):
         # (video and audio have different keys); a wrong or missing uri gives a
         # 500. Match by the key id embedded in the challenge, then fall back to
         # the other known keys rather than failing outright.
-        # Keys found up front plus every key seen while serving variants.
+        # Keys found up front for this play, plus any seen while serving its
+        # variants -- but the fresh per-play keys win. A live event reuses a
+        # key id across plays with a different contentId each time, so letting
+        # a discovered key from an earlier play override this play's fresh one
+        # sent a stale uri and earned -1002/-1004. Discovered keys only fill a
+        # gap the up-front collection missed, never replace a fresh key.
         wv_keys = dict(ctx.get("wv_keys") or {})
-        wv_keys.update(_DISCOVERED_KEYS)
+        for kid, uri in _DISCOVERED_KEYS.items():
+            wv_keys.setdefault(kid, uri)
 
         candidates = []
         matched_kid = None
@@ -502,56 +533,23 @@ class _Handler(BaseHTTPRequestHandler):
         # a refusal reads very differently depending on whether Apple was told
         # who was asking. Neither value is logged, only whether there is one.
         kodiutils.log("License identity: bearer=%s, media-user-token=%s, "
-                      "adamId=%s, svcId=%s"
+                      "adamId=%s, svcId=%s, fps_params=%s"
                       % ("yes" if bearer else "NO",
                          "yes" if mut else "NO",
                          ctx.get("adam_id") or "none",
-                         ctx.get("svc_id") or "none"))
+                         ctx.get("svc_id") or "none",
+                         sorted((ctx.get("fps_params") or {}).keys()) or "none"))
 
         url = ctx.get("license_server") or FPS_URL
-        # An iTunes purchase is not authorised by an Apple TV+ identity. A
-        # capture of Apple's own client licensing one sends store credentials
-        # instead -- X-Dsid, X-Token and the store cookies, under the library
-        # agent's user agent -- and a TV+ bearer plus media-user-token is
-        # refused with status -1020. So when a store session has been pasted
-        # in and this stream came from the override, send what Apple's client
-        # sends. The dsid names itself inside the cookie.
-        store_cookies = (kodiutils.get_setting("itunes_cookies") or "").strip()
-        store_token = (kodiutils.get_setting("itunes_token") or "").strip()
-        as_store = bool((ctx.get("override") or ctx.get("itunes"))
-                        and (store_cookies or store_token))
-        if as_store:
-            # A store session names its account in more than one cookie: the
-            # store page's is amia-<dsid>, the TV app's carries X-Dsid
-            # outright, and the music token is mt-tkn-<dsid>. Any of them will
-            # do, and which are present depends on which client was captured.
-            found = re.search(r"(?:amia-|mt-tkn-|mz_at0-)(\d+)=", store_cookies) \
-                or re.search(r"X-Dsid=(\d+)", store_cookies)
-            dsid = found.group(1) if found else ""
-            headers = {
-                "Content-Type": "application/json; charset=utf-8",
-                "User-Agent": STORE_AGENT,
-                "X-Apple-Store-Front": "%s-1,42" % (
-                    kodiutils.get_setting("storefront") or "143441"),
-            }
-            if dsid:
-                headers["X-Dsid"] = dsid
-            if store_token:
-                headers["X-Token"] = store_token
-            if store_cookies:
-                headers["Cookie"] = store_cookies
-            kodiutils.log("License identity: store session (dsid=%s, token=%s)"
-                          % ("yes" if dsid else "NO",
-                             "yes" if store_token else "NO"))
-        else:
-            headers = {
-                "Content-Type": "application/json",
-                "Origin": "https://tv.apple.com",
-                "Referer": "https://tv.apple.com/",
-                "authorization": "Bearer " + bearer,
-                "x-apple-music-user-token": mut,
-                "x-apple-renewal": "true",
-            }
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Origin": "https://tv.apple.com",
+            "Referer": "https://tv.apple.com/",
+            "authorization": "Bearer " + (bearer or ""),
+            "x-apple-music-user-token": mut or "",
+            "x-apple-renewal": "true",
+        }
         last_error = None
         for attempt, candidate in enumerate(candidates):
             key = {
@@ -559,23 +557,24 @@ class _Handler(BaseHTTPRequestHandler):
                 "id": 1,
                 "challenge": base64.b64encode(challenge).decode("ascii"),
                 "key-system": "com.widevine.alpha",
-                "adamId": ctx.get("adam_id", ""),
-                "isExternal": bool(ctx.get("is_external", True)),
-                "svcId": ctx.get("svc_id", ""),
             }
             if candidate:
                 key["uri"] = candidate
-            request = {"version": 1, "streaming-keys": [key]}
-            if as_store:
-                # Mirror the shape Apple's client uses for a purchase: the
-                # guid and dsid it identifies itself by, at the levels it puts
-                # them. kbsync -- a device keybag blob -- is also on the real
-                # request and cannot be produced here, so this finds out
-                # whether it is required rather than assuming either way.
-                key["guid"] = kodiutils.get_setting("itunes_guid") or ""
-                if headers.get("X-Dsid"):
-                    request["dsid"] = headers["X-Dsid"]
-            envelope = {"streaming-request": request}
+            # A live event names its key parameters differently from a VOD title
+            # -- service-id/reference-id (hyphenated) rather than svcId/adamId --
+            # and licensing it with the VOD names (or an empty svcId) is what
+            # earns -1020 from the linear key server. When Apple's own
+            # fpsKeyServerQueryParameters carries the live names, send them
+            # verbatim; otherwise keep the VOD-shaped fields exactly as before
+            # (a VOD adamId comes from assetAdamId, not necessarily these params).
+            fps_params = ctx.get("fps_params") or {}
+            if fps_params.get("service-id") or fps_params.get("reference-id"):
+                key.update(fps_params)
+            else:
+                key["adamId"] = ctx.get("adam_id", "")
+                key["isExternal"] = bool(ctx.get("is_external", True))
+                key["svcId"] = ctx.get("svc_id", "")
+            envelope = {"streaming-request": {"version": 1, "streaming-keys": [key]}}
             resp = requests.post(url, data=json.dumps(envelope), headers=headers, timeout=30)
             if resp.status_code != 200:
                 last_error = "HTTP %s %s" % (resp.status_code, resp.text[:150])
@@ -586,7 +585,18 @@ class _Handler(BaseHTTPRequestHandler):
                 last_error = "non-JSON response %s" % resp.text[:150]
                 continue
             if not keys or "license" not in keys[0]:
-                last_error = "no licence in response %s" % resp.text[:150]
+                status = keys[0].get("status") if keys else None
+                last_error = "no licence in response (status=%s)" % status
+                # Read Apple's own answer rather than infer from the status
+                # number: on the first miss, log the full response body and the
+                # exact key parameters sent, and the KID this attempt was for.
+                if attempt == 0:
+                    kodiutils.log("License refused: sent key params=%s, wanted "
+                                  "KID=%s; response=%s"
+                                  % ({k: v for k, v in key.items()
+                                      if k != "challenge"},
+                                     matched_kid or "?",
+                                     (resp.text or "")[:600]))
                 continue
             licence = base64.b64decode(keys[0]["license"])
             kodiutils.log("License OK (attempt %d/%d), contains KIDs=[%s]"
