@@ -37,8 +37,12 @@ STORE_AGENT = ("AMPLibraryAgent/1.6.4 (Windows 10.0.19045 x64; x64) "
 # one (an mz_at_ssl cookie), the licence request is made to look like that
 # client rather than mixing it with the Windows agent and an X-Token that
 # belong to a different session.
-ANDROID_AGENT = ("ATVE/16.4.0 Android/16 build/34A30 maker/Raspberry "
-                 "model/Pi4ModelBRev1.1")
+# The exact UA the Android TV app sends, from a capture of its vz request --
+# matched here so the licence call carries the same client identity. (Fidelity
+# only: the licence 403/-1020 is the device keybag, not the agent string.)
+ANDROID_AGENT = ("ATVE/16.4.0 Android/11 build/34A30 maker/Raspberry "
+                 "model/RaspberryPi4 FW/RQ3A.211001.001eng.tuomas."
+                 "20211123.165647")
 CONTEXT_FILE = "playback_context.json"
 BIND_HOST = "127.0.0.1"
 DEFAULT_PORT = 57812

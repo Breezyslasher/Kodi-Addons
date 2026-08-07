@@ -45,8 +45,12 @@ UTS_STORE_VERSION = "94"
 UTS_ANDROID_CALLER = "vz"
 UTS_ANDROID_PFM = "vz"
 UTS_ANDROID_VERSION = "76"
-UTS_ANDROID_UA = ("ATVE/16.4.0 Android/16 build/34A30 maker/Raspberry "
-                  "model/Pi4ModelBRev1.1")
+# The exact User-Agent the Android TV app sends on the vz caller, read off a
+# capture of its top-shelf request -- Android/11, model RaspberryPi4, and the
+# firmware token, none of which the earlier approximation had.
+UTS_ANDROID_UA = ("ATVE/16.4.0 Android/11 build/34A30 maker/Raspberry "
+                  "model/RaspberryPi4 FW/RQ3A.211001.001eng.tuomas."
+                  "20211123.165647")
 # The placeholder id the debug menu entry plays under. Only this id gets the
 # pasted manifest; a real title always resolves through the catalogue.
 DEBUG_CONTENT_ID = "debug"
