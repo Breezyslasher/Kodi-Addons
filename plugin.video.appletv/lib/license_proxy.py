@@ -628,6 +628,19 @@ class _Handler(BaseHTTPRequestHandler):
 
         kodiutils.log_error("fpsRequest failed after %d attempt(s): %s"
                             % (len(candidates), last_error))
+        # A 403 here has two very different causes, and they need different
+        # fixes: an expired store/mz_at_ssl session (re-paste a fresh one) or a
+        # request Apple will not honour without device attestation (a wall no
+        # session fixes). Say which is more likely from what was sent, so the
+        # next step is aimed rather than guessed: a purchase licensed on the
+        # android session with no token is the session-expiry case until a
+        # fresh session proves otherwise.
+        if "403" in (last_error or ""):
+            kodiutils.log(
+                "License 403 guidance: if the Continue Watching session read "
+                "auth-token-valid=false this run, the mz_at_ssl session is "
+                "expired -- refresh it and retry; only a 403 that persists with "
+                "a fresh, valid session is the device-attestation wall.")
         return None
 
 

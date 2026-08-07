@@ -1873,10 +1873,19 @@ class AppleTVApi(object):
             # delisted purchase is reachable is answered from the response
             # rather than assumed.
             path = "/%s/%s" % ("episodes" if is_tv else "movies", canonical)
-            for label, data2 in (("vz", self._vz_json(path, quiet=True)),
-                                  ("store", self._store_json(path, quiet=True))):
+            # Not quiet: let each caller log its real status, so an auth failure
+            # from an expired mz_at_ssl session (which returns the same None
+            # here as a genuine 404) is told apart from the endpoint actually
+            # not carrying the title. The vz caller logs auth-token-valid right
+            # before this; a false there means the session is stale, not that
+            # the owned path is closed.
+            for label, data2 in (("vz", self._vz_json(path)),
+                                  ("store", self._store_json(path))):
                 if not data2:
-                    kodiutils.log("Owned-caller probe (%s) %s: no response/404"
+                    kodiutils.log("Owned-caller probe (%s) %s: nothing returned "
+                                  "(see the status above; if the vz session read "
+                                  "auth-token-valid=false, it is expired -- "
+                                  "refresh it before trusting this)"
                                   % (label, canonical))
                     continue
                 c2 = self._deep_find(data2, "content")
