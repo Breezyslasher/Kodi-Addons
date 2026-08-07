@@ -1757,15 +1757,20 @@ class AppleTVApi(object):
                                         "type": row.get("type"),
                                         "season_id": row.get("seasonId"),
                                         "reference_id": row.get("referenceId"),
-                                        # The one identity signal that survives
-                                        # a delisting: Apple's own URL for the
-                                        # season, whose slug carries the show
-                                        # name. Kept so a title dropped from
-                                        # every content endpoint can still be
-                                        # named from the address of its page.
-                                        "season_url": (row.get("seasonUrl")
-                                                       or row.get("showUrl")
-                                                       or row.get("url")),
+                                        "show_id": row.get("showId"),
+                                        # Apple's own URLs survive a delisting
+                                        # even when every content endpoint 404s,
+                                        # and their slugs carry the names: the
+                                        # episode's own url slug is its title
+                                        # ("the-silver-queen"), the show url is
+                                        # the series ("treasure-quest"), and the
+                                        # season url gives the season number. So
+                                        # a title dropped everywhere else is
+                                        # still named from the address of its
+                                        # page.
+                                        "episode_url": row.get("url"),
+                                        "show_url": row.get("showUrl"),
+                                        "season_url": row.get("seasonUrl"),
                                         "title": (row.get("title")
                                                   or row.get("name")
                                                   or row.get("showTitle")
@@ -1859,32 +1864,36 @@ class AppleTVApi(object):
             # Named a canonical but its detail had no title: a purchased
             # episode Apple has dropped from every content endpoint (its detail
             # 404s, its season metadata 404s, and the public store carries
-            # neither the episode nor its collection). One identity signal
-            # still survives though -- the reverse-lookup returns the season's
-            # own URL, and Apple's slug carries the show name -- so the episode
-            # is named from that rather than dropped.
-            name, season_no = self._name_from_season_url(
-                hit.get("season_url"), hit.get("title"))
-            kodiutils.log("resolve_store_id %s: canonical=%s type=%s, no content "
-                          "detail; naming from season url -> %s (season %s)"
-                          % (adam_id, canonical, hit.get("type"),
-                             name or "-", season_no or "-"))
-            if name:
+            # neither the episode nor its collection). The reverse-lookup's own
+            # URLs still name it though -- the episode url slug is the episode
+            # title, the show url is the series, the season url the number --
+            # so it is named from those rather than dropped.
+            ep_title, _ = self._name_from_season_url(hit.get("episode_url"))
+            show_name, _ = self._name_from_season_url(hit.get("show_url"))
+            _, season_no = self._name_from_season_url(hit.get("season_url"))
+            kodiutils.log("resolve_store_id %s: canonical=%s, no content detail; "
+                          "naming from url -> %s / %s (season %s)"
+                          % (adam_id, canonical, show_name or "-",
+                             ep_title or "-", season_no or "-"))
+            if ep_title or show_name:
+                title = ep_title or show_name
+                season_title = show_name or ep_title
+                if show_name and season_no:
+                    season_title = "%s, Season %d" % (show_name, season_no)
                 return {
                     "id": canonical,
                     "adam_id": str(adam_id),
-                    # The episode's own title is gone; the season names it, and
-                    # the locker orders the episodes so a number can be added
-                    # there. Marked delisted so the listing can say as much.
-                    "title": name,
-                    "sort_title": name,
+                    "title": title,
+                    "sort_title": title,
                     "type": "Episode",
-                    "show_title": name,
-                    "season_title": (name + (" Season %s" % season_no)
-                                     if season_no else name),
+                    "show_title": show_name,
+                    "show_id": hit.get("show_id"),
+                    "season_title": season_title,
                     "season_id": hit.get("season_id"),
                     "season": season_no,
                     "episode": None,
+                    # No content endpoint serves this, so it cannot be played;
+                    # the locker order is the only episode order, used to sort.
                     "delisted": True,
                 }
         # Fallback: the detail endpoint answers to a film's store id directly --

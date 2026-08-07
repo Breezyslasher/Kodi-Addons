@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.3" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.4" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -32,6 +32,14 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.4 - Owned TV names itself, and a token escape hatch
+- Your purchased TV episodes now show their real titles and show name even
+  when Apple has pulled the title from sale. Apple keeps no catalogue entry
+  for a delisted purchase, so the episode is named from the address of its
+  own page, which still carries the name.
+- NEW: An advanced "Developer token override" setting. If Apple ever
+  changes its website so the addon can no longer read its own session
+  token, paste one from a browser and the addon keeps working.
 2026.8.2 - Resume where you left off, trailers fixed
 - NEW: A title part-watched on another Apple device now resumes at the
   right place here. Apple states the position on each item of the
