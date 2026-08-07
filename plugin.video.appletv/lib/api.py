@@ -1734,6 +1734,16 @@ class AppleTVApi(object):
                 label = "%s · %s" % (when, title)
             extra = " · ".join(x for x in (league, when) if x)
             plot = "\n".join(x for x in (extra, plot) if x)
+        # Movies and episodes carry their runtime on the shelf item; a sporting
+        # event does not -- it sits on the item's playable instead (verified:
+        # playables[0].duration on a Continue Watching event) -- so fall back
+        # to it, and a match shows its length like everything else.
+        duration = raw.get("duration")
+        if not duration:
+            for p in self._as_list(raw.get("playables")):
+                if isinstance(p, dict) and p.get("duration"):
+                    duration = p["duration"]
+                    break
         return {
             "id": item_id,
             "title": label,
@@ -1749,7 +1759,7 @@ class AppleTVApi(object):
             # own page is fetched.
             "show_title": raw.get("showTitle"),
             "show_id": raw.get("showId"),
-            "duration": raw.get("duration"),
+            "duration": duration,
             "start_time": start_time,
             # Clubs carry whether the account follows them; the canvas is
             # invalidated on a FAVORITE event, so it comes back up to date.
