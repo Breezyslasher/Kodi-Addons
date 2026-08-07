@@ -99,7 +99,7 @@ supported hardware.
 - Browse categories (Kids & Family, Sci-Fi, ...), MLS club pages and F1 Grand Prix weekends as folders
 - Show → season → episode browsing, with episode counts per season
 - Search with Apple's suggestions, or browse when nothing is typed
-- Your **Watchlist** shelf on each brand tab (signed in)
+- The tab's own shelves, including your **Continue Watching** and **Watchlist**, when signed in (Apple serves these on the tab, as on the website)
 - **Play trailer** and **Bonus content** context-menu entries on movies and shows
 - **Follow club** / **Unfollow club** on clubs, with a **Following** folder listing them
 - **Add to / Remove from Watchlist** on any title, episode or event
