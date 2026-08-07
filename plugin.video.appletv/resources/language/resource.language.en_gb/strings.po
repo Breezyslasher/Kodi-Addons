@@ -345,3 +345,7 @@ msgstr ""
 msgctxt "#32082"
 msgid "Featured"
 msgstr ""
+
+msgctxt "#32083"
+msgid "Developer token override (advanced; paste a tv.apple.com Bearer if the bootstrap scrape breaks)"
+msgstr ""

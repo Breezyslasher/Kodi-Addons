@@ -185,6 +185,14 @@ class AppleTVApi(object):
         if self._boot is not None and not force:
             return self._boot
 
+        # A pasted developer token wins over anything scraped or cached: it is
+        # the escape hatch for the day tv.apple.com changes its shell and the
+        # scrape below stops finding one. The scrape is the front door and the
+        # API sits behind the very token it yields, so there is no way to ask
+        # Apple for a developer token -- a hand-supplied one is the only
+        # fallback that does not depend on the scrape still working.
+        override = (kodiutils.get_setting("developer_token") or "").strip()
+
         # Kodi runs a fresh process for every navigation, so an in-memory
         # cache saves nothing between screens. Apple says a utsk lasts two
         # hours (expirationInSeconds on /configurations), so a token kept on
@@ -197,7 +205,7 @@ class AppleTVApi(object):
                 if 0 <= age < BOOT_CACHE_SECONDS:
                     self._boot = {
                         "utsk": cached["utsk"],
-                        "developer_token": cached["developer_token"],
+                        "developer_token": override or cached["developer_token"],
                         "storefront": cached.get("storefront") or DEFAULT_STOREFRONT,
                         "user_token": self.auth.tokens.get("media_user_token"),
                     }
@@ -235,6 +243,12 @@ class AppleTVApi(object):
                 self.auth.save()
         except Exception as exc:
             kodiutils.log_error("Bootstrap scrape failed: %s" % exc)
+        # The pasted token wins over the scrape: if it is set, use it even when
+        # the scrape found one, since the point of overriding is to replace a
+        # token the scrape can no longer be trusted to read.
+        if override:
+            boot["developer_token"] = override
+            kodiutils.log("Using pasted developer token override")
         # Fall back to the last good tokens if this scrape came up empty.
         cached = self.auth.tokens.get("boot") or {}
         if not boot["utsk"]:

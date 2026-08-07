@@ -16,6 +16,7 @@
         <setting id="sdr_only" type="bool" label="32043" default="true" />
         <setting id="avc_only" type="bool" label="32044" default="true" />
         <setting id="media_user_token" type="text" label="32008" option="hidden" default="" />
+        <setting id="developer_token" type="text" label="32083" option="hidden" default="" />
         <setting id="manifest_url_override" type="text" label="32009" default="" />
         <setting label="32074" type="lsep" />
         <setting id="itunes_cookies" type="text" label="32075" option="hidden" default="" />
