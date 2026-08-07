@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.26" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.27" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,11 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.27 - Housekeeping: remove dead code
+- Internal only, no change to behaviour: removed unused code left over from
+  earlier versions -- the Watchlist fetch that nothing calls (the list is
+  shown via Apple's own shelf), two unused helpers, an unused sign-in proof
+  accessor, and an unused import.
 2026.8.26 - Drop the addon-made "Following" folder
 - The "Following" folder was not something Apple sends; it was assembled from
   the follow flags on the club tiles. Apple already lists a club you follow as

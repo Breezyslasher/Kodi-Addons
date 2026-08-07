@@ -122,12 +122,6 @@ NOW_PLAYING_URL = "https://tv.apple.com/api/np/play/json"
 ACCOUNT_INFO_URL = "https://buy.tv.apple.com/account/web/infoRefresh"
 PLAYBACK_REPORT_CACHE = "now_playing.json"
 
-# The Up Next list is served as an ordinary shelf, with the context values
-# below rather than ones taken from a canvas (nothing links to it from one).
-WATCHLIST_SHELF = "uts.col.Watchlist"
-WATCHLIST_CVS = "uts.tcvs.tv-plus-personalized-canvas-adaptive"
-WATCHLIST_CTX_SHELF = "uts.shlf.gen.Watchlist_%s"
-
 SUBSCRIPTION_STATUS_URL = \
     "https://speedysub.tv.apple.com/subscription/v1/web/status/tv"
 
@@ -284,10 +278,6 @@ class AppleTVApi(object):
     def _locale(self):
         return kodiutils.get_setting("locale") or DEFAULT_LOCALE
 
-    def _country(self):
-        loc = self._locale()
-        return (loc.split("-")[-1] if "-" in loc else "us").lower()
-
     def _params(self, extra=None):
         params = {
             "caller": "web",
@@ -410,37 +400,6 @@ class AppleTVApi(object):
     def set_watchlisted(self, content_id, watchlisted=True):
         """Add a title or event to the account's Up Next list, or remove it."""
         return self._list_request("/watchlist", content_id, watchlisted)
-
-    def get_watchlist(self, channel_id=None, max_pages=20):
-        """The account's Up Next list.
-
-        Nothing in a canvas links to it, so its context values are the ones
-        the site sends when the list is opened directly.
-        """
-        brand = channel_id or APPLE_TV_PLUS_CHANNEL
-        ctx = {"ctx_brand": brand,
-               "ctx_cvs": WATCHLIST_CVS,
-               "ctx_shelf": WATCHLIST_CTX_SHELF % brand}
-        items = []
-        seen = set()
-        token = None
-        for _ in range(max_pages):
-            params = dict(ctx)
-            if token:
-                params["nextToken"] = token
-            data = self._get_json("/shelves/%s" % WATCHLIST_SHELF, params)
-            shelf = ((data or {}).get("data") or {}).get("shelf")
-            if not isinstance(shelf, dict):
-                break
-            page = self._extract_items(shelf.get("items"))
-            for item in page:
-                if item.get("id") not in seen:
-                    seen.add(item.get("id"))
-                    items.append(item)
-            token = shelf.get("nextToken") or None
-            if not token or not page:
-                break
-        return items
 
     def get_related(self, content_id, league_id=None):
         """"More like this" for a title, or the other games in a league.
@@ -844,11 +803,6 @@ class AppleTVApi(object):
     def get_search_landing(self):
         """The browse page Apple shows before anything is typed."""
         return self._canvas_shelves("/search/landing", {}, "search_landing")
-
-    def last_played_id(self):
-        """Content id of the last title played through the addon, if any."""
-        context = kodiutils.read_json(PLAYBACK_REPORT_CACHE, default={}) or {}
-        return context.get("content_id")
 
     def get_show_seasons(self, show_id):
         """A show's seasons, when it has more than one.

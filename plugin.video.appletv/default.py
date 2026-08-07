@@ -9,7 +9,7 @@ import xbmcgui
 import xbmcplugin
 
 from lib import kodiutils
-from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA, STATUS_ERROR
+from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA
 from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
                      PLAYBACK_REPORT_CACHE)
 
