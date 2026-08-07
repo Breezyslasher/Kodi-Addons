@@ -993,7 +993,18 @@ class AppleTVApi(object):
         live = bool(fps.get("service-id") or fps.get("reference-id"))
         wv_keys = self._collect_widevine_keys(
             assets["manifest"], stream_headers, live=live)
-        kodiutils.log("Collected %d Widevine key(s)" % len(wv_keys))
+        # None means the manifest could not be fetched to check for keys, not
+        # that there are none. Assume DRM and let the proxy discover the keys as
+        # it serves the variants, rather than playing in the clear and failing
+        # on a stream that is in fact encrypted.
+        keys_unknown = wv_keys is None
+        if keys_unknown:
+            wv_keys = {}
+        kodiutils.log("Collected %d Widevine key(s)%s"
+                      % (len(wv_keys),
+                         " (manifest fetch failed; assuming DRM)"
+                         if keys_unknown else ""))
+        encrypted = bool(wv_keys) or keys_unknown
 
         # First key collected is the video variant's; used to pre-initialise DRM
         # so a decrypter exists before the first encrypted chapter.
@@ -1028,7 +1039,7 @@ class AppleTVApi(object):
             # Served through the local proxy so the KEYID Apple omits can be
             # added; without it ISA decrypts with an all-zero key id.
             "manifest": license_proxy.manifest_url(assets["manifest"],
-                                                   clear=not wv_keys),
+                                                   clear=not encrypted),
             "manifest_type": "hls",
             # Says this stream came from the override setting, so callers can
             # skip the catalogue lookups that only make sense for a real id.
@@ -1040,7 +1051,7 @@ class AppleTVApi(object):
             # Trailers and some extras are served in the clear. Asking
             # InputStream Adaptive for a Widevine session on an unencrypted
             # stream leaves it waiting for a licence that can never arrive.
-            "encrypted": bool(wv_keys),
+            "encrypted": encrypted,
             "report": {
                 "playable_passthrough": assets.get("playable_passthrough"),
                 "external_id": assets.get("external_id"),
@@ -1431,12 +1442,31 @@ class AppleTVApi(object):
         plain = {k: v for k, v in (headers or {}).items()
                  if k.lower() in ("user-agent", "origin")}
         try:
-            resp = self.session.get(manifest_url, headers=headers, timeout=30)
-            if resp.status_code != 200:
-                kodiutils.log_error("Master manifest -> %s for key collection"
-                                    % resp.status_code)
-                return keys
-            master = resp.text
+            # Apple's live manifest endpoint returns a transient 500 now and
+            # then -- notably when a title is opened the instant the last one
+            # closed -- so retry a server error a couple of times before giving
+            # up rather than misreading one flaky response as a keyless stream.
+            master = None
+            for attempt in range(3):
+                resp = self.session.get(manifest_url, headers=headers, timeout=30)
+                if resp.status_code == 200:
+                    master = resp.text
+                    break
+                retrying = resp.status_code >= 500 and attempt < 2
+                kodiutils.log_error("Master manifest -> %s for key collection%s"
+                                    % (resp.status_code,
+                                       " (retrying)" if retrying else ""))
+                if not retrying:
+                    break
+                time.sleep(0.5 * (attempt + 1))
+            if master is None:
+                # A fetch failure is not the same as the stream having no keys.
+                # Returning an empty map here would make the caller play in the
+                # clear, and then fail on a stream that is in fact encrypted.
+                # Signal "could not determine" so the caller assumes DRM and
+                # lets the licence proxy match keys from what it discovers while
+                # serving the variants.
+                return None
             base = manifest_url.rsplit("/", 1)[0] + "/"
 
             def absolute(u):
