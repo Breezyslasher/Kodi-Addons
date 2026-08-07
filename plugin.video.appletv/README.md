@@ -99,10 +99,10 @@ supported hardware.
 - Browse categories (Kids & Family, Sci-Fi, ...), MLS club pages and F1 Grand Prix weekends as folders
 - Show → season → episode browsing, with episode counts per season
 - Search with Apple's suggestions, or browse when nothing is typed
-- **Continue Watching** and **Up Next** lists (signed in)
+- Your **Watchlist** shelf on each brand tab (signed in)
 - **Play trailer** and **Bonus content** context-menu entries on movies and shows
 - **Follow club** / **Unfollow club** on clubs, with a **Following** folder listing them
-- **Add to / Remove from Up Next** on any title, episode or event
+- **Add to / Remove from Watchlist** on any title, episode or event
 - **Related** rows, match **Clubs**, and a feed picker for matches (full replay / recap / commentary language)
 - Subscription status in settings
 - Widevine playback through InputStream Adaptive (standard definition)
