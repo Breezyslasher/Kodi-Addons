@@ -65,6 +65,10 @@ msgctxt "#32041"
 msgid "Maximum video height (0 = no limit)"
 msgstr ""
 
+msgctxt "#32045"
+msgid "Maximum video height for live events (F1/MLS license only their HD H.264 tier)"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""

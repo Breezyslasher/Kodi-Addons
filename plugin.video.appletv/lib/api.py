@@ -989,7 +989,10 @@ class AppleTVApi(object):
             }
             if mut:
                 stream_headers["media-user-token"] = mut
-        wv_keys = self._collect_widevine_keys(assets["manifest"], stream_headers)
+        fps = assets.get("fps_params") or {}
+        live = bool(fps.get("service-id") or fps.get("reference-id"))
+        wv_keys = self._collect_widevine_keys(
+            assets["manifest"], stream_headers, live=live)
         kodiutils.log("Collected %d Widevine key(s)" % len(wv_keys))
 
         # First key collected is the video variant's; used to pre-initialise DRM
@@ -1413,7 +1416,7 @@ class AppleTVApi(object):
             kodiutils.log_error("UTS request error %s: %s" % (path, exc))
             return None
 
-    def _collect_widevine_keys(self, manifest_url, headers=None):
+    def _collect_widevine_keys(self, manifest_url, headers=None, live=False):
         """Map each Widevine key id (hex) to its data: URI from the manifest.
 
         Apple's licence server needs the URI of the exact key a challenge is
@@ -1442,7 +1445,13 @@ class AppleTVApi(object):
             # Read keys from the variants that will actually be played: Apple
             # keys each tier separately, so a key taken from a tier the proxy
             # drops is never the one InputStream Adaptive asks to decrypt.
-            max_h = kodiutils.get_setting_int("max_height", 360)
+            # A live event's HD H.264 band is the only tier Apple licenses (its
+            # SD key answers -1004), so collect this play's keys from that band,
+            # matching the tier the manifest proxy will actually serve.
+            if live:
+                max_h = kodiutils.get_setting_int("live_max_height", 1080)
+            else:
+                max_h = kodiutils.get_setting_int("max_height", 360)
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
             avc_only = kodiutils.get_setting_bool("avc_only", True)
 

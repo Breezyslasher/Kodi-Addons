@@ -38,6 +38,20 @@ def _context():
     return kodiutils.read_json(CONTEXT_FILE, default={}) or {}
 
 
+def _is_live(ctx):
+    """A live event names its key parameters service-id/reference-id.
+
+    Apple licenses a live event's keys per tier-band, not per tier, and for at
+    least some events (an F1 session was captured doing exactly this) the low
+    band's content key is simply not granted -- the key server answers -1004 --
+    while the HD band (720/1080 H.264) is. The web client plays that HD band, so
+    the addon has to reach it too rather than sit on the SD tier it uses for
+    on-demand titles.
+    """
+    fp = ctx.get("fps_params") or {}
+    return bool(fp.get("service-id") or fp.get("reference-id"))
+
+
 # Widevine keys discovered while serving variant playlists, keyed by key id.
 # A title has a separate key per variant/rendition and the master playlist can
 # list hundreds of them, so the set collected up front is not complete: record
@@ -366,7 +380,13 @@ class _Handler(BaseHTTPRequestHandler):
             max_h, avc_only = 0, False
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
         else:
-            max_h = kodiutils.get_setting_int("max_height", 360)
+            # A live event's SD key is refused (-1004); its HD H.264 band is the
+            # tier the web client plays and the only one Apple licenses, so cap
+            # higher for live than for on-demand, where the SD tier is correct.
+            if _is_live(_context()):
+                max_h = kodiutils.get_setting_int("live_max_height", 1080)
+            else:
+                max_h = kodiutils.get_setting_int("max_height", 360)
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
             avc_only = kodiutils.get_setting_bool("avc_only", True)
         lines = text.splitlines()
