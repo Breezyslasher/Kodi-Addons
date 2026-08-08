@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.27" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.28" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,13 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.28 - Continue Watching shows only what you have started
+- NEW: Apple's "Continue Watching on Apple TV" shelf also lists titles you
+  have merely added to your Watchlist (Apple marks them "AddedToUpNext"), so
+  a film you never played appeared there the moment you watchlisted it. A new
+  setting, on by default, keeps only the titles you have actually started;
+  the watchlisted ones still show on the Watchlist. Turn it off to mirror
+  Apple exactly.
 2026.8.27 - Housekeeping: remove dead code
 - Internal only, no change to behaviour: removed unused code left over from
   earlier versions -- the Watchlist fetch that nothing calls (the list is

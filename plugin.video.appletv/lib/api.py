@@ -738,7 +738,7 @@ class AppleTVApi(object):
             shelf = ((data or {}).get("data") or {}).get("shelf")
             if not isinstance(shelf, dict):
                 break
-            page = self._extract_items(shelf.get("items"))
+            page = self._extract_items(self._filter_upnext_raw(shelf, shelf.get("items")))
             for item in page:
                 if item.get("id") not in seen:
                     seen.add(item.get("id"))
@@ -1552,6 +1552,29 @@ class AppleTVApi(object):
 
     # -- response parsing helpers ---------------------------------------
 
+    @staticmethod
+    def _filter_upnext_raw(shelf, raw_items):
+        """Drop watchlisted titles from Apple's "Continue Watching" shelf.
+
+        Apple's tab shelf uts.col.ChannelUpNext (displayType upNextLockup),
+        which it titles "Continue Watching on Apple TV", lists two kinds of
+        item: ones you have started (context "Continue") and ones you have only
+        added to your Up Next / Watchlist (context "AddedToUpNext"). With the
+        setting on (the default), keep only the started ones, so the shelf
+        means what it says; the watchlisted titles still appear on the
+        Watchlist. Other shelves are left untouched.
+        """
+        if not isinstance(raw_items, list):
+            return raw_items
+        is_upnext = (shelf.get("displayType") == "upNextLockup"
+                     or str(shelf.get("id") or "").startswith("uts.col.ChannelUpNext"))
+        if not is_upnext:
+            return raw_items
+        if not kodiutils.get_setting_bool("hide_watchlist_in_continue", True):
+            return raw_items
+        return [it for it in raw_items
+                if not (isinstance(it, dict) and it.get("context") == "AddedToUpNext")]
+
     def _extract_shelves(self, data):
         if not data:
             return []
@@ -1561,7 +1584,7 @@ class AppleTVApi(object):
                 continue
             title = self._shelf_title(shelf)
             shelf_id = shelf.get("id") or shelf.get("channelId") or ""
-            items = self._extract_items(shelf.get("items"))
+            items = self._extract_items(self._filter_upnext_raw(shelf, shelf.get("items")))
             if items and shelf_id:
                 shelves.append({
                     "id": str(shelf_id),

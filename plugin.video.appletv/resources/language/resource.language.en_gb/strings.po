@@ -69,6 +69,10 @@ msgctxt "#32085"
 msgid "Maximum video height for live events (F1/MLS license only their HD H.264 tier)"
 msgstr ""
 
+msgctxt "#32086"
+msgid "Continue Watching shows only titles you have started (hide watchlist items)"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""
