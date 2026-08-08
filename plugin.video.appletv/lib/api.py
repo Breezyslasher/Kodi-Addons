@@ -1159,11 +1159,54 @@ class AppleTVApi(object):
             if not isinstance(raw, dict) or not raw.get("title"):
                 continue
             people.append({
+                # The person id opens their own page (their other work); the
+                # cast shelf carries it on every credit.
+                "id": raw.get("id"),
+                "type": raw.get("type") or "Person",
                 "name": raw["title"],
                 "role": raw.get("characterName") or raw.get("roleTitle") or "",
                 "art": self._person_art(raw.get("images") or {}),
             })
         return people
+
+    def get_person_shelves(self, person_id, max_pages=10):
+        """A person's filmography canvas: their Movies, Shows and other work."""
+        return self._canvas_shelves(
+            "/canvases/persons/%s" % person_id, {}, person_id, max_pages)
+
+    def get_person_info(self, person_id):
+        """A person's own details -- name, bio, birth -- for the info screen.
+
+        The person canvas carries a `person` object alongside the filmography
+        shelves; Apple states the bio, birth date (epoch ms) and birthplace
+        there, with a headshot.
+        """
+        data = self._get_json("/canvases/persons/%s" % person_id, {})
+        person = ((data or {}).get("data") or {}).get("person") or {}
+        if not isinstance(person, dict) or not person:
+            return {}
+        lines = []
+        born = person.get("birthDate")
+        place = person.get("birthplace")
+        born_str = None
+        if isinstance(born, (int, float)):
+            try:
+                born_str = time.strftime("%d %B %Y", time.gmtime(int(born) / 1000))
+            except (ValueError, OverflowError):
+                born_str = None
+        if born_str and place:
+            lines.append("Born %s in %s" % (born_str, place))
+        elif born_str:
+            lines.append("Born %s" % born_str)
+        elif place:
+            lines.append("Born in %s" % place)
+        if person.get("bio"):
+            lines.append(person["bio"])
+        return {
+            "name": person.get("title"),
+            "plot": "\n\n".join(lines),
+            "art": self._person_art(person.get("images") or {}),
+        }
 
     def get_title_info(self, content_id, item_type="Movie"):
         """Everything Kodi's info screen wants about a title, in one request.

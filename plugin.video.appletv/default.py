@@ -52,6 +52,7 @@ S = {
     "remove_watchlist": 32048,
     "watchlist_removed": 32049,
     "watchlist": 32051,
+    "about": 32090,
     "mark_watched": 32087,
     "watched_marked": 32088,
     "watched_failed": 32089,
@@ -372,7 +373,7 @@ def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL, cast=None):
 
 
 def show_people(people):
-    """List a title's cast and crew. Nobody here is playable."""
+    """List a title's cast and crew; each opens the person's own page."""
     if not people:
         kodiutils.notify(L("no_results"))
     for person in people:
@@ -382,8 +383,37 @@ def show_people(people):
         entry = xbmcgui.ListItem(label=label)
         if person.get("art"):
             entry.setArt(person["art"])
-        xbmcplugin.addDirectoryItem(HANDLE, "", entry, isFolder=False)
+        # A person Apple gives an id opens their own page -- their other films
+        # and shows. One without (rare) stays a plain, unopenable credit.
+        pid = person.get("id")
+        if pid:
+            xbmcplugin.addDirectoryItem(
+                HANDLE, url(action="person", person_id=pid, name=person["name"]),
+                entry, isFolder=True)
+        else:
+            xbmcplugin.addDirectoryItem(HANDLE, "", entry, isFolder=False)
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def show_person(api, person_id, name=""):
+    """A person's own page: their details, then their films and shows."""
+    if not person_id:
+        return
+    info = api.get_person_info(person_id)
+    title = info.get("name") or name
+    if title:
+        xbmcplugin.setPluginCategory(HANDLE, title)
+    # A first "About" entry carries the bio, birth and headshot, so the
+    # Information button on it shows what Apple holds on the person.
+    if info.get("plot"):
+        about = xbmcgui.ListItem(label=L("about") % (title or name))
+        tag = about.getVideoInfoTag()
+        tag.setPlot(info["plot"])
+        tag.setTitle(title or name)
+        if info.get("art"):
+            about.setArt(info["art"])
+        xbmcplugin.addDirectoryItem(HANDLE, "", about, isFolder=False)
+    show_shelves(api, api.get_person_shelves(person_id), cache_key=person_id)
 
 
 def show_items(items, content="movies", channel_id=APPLE_TV_PLUS_CHANNEL,
@@ -808,6 +838,8 @@ def router(paramstring):
     elif action == "cast":
         show_people(api.get_cast(params.get("item_id"),
                                  params.get("item_type", "Movie")))
+    elif action == "person":
+        show_person(api, params.get("person_id"), params.get("name") or "")
     elif action == "event_extras":
         show_items(api.get_event_extras(params.get("item_id"),
                                         params.get("kind", "highlights")))
