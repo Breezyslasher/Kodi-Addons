@@ -73,6 +73,18 @@ msgctxt "#32086"
 msgid "Continue Watching shows only titles you have started (hide watchlist items)"
 msgstr ""
 
+msgctxt "#32087"
+msgid "Mark watched on Apple TV"
+msgstr ""
+
+msgctxt "#32088"
+msgid "Marked watched"
+msgstr ""
+
+msgctxt "#32089"
+msgid "Could not mark watched. Make sure you are signed in."
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""

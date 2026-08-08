@@ -52,6 +52,9 @@ S = {
     "remove_watchlist": 32048,
     "watchlist_removed": 32049,
     "watchlist": 32051,
+    "mark_watched": 32087,
+    "watched_marked": 32088,
+    "watched_failed": 32089,
     "sub_active": 32052,
     "sub_none": 32053,
     "sub_renews": 32054,
@@ -89,7 +92,18 @@ def extras_context_menu(item, item_id, item_type):
             action="related", item_id=item_id)),
         (L("cast"), "Container.Update(%s)" % url(
             action="cast", item_id=item_id, item_type=item_type)),
-    ] + watchlist_menu_items(item_id))
+    ] + watchlist_menu_items(item_id) + [mark_watched_menu_item(item_id)])
+
+
+def mark_watched_menu_item(item_id):
+    """Mark a title watched on the Apple account (POST /play-history).
+
+    Kodi's own "Mark as watched" only sets its local flag; this tells Apple, so
+    the title counts as watched on your other devices and leaves Continue
+    Watching. Marking unwatched is not offered -- it was not captured.
+    """
+    return (L("mark_watched"), "RunPlugin(%s)" % url(
+        action="mark_watched", item_id=item_id))
 
 
 def watchlist_menu_items(item_id):
@@ -258,11 +272,16 @@ def add_playable(entry, cast=None):
              # Only Motorsports fixtures have a weekend of sessions; a match
              # in any other sport carries clubs and no weekend at all.
              if entry.get("sport") == "Motorsports" else [])
-          + watchlist_menu_items(entry["id"]))
-    # Everything else -- episodes, and the sports clip types that carry their
-    # stream inline -- gets no watchlist entry: Apple's watchlist takes films,
-    # shows and fixtures only, which is what every captured write sends, so
-    # offering it on an episode was offering something that cannot work.
+          + watchlist_menu_items(entry["id"])
+          + [mark_watched_menu_item(entry["id"])])
+    elif kind == "Episode":
+        # An episode takes no watchlist (Apple lists films, shows and fixtures
+        # only), but it can be marked watched on the account.
+        item.addContextMenuItems([mark_watched_menu_item(entry["id"])])
+    # Everything else -- the sports clip types that carry their stream inline --
+    # gets no watchlist entry: Apple's watchlist takes films, shows and fixtures
+    # only, which is what every captured write sends, so offering it on an
+    # episode was offering something that cannot work.
     play_params = {"item_id": entry["id"], "item_type": entry.get("type", "Movie")}
     # A sporting event listed with its own feed (Continue Watching gives one)
     # plays that feed directly, so resuming does not re-open the feed picker.
@@ -654,6 +673,19 @@ def do_watchlist(api, item_id, add):
         kodiutils.ok_dialog(L("watchlist_failed"))
 
 
+def do_mark_watched(api, item_id):
+    """Context-menu action: mark a title watched on the Apple account."""
+    if not item_id:
+        return
+    if api.set_watched(item_id):
+        kodiutils.notify(L("watched_marked"))
+        # Marking watched removes the title from Apple's Continue Watching, so
+        # reload the screen to reflect it without leaving the tab first.
+        xbmc.executebuiltin("Container.Refresh")
+    else:
+        kodiutils.ok_dialog(L("watched_failed"))
+
+
 def do_follow_team(api, team_id, follow):
     """Context-menu action: add or remove a club from Apple's favourites."""
     if not team_id:
@@ -768,6 +800,8 @@ def router(paramstring):
         do_follow_team(api, params.get("team_id"), params.get("on") == "1")
     elif action == "watchlist":
         do_watchlist(api, params.get("item_id"), params.get("on") == "1")
+    elif action == "mark_watched":
+        do_mark_watched(api, params.get("item_id"))
     elif action == "related":
         show_items(api.get_related(params.get("item_id"),
                                    params.get("league") or None))

@@ -401,6 +401,15 @@ class AppleTVApi(object):
         """Add a title or event to the account's Up Next list, or remove it."""
         return self._list_request("/watchlist", content_id, watchlisted)
 
+    def set_watched(self, content_id):
+        """Mark a title watched on the account, as the web 'Mark as Watched' does.
+
+        Apple records it with POST /play-history {"id": ...} -- the same request
+        shape as the watchlist and favourite-clubs writes (captured on the web
+        client marking an episode watched).
+        """
+        return self._list_request("/play-history", content_id, True)
+
     def get_related(self, content_id, league_id=None):
         """"More like this" for a title, or the other games in a league.
 
