@@ -1200,11 +1200,12 @@ class AppleTVApi(object):
                  else [c for c in wanted if c in renditions])
         if not codes:
             return []
-        # The video's own first-frame time. Apple's subtitle X-TIMESTAMP-MAP is
-        # relative to it, so without it the cues run off by that amount -- 0 or
-        # ~10s depending on the title, which is why one fixed shift synced one
-        # film and not another.
-        pts0 = self._media_pts0_seconds(lines, base, headers)
+        # Apple's on-demand subtitles run ahead of the picture by a fixed amount
+        # (its video timeline starts at a ~10s presentation offset, which the
+        # WebVTT X-TIMESTAMP-MAP encodes as MPEGTS:900000), and Kodi does not
+        # correct for it on an external file. Delay every cue by that amount;
+        # the setting lets it be trimmed if a title ever needs a different value.
+        delay = self._subtitle_delay(lines)
         sub_dir = os.path.join(kodiutils.profile_dir(), self.SUBTITLE_DIR)
         try:
             os.makedirs(sub_dir, exist_ok=True)
@@ -1212,7 +1213,7 @@ class AppleTVApi(object):
             pass
 
         def build(code):
-            return code, self._subtitle_vtt(renditions[code], headers, pts0)
+            return code, self._subtitle_vtt(renditions[code], headers, delay)
 
         # Fetch the languages concurrently; each is a couple of small requests,
         # so a whole catalogue of them stays a second or two rather than dozens.
@@ -1234,16 +1235,27 @@ class AppleTVApi(object):
             except Exception as exc:
                 kodiutils.log_error("Could not write subtitle %s: %s" % (code, exc))
         if out:
-            kodiutils.log("Fetched %d subtitle track(s); video offset %s"
-                          % (len(out),
-                             ("%.1fs" % pts0) if pts0 is not None else "n/a"))
+            kodiutils.log("Fetched %d subtitle track(s); delayed %.1fs"
+                          % (len(out), delay))
         return out
 
-    def _subtitle_vtt(self, playlist_url, headers, pts0=None):
+    @staticmethod
+    def _subtitle_delay(master_lines):
+        """Seconds to delay the subtitles by. A manual override wins; otherwise
+        the default (10s, Apple's presentation offset)."""
+        override = (kodiutils.get_setting("subtitle_delay") or "").strip()
+        if override:
+            try:
+                return float(override)
+            except ValueError:
+                pass
+        return 10.0
+
+    def _subtitle_vtt(self, playlist_url, headers, delay=0.0):
         """Build one .vtt from a subtitle playlist's real (non-padding) WebVTT
         segments. Apple pads the head with empty-*.webvtt segments that carry no
-        cues, so they are skipped. pts0 is the video's first-frame time, used to
-        align the cues."""
+        cues, so they are skipped. delay shifts every cue later to line up with
+        the picture."""
         from urllib.parse import urljoin
         try:
             resp = self.session.get(playlist_url, headers=headers, timeout=30)
@@ -1268,100 +1280,7 @@ class AppleTVApi(object):
                 if seg:
                     parts.append(seg)
             byterange = None
-        return self._merge_vtt(parts, pts0) if parts else None
-
-    def _media_pts0_seconds(self, master_lines, base, headers):
-        """The video's first-frame presentation time in seconds
-        (baseMediaDecodeTime / timescale), for aligning external subtitles.
-        None if it cannot be read -- the caller then trusts the timestamp-map's
-        own alignment.
-        """
-        import re
-        import struct
-        from urllib.parse import urljoin
-        variant = None
-        for i, ln in enumerate(master_lines):
-            if ln.startswith("#EXT-X-STREAM-INF"):
-                for x in master_lines[i + 1:i + 3]:
-                    x = x.strip()
-                    if x and not x.startswith("#"):
-                        variant = urljoin(base, x)
-                        break
-            if variant:
-                break
-        if not variant:
-            return None
-        try:
-            media = self.session.get(variant, headers=headers, timeout=30).text
-        except Exception:
-            return None
-        mbase = variant.rsplit("/", 1)[0] + "/"
-        init_uri = seg_uri = None
-        for ln in media.splitlines():
-            s = ln.strip()
-            if s.startswith("#EXT-X-MAP"):
-                m = re.search(r'URI="([^"]+)"', s)
-                if m:
-                    init_uri = urljoin(mbase, m.group(1))
-            elif s and not s.startswith("#"):
-                seg_uri = urljoin(mbase, s)
-                break
-        if not (init_uri and seg_uri):
-            return None
-        try:
-            init = self.session.get(init_uri, headers=headers, timeout=30).content
-            mdhd = self._mp4_box(init, [b"moov", b"trak", b"mdia", b"mdhd"])
-            if not mdhd or len(mdhd) < 24:
-                return None
-            timescale = (struct.unpack(">I", mdhd[20:24])[0] if mdhd[0] == 1
-                         else struct.unpack(">I", mdhd[12:16])[0])
-            if not timescale:
-                return None
-            h = dict(headers)
-            h["Range"] = "bytes=0-8191"
-            seg = self.session.get(seg_uri, headers=h, timeout=30).content
-            tfdt = self._mp4_box(seg, [b"moof", b"traf", b"tfdt"])
-            if not tfdt or len(tfdt) < 8:
-                return None
-            base_time = (struct.unpack(">Q", tfdt[4:12])[0] if tfdt[0] == 1
-                         else struct.unpack(">I", tfdt[4:8])[0])
-            return base_time / float(timescale)
-        except Exception as exc:
-            kodiutils.log_error("Could not read video start time: %s" % exc)
-            return None
-
-    @staticmethod
-    def _mp4_box(data, path):
-        """Payload bytes of a nested MP4 box path (first match at each level),
-        or None."""
-        import struct
-
-        def walk(buf, want):
-            i, n = 0, len(buf)
-            while i + 8 <= n:
-                size = struct.unpack(">I", buf[i:i + 4])[0]
-                typ = buf[i + 4:i + 8]
-                hdr = 8
-                if size == 1:
-                    if i + 16 > n:
-                        break
-                    size = struct.unpack(">Q", buf[i + 8:i + 16])[0]
-                    hdr = 16
-                elif size == 0:
-                    size = n - i
-                if size < hdr or i + size > n:
-                    break
-                if typ == want:
-                    return buf[i + hdr:i + size]
-                i += size
-            return None
-
-        cur = data
-        for want in path:
-            cur = walk(cur, want)
-            if cur is None:
-                return None
-        return cur
+        return self._merge_vtt(parts, delay) if parts else None
 
     def _fetch_vtt_segment(self, url, headers, byterange):
         h = dict(headers)
@@ -1382,17 +1301,15 @@ class AppleTVApi(object):
         return None
 
     @staticmethod
-    def _merge_vtt(parts, pts0=None):
+    def _merge_vtt(parts, delay=0.0):
         """Merge WebVTT segments into one file with a single header, shifting
-        each cue so it lines up with the video.
+        every cue later by a flat delay.
 
-        Apple aligns a subtitle segment with X-TIMESTAMP-MAP=MPEGTS:m,LOCAL:l:
-        the cue's media time is its written time + m/90000 - l. Kodi normalises
-        the video's first frame (baseMediaDecodeTime = pts0) to zero, so the
-        cue's *playback* time is that minus pts0. Kodi does not apply the tag to
-        an external file, so the whole shift is baked in here. When pts0 is
-        unknown, the map's own alignment is trusted (pts0 == m/90000), i.e. no
-        shift. STYLE blocks and cue text pass through untouched.
+        Apple's on-demand WebVTT segments carry an X-TIMESTAMP-MAP tag that
+        Kodi ignores for an external file, so the tracks land ~10s early. A
+        constant delay (default 10s, adjustable) lines them back up -- the same
+        offset syncs both films and shows, so no per-title computation is done.
+        STYLE blocks and cue text pass through untouched.
         """
         import re
         cue_re = re.compile(
@@ -1416,21 +1333,12 @@ class AppleTVApi(object):
 
         out = ["WEBVTT", ""]
         for part in parts:
-            m = re.search(r'X-TIMESTAMP-MAP=[^\n]*MPEGTS:(\d+)', part)
-            local = re.search(r'X-TIMESTAMP-MAP=[^\n]*LOCAL:(\d{2}):(\d{2}):(\d{2})\.(\d+)', part)
-            shift = 0.0
-            if m:
-                map_off = int(m.group(1)) / 90000.0
-                if local:
-                    map_off -= (int(local.group(1)) * 3600 + int(local.group(2)) * 60
-                                + int(local.group(3)) + int(local.group(4)) / 1000.0)
-                shift = map_off - (pts0 if pts0 is not None else map_off)
             for line in part.splitlines():
                 s = line.strip()
                 if s.startswith("WEBVTT") or s.startswith("X-TIMESTAMP-MAP"):
                     continue
-                if cue_re.search(line) and shift:
-                    line = ts_re.sub(lambda mt: fmt(to_sec(mt.group(1)) + shift), line)
+                if delay and cue_re.search(line):
+                    line = ts_re.sub(lambda mt: fmt(to_sec(mt.group(1)) + delay), line)
                 out.append(line)
             out.append("")
         return "\n".join(out) + "\n"
