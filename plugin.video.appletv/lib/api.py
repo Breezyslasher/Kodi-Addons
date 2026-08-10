@@ -310,7 +310,7 @@ class AppleTVApi(object):
             headers["media-user-token"] = mut
         return headers
 
-    def _get_json(self, path, extra_params=None, _retried=False):
+    def _get_json(self, path, extra_params=None, _retried=False, quiet_404=False):
         try:
             resp = self.session.get(UTS_BASE + path, params=self._params(extra_params),
                                     headers=self._uts_headers(), timeout=30)
@@ -320,9 +320,14 @@ class AppleTVApi(object):
                 # than a failed screen.
                 kodiutils.log("UTS %s -> %s; refreshing tokens" % (path, resp.status_code))
                 self._bootstrap(force=True)
-                return self._get_json(path, extra_params, _retried=True)
+                return self._get_json(path, extra_params, _retried=True,
+                                      quiet_404=quiet_404)
             if resp.status_code != 200:
-                kodiutils.log_error("UTS %s -> %s %s" % (path, resp.status_code, resp.text[:200]))
+                # A 404 is expected on some calls (a game with no key plays),
+                # so the caller can ask for it not to be logged as an error.
+                if not (quiet_404 and resp.status_code == 404):
+                    kodiutils.log_error("UTS %s -> %s %s"
+                                        % (path, resp.status_code, resp.text[:200]))
                 return None
             return resp.json()
         except Exception as exc:
@@ -903,7 +908,13 @@ class AppleTVApi(object):
                 "title": playable.get("title") or "",
                 "duration": playable.get("duration"),
                 "language": locale.get("displayName") or "",
+                "locale": locale.get("locale") or "",
             })
+        # Offer the configured language first: Apple lists the feeds in no fixed
+        # order (Spanish came before English on an MLS game), so the top of the
+        # picker was as likely to be a language you did not want as one you did.
+        pref = (kodiutils.get_setting("locale") or "en-US").split("-")[0].lower()
+        feeds.sort(key=lambda f: 0 if (f.get("locale") or "").lower().startswith(pref) else 1)
         return {"feeds": feeds, "live": live}
 
     def _live_playable(self, data, external_id=None):
@@ -954,7 +965,9 @@ class AppleTVApi(object):
             params = {"playablePassThrough": ppt}
             if token:
                 params["nextToken"] = token
-            resp = self._get_json("/shelves/key-play", params)
+            # A game with no key plays (or paged to its end) answers 404; that
+            # is not an error worth logging.
+            resp = self._get_json("/shelves/key-play", params, quiet_404=True)
             shelf = ((resp or {}).get("data") or {}).get("shelf")
             if not isinstance(shelf, dict):
                 break
