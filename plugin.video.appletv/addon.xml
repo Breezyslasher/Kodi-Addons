@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.41" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.42" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,11 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.42 - Clearer message when a title will not play
+- A title with no stream for you now says why: "not part of your subscription,
+  or blacked out in your region" when you are signed in, or a plain "sign in
+  first" when you are not -- instead of one catch-all that named both causes
+  and pointed at the log.
 2026.8.41 - Finished games resume like a film again
 - FIX: A finished game (a replay) is not live, so it should resume where you
   left off like any on-demand title -- but the live-game change had it start

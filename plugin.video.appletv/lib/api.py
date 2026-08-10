@@ -1299,6 +1299,12 @@ class AppleTVApi(object):
             kodiutils.log_error(
                 "No playable stream for %s. Likely not in your subscription/"
                 "region, or no media-user-token." % content_id)
+            # Tell the two causes apart by whether an account token was sent:
+            # signed in with no entitled stream means subscription or a
+            # regional blackout; no token means sign in first. Either beats the
+            # generic "playback could not be resolved" that named both at once.
+            self.last_error = kodiutils.localize(
+                32099 if self._media_user_token() else 32025)
             return None
 
         # A live event can carry a stream before you are allowed to watch it.
