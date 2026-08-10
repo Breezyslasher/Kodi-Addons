@@ -41,6 +41,13 @@ def get_setting(setting_id, default=""):
         return default
 
 
+def set_setting(setting_id, value):
+    try:
+        addon().setSetting(setting_id, str(value))
+    except Exception:
+        pass
+
+
 def get_setting_bool(setting_id, default=False):
     value = get_setting(setting_id, "true" if default else "false")
     return str(value).lower() == "true"

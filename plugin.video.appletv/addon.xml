@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.10" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.54" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -11,14 +11,16 @@
 	</extension>
 	<extension point="xbmc.service" library="service.py"/>
 	<extension point="xbmc.addon.metadata">
-		<summary lang="en_GB">Apple TV+ client for Kodi (experimental)</summary>
-		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, playing back through InputStream Adaptive with Widevine DRM.
+		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, live sports and your iTunes movie and TV library, playing back through InputStream Adaptive with Widevine DRM.
 
-EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
 
 Features:
 * Apple ID sign-in with two-factor authentication
 * Browse Apple TV+ Originals (shows and movies)
+* Live sports: MLS, Formula 1 and MLB
+* Browse your iTunes purchased/rented movie and TV library
 * Search the Apple TV catalogue
 * Widevine playback via InputStream Adaptive</description>
 		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
@@ -31,6 +33,17 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.54 - iTunes library is back
+- The iTunes movie and TV library returns, on top of all the Apple TV+ and
+  live-sports work: your purchased/rented films and shows list under "My iTunes
+  Library", grouped into Films and TV Shows (television by season), with resume
+  points where the store knows them. It has its own sign-in, separate from
+  Apple TV+, and can also use a pasted store session.
+- Purchase playback asks Apple's store/Android licence path for a redownload
+  and reports the exact reason if it is refused. Note the standing wall: an
+  iTunes purchase's key server needs a device keybag Apple issues only to its
+  own hardware, so purchase *playback* may still be blocked even though the
+  library lists and resolves; browsing and naming work regardless.
 2026.8.53 - Subtitles: a steady 10-second sync
 - FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
   both films and shows (the previous per-title guess got some titles wrong).
