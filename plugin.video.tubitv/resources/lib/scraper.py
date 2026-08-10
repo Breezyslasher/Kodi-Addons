@@ -6,6 +6,7 @@ import sys
 import urllib.parse
 
 import xbmc
+import xbmcaddon
 import xbmcgui
 import xbmcplugin
 import xbmcvfs
@@ -18,6 +19,24 @@ uqp = urllib.parse.unquote_plus
 qp = urllib.parse.quote_plus
 
 SERIES = 's'
+
+WIDEVINE_KEYSYSTEM = 'com.widevine.alpha'
+# Tubi's licence server takes the raw challenge and answers with the raw
+# licence, so only these two headers need setting.
+LICENSE_HEADERS = [('Content-Type', 'application/octet-stream'),
+                   ('Origin', 'https://tubitv.com')]
+# inputstream.adaptive 21 introduced drm_legacy and deprecated the license_*
+# properties. Older builds only understand the old ones.
+DRM_PROPERTIES_SINCE = 21
+
+
+def inputstreamMajor():
+    """Major version of the installed inputstream.adaptive, 0 if unknown."""
+    try:
+        version = xbmcaddon.Addon('inputstream.adaptive').getAddonInfo('version')
+        return int(version.split('.')[0])
+    except Exception:
+        return 0
 
 
 class myAddon(t1mAddon):
@@ -274,8 +293,24 @@ class myAddon(t1mAddon):
             liz.setContentLookup(False)
             liz.setProperty('inputstream', 'inputstream.adaptive')
             liz.setProperty('inputstream.adaptive.manifest_type', 'hls')
-            liz.setProperty('inputstream.adaptive.license_type', 'com.widevine.alpha')
-            liz.setProperty('inputstream.adaptive.license_key', ''.join([
-                licenseUrl,
-                '|Content-Type=application/octet-stream&Origin=https://tubitv.com|R{SSM}|']))
+            for key, value in self.drmProperties(licenseUrl):
+                liz.setProperty(key, value)
         xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, liz)
+
+    @staticmethod
+    def drmProperties(licenseUrl):
+        """Describe the Widevine licence request to inputstream.adaptive.
+
+        Newer builds want drm_legacy and warn about the license_* properties;
+        older ones only understand license_*, so pick by what is installed
+        rather than dropping DRM playback on Kodi 19 and 20.
+        """
+        if inputstreamMajor() >= DRM_PROPERTIES_SINCE:
+            headers = urllib.parse.urlencode(LICENSE_HEADERS)
+            return [('inputstream.adaptive.drm_legacy',
+                     '|'.join([WIDEVINE_KEYSYSTEM, licenseUrl, headers]))]
+        headers = '&'.join(['='.join(header) for header in LICENSE_HEADERS])
+        # url | request headers | request data | response format
+        return [('inputstream.adaptive.license_type', WIDEVINE_KEYSYSTEM),
+                ('inputstream.adaptive.license_key',
+                 '|'.join([licenseUrl, headers, 'R{SSM}', '']))]
