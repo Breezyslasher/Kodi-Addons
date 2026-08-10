@@ -125,6 +125,10 @@ msgctxt "#32099"
 msgid "Not available to watch on your account. It may not be part of your subscription, or it is blacked out in your region."
 msgstr ""
 
+msgctxt "#32100"
+msgid "Fetch subtitles for films, shows and replays (Kodi's language and English)"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""

@@ -1157,6 +1157,136 @@ class AppleTVApi(object):
             return url
         return url + ("&" if "?" in url else "?") + "startOver=true"
 
+    SUBTITLE_DIR = "subtitles"
+
+    def _fetch_subtitles(self, master_url, headers, wanted):
+        """Fetch Apple's WebVTT subtitle tracks as local .vtt files.
+
+        InputStream Adaptive lists Apple's WebVTT renditions but does not render
+        their cues -- the segments carry an X-TIMESTAMP-MAP its parser
+        mishandles, so the track shows in the menu and stays blank. The wanted
+        languages are fetched here instead and handed to Kodi as external
+        subtitles, which its own renderer displays. Returns local file paths;
+        empty when the stream has no WebVTT subtitles (a live event's captions
+        are CEA-608 inside the video and cannot be fetched as a file).
+        """
+        import os
+        import re
+        from urllib.parse import urljoin
+        try:
+            resp = self.session.get(master_url, headers=headers, timeout=30)
+            if resp.status_code != 200:
+                return []
+            lines = resp.text.splitlines()
+        except Exception as exc:
+            kodiutils.log_error("Subtitle master fetch failed: %s" % exc)
+            return []
+        base = master_url.rsplit("/", 1)[0] + "/"
+        # One rendition per language; the first pathway listed is enough.
+        renditions = {}
+        for ln in lines:
+            if not ln.startswith("#EXT-X-MEDIA:") or "TYPE=SUBTITLES" not in ln:
+                continue
+            lang = (re.search(r'LANGUAGE="([^"]+)"', ln) or (None, ""))[1]
+            uri = (re.search(r'URI="([^"]+)"', ln) or (None, ""))[1]
+            if not lang or not uri:
+                continue
+            code = lang.split("-")[0].lower()
+            renditions.setdefault(code, urljoin(base, uri))
+        if not renditions:
+            return []
+        sub_dir = os.path.join(kodiutils.profile_dir(), self.SUBTITLE_DIR)
+        try:
+            os.makedirs(sub_dir, exist_ok=True)
+        except Exception:
+            pass
+        out = []
+        for code in wanted:
+            uri = renditions.get(code)
+            if not uri:
+                continue
+            vtt = self._subtitle_vtt(uri, headers)
+            if not vtt:
+                continue
+            path = os.path.join(sub_dir, "%s.vtt" % code)
+            try:
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.write(vtt)
+                out.append(path)
+            except Exception as exc:
+                kodiutils.log_error("Could not write subtitle %s: %s" % (code, exc))
+        if out:
+            kodiutils.log("Fetched %d subtitle track(s)" % len(out))
+        return out
+
+    def _subtitle_vtt(self, playlist_url, headers):
+        """Build one .vtt from a subtitle playlist's real (non-padding) WebVTT
+        segments. Apple pads the head with empty-*.webvtt segments that carry no
+        cues, so they are skipped."""
+        from urllib.parse import urljoin
+        try:
+            resp = self.session.get(playlist_url, headers=headers, timeout=30)
+            if resp.status_code != 200:
+                return None
+        except Exception:
+            return None
+        base = playlist_url.rsplit("/", 1)[0] + "/"
+        parts = []
+        byterange = None
+        for ln in resp.text.splitlines():
+            s = ln.strip()
+            if s.startswith("#EXT-X-BYTERANGE:"):
+                byterange = s.split(":", 1)[1]
+                continue
+            if not s or s.startswith("#"):
+                continue
+            url = s if s.startswith("http") else urljoin(base, s)
+            name = url.split("?", 1)[0].rsplit("/", 1)[-1]
+            if "empty-" not in name:
+                seg = self._fetch_vtt_segment(url, headers, byterange)
+                if seg:
+                    parts.append(seg)
+            byterange = None
+        return self._merge_vtt(parts) if parts else None
+
+    def _fetch_vtt_segment(self, url, headers, byterange):
+        h = dict(headers)
+        if byterange:
+            # "N@O" -> the N bytes at offset O, i.e. bytes=O-(O+N-1).
+            try:
+                length, _, offset = byterange.partition("@")
+                offset = int(offset or 0)
+                h["Range"] = "bytes=%d-%d" % (offset, offset + int(length) - 1)
+            except ValueError:
+                pass
+        try:
+            resp = self.session.get(url, headers=h, timeout=30)
+            if resp.status_code in (200, 206):
+                return resp.text
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _merge_vtt(parts):
+        """Merge WebVTT segments into one file with a single header. Cue times
+        are kept as written (their LOCAL time is the media time)."""
+        out = ["WEBVTT", ""]
+        for part in parts:
+            lines = part.splitlines()
+            i = 0
+            # Drop the per-segment WEBVTT header and its X-TIMESTAMP-MAP line;
+            # keep everything after (STYLE blocks and the cues themselves).
+            while i < len(lines) and (lines[i].startswith("WEBVTT")
+                                      or lines[i].startswith("X-TIMESTAMP-MAP")
+                                      or not lines[i].strip()):
+                i += 1
+            body = "\n".join(lines[i:]).strip("\n")
+            if body:
+                out.append(body)
+                out.append("")
+        return "\n".join(out) + "\n"
+
     def _build_playback(self, assets, require_user_token=True, seek_plays=None,
                         seek_seconds=None):
         """Turn resolved stream assets into the dict default.py plays.
@@ -1201,6 +1331,18 @@ class AppleTVApi(object):
         live = bool(fps.get("service-id") or fps.get("reference-id"))
         self._write_seek_context(assets.get("manifest"), stream_headers,
                                  seek_plays, seek_seconds)
+        # A live event's captions are CEA-608 inside the video, with no file to
+        # fetch; an on-demand title's are WebVTT that ISA lists but will not
+        # render, so fetch those as external files Kodi can show itself.
+        subtitles = []
+        if (not live and not override
+                and kodiutils.get_setting_bool("external_subs", True)):
+            try:
+                subtitles = self._fetch_subtitles(
+                    assets["manifest"], stream_headers,
+                    kodiutils.subtitle_languages())
+            except Exception as exc:
+                kodiutils.log_error("Subtitle fetch failed: %s" % exc)
         wv_keys = self._collect_widevine_keys(
             assets["manifest"], stream_headers, live=live)
         # None means the manifest could not be fetched to check for keys, not
@@ -1257,6 +1399,9 @@ class AppleTVApi(object):
             "license_url": license_proxy.license_url(),
             "certificate_b64": self.get_widevine_certificate(),
             "stream_headers": stream_headers,
+            # WebVTT subtitle tracks fetched to local files (on-demand only),
+            # so Kodi renders them itself where ISA lists but blanks them.
+            "subtitles": subtitles,
             "pre_init_data": pre_init,
             # Trailers and some extras are served in the clear. Asking
             # InputStream Adaptive for a Widevine session on an unencrypted

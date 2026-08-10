@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.47" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.48" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,13 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.48 - Subtitles on films, shows and replays (new)
+- Apple's on-demand subtitles are WebVTT that InputStream Adaptive lists but
+  leaves blank on screen. The addon now fetches the track (your Kodi language,
+  and English) and hands Kodi its own copy to display, so subtitles work on
+  films, shows and finished-game replays. Turn it off in settings if you like.
+  Live games are not covered -- their captions are baked into the video.
+  New; please report any timing offset so the sync can be dialled in.
 2026.8.47 - Browsing keeps working after you sign out
 - FIX: Signing out wiped the app's anonymous browsing token along with your
   account, so every tab (Apple TV+, MLS, F1, MLB) then had to rebuild it from

@@ -84,6 +84,22 @@ def profile_dir():
     return path
 
 
+def subtitle_languages():
+    """Two-letter codes of the subtitles to fetch: Kodi's language, then
+    English as a fallback. Kept short so a play does not fetch dozens of
+    tracks it will never show."""
+    langs = []
+    try:
+        code = (xbmc.getLanguage(xbmc.ISO_639_1) or "").strip().lower()
+        if code:
+            langs.append(code)
+    except Exception:
+        pass
+    if "en" not in langs:
+        langs.append("en")
+    return langs
+
+
 def read_json(filename, default=None):
     path = os.path.join(profile_dir(), filename)
     try:

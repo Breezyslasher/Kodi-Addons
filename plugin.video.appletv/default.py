@@ -865,6 +865,16 @@ def build_isa_listitem(playback):
     item.setMimeType("application/vnd.apple.mpegurl")
     item.setContentLookup(False)
 
+    # Apple's WebVTT subtitles, fetched to files because ISA lists but does not
+    # render them. Given to Kodi as external subtitles so its own renderer shows
+    # them. Empty for a live event (its captions are CEA-608 inside the video).
+    subs = playback.get("subtitles")
+    if subs:
+        try:
+            item.setSubtitles(subs)
+        except Exception as exc:
+            kodiutils.log_error("Could not attach subtitles: %s" % exc)
+
     headers = playback.get("stream_headers") or {}
     if headers:
         header_str = "&".join("%s=%s" % (k, quote(str(v), safe="")) for k, v in headers.items())
