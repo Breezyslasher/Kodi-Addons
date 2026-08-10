@@ -56,6 +56,10 @@ Features:
   (caller=vz), matching the identity the licence request uses, instead of as the
   Windows desktop client. Paste a fresh Android (mz_at_ssl) session to test
   whether the coherent Android path licenses where the mixed one did not.
+- The account-wide Continue Watching row is back, and the Featured hero row: the
+  cross-service resume list (which mixes in iTunes films in progress, unlike the
+  per-tab Up Next) and the "Apple Original Shows and Movies" shelf both return
+  to the home screen.
 2026.8.10 - Subtitles: a steady 10-second sync
 - FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
   both films and shows (the previous per-title guess got some titles wrong).

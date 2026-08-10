@@ -79,6 +79,8 @@ S = {
     "spotlight": 32067,
     "race_weekend": 32068,
     "cast": 32069,
+    "featured": 32082,
+    "continue_watching": 32060,
     "itunes_library": 32012,
     "itunes_sign_in": 32070,
     "itunes_sign_out": 32071,
@@ -338,6 +340,8 @@ def add_playable(entry, cast=None):
 # -- menus ---------------------------------------------------------------
 
 def main_menu(auth):
+    # The featured Apple Originals hero shelf, as the TV app leads with it.
+    add_dir(L("featured"), "featured")
     # One entry per brand tab along the top of tv.apple.com's home page.
     for channel_id, name in CHANNELS:
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
@@ -346,6 +350,10 @@ def main_menu(auth):
     # so it is listed here as a room instead of a CHANNELS entry.
     add_dir("MLB", "room", room_id=MLB_ROOM, channel_id=APPLE_TV_PLUS_CHANNEL)
     store = ItunesStore(auth.session)
+    # The account-wide resume row: personalised, so only when signed in to Apple
+    # TV+. Unlike the per-tab Up Next, it mixes in iTunes films in progress.
+    if auth.is_authenticated():
+        add_dir(L("continue_watching"), "continue_watching")
     if store.is_signed_in() or store.pasted_cookies() or auth.is_authenticated():
         add_dir(L("itunes_library"), "itunes")
     add_dir(L("search"), "search")
@@ -1090,6 +1098,10 @@ def router(paramstring):
         show_items(api.get_show_episodes(show_id, season=params.get("season")),
                    content="episodes",
                    cast=api.get_cast(show_id, "Show"))
+    elif action == "featured":
+        show_items(api.get_featured())
+    elif action == "continue_watching":
+        show_items(api.get_continue_watching())
     elif action == "itunes_sign_in":
         do_itunes_sign_in(auth)
         main_menu(auth)

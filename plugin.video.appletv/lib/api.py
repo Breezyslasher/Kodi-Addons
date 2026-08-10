@@ -69,6 +69,16 @@ APPLE_TV_PLUS_CHANNEL = "tvs.sbd.4000"
 # docs/itunes-library.md.
 ITUNES_CHANNEL = "tvs.sbd.9001"
 
+# The account-wide resume row. Unlike the per-channel ChannelUpNext shelf (which
+# the brand tabs already carry, scoped to Apple TV+), this one is cross-service
+# and mixes in iTunes films the account is part-way through. The Android caller
+# fetches it by the slug; the web/store callers by the shelf id.
+CONTINUE_WATCHING_SHELF = "uts.col.ContinueWatching"
+CONTINUE_WATCHING_SLUG = "continue-watching"
+# The "Apple Original Shows and Movies" hero row the TV app leads with. Public
+# (a capture returns it with auth-token-valid false), so it needs no session.
+FEATURED_SLUG = "top-shelf"
+
 # The brand tabs tv.apple.com puts along the top of the home page. Each is a
 # canvas of its own under /canvases/channels/{id}; the ids and names are the
 # ones Apple returns in the "channels" map of those responses.
@@ -2052,6 +2062,94 @@ class AppleTVApi(object):
         except ValueError:
             kodiutils.log_error("Android UTS response for %s was not JSON" % path)
             return None
+
+    def get_continue_watching(self, max_pages=10):
+        """The account-wide Continue Watching row, across every service.
+
+        The per-channel Up Next the home page shows is scoped to Apple TV+, so
+        it never lists an iTunes purchase. This asks Apple's account-wide shelf
+        instead, the one the TV apps show, which mixes Apple TV+ episodes with
+        iTunes films the account is part-way through. The Android caller with the
+        slug is the shape a capture of the app shows returning the full
+        cross-service row; the web and Windows-store callers, which a capture
+        shows getting only an empty shell, follow as fallbacks. The first that
+        returns rows is listed; an iTunes film resumes through the same purchase
+        path as the library.
+        """
+        attempts = [
+            (self._vz_json, "vz", CONTINUE_WATCHING_SLUG, {}),
+            (self._get_json, "web", CONTINUE_WATCHING_SHELF,
+             {"ctx_brand": APPLE_TV_PLUS_CHANNEL}),
+            (self._store_json, "store", CONTINUE_WATCHING_SHELF,
+             {"ctx_brand": APPLE_TV_PLUS_CHANNEL}),
+        ]
+        for getter, label, path, ctx in attempts:
+            items = self._page_continue_watching(getter, label, path, ctx,
+                                                  max_pages)
+            if items:
+                kodiutils.log("Continue Watching: %d item(s) via %s %s"
+                              % (len(items), label, path))
+                return items
+        kodiutils.log("Continue Watching: 0 item(s)")
+        return []
+
+    def get_featured(self):
+        """Apple's featured hero shelf -- the "Apple Original Shows and Movies"
+        row the TV app shows across the top.
+
+        A capture returns it under the top-shelf slug for the Android caller,
+        with editorial Apple Originals and X-Apple-Auth-Token-Valid: false --
+        so it is public and needs no session. The Android caller is tried first
+        (the one the capture used) and the web caller next, which does not need
+        the store session, so the row shows for a signed-in-to-TV+ account with
+        no iTunes session at all.
+        """
+        for getter, label in ((self._vz_json, "vz"), (self._get_json, "web")):
+            data = getter("/shelves/%s" % FEATURED_SLUG,
+                          {"ctx_brand": APPLE_TV_PLUS_CHANNEL})
+            shelf = ((data or {}).get("data") or {}).get("shelf")
+            if isinstance(shelf, dict):
+                items = self._extract_items(shelf.get("items"))
+                if items:
+                    kodiutils.log("Featured: %d item(s) via %s" % (len(items), label))
+                    return items
+        kodiutils.log("Featured: 0 item(s)")
+        return []
+
+    def _page_continue_watching(self, getter, label, path, ctx, max_pages):
+        """Page one (caller, path, ctx) shape, logging its raw outcome.
+
+        Distinguishes no shelf at all (that shape is not served) from a shelf
+        with no items (served, but empty as asked), so each attempt is
+        diagnosable rather than a silent zero.
+        """
+        items = []
+        seen = set()
+        token = None
+        saw_shelf = False
+        raw_total = 0
+        for _ in range(max_pages):
+            params = dict(ctx)
+            if token:
+                params["nextToken"] = token
+            data = getter("/shelves/%s" % path, params)
+            shelf = ((data or {}).get("data") or {}).get("shelf")
+            if not isinstance(shelf, dict):
+                break
+            saw_shelf = True
+            raw = self._as_list(shelf.get("items"))
+            raw_total += len(raw)
+            for item in self._extract_items(raw):
+                if item.get("id") not in seen:
+                    seen.add(item.get("id"))
+                    items.append(item)
+            token = shelf.get("nextToken") or None
+            if not token or not raw:
+                break
+        kodiutils.log("Continue Watching try (%s %s): shelf=%s, raw=%d, listed=%d"
+                      % (label, path, "yes" if saw_shelf else "no",
+                         raw_total, len(items)))
+        return items
 
     def _itunes_offer(self, playable):
         """The owned stream for an iTunes title, if Apple will name one.
