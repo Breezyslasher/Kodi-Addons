@@ -2253,7 +2253,8 @@ class AppleTVApi(object):
                       "may not be enough without a store session")
         return None
 
-    def media_purchases(self, kind="movie", family_member=None, max_pages=20):
+    def media_purchases(self, kind="movie", family_member=None, show_id=None,
+                        max_pages=20):
         """Owned titles from MediaAPI /v1/me/purchases -- the Apple TV app's
         Library page call, read off its LibraryPage.js.
 
@@ -2272,12 +2273,14 @@ class AppleTVApi(object):
             kodiutils.log("MediaAPI purchases: no bearer/media-user-token; "
                           "sign in to Apple TV+ first")
             return []
-        is_movie = (kind == "movie")
-        # The app's LibraryPage uses the base /v1/me/purchases path for both,
-        # differing only by the types value (from app.js: Movie="movies",
-        # TVShows="tv-shows"). tv-episodes is a separate path used only when
-        # drilling into one show.
-        path = "/v1/me/purchases"
+        # The app's LibraryPage uses the base /v1/me/purchases path for movies
+        # and shows (differing only by the types value, from app.js:
+        # Movie="movies", TVShows="tv-shows") and /v1/me/purchases/tv-episodes,
+        # filtered by filter[tvShowId], to list *only the owned episodes* of one
+        # show. That last is how an owned show opens to what you own rather than
+        # the whole catalogue.
+        path = ("/v1/me/purchases/tv-episodes" if kind == "episodes"
+                else "/v1/me/purchases")
         headers = {
             "Authorization": "Bearer " + bearer,
             "media-user-token": mut,
@@ -2294,7 +2297,12 @@ class AppleTVApi(object):
         # Params exactly as the app's LibraryPage builds them (types values from
         # app.js: movies / tv-shows). Owned, paged in 100s; sharedPurchases
         # pulls a family member's copies when one is asked.
-        if is_movie:
+        if kind == "episodes":
+            # Only the owned episodes of this one show. playback-position rides
+            # inline so each episode keeps its resume point.
+            base = {"filter[tvShowId]": show_id,
+                    "include[tv-episodes]": "playback-position"}
+        elif kind == "movie":
             # include[movies]=playback-position brings the resume point back
             # inline as a relationship, so no separate positions call is needed.
             base = {"filter": "owned", "sort": "name", "types": "movies",
@@ -2313,7 +2321,7 @@ class AppleTVApi(object):
             data = self._media_get(MEDIA_API_HOST, path, params, headers)
             rows = self._as_list((data or {}).get("data"))
             for row in rows:
-                entry = self._purchase_entry(row, is_movie)
+                entry = self._purchase_entry(row, kind)
                 if entry and entry["id"] not in seen:
                     seen.add(entry["id"])
                     items.append(entry)
@@ -2321,6 +2329,9 @@ class AppleTVApi(object):
             if not rows or not nxt:
                 break
             offset += len(rows)
+        if family_member:
+            for e in items:
+                e["member_id"] = family_member
         if items:
             self._enrich_purchases(items)
         kodiutils.log("MediaAPI purchases (%s): %d owned title(s)"
@@ -2444,8 +2455,10 @@ class AppleTVApi(object):
             kodiutils.log_error("MediaAPI %s response was not JSON" % path)
             return None
 
-    def _purchase_entry(self, row, is_movie):
-        """One MediaAPI purchase row -> the addon's list entry."""
+    def _purchase_entry(self, row, kind):
+        """One MediaAPI purchase row -> the addon's list entry.
+
+        kind is "movie", "tv" (a show) or "episodes" (an episode of a show)."""
         if not isinstance(row, dict):
             return None
         attrs = row.get("attributes") or {}
@@ -2453,6 +2466,7 @@ class AppleTVApi(object):
         adam_id = str(row.get("id") or attrs.get("id") or "")
         if not title or not adam_id:
             return None
+        item_type = {"movie": "Movie", "tv": "Show"}.get(kind, "Episode")
         # MediaAPI descriptions are objects ({standard, short}), not strings.
         desc = attrs.get("description")
         if isinstance(desc, dict):
@@ -2478,12 +2492,21 @@ class AppleTVApi(object):
             "adam_id": adam_id,
             "title": title,
             "sort_title": title,
-            "type": "Movie" if is_movie else "Show",
+            "type": item_type,
             "plot": plot,
             "art": art,
             "duration": duration,
             "itunes": True,
         }
+        if item_type == "Episode":
+            # Season/episode numbers so Kodi sorts and labels them, and the show
+            # they belong to for the info screen.
+            if attrs.get("episodeSeasonNumber") is not None:
+                entry["season"] = attrs.get("episodeSeasonNumber")
+            if attrs.get("episodeNumber") is not None:
+                entry["episode"] = attrs.get("episodeNumber")
+            if attrs.get("artistName"):
+                entry["show_title"] = attrs.get("artistName")
         # Resume comes inline as the playback-position relationship
         # (include[movies]=playback-position): positionInMilliseconds on its
         # first data entry. Kodi wants seconds and a total to draw the bar.

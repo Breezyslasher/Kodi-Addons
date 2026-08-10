@@ -405,7 +405,14 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
 def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL, cast=None):
     """Add a catalogue entry: shows and rooms are folders, the rest play."""
     kind = str(entry.get("type"))
-    if kind == "Show":
+    if kind == "Show" and entry.get("itunes"):
+        # An owned show opens to the episodes you own (via the MediaAPI
+        # tv-episodes filter), not the whole catalogue show.
+        add_dir(entry["title"], "itunes_show", art=entry.get("art"),
+                info=entry, media_type="tvshow",
+                show_id=entry.get("adam_id") or entry["id"],
+                member_id=entry.get("member_id") or "")
+    elif kind == "Show":
         add_dir(entry["title"], "show", art=entry.get("art"),
                 extras_for=(entry["id"], "Show"), info=entry,
                 media_type="tvshow", show_id=entry["id"])
@@ -584,11 +591,27 @@ def do_itunes_library(api, auth):
 
 
 def do_itunes_family(api, member_id):
-    """A family member's shared films and shows, via the MediaAPI
-    shared-purchases view."""
-    items = api.media_purchases("movie", family_member=member_id)
-    items += api.media_purchases("tv", family_member=member_id)
-    show_items(items)
+    """A family member's shared library: Films and TV Shows, kept apart like
+    your own library."""
+    add_dir(L("films"), "itunes_family_movies", member_id=member_id)
+    add_dir(L("tv_shows"), "itunes_family_tv", member_id=member_id)
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_family_movies(api, member_id):
+    show_items(api.media_purchases("movie", family_member=member_id))
+
+
+def do_itunes_family_tv(api, member_id):
+    show_items(api.media_purchases("tv", family_member=member_id),
+               content="tvshows")
+
+
+def do_itunes_show(api, show_id, member_id=None):
+    """The episodes of an owned show that the account (or a family member)
+    actually owns, via the MediaAPI tv-episodes filter."""
+    show_items(api.media_purchases("episodes", show_id=show_id,
+                                   family_member=member_id), content="episodes")
 
 
 def _with_resume(store, items):
@@ -1147,6 +1170,12 @@ def router(paramstring):
         do_itunes_season(api, auth, params.get("season_id"))
     elif action == "itunes_family":
         do_itunes_family(api, params.get("member_id"))
+    elif action == "itunes_family_movies":
+        do_itunes_family_movies(api, params.get("member_id"))
+    elif action == "itunes_family_tv":
+        do_itunes_family_tv(api, params.get("member_id"))
+    elif action == "itunes_show":
+        do_itunes_show(api, params.get("show_id"), params.get("member_id"))
     elif action == "search":
         do_search(api)
     elif action == "play":
