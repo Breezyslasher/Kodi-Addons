@@ -584,8 +584,11 @@ def do_itunes_library(api, auth):
 
 
 def do_itunes_family(api, member_id):
-    """A family member's shared films, via the MediaAPI shared-purchases view."""
-    show_items(api.media_purchases("movie", family_member=member_id))
+    """A family member's shared films and shows, via the MediaAPI
+    shared-purchases view."""
+    items = api.media_purchases("movie", family_member=member_id)
+    items += api.media_purchases("tv", family_member=member_id)
+    show_items(items)
 
 
 def _with_resume(store, items):

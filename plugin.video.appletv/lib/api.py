@@ -2295,7 +2295,10 @@ class AppleTVApi(object):
         # app.js: movies / tv-shows). Owned, paged in 100s; sharedPurchases
         # pulls a family member's copies when one is asked.
         if is_movie:
-            base = {"filter": "owned", "sort": "name", "types": "movies"}
+            # include[movies]=playback-position brings the resume point back
+            # inline as a relationship, so no separate positions call is needed.
+            base = {"filter": "owned", "sort": "name", "types": "movies",
+                    "include[movies]": "playback-position"}
         else:
             base = {"filter": "owned", "sort": "artistName", "types": "tv-shows",
                     "include[tv-shows]": "episodes", "limit[episodes]": 1}
@@ -2319,62 +2322,30 @@ class AppleTVApi(object):
                 break
             offset += len(rows)
         if items:
-            self._enrich_purchases(items, headers)
+            self._enrich_purchases(items)
         kodiutils.log("MediaAPI purchases (%s): %d owned title(s)"
                       % (kind, len(items)))
         return items
 
-    def _enrich_purchases(self, items, headers):
-        """Give each owned title its canonical id and resume point.
+    def _enrich_purchases(self, items):
+        """Route each owned title by its canonical id, as the app does.
 
         The app resolves each purchase's adam id to a canonical umc id (the
-        reverse-lookup) and then opens it as an ordinary /movie/{id} -- which is
-        what gives it trailers, extras, cast and the normal play path. Do the
-        same here: route the entry by canonical id, keeping the adam id as the
-        external id so the redownload offer still resolves. Resume comes from
-        the MediaAPI playback-positions call, one request for the whole account.
+        reverse-lookup) and opens it as an ordinary /movie/{id} -- which is what
+        gives it trailers, extras, cast and the normal play path. Keep the adam
+        id as the external id so the redownload offer still resolves. Resume is
+        already on each entry (the playback-position relationship came inline).
+        The lookup caps at 50 ids per request, so it is chunked.
         """
-        lookup = self._reverse_lookup([e["adam_id"] for e in items])
-        positions = self._media_positions(headers)
+        adam_ids = [e["adam_id"] for e in items]
+        lookup = {}
+        for i in range(0, len(adam_ids), 50):
+            lookup.update(self._reverse_lookup(adam_ids[i:i + 50]))
         for e in items:
             hit = lookup.get(e["adam_id"])
             if hit and hit.get("canonical_id"):
                 e["external_id"] = e["adam_id"]
                 e["id"] = str(hit["canonical_id"])
-            pos = positions.get(e["adam_id"])
-            if pos and e.get("duration"):
-                e["resume"] = {"position": float(pos),
-                               "total": float(e["duration"])}
-
-    def _media_positions(self, headers):
-        """Where the account left every owned title, from MediaAPI
-        /v1/me/playback/positions -- {content id: seconds}. One call for all."""
-        data = self._media_get(MEDIA_API_HOST, "/v1/me/playback/positions",
-                               {"types": "movies,tv-episodes", "mode": "all"},
-                               headers)
-        out = {}
-        rows = self._as_list((data or {}).get("data") if isinstance(data, dict)
-                             else data)
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            rid = str(row.get("id") or "")
-            attrs = row.get("attributes") or row
-            # positionInMilliseconds is ms; position/positionSeconds are seconds.
-            if attrs.get("positionInMilliseconds") is not None:
-                pos = attrs["positionInMilliseconds"] / 1000.0
-            else:
-                pos = attrs.get("positionSeconds")
-                if pos is None:
-                    pos = attrs.get("position")
-            if rid and pos:
-                try:
-                    out[rid] = float(pos)
-                except (TypeError, ValueError):
-                    pass
-        if out:
-            kodiutils.log("MediaAPI positions: %d resumable title(s)" % len(out))
-        return out
 
     def media_family_members(self):
         """Family members who share purchases, from the app's MediaAPI call
@@ -2501,7 +2472,8 @@ class AppleTVApi(object):
             wide = url.replace("{w}", str(THUMB_WIDTH)) \
                       .replace("{h}", str(THUMB_WIDTH * 9 // 16)).replace("{f}", "jpg")
             art = {"poster": poster, "thumb": wide, "fanart": wide}
-        return {
+        duration = attrs.get("durationInMilliseconds", 0) // 1000 or None
+        entry = {
             "id": adam_id,
             "adam_id": adam_id,
             "title": title,
@@ -2509,9 +2481,20 @@ class AppleTVApi(object):
             "type": "Movie" if is_movie else "Show",
             "plot": plot,
             "art": art,
-            "duration": attrs.get("durationInMilliseconds", 0) // 1000 or None,
+            "duration": duration,
             "itunes": True,
         }
+        # Resume comes inline as the playback-position relationship
+        # (include[movies]=playback-position): positionInMilliseconds on its
+        # first data entry. Kodi wants seconds and a total to draw the bar.
+        rel = (row.get("relationships") or {}).get("playback-position") or {}
+        pdata = self._as_list(rel.get("data"))
+        if pdata and duration:
+            pms = (pdata[0].get("attributes") or {}).get("positionInMilliseconds")
+            if pms:
+                entry["resume"] = {"position": pms / 1000.0,
+                                   "total": float(duration)}
+        return entry
 
     def _store_dsid(self):
         """The account dsid, from a pasted store/mz_at_ssl cookie if there is
