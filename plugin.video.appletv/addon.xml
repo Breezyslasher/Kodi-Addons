@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.36" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.37" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,13 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.37 - Live games: freed on app close, not marked watched
+- FIX: Closing Kodi while a live game was still playing could leave the stream
+  holding a session with Apple (its lease was only released on a clean Stop).
+  The session is now also released when the app quits.
+- FIX: Leaving a live game marked it as watched, because at the live edge the
+  position equals the stream length. A live game now only reports its position,
+  never "finished", so it is not marked watched before it is over.
 2026.8.36 - Your language first on a live game, quieter log
 - A live game with commentary in more than one language now lists your
   language first (Apple's order was arbitrary -- Spanish sometimes sat above

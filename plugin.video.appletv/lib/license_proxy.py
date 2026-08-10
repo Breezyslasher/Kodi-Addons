@@ -72,12 +72,14 @@ _LAST_MASTER = None
 _ACTIVE_LEASES = []
 
 
-def release_leases():
+def release_leases(timeout=15):
     """Tell Apple each lease taken this playback has stopped. Best effort.
 
     Mirrors the web client's stop: the start request sent back with
-    lease-action "stop". Run when playback ends so a closed live stream does
-    not keep counting against the concurrent-stream limit until it times out.
+    lease-action "stop". Run when playback ends, and again on shutdown for a
+    stream still playing when Kodi quits, so a closed live stream does not keep
+    counting against the concurrent-stream limit until it times out. A short
+    timeout is used on shutdown so it cannot hold Kodi's quit up for long.
     """
     leases, _ACTIVE_LEASES[:] = list(_ACTIVE_LEASES), []
     for lease in leases:
@@ -87,7 +89,7 @@ def release_leases():
             envelope = {"streaming-request": {"version": 1,
                                               "streaming-keys": [key]}}
             resp = requests.post(lease["url"], data=json.dumps(envelope),
-                                 headers=lease["headers"], timeout=15)
+                                 headers=lease["headers"], timeout=timeout)
             kodiutils.log("Lease released (%s) -> HTTP %s"
                           % (key.get("service-id") or key.get("svcId") or "vod",
                              resp.status_code))

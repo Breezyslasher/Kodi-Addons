@@ -1217,6 +1217,9 @@ class AppleTVApi(object):
                 "playable_passthrough": assets.get("playable_passthrough"),
                 "external_id": assets.get("external_id"),
                 "brand_id": assets.get("brand_id"),
+                # A live game: the watch-history report must not mark it
+                # finished just because playback sat at the live edge.
+                "live": live,
             },
         }
 
