@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.54" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.10" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -33,7 +33,7 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
-2026.8.54 - iTunes library is back
+2026.8.10 - iTunes library is back
 - The iTunes movie and TV library returns, on top of all the Apple TV+ and
   live-sports work: your purchased/rented films and shows list under "My iTunes
   Library", grouped into Films and TV Shows (television by season), with resume
