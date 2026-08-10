@@ -1269,22 +1269,54 @@ class AppleTVApi(object):
 
     @staticmethod
     def _merge_vtt(parts):
-        """Merge WebVTT segments into one file with a single header. Cue times
-        are kept as written (their LOCAL time is the media time)."""
+        """Merge WebVTT segments into one file with a single header, shifting
+        each cue by its segment's X-TIMESTAMP-MAP.
+
+        Apple aligns a subtitle segment to the video with
+        X-TIMESTAMP-MAP=MPEGTS:m,LOCAL:l: a cue's real time is its written time
+        plus m/90000 - l. Kodi does not apply that tag to an external file, so
+        it is baked into the cue times here; otherwise the subtitles run early
+        by the offset (10s on the streams seen). STYLE blocks and cue text pass
+        through untouched -- only the timing lines are moved.
+        """
+        import re
+        cue_re = re.compile(
+            r'(\d{2}:)?\d{2}:\d{2}\.\d{3}\s*-->\s*(\d{2}:)?\d{2}:\d{2}\.\d{3}')
+        ts_re = re.compile(r'((?:\d{2}:)?\d{2}:\d{2}\.\d{3})')
+
+        def to_sec(ts):
+            bits = ts.split(":")
+            if len(bits) == 3:
+                h, m, s = bits
+            else:
+                h, (m, s) = "0", bits
+            return int(h) * 3600 + int(m) * 60 + float(s)
+
+        def fmt(sec):
+            sec = max(0.0, sec)
+            h = int(sec // 3600)
+            m = int((sec % 3600) // 60)
+            s = sec % 60
+            return "%02d:%02d:%06.3f" % (h, m, s)
+
         out = ["WEBVTT", ""]
         for part in parts:
-            lines = part.splitlines()
-            i = 0
-            # Drop the per-segment WEBVTT header and its X-TIMESTAMP-MAP line;
-            # keep everything after (STYLE blocks and the cues themselves).
-            while i < len(lines) and (lines[i].startswith("WEBVTT")
-                                      or lines[i].startswith("X-TIMESTAMP-MAP")
-                                      or not lines[i].strip()):
-                i += 1
-            body = "\n".join(lines[i:]).strip("\n")
-            if body:
-                out.append(body)
-                out.append("")
+            m = re.search(r'X-TIMESTAMP-MAP=[^\n]*MPEGTS:(\d+)', part)
+            local = re.search(r'X-TIMESTAMP-MAP=[^\n]*LOCAL:(\d{2}):(\d{2}):(\d{2})\.(\d+)', part)
+            offset = 0.0
+            if m:
+                offset = int(m.group(1)) / 90000.0
+                if local:
+                    offset -= (int(local.group(1)) * 3600 + int(local.group(2)) * 60
+                               + int(local.group(3)) + int(local.group(4)) / 1000.0)
+            for line in part.splitlines():
+                s = line.strip()
+                if s.startswith("WEBVTT") or s.startswith("X-TIMESTAMP-MAP"):
+                    continue
+                if cue_re.search(line) and offset:
+                    line = ts_re.sub(lambda mt: fmt(to_sec(mt.group(1)) + offset), line)
+                out.append(line)
+            out.append("")
         return "\n".join(out) + "\n"
 
     def _build_playback(self, assets, require_user_token=True, seek_plays=None,
