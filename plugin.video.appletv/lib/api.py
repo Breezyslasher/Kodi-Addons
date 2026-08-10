@@ -2401,8 +2401,36 @@ class AppleTVApi(object):
             headers["X-Dsid"] = dsid
         data = self._media_get(MEDIA_API_HOST, "/v1/me/purchases/shared/members",
                                {}, headers)
-        rows = self._as_list((data or {}).get("data") if isinstance(data, dict)
-                             else data)
+        # Debug: the response shape here was read off the app's schema, not a
+        # capture, so when it resolves nothing, dump what actually came back so
+        # the real shape is fixed rather than guessed.
+        if data is None:
+            kodiutils.log("MediaAPI family: no response (request failed)")
+            return []
+        if isinstance(data, dict):
+            kodiutils.log("MediaAPI family: response top-level keys=%s"
+                          % list(data.keys()))
+        else:
+            kodiutils.log("MediaAPI family: response is a %s"
+                          % type(data).__name__)
+        # Try several places members might live: data[], data.members[],
+        # data.data[], or a bare list.
+        container = data
+        if isinstance(data, dict):
+            container = (data.get("data") or data.get("members")
+                         or data.get("results") or data.get("familyMembers")
+                         or data.get("sharedMembers"))
+            if isinstance(container, dict):
+                container = (container.get("members") or container.get("data")
+                             or list(container.values()))
+        rows = self._as_list(container)
+        kodiutils.log("MediaAPI family: %d raw row(s)" % len(rows))
+        if rows:
+            kodiutils.log("MediaAPI family: first raw row=%s"
+                          % json.dumps(rows[0])[:500])
+        else:
+            kodiutils.log("MediaAPI family: raw response=%s"
+                          % json.dumps(data)[:800])
         out = []
         for row in rows:
             if not isinstance(row, dict):
@@ -2410,14 +2438,20 @@ class AppleTVApi(object):
             # Members can be flat ({id, firstName, ...}) or MediaAPI-wrapped
             # ({id, attributes:{...}}). Read whichever this account returns.
             attrs = row.get("attributes") or row
-            if attrs.get("sharingPurchases") is False:
-                continue
-            member_id = str(row.get("id") or attrs.get("id") or "")
+            member_id = str(row.get("id") or attrs.get("id")
+                            or attrs.get("dsid") or attrs.get("altDsid") or "")
             name = (" ".join(x for x in (attrs.get("firstName"),
                                          attrs.get("lastName")) if x).strip()
-                    or attrs.get("accountName") or attrs.get("name"))
-            if member_id and name:
-                out.append({"id": member_id, "name": name})
+                    or attrs.get("accountName") or attrs.get("name")
+                    or attrs.get("appleId") or member_id)
+            sharing = attrs.get("sharingPurchases")
+            kodiutils.log("MediaAPI family: member id=%s name=%r sharing=%r"
+                          % (member_id or "?", name, sharing))
+            # Keep unless it explicitly says not sharing.
+            if sharing is False:
+                continue
+            if member_id:
+                out.append({"id": member_id, "name": name or member_id})
         kodiutils.log("MediaAPI family: %d member(s) sharing purchases" % len(out))
         return out
 
