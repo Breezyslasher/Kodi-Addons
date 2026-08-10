@@ -99,7 +99,9 @@ class myAddon(t1mAddon):
                                      container.get('id') or container.get('slug'),
                                      thumb, self.addonFanart, infoList, isFolder=True)
         infoList = {'Title': self.localLang(30010)}
-        ilist = self.addMenuItem(self.localLang(30010), 'GM', ilist, '',
+        # Never hand out an empty url - Kodi trims the '=' off an empty query
+        # value and t1mlib's parameter parser cannot read the result back.
+        ilist = self.addMenuItem(self.localLang(30010), 'GM', ilist, 'search',
                                  self.addonIcon, self.addonFanart, infoList, isFolder=True)
         return(ilist)
 
