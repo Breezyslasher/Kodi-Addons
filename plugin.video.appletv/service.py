@@ -162,6 +162,8 @@ class KeyPlaySeeker(object):
             return
         try:
             player.seekTime(float(seconds))
+            kodiutils.log("Key play: sought to %.1fs (player now at %.1fs)"
+                          % (float(seconds), player.getTime()))
         except Exception as exc:
             kodiutils.log_error("Key play seek failed: %s" % exc)
 

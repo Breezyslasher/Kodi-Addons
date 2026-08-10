@@ -1073,6 +1073,12 @@ class AppleTVApi(object):
                     if end:
                         seg["end"] = max(seg["start"], (end - first_ms) / 1000.0)
                     segments.append(seg)
+                kodiutils.log(
+                    "Key play offsets: stream starts %d, offsets(s)=%s"
+                    % (first_ms, [round(s["start"], 1) for s in segments]))
+            else:
+                kodiutils.log_error(
+                    "Key play: could not read stream start time; no seek")
         kodiutils.write_json(SEEK_CONTEXT, {
             "segments": segments,
             # More than one means "catch up": play each in turn. One means
