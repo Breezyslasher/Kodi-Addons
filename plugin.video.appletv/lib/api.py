@@ -2067,6 +2067,12 @@ class AppleTVApi(object):
         # one feed to play; a normal event tile keeps its picker so a race's
         # other feeds stay reachable.
         is_resume = raw.get("context") == "Continue"
+        # A game currently airing marks its playables airingType "Live" (the
+        # same signal list_playables uses at play time). Read from the shelf
+        # item's own playables so the listing can tell a live game from a
+        # finished one without another request: a live game's resume is a menu
+        # choice, a finished game's is an ordinary VOD resume point.
+        live = False
         for p in self._as_list(raw.get("playables")):
             if not isinstance(p, dict):
                 continue
@@ -2074,6 +2080,8 @@ class AppleTVApi(object):
                 duration = p["duration"]
             if is_resume and not external_id and p.get("externalId"):
                 external_id = p["externalId"]
+            if p.get("airingType") == "Live":
+                live = True
         resume = self._resume_point(raw)
         # A resume position belongs to one specific feed -- the one Apple was
         # tracking -- and its length is that feed's length. If the item is left
@@ -2109,6 +2117,10 @@ class AppleTVApi(object):
             "show_title": raw.get("showTitle"),
             "show_id": raw.get("showId"),
             "duration": duration,
+            # Whether the event is airing right now: a live game is played
+            # through the live-mode menu (which owns where it starts), a
+            # finished one resumes like any on-demand title.
+            "live": live,
             # The feed this event item already represents (Continue Watching),
             # so playing it resumes that feed without a picker.
             "external_id": external_id,

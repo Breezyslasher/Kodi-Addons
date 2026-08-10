@@ -240,13 +240,15 @@ def add_playable(entry, cast=None):
             pass
     apply_entry_info(tag, entry)
     # Apple reports how far the account already is into a title, so it can be
-    # resumed here at the point another Apple client left it. A sporting event
-    # is the exception: its "resume" is a live position that Kodi would turn
-    # into a fixed seek, overriding (and so silently ignoring) the Watch Live /
-    # from Start / Catch Up choice. A live game starts where that dialog says,
-    # so it carries no Kodi resume point.
+    # resumed here at the point another Apple client left it. A game airing
+    # live is the exception: its "resume" is a live position that Kodi would
+    # turn into a fixed seek, overriding (and so silently ignoring) the Watch
+    # Live / from Start / Catch Up / Resume choice, so it carries no Kodi resume
+    # point -- the menu owns where it starts. A finished game is an ordinary
+    # replay and resumes like a film.
+    live_sport = kind == "SportingEvent" and entry.get("live")
     resume = entry.get("resume") or {}
-    if kind != "SportingEvent" and resume.get("position") and resume.get("total"):
+    if not live_sport and resume.get("position") and resume.get("total"):
         try:
             tag.setResumePoint(resume["position"], resume["total"])
         except (TypeError, ValueError, AttributeError):
@@ -302,9 +304,10 @@ def add_playable(entry, cast=None):
     if entry.get("external_id"):
         play_params["external_id"] = entry["external_id"]
     # A live game's saved position rides along so the play menu can offer it as
-    # an explicit "Resume" -- a sporting event carries no Kodi resume point (it
-    # would seek over the menu choice), so this is the only route left for it.
-    if kind == "SportingEvent" and (entry.get("resume") or {}).get("position"):
+    # an explicit "Resume" -- a live game carries no Kodi resume point (it would
+    # seek over the menu choice), so this is the only route left for it. A
+    # finished game keeps its Kodi resume point, so it needs no such hand-off.
+    if live_sport and (entry.get("resume") or {}).get("position"):
         play_params["resume_pos"] = int(entry["resume"]["position"])
     xbmcplugin.addDirectoryItem(
         HANDLE,
@@ -606,6 +609,7 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
     start_over = False
     seek_plays = None
     seek_seconds = None
+    is_live = False
     if kp_start:
         # A pick from the Key Plays list: play the game jumped to that moment.
         seek_plays = [{"start_time": int(kp_start),
@@ -627,6 +631,7 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
         # A game airing live can be joined at the live edge, watched from the
         # start, or caught up on; a finished or upcoming one has no such choice.
         if options.get("live"):
+            is_live = True
             resume_seconds = int(resume_pos) if resume_pos else None
             mode = pick_live_mode(resume_seconds=resume_seconds)
             if mode is None:
@@ -656,11 +661,12 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
     kodiutils.notify(L("sd_notice"))
     write_report_context(playback, content_id=item_id)
     play_item = build_isa_listitem(playback)
-    if str(item_type) == "SportingEvent":
+    if is_live:
         # A live game starts where the menu said (live edge, from start, catch
         # up, or the Resume seek above) -- never where Kodi last left it. Kodi
         # otherwise resumes a sporting event from its own stored bookmark for
         # this path, seeking on top of the choice; resumetime 0 tells it not to.
+        # A finished game is left alone, so it resumes like any on-demand title.
         play_item.setProperty("resumetime", "0")
     # Playback resolves from an id, so the item Kodi shows while playing knew
     # nothing about the title and its plot read "Not available". A title's own

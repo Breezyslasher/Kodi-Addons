@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.40" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.41" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,12 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.41 - Finished games resume like a film again
+- FIX: A finished game (a replay) is not live, so it should resume where you
+  left off like any on-demand title -- but the live-game change had it start
+  over instead. Now only a game that is actually airing skips Kodi's resume
+  (its start is the live menu's job); a finished one resumes normally. Which
+  is which is read from the event's own live flag, no guesswork.
 2026.8.40 - Live games: "Resume where you left off" is now a menu choice
 - Kodi used to seek a live game to your last position on its own, overriding
   whatever mode you picked. It no longer does. Instead, when Apple has a saved
