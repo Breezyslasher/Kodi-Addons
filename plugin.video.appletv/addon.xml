@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.31" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.32" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,16 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.32 - Key Plays and Catch Up for live games (experimental)
+- NEW: "Key Plays" on a live game's context menu lists its goals and big
+  moments; picking one jumps the game to that moment and plays on. The list
+  follows Apple's own, however few or many there are.
+- NEW: "Catch Up" joins the live options (Watch Live / Watch from Start /
+  Catch Up) and plays the key moments in turn, skipping the lulls between --
+  the same key plays Apple's own Catch Up seeks through.
+- Both work by seeking the live DVR to each moment's time; seeking a live
+  stream is best effort, so this is experimental and may land a little early
+  or late.
 2026.8.31 - Watch a live game from the start, and clearer errors offline
 - NEW: Playing a game that is airing live now asks whether to Watch Live (the
   live edge) or Watch from Start (the broadcast from its beginning), the same

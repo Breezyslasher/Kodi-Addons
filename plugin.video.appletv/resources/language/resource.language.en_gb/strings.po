@@ -101,6 +101,18 @@ msgctxt "#32093"
 msgid "Watch from Start"
 msgstr ""
 
+msgctxt "#32094"
+msgid "Catch Up"
+msgstr ""
+
+msgctxt "#32095"
+msgid "Key Plays"
+msgstr ""
+
+msgctxt "#32096"
+msgid "No key plays yet"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""

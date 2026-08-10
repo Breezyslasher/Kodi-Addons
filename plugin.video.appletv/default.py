@@ -68,6 +68,9 @@ S = {
     "live_options": 32091,
     "watch_live": 32092,
     "watch_from_start": 32093,
+    "catch_up": 32094,
+    "key_plays": 32095,
+    "no_key_plays": 32096,
     "related": 32064,
     "clubs": 32065,
     "highlights": 32066,
@@ -267,6 +270,8 @@ def add_playable(entry, cast=None):
                 league=entry.get("league_id") or "")),
             (L("clubs"), "Container.Update(%s)" % url(
                 action="clubs", item_id=entry["id"])),
+            (L("key_plays"), "Container.Update(%s)" % url(
+                action="key_plays", item_id=entry["id"])),
             (L("highlights"), "Container.Update(%s)" % url(
                 action="event_extras", kind="highlights", item_id=entry["id"])),
             (L("spotlight"), "Container.Update(%s)" % url(
@@ -516,6 +521,31 @@ def do_search(api):
     show_items(api.search(query))
 
 
+def show_key_plays(api, item_id, item_type, external_id=None):
+    """List a live game's key moments; each plays the game jumped to it."""
+    plays = api.get_key_plays(item_id, item_type, external_id)
+    if not plays:
+        kodiutils.notify(L("no_key_plays"))
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+    for kp in plays:
+        item = xbmcgui.ListItem(label=kp["title"])
+        if kp.get("art"):
+            item.setArt(kp["art"])
+        tag = item.getVideoInfoTag()
+        tag.setMediaType("video")
+        tag.setTitle(kp["title"])
+        tag.setPlot(kp.get("plot") or "")
+        item.setProperty("IsPlayable", "true")
+        xbmcplugin.addDirectoryItem(
+            HANDLE,
+            url(action="play", item_id=item_id, item_type=item_type,
+                external_id=external_id or "",
+                kp_start=kp["start_time"], kp_end=kp.get("end_time") or ""),
+            item, isFolder=False)
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
 def pick_feed(feeds):
     """Ask which feed to play; returns an external_id, or False if cancelled.
 
@@ -538,26 +568,31 @@ def pick_feed(feeds):
 
 
 def pick_live_mode():
-    """Watch a live game from the live edge or from its start.
+    """How to watch a live game: live edge, from the start, or catch up.
 
-    Returns True for "from start", False for "live", or None if cancelled.
-    Apple also offers "Catch Up" -- the start-over stream fast-forwarded to
-    live -- but that is a player behaviour Kodi cannot reproduce, so it is not
-    offered here.
+    Returns "live", "start" or "catchup", or None if cancelled. Catch Up plays
+    the key moments in turn (Apple's own is the start-over stream skipped
+    through the key plays).
     """
     index = xbmcgui.Dialog().select(
-        L("live_options"), [L("watch_live"), L("watch_from_start")])
+        L("live_options"),
+        [L("watch_live"), L("watch_from_start"), L("catch_up")])
     if index < 0:
         return None
-    return index == 1
+    return ("live", "start", "catchup")[index]
 
 
-def do_play(api, item_id, item_type, external_id=None):
+def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=None):
     # An event carried in with its own feed (Continue Watching) plays that
     # feed directly. Only when the feed is not already known is the picker
     # offered, and only for an event that has more than one.
     start_over = False
-    if str(item_type) == "SportingEvent" and not external_id:
+    seek_plays = None
+    if kp_start:
+        # A pick from the Key Plays list: play the game jumped to that moment.
+        seek_plays = [{"start_time": int(kp_start),
+                       "end_time": int(kp_end) if kp_end else None}]
+    elif str(item_type) == "SportingEvent" and not external_id:
         options = api.list_playables(item_id, item_type)
         feeds = options.get("feeds") or []
         if len(feeds) > 1:
@@ -565,15 +600,23 @@ def do_play(api, item_id, item_type, external_id=None):
             if external_id is False:
                 xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
                 return
-        # A game airing live can be joined at the live edge or watched from the
-        # start; a finished or upcoming one has no such choice.
+        # A game airing live can be joined at the live edge, watched from the
+        # start, or caught up on; a finished or upcoming one has no such choice.
         if options.get("live"):
-            start_over = pick_live_mode()
-            if start_over is None:
+            mode = pick_live_mode()
+            if mode is None:
                 xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
                 return
+            if mode == "start":
+                start_over = True
+            elif mode == "catchup":
+                seek_plays = api.get_key_plays(item_id, item_type, external_id)
+                if not seek_plays:
+                    # Nothing has happened yet: watch from the start instead.
+                    kodiutils.notify(L("no_key_plays"))
+                    start_over = True
     playback = api.get_playback(item_id, item_type, external_id,
-                                start_over=bool(start_over))
+                                start_over=start_over, seek_plays=seek_plays)
     if not playback:
         kodiutils.ok_dialog(api.last_error or L("playback_failed"))
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -890,7 +933,12 @@ def router(paramstring):
         do_search(api)
     elif action == "play":
         do_play(api, params.get("item_id"), params.get("item_type", "Movie"),
-                params.get("external_id"))
+                params.get("external_id"),
+                kp_start=params.get("kp_start"), kp_end=params.get("kp_end"))
+    elif action == "key_plays":
+        show_key_plays(api, params.get("item_id"),
+                       params.get("item_type", "SportingEvent"),
+                       params.get("external_id") or None)
     elif action == "extras":
         do_extras(api, params.get("item_id"), params.get("item_type", "Movie"),
                   params.get("kind", "trailers"))
