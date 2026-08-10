@@ -1575,10 +1575,13 @@ class AppleTVApi(object):
                 and p["assets"].get("hlsUrl")
 
         if external_id:
+            available = [p.get("externalId") for p in candidates if has_stream(p)]
+            kodiutils.log("Feed wanted: %s; available: %s" % (external_id, available))
             for p in candidates:
                 if has_stream(p) and p.get("externalId") == external_id:
                     return self._enrich_assets(p)
-            kodiutils.log("Feed %s not found; falling back" % external_id)
+            kodiutils.log_error("Feed %s not found; falling back (this is why a "
+                                "chosen feed can play as another)" % external_id)
 
         entitled = [p for p in candidates if has_stream(p) and p.get("isEntitledToPlay")]
         # Prefer the Apple TV+ channel when more than one is entitled.
