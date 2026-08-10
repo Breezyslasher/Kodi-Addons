@@ -54,6 +54,11 @@ Turn on **Allow HDCP protected streams** in the Playback settings if your device
 has hardware DRM (many Android TV boxes and Shields do) and you would rather
 have the higher quality rendition.
 
+The licence request is handed to inputstream.adaptive through `drm_legacy` on
+version 21 and later, and through the older `license_type`/`license_key`
+properties on builds that predate it — those are deprecated upstream but remain
+the only ones Kodi 19 and 20 understand.
+
 ## Installation
 
 1. Install **t1m Library Routines** (`script.module.t1mlib`) — it ships in this
