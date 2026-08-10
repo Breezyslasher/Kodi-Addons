@@ -618,9 +618,9 @@ def do_itunes_tv(api, auth):
     # numbers), from the ordinary Apple TV+ session -- shown as a flat list
     # when it answers, since it needs no store session. The season-grouped
     # store locker is the fallback.
-    episodes = api.media_purchases("tv")
-    if episodes:
-        show_items(episodes, content="episodes")
+    shows = api.media_purchases("tv")
+    if shows:
+        show_items(shows, content="tvshows")
         return
     store = ItunesStore(auth.session)
     seasons = store.owned_tv_seasons(api.resolve_store_id)

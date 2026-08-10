@@ -792,8 +792,10 @@ class _Handler(BaseHTTPRequestHandler):
                 if status == -1020:
                     last_error = ("status -1020: key server refused -- request "
                                   "authenticated but has no device keybag "
-                                  "(kbsync), a native Apple-device attestation "
-                                  "not reproducible here")
+                                  "(kbsync). Apple's clients (Windows, PS4 and "
+                                  "Android TV included, not just Apple hardware) "
+                                  "obtain it through anisette device "
+                                  "provisioning, which this client has not done")
                 else:
                     last_error = "no licence in response (status=%s)" % status
                 # Read Apple's own answer rather than infer from the status

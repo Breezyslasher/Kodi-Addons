@@ -2273,7 +2273,11 @@ class AppleTVApi(object):
                           "sign in to Apple TV+ first")
             return []
         is_movie = (kind == "movie")
-        path = "/v1/me/purchases" if is_movie else "/v1/me/purchases/tv-episodes"
+        # The app's LibraryPage uses the base /v1/me/purchases path for both,
+        # differing only by the types value (from app.js: Movie="movies",
+        # TVShows="tv-shows"). tv-episodes is a separate path used only when
+        # drilling into one show.
+        path = "/v1/me/purchases"
         headers = {
             "Authorization": "Bearer " + bearer,
             "media-user-token": mut,
@@ -2287,11 +2291,14 @@ class AppleTVApi(object):
         dsid = self._store_dsid()
         if dsid:
             headers["X-Dsid"] = dsid
-        # The app builds the query the same way for movies and episodes: the
-        # owned filter, sorted by name, in pages of 100. types is comma-joined;
-        # sharedPurchases pulls in a family member's copies when one is asked.
-        base = {"filter": "owned", "sort": "name",
-                "types": "Movie" if is_movie else "Episode"}
+        # Params exactly as the app's LibraryPage builds them (types values from
+        # app.js: movies / tv-shows). Owned, paged in 100s; sharedPurchases
+        # pulls a family member's copies when one is asked.
+        if is_movie:
+            base = {"filter": "owned", "sort": "name", "types": "movies"}
+        else:
+            base = {"filter": "owned", "sort": "artistName", "types": "tv-shows",
+                    "include[tv-shows]": "episodes", "limit[episodes]": 1}
         if family_member:
             base["with"] = "sharedPurchases"
             base["filter[owner]"] = family_member
@@ -2356,7 +2363,7 @@ class AppleTVApi(object):
             "adam_id": adam_id,
             "title": title,
             "sort_title": title,
-            "type": "Movie" if is_movie else "Episode",
+            "type": "Movie" if is_movie else "Show",
             "plot": attrs.get("description") or attrs.get("longDescription"),
             "art": art,
             "duration": attrs.get("durationInMilliseconds", 0) // 1000 or None,

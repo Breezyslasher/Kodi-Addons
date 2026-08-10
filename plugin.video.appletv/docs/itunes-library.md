@@ -937,3 +937,31 @@ into the repository: sessions live only in Kodi's settings at runtime, and
 are pasted by hand rather than minted or stored by this addon. Run
 `tools/sanitize_har.py` over anything before sharing it, and treat an
 unsanitised capture as the account itself.
+
+## What the keybag actually is (from the app's own code)
+
+A capture of the Apple TV app's JavaScript (`atvjs`) settled two things the
+`-1020` runs could only infer.
+
+**Listing.** The Library page lists owned titles from the MediaAPI, not the
+Windows store locker and not a UTS shelf: `GET /v1/me/purchases` with
+`types=movies` (and `types=tv-shows`), `filter=owned`, on
+`amp-api.videos.apple.com`, authenticated by the ordinary web bearer +
+media-user-token. The addon uses this now, so the library lists from the plain
+Apple TV+ sign-in -- no store or Android session. The website simply has no
+Library tab; the endpoint exists regardless.
+
+**The keybag is not Apple-hardware-only.** Purchases play on Windows iTunes,
+the PlayStation app and Android TV, none of them Apple silicon -- so `kbsync`
+is not a Secure Enclave secret. The app's error enums name where it comes from:
+`anisetteProvisioningStart`, `anisetteGetGUID`, `anisetteProvisioning`,
+`failedImportKeyBag`, `failedKeyBagSyncData`, `failedKeyBagInit`. So the keybag
+is *imported and synced* off an **anisette device provisioning** step -- the
+same machine-identity provisioning those non-Apple clients all perform -- not
+computed in the app's JavaScript. `-1020` is the purchase key server refusing a
+licence request that carries no provisioned keybag. Replicating it means
+standing up the anisette provisioning + keybag sync those clients do, which is
+a separate (and DRM-provisioning) undertaking this addon does not attempt. The
+library, ownership and naming are done; purchase playback stops at the
+unprovisioned keybag, on any client that has not provisioned -- Apple hardware
+or not.
