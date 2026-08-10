@@ -63,6 +63,11 @@ Features:
 - The iTunes library locker now also tries the Android (mz_at_ssl) session, not
   only the store-page one, so a single pasted session can populate both Continue
   Watching and the library instead of 403-ing the library.
+- The iTunes library now lists via the Apple TV app's own MediaAPI route
+  (/v1/me/purchases), read off the app's LibraryPage code. It authenticates with
+  the ordinary Apple TV+ sign-in (bearer + media-user-token), so films and shows
+  you own list with no store-page or Android session needed at all -- the
+  website has no library tab, but this is the call the app makes.
 2026.8.10 - Subtitles: a steady 10-second sync
 - FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
   both films and shows (the previous per-title guess got some titles wrong).

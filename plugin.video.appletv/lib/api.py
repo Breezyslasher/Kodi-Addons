@@ -68,6 +68,13 @@ APPLE_TV_PLUS_CHANNEL = "tvs.sbd.4000"
 # this addon reaches through the Windows-store/Android callers. See
 # docs/itunes-library.md.
 ITUNES_CHANNEL = "tvs.sbd.9001"
+# The MediaAPI host the Apple TV app's Library page reads owned titles from --
+# GET /v1/me/purchases (movies) and /v1/me/purchases/tv-episodes -- read off the
+# app's own LibraryPage.js (MediaAPIPurchaseLoader). Authenticated by the same
+# web bearer + media-user-token this addon already holds, so the library lists
+# with no store-page or Android session at all. Each item carries its own
+# personalizedOffers, so listing and the redownload offer come together.
+MEDIA_API_HOST = "amp-api.videos.apple.com"
 
 # The account-wide resume row. Unlike the per-channel ChannelUpNext shelf (which
 # the brand tabs already carry, scoped to Apple TV+), this one is cross-service
@@ -2245,6 +2252,128 @@ class AppleTVApi(object):
         kodiutils.log("No personalizedOffers came back; the store caller alone "
                       "may not be enough without a store session")
         return None
+
+    def media_purchases(self, kind="movie", family_member=None, max_pages=20):
+        """Owned titles from MediaAPI /v1/me/purchases -- the Apple TV app's
+        Library page call, read off its LibraryPage.js.
+
+        This is the route the website has no tab for and the addon previously
+        reached only through the Windows store locker (which wants a store-page
+        session). It authenticates with the web bearer + media-user-token this
+        addon already holds, so the library lists from the ordinary Apple TV+
+        sign-in -- no store or Android session. Each item carries its own
+        personalizedOffers, so an entry can be played through the same
+        redownload path as before.
+        """
+        boot = self._bootstrap()
+        bearer = boot.get("developer_token")
+        mut = self._media_user_token()
+        if not bearer or not mut:
+            kodiutils.log("MediaAPI purchases: no bearer/media-user-token; "
+                          "sign in to Apple TV+ first")
+            return []
+        is_movie = (kind == "movie")
+        path = "/v1/me/purchases" if is_movie else "/v1/me/purchases/tv-episodes"
+        headers = {
+            "Authorization": "Bearer " + bearer,
+            "media-user-token": mut,
+            "Origin": WEB_HOME,
+            "Referer": WEB_HOME + "/",
+            "Content-Type": "application/json",
+            "Accept": "*/*",
+            "User-Agent": self.session.headers.get("User-Agent", ""),
+            "X-Apple-Store-Front": "%s-1,42" % self._storefront(),
+        }
+        dsid = self._store_dsid()
+        if dsid:
+            headers["X-Dsid"] = dsid
+        # The app builds the query the same way for movies and episodes: the
+        # owned filter, sorted by name, in pages of 100. types is comma-joined;
+        # sharedPurchases pulls in a family member's copies when one is asked.
+        base = {"filter": "owned", "sort": "name",
+                "types": "Movie" if is_movie else "Episode"}
+        if family_member:
+            base["with"] = "sharedPurchases"
+            base["filter[owner]"] = family_member
+        items = []
+        seen = set()
+        offset = 0
+        for _ in range(max_pages):
+            params = dict(base, limit=100, offset=offset)
+            data = self._media_get(MEDIA_API_HOST, path, params, headers)
+            rows = self._as_list((data or {}).get("data"))
+            for row in rows:
+                entry = self._purchase_entry(row, is_movie)
+                if entry and entry["id"] not in seen:
+                    seen.add(entry["id"])
+                    items.append(entry)
+            nxt = (data or {}).get("next")
+            if not rows or not nxt:
+                break
+            offset += len(rows)
+        kodiutils.log("MediaAPI purchases (%s): %d owned title(s)"
+                      % (kind, len(items)))
+        return items
+
+    def _media_get(self, host, path, params, headers):
+        """GET a MediaAPI (amp-api) endpoint, returning parsed JSON or None."""
+        try:
+            resp = self.session.get("https://%s%s" % (host, path),
+                                    params=params, headers=headers, timeout=30)
+        except Exception as exc:
+            kodiutils.log_error("MediaAPI %s failed: %s" % (path, exc))
+            return None
+        if resp.status_code != 200:
+            kodiutils.log_error("MediaAPI %s -> %s %s"
+                                % (path, resp.status_code, resp.text[:200]))
+            return None
+        try:
+            return resp.json()
+        except ValueError:
+            kodiutils.log_error("MediaAPI %s response was not JSON" % path)
+            return None
+
+    def _purchase_entry(self, row, is_movie):
+        """One MediaAPI purchase row -> the addon's list entry."""
+        if not isinstance(row, dict):
+            return None
+        attrs = row.get("attributes") or {}
+        title = attrs.get("name")
+        adam_id = str(row.get("id") or attrs.get("id") or "")
+        if not title or not adam_id:
+            return None
+        art = {}
+        artwork = attrs.get("artwork") or {}
+        url = artwork.get("url")
+        if url:
+            poster = url.replace("{w}", str(POSTER_HEIGHT * 2 // 3)) \
+                        .replace("{h}", str(POSTER_HEIGHT)).replace("{f}", "jpg")
+            wide = url.replace("{w}", str(THUMB_WIDTH)) \
+                      .replace("{h}", str(THUMB_WIDTH * 9 // 16)).replace("{f}", "jpg")
+            art = {"poster": poster, "thumb": wide, "fanart": wide}
+        return {
+            "id": adam_id,
+            "adam_id": adam_id,
+            "title": title,
+            "sort_title": title,
+            "type": "Movie" if is_movie else "Episode",
+            "plot": attrs.get("description") or attrs.get("longDescription"),
+            "art": art,
+            "duration": attrs.get("durationInMilliseconds", 0) // 1000 or None,
+            "itunes": True,
+        }
+
+    def _store_dsid(self):
+        """The account dsid, from a pasted store/mz_at_ssl cookie if there is
+        one. MediaAPI accepts the media-user-token alone, but the app also
+        sends X-Dsid, so it is included when known."""
+        for key in ("itunes_uts_cookies", "itunes_cookies", "itunes_sp_dsid"):
+            val = (kodiutils.get_setting(key) or "").strip()
+            m = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", val) \
+                or re.search(r"^(\d+)$", val) or re.search(r"X-Dsid=(\d+)", val)
+            if m:
+                return m.group(1)
+        return ""
 
     def _reverse_lookup(self, external_ids):
         """Map iTunes store (external) ids to their canonical umc ids.
