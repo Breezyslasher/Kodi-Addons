@@ -20,6 +20,7 @@ jobs:
     - name: Generate repository files
       run: |
         import os
+        import shutil
         import zipfile
         import hashlib
         import xml.etree.ElementTree as ET
@@ -74,6 +75,27 @@ jobs:
             # Copy addon.xml to zips/addon_id/
             with open(os.path.join(zip_dir, 'addon.xml'), 'w', encoding='utf-8') as f:
                 f.write(addon_xml)
+
+            # Copy the addon's declared artwork (icon, fanart, screenshots)
+            # next to its addon.xml, keeping the relative path. Kodi's "Install
+            # from repository" fetches art from <datadir>/<addon_id>/<asset
+            # path>, not from inside the zip, so without these files the browser
+            # shows a blank icon for every addon.
+            meta = root.find("./extension[@point='xbmc.addon.metadata']")
+            assets = meta.find('assets') if meta is not None else None
+            if assets is not None:
+                for el in assets:
+                    rel = (el.text or '').strip()
+                    if not rel:
+                        continue
+                    src = os.path.join(addon_path, rel)
+                    if os.path.exists(src):
+                        dst = os.path.join(zip_dir, rel)
+                        os.makedirs(os.path.dirname(dst), exist_ok=True)
+                        shutil.copy2(src, dst)
+                        print(f"  art: {rel}")
+                    else:
+                        print(f"  art declared but missing: {rel}")
             
             # Create zip file with correct version
             zip_filename = f"{actual_addon_id}-{version}.zip"
