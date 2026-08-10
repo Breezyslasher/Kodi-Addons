@@ -9,6 +9,7 @@ Two jobs that must outlive the short-lived plugin process:
   Apple's own clients.
 """
 
+import threading
 import time
 
 import xbmc
@@ -16,7 +17,7 @@ import xbmc
 from lib import kodiutils
 from lib.api import AppleTVApi, PLAYBACK_REPORT_CACHE, SEEK_CONTEXT
 from lib.auth import AppleAuth
-from lib.license_proxy import LicenseProxy
+from lib.license_proxy import LicenseProxy, release_leases
 
 # How often to tell Apple where playback has reached. The web client posts
 # far more often than this, but it is reporting analytics as well; for a
@@ -192,10 +193,18 @@ class Player(xbmc.Player):
     def onPlayBackStopped(self):
         self.history.stop()
         self.seeker.reset()
+        self._release_leases()
 
     def onPlayBackEnded(self):
         self.history.stop()
         self.seeker.reset()
+        self._release_leases()
+
+    @staticmethod
+    def _release_leases():
+        # Off the player's callback thread: releasing posts to Apple, and a
+        # slow network must not hang Kodi when a video closes.
+        threading.Thread(target=release_leases, daemon=True).start()
 
 
 def main():

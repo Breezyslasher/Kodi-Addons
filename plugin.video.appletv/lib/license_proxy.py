@@ -63,6 +63,36 @@ _DISCOVERED_KEYS = {}
 # clear keys discovered for the previous one -- a live event rotates its keys
 # per play, and a stale one standing in gives -1002/-1004.
 _LAST_MASTER = None
+# Streaming leases taken this playback: each successful licence request, kept so
+# it can be released on stop. The web client releases a lease by re-sending the
+# very same request with lease-action changed from "start" to "stop" (the
+# challenge and key params are otherwise identical, and Apple accepts the
+# replay), which frees the session against the account's concurrent-stream
+# limit. Filled and drained in the service process.
+_ACTIVE_LEASES = []
+
+
+def release_leases():
+    """Tell Apple each lease taken this playback has stopped. Best effort.
+
+    Mirrors the web client's stop: the start request sent back with
+    lease-action "stop". Run when playback ends so a closed live stream does
+    not keep counting against the concurrent-stream limit until it times out.
+    """
+    leases, _ACTIVE_LEASES[:] = list(_ACTIVE_LEASES), []
+    for lease in leases:
+        try:
+            key = dict(lease["key"])
+            key["lease-action"] = "stop"
+            envelope = {"streaming-request": {"version": 1,
+                                              "streaming-keys": [key]}}
+            resp = requests.post(lease["url"], data=json.dumps(envelope),
+                                 headers=lease["headers"], timeout=15)
+            kodiutils.log("Lease released (%s) -> HTTP %s"
+                          % (key.get("service-id") or key.get("svcId") or "vod",
+                             resp.status_code))
+        except Exception as exc:
+            kodiutils.log_error("Lease release failed: %s" % exc)
 
 
 def variant_unwanted(tag, max_h, sdr_only, avc_only):
@@ -206,6 +236,10 @@ class _Handler(BaseHTTPRequestHandler):
         global _LAST_MASTER
         if is_master and target != _LAST_MASTER:
             _DISCOVERED_KEYS.clear()
+            # A new play: any leases still recorded belong to a stream that was
+            # not released (Kodi killed playback without a stop event); drop
+            # them so they are not released against the wrong session.
+            _ACTIVE_LEASES[:] = []
             _LAST_MASTER = target
         headers = {
             "User-Agent": ctx.get("user_agent") or "Mozilla/5.0",
@@ -602,6 +636,10 @@ class _Handler(BaseHTTPRequestHandler):
             kodiutils.log("License OK (attempt %d/%d), contains KIDs=[%s]"
                           % (attempt + 1, len(candidates),
                              ", ".join(_license_key_ids(licence)) or "none found"))
+            # Remember this lease so it can be released on stop: the same
+            # request, sent back later with lease-action "stop".
+            _ACTIVE_LEASES.append({"key": dict(key), "url": url,
+                                   "headers": dict(headers)})
             return licence
 
         kodiutils.log_error("fpsRequest failed after %d attempt(s): %s"
