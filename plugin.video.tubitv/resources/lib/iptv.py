@@ -9,7 +9,9 @@
 # port and write a JSON document - JSON-STREAMS for the channel line-up,
 # JSON-EPG for the guide.
 #
+import html
 import json
+import re
 import socket
 import time
 
@@ -42,6 +44,36 @@ def send(port, produce):
         connection.close()
 
 
+TAG = re.compile(r'<[^<>]{0,120}>')
+# XML 1.0 forbids most control characters outright
+CONTROL = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+ANGLE = re.compile(r'[<>]')
+
+
+def plainText(value):
+    """Turn Tubi's guide text into something safe to hand on.
+
+    Tubi writes its titles and descriptions as HTML: entity-escaped, and
+    occasionally with markup in them. What consumes this JSON turns it into
+    XMLTV, and HTML entities are not XML entities - `&eacute;` is undefined
+    in XML and takes the whole guide down with it, and a stray tag breaks
+    the document just as thoroughly.
+
+    So markup goes, entities are resolved to the characters they stand for,
+    and anything left that could still be read as a tag is dropped. A bare
+    angle bracket in prose is a fair price for a guide that parses.
+    """
+    if not value:
+        return value
+    text = str(value)
+    # Entities can hide markup and markup can hide entities, so do both twice
+    for _ in range(2):
+        text = TAG.sub('', text)
+        text = html.unescape(text)
+    text = CONTROL.sub('', text)
+    return ANGLE.sub('', text).strip()
+
+
 def firstImage(images, *keys):
     for key in keys:
         values = (images or {}).get(key)
@@ -66,7 +98,7 @@ def channels(api, playPath):
     for channel in lineUp:
         channelId = str(channel.get('id'))
         streams.append({'id': channelId,
-                        'name': channel.get('title'),
+                        'name': plainText(channel.get('title')),
                         'logo': firstImage(channel.get('images'), 'thumbnail', 'poster', 'landscape'),
                         'stream': playPath % channelId,
                         'group': groups.get(channelId)})
@@ -86,11 +118,11 @@ def epg(api, channelIds):
         for program in row.get('programs') or []:
             entry = {'start': program.get('start_time'),
                      'stop': program.get('end_time'),
-                     'title': program.get('title')}
+                     'title': plainText(program.get('title'))}
             if program.get('description'):
-                entry['description'] = program['description']
+                entry['description'] = plainText(program['description'])
             if program.get('episode_title'):
-                entry['subtitle'] = program['episode_title']
+                entry['subtitle'] = plainText(program['episode_title'])
             episode = episodeOf(program)
             if episode is not None:
                 entry['episode'] = episode
@@ -99,7 +131,7 @@ def epg(api, channelIds):
                 entry['image'] = image
             tags = program.get('tags') or []
             if tags:
-                entry['genre'] = tags[0]
+                entry['genre'] = plainText(tags[0])
             programs.append(entry)
         guide[str(row.get('content_id'))] = programs
     return {'version': VERSION, 'epg': guide}
