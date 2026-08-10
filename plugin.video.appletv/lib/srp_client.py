@@ -123,11 +123,6 @@ class SRPClient(object):
         self._expected_HAMK = _hash(_to_bytes(self.A), self._M1, self._K)
         return self._M1
 
-    def proof_bytes(self):
-        if self._M1 is None:
-            raise RuntimeError("process_challenge must be called first")
-        return self._M1
-
     def expected_server_proof(self):
         return self._expected_HAMK
 

@@ -121,12 +121,8 @@ CLIENT_FEATURE_FLAGS = {"featureFlags": {"clientFeatures": [
 NOW_PLAYING_URL = "https://tv.apple.com/api/np/play/json"
 ACCOUNT_INFO_URL = "https://buy.tv.apple.com/account/web/infoRefresh"
 PLAYBACK_REPORT_CACHE = "now_playing.json"
-
-# The Up Next list is served as an ordinary shelf, with the context values
-# below rather than ones taken from a canvas (nothing links to it from one).
-WATCHLIST_SHELF = "uts.col.Watchlist"
-WATCHLIST_CVS = "uts.tcvs.tv-plus-personalized-canvas-adaptive"
-WATCHLIST_CTX_SHELF = "uts.shlf.gen.Watchlist_%s"
+# Where the plugin leaves the key-play seek offsets for the service to act on.
+SEEK_CONTEXT = "seek_context.json"
 
 SUBSCRIPTION_STATUS_URL = \
     "https://speedysub.tv.apple.com/subscription/v1/web/status/tv"
@@ -284,10 +280,6 @@ class AppleTVApi(object):
     def _locale(self):
         return kodiutils.get_setting("locale") or DEFAULT_LOCALE
 
-    def _country(self):
-        loc = self._locale()
-        return (loc.split("-")[-1] if "-" in loc else "us").lower()
-
     def _params(self, extra=None):
         params = {
             "caller": "web",
@@ -411,57 +403,14 @@ class AppleTVApi(object):
         """Add a title or event to the account's Up Next list, or remove it."""
         return self._list_request("/watchlist", content_id, watchlisted)
 
-    def get_watchlist(self, channel_id=None, max_pages=20):
-        """The account's Up Next list.
+    def set_watched(self, content_id):
+        """Mark a title watched on the account, as the web 'Mark as Watched' does.
 
-        Nothing in a canvas links to it, so its context values are the ones
-        the site sends when the list is opened directly.
+        Apple records it with POST /play-history {"id": ...} -- the same request
+        shape as the watchlist and favourite-clubs writes (captured on the web
+        client marking an episode watched).
         """
-        brand = channel_id or APPLE_TV_PLUS_CHANNEL
-        ctx = {"ctx_brand": brand,
-               "ctx_cvs": WATCHLIST_CVS,
-               "ctx_shelf": WATCHLIST_CTX_SHELF % brand}
-        items = []
-        seen = set()
-        token = None
-        for _ in range(max_pages):
-            params = dict(ctx)
-            if token:
-                params["nextToken"] = token
-            data = self._get_json("/shelves/%s" % WATCHLIST_SHELF, params)
-            shelf = ((data or {}).get("data") or {}).get("shelf")
-            if not isinstance(shelf, dict):
-                break
-            page = self._extract_items(shelf.get("items"))
-            for item in page:
-                if item.get("id") not in seen:
-                    seen.add(item.get("id"))
-                    items.append(item)
-            token = shelf.get("nextToken") or None
-            if not token or not page:
-                break
-        return items
-
-    def get_followed_teams(self, channel_id):
-        """Clubs the account follows, from the tabs already fetched.
-
-        Apple's own favourites shelf on the page is an empty marker that the
-        website fills in client-side, so this does the same: every club tile
-        reports whether it is followed.
-        """
-        cache = kodiutils.read_json(self._canvas_cache_name(channel_id),
-                                    default={}) or {}
-        followed = []
-        seen = set()
-        for entry in cache.values():
-            items = entry.get("items") if isinstance(entry, dict) else entry
-            for item in items or []:
-                if not isinstance(item, dict) or item.get("type") != "Team":
-                    continue
-                if item.get("favourite") and item.get("id") not in seen:
-                    seen.add(item["id"])
-                    followed.append(item)
-        return followed
+        return self._list_request("/play-history", content_id, True)
 
     def get_related(self, content_id, league_id=None):
         """"More like this" for a title, or the other games in a league.
@@ -800,7 +749,7 @@ class AppleTVApi(object):
             shelf = ((data or {}).get("data") or {}).get("shelf")
             if not isinstance(shelf, dict):
                 break
-            page = self._extract_items(shelf.get("items"))
+            page = self._extract_items(self._filter_upnext_raw(shelf, shelf.get("items")))
             for item in page:
                 if item.get("id") not in seen:
                     seen.add(item.get("id"))
@@ -866,11 +815,6 @@ class AppleTVApi(object):
         """The browse page Apple shows before anything is typed."""
         return self._canvas_shelves("/search/landing", {}, "search_landing")
 
-    def last_played_id(self):
-        """Content id of the last title played through the addon, if any."""
-        context = kodiutils.read_json(PLAYBACK_REPORT_CACHE, default={}) or {}
-        return context.get("content_id")
-
     def get_show_seasons(self, show_id):
         """A show's seasons, when it has more than one.
 
@@ -926,20 +870,23 @@ class AppleTVApi(object):
     # -- playback --------------------------------------------------------
 
     def list_playables(self, content_id, item_type="Movie"):
-        """The distinct feeds a title offers, when it offers more than one.
+        """The feeds a title offers and whether it is airing live.
 
-        A match is published several times over: a full replay beside a ten
-        minute recap, and one feed per commentary language. They differ by
-        externalId, so that is what identifies the chosen one.
+        Returns {"feeds": [...], "live": bool}. A match is published several
+        times over: a full replay beside a ten minute recap, and one feed per
+        commentary language, differing by externalId. While a game is airing,
+        each feed is marked airingType Live -- which is when "watch from the
+        start" (the startOver stream) applies.
         """
         self.last_error = None
         data, _mut = self._detail_json(content_id, item_type)
         if data is None:
-            return []
+            return {"feeds": [], "live": False}
         playables = self._deep_find(data, "playables")
         candidates = list(playables.values()) if isinstance(playables, dict) \
             else (playables or [])
         feeds = []
+        live = False
         for playable in candidates:
             if not isinstance(playable, dict):
                 continue
@@ -948,6 +895,8 @@ class AppleTVApi(object):
                 continue
             if not playable.get("isEntitledToPlay"):
                 continue
+            if playable.get("airingType") == "Live":
+                live = True
             locale = playable.get("primaryLocale") or {}
             feeds.append({
                 "external_id": playable.get("externalId"),
@@ -955,11 +904,129 @@ class AppleTVApi(object):
                 "duration": playable.get("duration"),
                 "language": locale.get("displayName") or "",
             })
-        return feeds if len(feeds) > 1 else []
+        return {"feeds": feeds, "live": live}
 
-    def get_playback(self, content_id, item_type="Movie", external_id=None):
-        """Resolve a title to an ISA-playable dict, or None."""
+    def _live_playable(self, data, external_id=None):
+        """The live, entitled playable of an event (optionally a named feed)."""
+        playables = self._deep_find(data, "playables")
+        candidates = list(playables.values()) if isinstance(playables, dict) \
+            else (playables or [])
+        live = [p for p in candidates if isinstance(p, dict)
+                and p.get("airingType") == "Live" and p.get("isEntitledToPlay")]
+        if external_id:
+            for p in live:
+                if p.get("externalId") == external_id:
+                    return p
+        return live[0] if live else None
+
+    def get_key_plays(self, content_id, item_type="SportingEvent", external_id=None):
+        """The key moments of a live game, its paging followed to the end.
+
+        Apple lists them in a key-play shelf keyed by a playablePassThrough that
+        names the playable and its key-play collection (referenceId:serviceId).
+        Each item states when it happened (startTime/endTime, epoch ms) -- a
+        position in the live DVR. Returns [] when there are none yet (a game
+        that has only just kicked off), and follows nextToken so a game full of
+        them is listed complete.
+        """
+        import base64
+        data, _mut = self._detail_json(content_id, item_type)
+        if data is None:
+            return []
+        playable = self._live_playable(data, external_id)
+        if not playable:
+            return []
+        qp = (playable.get("assets") or {}).get("fpsKeyServerQueryParameters") or {}
+        ref = qp.get("reference-id")
+        svc = qp.get("service-id") or qp.get("svcId")
+        playable_id = playable.get("id")
+        if not (playable_id and ref and svc):
+            return []
+        ppt = base64.b64encode(json.dumps({
+            "playableId": playable_id,
+            "keyPlayCollectionId": "%s:%s" % (ref, svc),
+            "includeGrevyOnPostPlay": True,
+            "prioritizeGrevyOnPostPlay": False,
+        }, separators=(",", ":")).encode("utf-8")).decode("ascii")
+        plays = []
+        token = None
+        for _ in range(20):
+            params = {"playablePassThrough": ppt}
+            if token:
+                params["nextToken"] = token
+            resp = self._get_json("/shelves/key-play", params)
+            shelf = ((resp or {}).get("data") or {}).get("shelf")
+            if not isinstance(shelf, dict):
+                break
+            for it in shelf.get("items") or []:
+                if not isinstance(it, dict) or not it.get("startTime"):
+                    continue
+                plays.append({
+                    "title": it.get("title") or "",
+                    "plot": it.get("description") or "",
+                    "start_time": it.get("startTime"),
+                    "end_time": it.get("endTime"),
+                    "art": self._item_art(it.get("images") or {}, "SportingEvent"),
+                    "external_id": playable.get("externalId"),
+                })
+            token = shelf.get("nextToken") or None
+            if not token:
+                break
+        return plays
+
+    @staticmethod
+    def _parse_pdt_ms(value):
+        """An EXT-X-PROGRAM-DATE-TIME (ISO 8601) as epoch milliseconds."""
+        import re, calendar
+        m = re.match(r'(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?',
+                     value or "")
+        if not m:
+            return None
+        y, mo, d, h, mi, s = (int(m.group(i)) for i in range(1, 7))
+        frac = m.group(7) or "0"
+        ms = int((frac + "000")[:3])
+        return calendar.timegm((y, mo, d, h, mi, s, 0, 0, 0)) * 1000 + ms
+
+    def _manifest_start_ms(self, master_url, headers):
+        """Epoch ms of the stream's first segment, for turning a key play's
+        wall-clock time into a seek offset. None if it cannot be read."""
+        import re
+        try:
+            resp = self.session.get(master_url, headers=headers, timeout=30)
+            if resp.status_code != 200:
+                return None
+            base = master_url.rsplit("/", 1)[0] + "/"
+            lines = resp.text.splitlines()
+            variant = None
+            for i, ln in enumerate(lines):
+                if ln.strip().startswith("#EXT-X-STREAM-INF"):
+                    uri = next((x.strip() for x in lines[i + 1:i + 3]
+                                if x.strip() and not x.strip().startswith("#")), None)
+                    if uri:
+                        variant = uri if uri.startswith("http") else base + uri
+                        break
+            if not variant:
+                return None
+            vresp = self.session.get(variant, headers=headers, timeout=30)
+            m = re.search(r'#EXT-X-PROGRAM-DATE-TIME:(\S+)', vresp.text)
+            return self._parse_pdt_ms(m.group(1)) if m else None
+        except Exception as exc:
+            kodiutils.log_error("Could not read stream start time: %s" % exc)
+            return None
+
+    def get_playback(self, content_id, item_type="Movie", external_id=None,
+                     start_over=False, seek_plays=None):
+        """Resolve a title to an ISA-playable dict, or None.
+
+        start_over asks a live event's manifest for the broadcast from its
+        beginning (the web player's "Watch from Start") rather than the live
+        edge.
+        """
         self.last_error = None
+        # Key plays are positions in the DVR from the broadcast start, so a play
+        # that seeks to one must be the start-over stream.
+        if seek_plays:
+            start_over = True
         assets = self._prepare_playback(content_id, item_type, external_id)
         if not assets:
             # A deliberate reason was given -- an event that has not started
@@ -975,16 +1042,69 @@ class AppleTVApi(object):
             kodiutils.log("Using the stream listed inline for %s" % content_id)
             self.last_error = None
             assets = self._prepared_from_assets(inline, self._media_user_token())
+        if start_over and assets.get("manifest"):
+            assets["manifest"] = self._with_start_over(assets["manifest"])
         # A manifest pasted into the override setting is not a catalogue
         # stream, so an Apple TV+ account token is not what authorises it.
         return self._build_playback(
-            assets, require_user_token=not assets.get("override"))
+            assets, require_user_token=not assets.get("override"),
+            seek_plays=seek_plays)
 
-    def _build_playback(self, assets, require_user_token=True):
+    def _write_seek_context(self, manifest_url, headers, seek_plays):
+        """Record where the service should seek, or clear it.
+
+        A key play states when it happened as wall-clock time; the stream's
+        first segment carries the same clock (PROGRAM-DATE-TIME), so the
+        difference is the seek offset in seconds. Written for the service,
+        which owns the player. Cleared when a normal play carries no key plays,
+        so a later stream does not inherit an old seek.
+        """
+        segments = []
+        if seek_plays and manifest_url:
+            first_ms = self._manifest_start_ms(manifest_url, headers)
+            if first_ms:
+                for kp in seek_plays:
+                    start = kp.get("start_time")
+                    if not start:
+                        continue
+                    seg = {"start": max(0.0, (start - first_ms) / 1000.0),
+                           "title": kp.get("title") or ""}
+                    end = kp.get("end_time")
+                    if end:
+                        seg["end"] = max(seg["start"], (end - first_ms) / 1000.0)
+                    segments.append(seg)
+                kodiutils.log(
+                    "Key play offsets: stream starts %d, offsets(s)=%s"
+                    % (first_ms, [round(s["start"], 1) for s in segments]))
+            else:
+                kodiutils.log_error(
+                    "Key play: could not read stream start time; no seek")
+        kodiutils.write_json(SEEK_CONTEXT, {
+            "segments": segments,
+            # More than one means "catch up": play each in turn. One means
+            # "jump here and carry on".
+            "chain": len(segments) > 1,
+        })
+
+    @staticmethod
+    def _with_start_over(url):
+        """Ask Apple's linear manifest for the broadcast start.
+
+        A live event served with startOver=true begins at the top of the
+        broadcast instead of the live edge -- the request the web player makes
+        for its "Watch from Start" button.
+        """
+        if "startOver=" in url:
+            return url
+        return url + ("&" if "?" in url else "?") + "startOver=true"
+
+    def _build_playback(self, assets, require_user_token=True, seek_plays=None):
         """Turn resolved stream assets into the dict default.py plays.
 
         Shared by features and trailers: both arrive as the same asset shape
-        (an hlsUrl plus the fps key-server details).
+        (an hlsUrl plus the fps key-server details). seek_plays, when given,
+        are key moments to jump to: their wall-clock times are turned into
+        seconds from the stream start and written for the service to seek.
         """
         override = bool(assets.get("override"))
         boot = self._bootstrap()
@@ -1018,6 +1138,7 @@ class AppleTVApi(object):
                 stream_headers["media-user-token"] = mut
         fps = assets.get("fps_params") or {}
         live = bool(fps.get("service-id") or fps.get("reference-id"))
+        self._write_seek_context(assets.get("manifest"), stream_headers, seek_plays)
         wv_keys = self._collect_widevine_keys(
             assets["manifest"], stream_headers, live=live)
         # None means the manifest could not be fetched to check for keys, not
@@ -1217,11 +1338,54 @@ class AppleTVApi(object):
             if not isinstance(raw, dict) or not raw.get("title"):
                 continue
             people.append({
+                # The person id opens their own page (their other work); the
+                # cast shelf carries it on every credit.
+                "id": raw.get("id"),
+                "type": raw.get("type") or "Person",
                 "name": raw["title"],
                 "role": raw.get("characterName") or raw.get("roleTitle") or "",
                 "art": self._person_art(raw.get("images") or {}),
             })
         return people
+
+    def get_person_shelves(self, person_id, max_pages=10):
+        """A person's filmography canvas: their Movies, Shows and other work."""
+        return self._canvas_shelves(
+            "/canvases/persons/%s" % person_id, {}, person_id, max_pages)
+
+    def get_person_info(self, person_id):
+        """A person's own details -- name, bio, birth -- for the info screen.
+
+        The person canvas carries a `person` object alongside the filmography
+        shelves; Apple states the bio, birth date (epoch ms) and birthplace
+        there, with a headshot.
+        """
+        data = self._get_json("/canvases/persons/%s" % person_id, {})
+        person = ((data or {}).get("data") or {}).get("person") or {}
+        if not isinstance(person, dict) or not person:
+            return {}
+        lines = []
+        born = person.get("birthDate")
+        place = person.get("birthplace")
+        born_str = None
+        if isinstance(born, (int, float)):
+            try:
+                born_str = time.strftime("%d %B %Y", time.gmtime(int(born) / 1000))
+            except (ValueError, OverflowError):
+                born_str = None
+        if born_str and place:
+            lines.append("Born %s in %s" % (born_str, place))
+        elif born_str:
+            lines.append("Born %s" % born_str)
+        elif place:
+            lines.append("Born in %s" % place)
+        if person.get("bio"):
+            lines.append(person["bio"])
+        return {
+            "name": person.get("title"),
+            "plot": "\n\n".join(lines),
+            "art": self._person_art(person.get("images") or {}),
+        }
 
     def get_title_info(self, content_id, item_type="Movie"):
         """Everything Kodi's info screen wants about a title, in one request.
@@ -1411,10 +1575,13 @@ class AppleTVApi(object):
                 and p["assets"].get("hlsUrl")
 
         if external_id:
+            available = [p.get("externalId") for p in candidates if has_stream(p)]
+            kodiutils.log("Feed wanted: %s; available: %s" % (external_id, available))
             for p in candidates:
                 if has_stream(p) and p.get("externalId") == external_id:
                     return self._enrich_assets(p)
-            kodiutils.log("Feed %s not found; falling back" % external_id)
+            kodiutils.log_error("Feed %s not found; falling back (this is why a "
+                                "chosen feed can play as another)" % external_id)
 
         entitled = [p for p in candidates if has_stream(p) and p.get("isEntitledToPlay")]
         # Prefer the Apple TV+ channel when more than one is entitled.
@@ -1569,7 +1736,12 @@ class AppleTVApi(object):
                     "No Widevine keys in %d variant(s): this stream carries no "
                     "Widevine encryption" % without_key)
         except Exception as exc:
+            # A network error (Apple unreachable, DNS down) is not the same as
+            # the stream having no keys. Returning an empty map here makes the
+            # caller play in the clear and fail with "DRM license server not
+            # configured"; signal "could not determine" so it assumes DRM.
             kodiutils.log_error("Widevine key collection failed: %s" % exc)
+            return None
         return keys
 
     @staticmethod
@@ -1619,6 +1791,29 @@ class AppleTVApi(object):
 
     # -- response parsing helpers ---------------------------------------
 
+    @staticmethod
+    def _filter_upnext_raw(shelf, raw_items):
+        """Drop watchlisted titles from Apple's "Continue Watching" shelf.
+
+        Apple's tab shelf uts.col.ChannelUpNext (displayType upNextLockup),
+        which it titles "Continue Watching on Apple TV", lists two kinds of
+        item: ones you have started (context "Continue") and ones you have only
+        added to your Up Next / Watchlist (context "AddedToUpNext"). With the
+        setting on (the default), keep only the started ones, so the shelf
+        means what it says; the watchlisted titles still appear on the
+        Watchlist. Other shelves are left untouched.
+        """
+        if not isinstance(raw_items, list):
+            return raw_items
+        is_upnext = (shelf.get("displayType") == "upNextLockup"
+                     or str(shelf.get("id") or "").startswith("uts.col.ChannelUpNext"))
+        if not is_upnext:
+            return raw_items
+        if not kodiutils.get_setting_bool("hide_watchlist_in_continue", True):
+            return raw_items
+        return [it for it in raw_items
+                if not (isinstance(it, dict) and it.get("context") == "AddedToUpNext")]
+
     def _extract_shelves(self, data):
         if not data:
             return []
@@ -1628,7 +1823,7 @@ class AppleTVApi(object):
                 continue
             title = self._shelf_title(shelf)
             shelf_id = shelf.get("id") or shelf.get("channelId") or ""
-            items = self._extract_items(shelf.get("items"))
+            items = self._extract_items(self._filter_upnext_raw(shelf, shelf.get("items")))
             if items and shelf_id:
                 shelves.append({
                     "id": str(shelf_id),

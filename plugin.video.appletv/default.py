@@ -9,7 +9,7 @@ import xbmcgui
 import xbmcplugin
 
 from lib import kodiutils
-from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA, STATUS_ERROR
+from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA
 from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
                      PLAYBACK_REPORT_CACHE)
 
@@ -52,16 +52,25 @@ S = {
     "remove_watchlist": 32048,
     "watchlist_removed": 32049,
     "watchlist": 32051,
+    "about": 32090,
+    "mark_watched": 32087,
+    "watched_marked": 32088,
+    "watched_failed": 32089,
     "sub_active": 32052,
     "sub_none": 32053,
     "sub_renews": 32054,
     "sub_family": 32055,
     "sub_unknown": 32056,
     "sub_shared_with_you": 32058,
-    "following": 32059,
     "search_suggestions": 32061,
     "choose_feed": 32062,
     "play_feed": 32063,
+    "live_options": 32091,
+    "watch_live": 32092,
+    "watch_from_start": 32093,
+    "catch_up": 32094,
+    "key_plays": 32095,
+    "no_key_plays": 32096,
     "related": 32064,
     "clubs": 32065,
     "highlights": 32066,
@@ -90,7 +99,18 @@ def extras_context_menu(item, item_id, item_type):
             action="related", item_id=item_id)),
         (L("cast"), "Container.Update(%s)" % url(
             action="cast", item_id=item_id, item_type=item_type)),
-    ] + watchlist_menu_items(item_id))
+    ] + watchlist_menu_items(item_id) + [mark_watched_menu_item(item_id)])
+
+
+def mark_watched_menu_item(item_id):
+    """Mark a title watched on the Apple account (POST /play-history).
+
+    Kodi's own "Mark as watched" only sets its local flag; this tells Apple, so
+    the title counts as watched on your other devices and leaves Continue
+    Watching. Marking unwatched is not offered -- it was not captured.
+    """
+    return (L("mark_watched"), "RunPlugin(%s)" % url(
+        action="mark_watched", item_id=item_id))
 
 
 def watchlist_menu_items(item_id):
@@ -250,6 +270,8 @@ def add_playable(entry, cast=None):
                 league=entry.get("league_id") or "")),
             (L("clubs"), "Container.Update(%s)" % url(
                 action="clubs", item_id=entry["id"])),
+            (L("key_plays"), "Container.Update(%s)" % url(
+                action="key_plays", item_id=entry["id"])),
             (L("highlights"), "Container.Update(%s)" % url(
                 action="event_extras", kind="highlights", item_id=entry["id"])),
             (L("spotlight"), "Container.Update(%s)" % url(
@@ -259,11 +281,16 @@ def add_playable(entry, cast=None):
              # Only Motorsports fixtures have a weekend of sessions; a match
              # in any other sport carries clubs and no weekend at all.
              if entry.get("sport") == "Motorsports" else [])
-          + watchlist_menu_items(entry["id"]))
-    # Everything else -- episodes, and the sports clip types that carry their
-    # stream inline -- gets no watchlist entry: Apple's watchlist takes films,
-    # shows and fixtures only, which is what every captured write sends, so
-    # offering it on an episode was offering something that cannot work.
+          + watchlist_menu_items(entry["id"])
+          + [mark_watched_menu_item(entry["id"])])
+    elif kind == "Episode":
+        # An episode takes no watchlist (Apple lists films, shows and fixtures
+        # only), but it can be marked watched on the account.
+        item.addContextMenuItems([mark_watched_menu_item(entry["id"])])
+    # Everything else -- the sports clip types that carry their stream inline --
+    # gets no watchlist entry: Apple's watchlist takes films, shows and fixtures
+    # only, which is what every captured write sends, so offering it on an
+    # episode was offering something that cannot work.
     play_params = {"item_id": entry["id"], "item_type": entry.get("type", "Movie")}
     # A sporting event listed with its own feed (Continue Watching gives one)
     # plays that feed directly, so resuming does not re-open the feed picker.
@@ -310,13 +337,6 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
     """
     if not shelves:
         kodiutils.notify(L("no_results"))
-    # Apple's own favourites shelf is an empty marker the website fills in
-    # itself; the club tiles say who is followed, so do the same here.
-    followed = [i for s in shelves for i in s.get("items") or []
-                if str(i.get("type")) == "Team" and i.get("favourite")]
-    if followed:
-        add_dir("%s (%d)" % (L("following"), len(followed)),
-                "following", cache_key=cache_key, brand=brand)
     for shelf in shelves:
         if shelf.get("items"):
             # A shelf with a paging token has more than the canvas returned;
@@ -361,7 +381,7 @@ def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL, cast=None):
 
 
 def show_people(people):
-    """List a title's cast and crew. Nobody here is playable."""
+    """List a title's cast and crew; each opens the person's own page."""
     if not people:
         kodiutils.notify(L("no_results"))
     for person in people:
@@ -371,8 +391,37 @@ def show_people(people):
         entry = xbmcgui.ListItem(label=label)
         if person.get("art"):
             entry.setArt(person["art"])
-        xbmcplugin.addDirectoryItem(HANDLE, "", entry, isFolder=False)
+        # A person Apple gives an id opens their own page -- their other films
+        # and shows. One without (rare) stays a plain, unopenable credit.
+        pid = person.get("id")
+        if pid:
+            xbmcplugin.addDirectoryItem(
+                HANDLE, url(action="person", person_id=pid, name=person["name"]),
+                entry, isFolder=True)
+        else:
+            xbmcplugin.addDirectoryItem(HANDLE, "", entry, isFolder=False)
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def show_person(api, person_id, name=""):
+    """A person's own page: their details, then their films and shows."""
+    if not person_id:
+        return
+    info = api.get_person_info(person_id)
+    title = info.get("name") or name
+    if title:
+        xbmcplugin.setPluginCategory(HANDLE, title)
+    # A first "About" entry carries the bio, birth and headshot, so the
+    # Information button on it shows what Apple holds on the person.
+    if info.get("plot"):
+        about = xbmcgui.ListItem(label=L("about") % (title or name))
+        tag = about.getVideoInfoTag()
+        tag.setPlot(info["plot"])
+        tag.setTitle(title or name)
+        if info.get("art"):
+            about.setArt(info["art"])
+        xbmcplugin.addDirectoryItem(HANDLE, "", about, isFolder=False)
+    show_shelves(api, api.get_person_shelves(person_id), cache_key=person_id)
 
 
 def show_items(items, content="movies", channel_id=APPLE_TV_PLUS_CHANNEL,
@@ -472,15 +521,37 @@ def do_search(api):
     show_items(api.search(query))
 
 
-def choose_feed(api, item_id, item_type):
-    """Let the viewer pick when a match offers more than one feed.
+def show_key_plays(api, item_id, item_type, external_id=None):
+    """List a live game's key moments; each plays the game jumped to it."""
+    plays = api.get_key_plays(item_id, item_type, external_id)
+    if not plays:
+        kodiutils.notify(L("no_key_plays"))
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+    for kp in plays:
+        item = xbmcgui.ListItem(label=kp["title"])
+        if kp.get("art"):
+            item.setArt(kp["art"])
+        tag = item.getVideoInfoTag()
+        tag.setMediaType("video")
+        tag.setTitle(kp["title"])
+        tag.setPlot(kp.get("plot") or "")
+        item.setProperty("IsPlayable", "true")
+        xbmcplugin.addDirectoryItem(
+            HANDLE,
+            url(action="play", item_id=item_id, item_type=item_type,
+                external_id=external_id or "",
+                kp_start=kp["start_time"], kp_end=kp.get("end_time") or ""),
+            item, isFolder=False)
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def pick_feed(feeds):
+    """Ask which feed to play; returns an external_id, or False if cancelled.
 
     A game is published as a full replay beside a short recap, and once per
     commentary language, so picking the first would be arbitrary.
     """
-    feeds = api.list_playables(item_id, item_type)
-    if not feeds:
-        return None
     labels = []
     for feed in feeds:
         label = feed["title"] or L("play_feed")
@@ -492,21 +563,60 @@ def choose_feed(api, item_id, item_type):
         labels.append(label)
     index = xbmcgui.Dialog().select(L("choose_feed"), labels)
     if index < 0:
-        return False  # cancelled, as distinct from "only one feed"
+        return False
     return feeds[index]["external_id"]
 
 
-def do_play(api, item_id, item_type, external_id=None):
+def pick_live_mode():
+    """How to watch a live game: live edge, from the start, or catch up.
+
+    Returns "live", "start" or "catchup", or None if cancelled. Catch Up plays
+    the key moments in turn (Apple's own is the start-over stream skipped
+    through the key plays).
+    """
+    index = xbmcgui.Dialog().select(
+        L("live_options"),
+        [L("watch_live"), L("watch_from_start"), L("catch_up")])
+    if index < 0:
+        return None
+    return ("live", "start", "catchup")[index]
+
+
+def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=None):
     # An event carried in with its own feed (Continue Watching) plays that
     # feed directly. Only when the feed is not already known is the picker
     # offered, and only for an event that has more than one.
-    if str(item_type) == "SportingEvent" and not external_id:
-        chosen = choose_feed(api, item_id, item_type)
-        if chosen is False:
-            xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
-            return
-        external_id = chosen
-    playback = api.get_playback(item_id, item_type, external_id)
+    start_over = False
+    seek_plays = None
+    if kp_start:
+        # A pick from the Key Plays list: play the game jumped to that moment.
+        seek_plays = [{"start_time": int(kp_start),
+                       "end_time": int(kp_end) if kp_end else None}]
+    elif str(item_type) == "SportingEvent" and not external_id:
+        options = api.list_playables(item_id, item_type)
+        feeds = options.get("feeds") or []
+        if len(feeds) > 1:
+            external_id = pick_feed(feeds)
+            if external_id is False:
+                xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+                return
+        # A game airing live can be joined at the live edge, watched from the
+        # start, or caught up on; a finished or upcoming one has no such choice.
+        if options.get("live"):
+            mode = pick_live_mode()
+            if mode is None:
+                xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+                return
+            if mode == "start":
+                start_over = True
+            elif mode == "catchup":
+                seek_plays = api.get_key_plays(item_id, item_type, external_id)
+                if not seek_plays:
+                    # Nothing has happened yet: watch from the start instead.
+                    kodiutils.notify(L("no_key_plays"))
+                    start_over = True
+    playback = api.get_playback(item_id, item_type, external_id,
+                                start_over=start_over, seek_plays=seek_plays)
     if not playback:
         kodiutils.ok_dialog(api.last_error or L("playback_failed"))
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -662,6 +772,19 @@ def do_watchlist(api, item_id, add):
         kodiutils.ok_dialog(L("watchlist_failed"))
 
 
+def do_mark_watched(api, item_id):
+    """Context-menu action: mark a title watched on the Apple account."""
+    if not item_id:
+        return
+    if api.set_watched(item_id):
+        kodiutils.notify(L("watched_marked"))
+        # Marking watched removes the title from Apple's Continue Watching, so
+        # reload the screen to reflect it without leaving the tab first.
+        xbmc.executebuiltin("Container.Refresh")
+    else:
+        kodiutils.ok_dialog(L("watched_failed"))
+
+
 def do_follow_team(api, team_id, follow):
     """Context-menu action: add or remove a club from Apple's favourites."""
     if not team_id:
@@ -768,10 +891,6 @@ def router(paramstring):
         team_id = params.get("team_id")
         brand = params.get("channel_id") or APPLE_TV_PLUS_CHANNEL
         show_shelves(api, api.get_team_shelves(team_id), team_id, brand)
-    elif action == "following":
-        brand = params.get("brand") or APPLE_TV_PLUS_CHANNEL
-        show_items(api.get_followed_teams(params.get("cache_key")),
-                   channel_id=brand)
     elif action == "grandprix":
         gp_id = params.get("gp_id")
         brand = params.get("channel_id") or F1_CHANNEL
@@ -780,12 +899,16 @@ def router(paramstring):
         do_follow_team(api, params.get("team_id"), params.get("on") == "1")
     elif action == "watchlist":
         do_watchlist(api, params.get("item_id"), params.get("on") == "1")
+    elif action == "mark_watched":
+        do_mark_watched(api, params.get("item_id"))
     elif action == "related":
         show_items(api.get_related(params.get("item_id"),
                                    params.get("league") or None))
     elif action == "cast":
         show_people(api.get_cast(params.get("item_id"),
                                  params.get("item_type", "Movie")))
+    elif action == "person":
+        show_person(api, params.get("person_id"), params.get("name") or "")
     elif action == "event_extras":
         show_items(api.get_event_extras(params.get("item_id"),
                                         params.get("kind", "highlights")))
@@ -810,7 +933,12 @@ def router(paramstring):
         do_search(api)
     elif action == "play":
         do_play(api, params.get("item_id"), params.get("item_type", "Movie"),
-                params.get("external_id"))
+                params.get("external_id"),
+                kp_start=params.get("kp_start"), kp_end=params.get("kp_end"))
+    elif action == "key_plays":
+        show_key_plays(api, params.get("item_id"),
+                       params.get("item_type", "SportingEvent"),
+                       params.get("external_id") or None)
     elif action == "extras":
         do_extras(api, params.get("item_id"), params.get("item_type", "Movie"),
                   params.get("kind", "trailers"))
