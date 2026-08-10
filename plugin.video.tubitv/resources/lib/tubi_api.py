@@ -17,6 +17,8 @@
 #   content-cdn /api/v3/content                a title, its metadata and its
 #                                              playable video resources
 #
+import concurrent.futures
+
 import requests
 
 BROWSE_API = 'https://tensor-cdn.production-public.tubi.io'
@@ -29,6 +31,10 @@ EPG_MODE = 'tubitv_us_linear'
 # The programming endpoint takes a batch of channels per call - the site asks
 # for around twenty at a time.
 EPG_BATCH = 20
+# The whole line-up is far more batches than one round trip. Fetching them a
+# few at a time keeps a guide refresh to seconds instead of a minute, which
+# matters because the tools that ask for it are waiting on a socket.
+EPG_WORKERS = 5
 
 APP_ID = 'tubitv'
 PLATFORM = 'web'
@@ -171,29 +177,41 @@ class TubiApi(object):
                 ordered.append(channel)
         return ordered, groups
 
+    def _programmingBatch(self, batch):
+        params = [('platform', PLATFORM),
+                  ('device_id', self.deviceId),
+                  ('lookahead', 1),
+                  ('content_id', ','.join(str(i) for i in batch))] + LIMIT_RESOLUTIONS
+        if self.userId is not None:
+            params.append(('user_id', self.userId))
+        data = self.get(''.join([EPG_API, '/content/epg/programming']), params)
+        return data.get('rows') or []
+
     def liveProgramming(self, channelIds, tolerant=False):
-        """The programme guide for the given channels, a batch at a time.
+        """The programme guide for the given channels.
+
+        The line-up is split into batches and fetched a few at a time, since
+        the whole guide is a couple of hundred channels and doing it one
+        request after another takes long enough to matter.
 
         With tolerant set, a batch that fails is skipped instead of losing
         the whole guide - a partial guide beats none at all.
         """
+        batches = [channelIds[start:start + EPG_BATCH]
+                   for start in range(0, len(channelIds), EPG_BATCH)]
         rows = []
-        for start in range(0, len(channelIds), EPG_BATCH):
-            batch = channelIds[start:start + EPG_BATCH]
-            params = [('platform', PLATFORM),
-                      ('device_id', self.deviceId),
-                      ('lookahead', 1),
-                      ('content_id', ','.join(str(i) for i in batch))] + LIMIT_RESOLUTIONS
-            if self.userId is not None:
-                params.append(('user_id', self.userId))
-            try:
-                data = self.get(''.join([EPG_API, '/content/epg/programming']), params)
-            except TubiApiError:
-                if not tolerant:
-                    raise
-                continue
-            rows.extend(data.get('rows') or [])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=EPG_WORKERS) as pool:
+            for result in pool.map(lambda b: self._safeBatch(b, tolerant), batches):
+                rows.extend(result)
         return rows
+
+    def _safeBatch(self, batch, tolerant):
+        try:
+            return self._programmingBatch(batch)
+        except TubiApiError:
+            if not tolerant:
+                raise
+            return []
 
     # ---------------------------------------------------------------- series
 
