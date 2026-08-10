@@ -1569,10 +1569,21 @@ class AppleTVApi(object):
 
     @staticmethod
     def event_times(data):
-        """Kick-off and tune-in times (epoch seconds) of a sporting event."""
+        """Kick-off and tune-in times (epoch seconds) of a sporting event.
+
+        Read from the event's own node only. A detail document carries other
+        games too -- a related-games canvas of upcoming fixtures -- and a
+        document-wide search hits one of those first: every game, finished or
+        not, then reported the same upcoming kick-off and looked "not started".
+        The event's own time is on its content node (detail) or on the item
+        itself (a shelf tile); the whole-document search stays as a last resort
+        for a shape that has neither.
+        """
+        root = data.get("data") if isinstance(data, dict) and "data" in data \
+            else data
         event = None
-        for holder in ("content", "data"):
-            node = data.get(holder) if isinstance(data, dict) else None
+        for node in (root.get("content") if isinstance(root, dict) else None,
+                     root):
             if isinstance(node, dict) and isinstance(node.get("eventTime"), dict):
                 event = node["eventTime"]
                 break

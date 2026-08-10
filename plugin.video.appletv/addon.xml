@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.43" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.44" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,12 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.44 - Fix "event has not started" on games that already happened
+- FIX: A finished game could say "this event has not started yet" with a
+  future date. Its start time was being read from the whole detail document,
+  which also lists upcoming games, so every game reported the same upcoming
+  kick-off. The start time is now read from the game's own entry, so a played
+  game is recognised as played (and, if it will not play, says why).
 2026.8.43 - MLB
 - Added an MLB tab. Baseball on Apple TV+ is the same kind of live event as MLS
   and F1 under the hood, so its games, Big Inning, shows and recaps play (and
