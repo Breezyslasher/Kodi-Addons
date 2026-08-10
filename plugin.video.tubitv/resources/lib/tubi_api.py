@@ -22,6 +22,13 @@ import requests
 BROWSE_API = 'https://tensor-cdn.production-public.tubi.io'
 SEARCH_API = 'https://search.production-public.tubi.io'
 CONTENT_API = 'https://content-cdn.production-public.tubi.io'
+EPG_API = 'https://epg-cdn.production-public.tubi.io'
+
+# Tubi's linear channel line-up
+EPG_MODE = 'tubitv_us_linear'
+# The programming endpoint takes a batch of channels per call - the site asks
+# for around twenty at a time.
+EPG_BATCH = 20
 
 APP_ID = 'tubitv'
 PLATFORM = 'web'
@@ -46,6 +53,9 @@ LIMIT_RESOLUTIONS = [('limit_resolutions[]', 'h264_1080p'),
 
 WIDEVINE = 'hlsv6_widevine_nonclearlead'
 CLEAR = 'hlsv6'
+# The linear channels are served as plain hlsv3, never encrypted
+LIVE = 'hlsv3'
+CLEAR_TYPES = (CLEAR, LIVE)
 
 
 class TubiApiError(Exception):
@@ -54,9 +64,10 @@ class TubiApiError(Exception):
 
 class TubiApi(object):
 
-    def __init__(self, headers, deviceId):
+    def __init__(self, headers, deviceId, userId=None):
         self.headers = headers
         self.deviceId = deviceId
+        self.userId = userId
 
     def get(self, url, params):
         try:
@@ -128,6 +139,55 @@ class TubiApi(object):
                            ('pagination[page_size_in_season]', SEASON_PAGE_SIZE)])
         return self.get(''.join([CONTENT_API, '/api/v3/content']), params)
 
+    # ------------------------------------------------------------- live tv
+
+    def liveChannels(self):
+        """Tubi's linear channels.
+
+        Returns (channels in line-up order, {channel id: group name}). Every
+        channel carries its own live HLS manifest, none of them are encrypted
+        and none of them need an account.
+        """
+        params = [('mode', EPG_MODE),
+                  ('platform', PLATFORM),
+                  ('device_id', self.deviceId)]
+        if self.userId is not None:
+            params.append(('user_id', self.userId))
+        data = self.get(''.join([BROWSE_API, '/api/v2/epg']), params)
+
+        contents = data.get('contents') or {}
+        groups = {}
+        ordered = []
+        for container in data.get('containers') or []:
+            for channelId in container.get('contents') or []:
+                if channelId not in contents:
+                    continue
+                groups.setdefault(channelId, container.get('name'))
+                if contents[channelId] not in ordered:
+                    ordered.append(contents[channelId])
+        # Anything Tubi did not file under a group still belongs in the guide
+        for channelId, channel in contents.items():
+            if channel not in ordered:
+                ordered.append(channel)
+        return ordered, groups
+
+    def liveProgramming(self, channelIds):
+        """The programme guide for the given channels, a batch at a time."""
+        rows = []
+        for start in range(0, len(channelIds), EPG_BATCH):
+            batch = channelIds[start:start + EPG_BATCH]
+            params = [('platform', PLATFORM),
+                      ('device_id', self.deviceId),
+                      ('lookahead', 1),
+                      ('content_id', ','.join(str(i) for i in batch))]
+            if self.userId is not None:
+                params.append(('user_id', self.userId))
+            data = self.get(''.join([EPG_API, '/content/epg/programming']), params)
+            rows.extend(data.get('rows') or [])
+        return rows
+
+    # ---------------------------------------------------------------- series
+
     def seasons(self, seriesId):
         """The season index for a series: names, numbers and episode counts."""
         data = self.get(''.join([CONTENT_API, '/api/v3/series/', str(seriesId), '/episodes']),
@@ -183,13 +243,13 @@ def pickResource(content, allowHdcp=False):
     because far more Kodi devices can decode it.
     """
     resources = [r for r in content.get('video_resources') or []
-                 if r.get('type') in (CLEAR, WIDEVINE)
+                 if r.get('type') in CLEAR_TYPES + (WIDEVINE,)
                  and (r.get('manifest') or {}).get('url')]
 
     def rank(resource):
         quality = (-resolutionOf(resource),
                    0 if resource.get('codec') == 'VIDEO_CODEC_H264' else 1)
-        encrypted = 0 if resource.get('type') == CLEAR else 1
+        encrypted = 0 if resource.get('type') in CLEAR_TYPES else 1
         if allowHdcp:
             return (encrypted,) + quality
         return (encrypted, 1 if requiresHdcp(resource) else 0) + quality

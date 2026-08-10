@@ -63,6 +63,7 @@ Browse and watch Tubi — free, ad-supported films and TV shows — from inside 
 - Sign-in repaired — Tubi retired the old login endpoint, so the addon now performs the web client's handshake (signed anonymous device token → account login → web session handover)
 - A failed sign-in no longer kills the addon on startup; Tubi is free to browse, so it carries on anonymously
 - Tokens are cached in the addon profile instead of being re-fetched on every browse and playback
+- Live TV: Tubi's 177 linear channels, with IPTV Manager integration so they appear in the Kodi TV guide
 
 See the [addon README](plugin.video.tubitv/README.md) for details.
 
