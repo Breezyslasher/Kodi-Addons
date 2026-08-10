@@ -2,10 +2,10 @@
 
 Welcome to my personal Kodi addon repository! This collection includes various addons I've developed to enhance the Kodi media center experience.
 
-## 📦 Available Addons
+## Available Addons
 
 
-### 🎧 [Audiobookshelf](plugin.audio.audiobookshelf/)
+### [Audiobookshelf](plugin.audio.audiobookshelf/)
 Stream audiobooks and podcasts from your Audiobookshelf server.
 
 **Recent updates:**
@@ -18,7 +18,18 @@ See the [addon README](plugin.audio.audiobookshelf/README.md) for the full featu
 
 ---
 
-### ⬇️ [PlexKodiConnect Download](context.plexkodiconnect.download/)
+### [Apple TV](plugin.video.appletv/) *(experimental)*
+Sign in with your Apple ID and browse Apple TV+ Originals, the MLS and Formula 1 tabs, and Search in Kodi, with playback through InputStream Adaptive using Widevine DRM.
+
+**How it works:** Apple TV+ uses FairPlay DRM on Apple devices (which Kodi can't decrypt) but Widevine on its web client (which Kodi can). This addon mimics the Apple TV web client to receive Widevine streams.
+
+**Known limits:** On-demand playback is standard-definition only (Kodi's Widevine L3 CDM); live events (Formula 1, MLS) play in HD, since Apple licenses only that tier for them. Apple's private, undocumented endpoints may need updates whenever Apple changes them. See the [addon README](plugin.video.appletv/README.md) for the full reality check.
+
+**Requirements:** Kodi 22+ with InputStream Adaptive 22 and a Widevine CDM (the encrypted-playback path uses the newer `inputstream.adaptive.drm` property), plus an Apple ID
+
+---
+
+### [PlexKodiConnect Download](context.plexkodiconnect.download/)
 Context-menu addon for downloading Plex media (movies, shows, music) for offline viewing, including bulk and smart-unwatched downloads.
 
 See the [addon README](context.plexkodiconnect.download/README.md) for details.
@@ -27,7 +38,7 @@ See the [addon README](context.plexkodiconnect.download/README.md) for details.
 
 ---
 
-### 📱 [scrcpy Launcher](script.scrcpy-launcher/)
+### [scrcpy Launcher](script.scrcpy-launcher/)
 Stream your Android device screen — or the Samsung DeX desktop — to Kodi using scrcpy (USB or Wi-Fi, with LibreELEC/OSMC/Flatpak handling).
 
 **Recent updates:**
@@ -41,7 +52,7 @@ See the [addon README](script.scrcpy-launcher/README.md) for details.
 
 ---
 
-### 🎬 [Watch Party](service.watchparty/)
+### [Watch Party](service.watchparty/)
 Synchronized playback across Kodi devices — a SyncLounge-style watch party, native to Kodi. Host a party on one device (or a standalone relay server), friends join with a room code, and play/pause/seek stay in sync everywhere with automatic drift correction.
 
 **Highlights:**
@@ -56,7 +67,7 @@ See the [addon README](service.watchparty/README.md) for setup and details.
 
 ---
 
-### 📺 [TubiTV](plugin.video.tubitv/)
+### [TubiTV](plugin.video.tubitv/)
 Browse and watch Tubi — free, ad-supported films and TV shows — from inside Kodi. A fork of Lunatixz's addon, kept here so the sign-in stays maintained.
 
 **Recent updates:**
@@ -71,7 +82,7 @@ See the [addon README](plugin.video.tubitv/README.md) for details.
 
 ---
 
-### 🧰 [t1m Library Routines](script.module.t1mlib/)
+### [t1m Library Routines](script.module.t1mlib/)
 Shared support routines for t1m's Kodi video addons. A dependency module, not something to install on its own — it is carried here because TubiTV needs it.
 
 See the [addon README](script.module.t1mlib/README.md) for details.
@@ -80,7 +91,8 @@ See the [addon README](script.module.t1mlib/README.md) for details.
 
 ---
 
-### 🔗 [Webhook Runner](script.webhook.runner/)
+(script.webhook.runner/)
+### [Webhook Runner](script.webhook.runner/)
 Fire Home Assistant (or any) webhooks from Kodi — either by remote-button press or automatically on Kodi events.
 
 **Recent updates:**
@@ -94,12 +106,12 @@ See the [addon README](script.webhook.runner/README.md) for details.
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Method 1: Repository Installation (Recommended)
 
 1. In Kodi: Settings → Add-ons → Install from repository
-2. Add my repository URL: `https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips/repository.breezyslasher/repository.breezyslasher-2026.7.26.zip`
+2. Add my repository URL: `https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips/repository.breezyslasher/repository.breezyslasher-2026.8.10.zip`
 3. Install "Breezyslasher Repository"
 4. Browse and install addons from the repository
 
@@ -109,14 +121,14 @@ See the [addon README](script.webhook.runner/README.md) for details.
 2. In Kodi: Settings → Add-ons → Install from zip file
 3. Select the downloaded ZIP file
 
-## 📋 System Requirements
+## System Requirements
 
 - **Kodi Version**: 19 (Matrix) or later
 - **Python**: 3.0.0 or later
 - **Network Connection**: Required for server-based addons
 - **Storage Space**: For offline download features
 
-## 🛠️ Development & Building
+## Development & Building
 
 This repository uses automated workflows to build and distribute addons:
 
@@ -140,7 +152,7 @@ Kodi-Addons/
 └── generate_repo.py               # Repository generator
 ```
 
-## 🤝 Contributing
+## Contributing
 
 While these are personal projects, I welcome feedback and suggestions:
 
@@ -148,7 +160,7 @@ While these are personal projects, I welcome feedback and suggestions:
 - **Feature Requests**: Open an issue describing the desired feature
 - **Questions**: Use the issue tracker for any questions
 
-## 📄 License
+## License
 
 Each addon has its own license:
 - **Audiobookshelf**: GPL-3.0-or-later
@@ -159,12 +171,12 @@ Each addon has its own license:
 - **TubiTV**: GPL-2.0-or-later
 - **t1m Library Routines**: GPL-2.0-or-later
 
-## 🔗 Links
+## Links
 
 - **Repository**: https://github.com/Breezyslasher/Kodi-Addons
 - **Issues**: https://github.com/Breezyslasher/Kodi-Addons/issues
 
-## ⭐ Support
+## Support
 
 If you find these addons useful, consider giving the repository a star! For support:
 
