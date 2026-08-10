@@ -60,6 +60,9 @@ Features:
   cross-service resume list (which mixes in iTunes films in progress, unlike the
   per-tab Up Next) and the "Apple Original Shows and Movies" shelf both return
   to the home screen.
+- The iTunes library locker now also tries the Android (mz_at_ssl) session, not
+  only the store-page one, so a single pasted session can populate both Continue
+  Watching and the library instead of 403-ing the library.
 2026.8.10 - Subtitles: a steady 10-second sync
 - FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
   both films and shows (the previous per-title guess got some titles wrong).

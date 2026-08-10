@@ -282,8 +282,15 @@ class ItunesStore(object):
         sign-in above is refused. Borrowing a session that a genuine client
         already established is the way round that: it needs no attestation
         because the hard part has already happened elsewhere.
+
+        The store-page session goes in itunes_cookies; the Android TV app's
+        mz_at_ssl session lives in itunes_uts_cookies (its main job is the UTS
+        Continue Watching caller). Both are store sessions, so when only the
+        latter is pasted it is tried against the locker too rather than
+        forcing the user to paste the same thing twice.
         """
-        return (kodiutils.get_setting("itunes_cookies") or "").strip()
+        return ((kodiutils.get_setting("itunes_cookies") or "").strip()
+                or (kodiutils.get_setting("itunes_uts_cookies") or "").strip())
 
     def account_dsid(self):
         """The signed-in account's own dsid.
@@ -298,7 +305,7 @@ class ItunesStore(object):
         if info.get("dsid"):
             return str(info["dsid"])
         cookies = self.pasted_cookies()
-        found = re.search(r"(?:amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
+        found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
             or re.search(r"X-Dsid=(\d+)", cookies)
         return found.group(1) if found else ""
 
