@@ -53,6 +53,14 @@ msgctxt "#30023"
 msgid "Clear saved session"
 msgstr ""
 
+msgctxt "#30029"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#30030"
+msgid "Allow HDCP protected streams (higher quality, needs a hardware DRM device)"
+msgstr ""
+
 # --- Messages ---
 msgctxt "#30018"
 msgid "This video requires you to sign in - please see the addon settings"

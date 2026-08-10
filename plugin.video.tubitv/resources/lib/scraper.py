@@ -255,7 +255,8 @@ class myAddon(t1mAddon):
             xbmcplugin.setResolvedUrl(int(sys.argv[1]), False, xbmcgui.ListItem(offscreen=True))
             return
 
-        manifest, licenseUrl = pickResource(content)
+        allowHdcp = self.addon.getSetting('allow_hdcp') == 'true'
+        manifest, licenseUrl = pickResource(content, allowHdcp=allowHdcp)
         if manifest is None:
             # Either the title needs an account or it is not playable here
             message = 30018 if content.get('needs_login') else 30028

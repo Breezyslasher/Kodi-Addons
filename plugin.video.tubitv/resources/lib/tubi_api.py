@@ -152,28 +152,51 @@ class TubiApi(object):
         return episodes
 
 
-def pickResource(content):
+def requiresHdcp(resource):
+    """Whether a stream's licence will only release its keys over HDCP.
+
+    Tubi grades the same title twice: its 720p renditions come with
+    `hdcp_v1` and Widevine security level 2, its 576p ones with HDCP
+    disabled and level 1. A software CDM - which is all a desktop or a
+    Flatpak Kodi has - cannot satisfy the former, and Widevine answers by
+    handing back keys marked output-restricted, so the stream opens and
+    then fails to decode.
+    """
+    hdcp = (resource.get('license_server') or {}).get('hdcp_version') or ''
+    return hdcp not in ('', 'hdcp_disabled')
+
+
+def resolutionOf(resource):
+    digits = ''.join(c for c in (resource.get('resolution') or '') if c.isdigit())
+    return int(digits) if digits else 0
+
+
+def pickResource(content, allowHdcp=False):
     """Choose the stream to play from a title's video resources.
 
-    Returns (manifest url, license url or None). Clear HLS wins when Tubi
-    offers it - some titles are encrypted and some are not, and a clear stream
-    saves the viewer needing a working Widevine CDM. H.264 is preferred over
-    H.265 because far more Kodi devices can decode it.
+    Returns (manifest url, license url or None).
+
+    Clear HLS always wins when Tubi offers it - some titles are encrypted
+    and some are not, and a clear stream needs no CDM at all. Among the
+    encrypted ones the HDCP-free rendition is preferred unless the caller
+    asks otherwise, then the highest resolution, then H.264 over H.265
+    because far more Kodi devices can decode it.
     """
-    resources = content.get('video_resources') or []
+    resources = [r for r in content.get('video_resources') or []
+                 if r.get('type') in (CLEAR, WIDEVINE)
+                 and (r.get('manifest') or {}).get('url')]
 
     def rank(resource):
-        return (0 if resource.get('type') == CLEAR else 1,
-                0 if resource.get('codec') == 'VIDEO_CODEC_H264' else 1)
+        quality = (-resolutionOf(resource),
+                   0 if resource.get('codec') == 'VIDEO_CODEC_H264' else 1)
+        encrypted = 0 if resource.get('type') == CLEAR else 1
+        if allowHdcp:
+            return (encrypted,) + quality
+        return (encrypted, 1 if requiresHdcp(resource) else 0) + quality
 
     for resource in sorted(resources, key=rank):
-        if resource.get('type') not in (CLEAR, WIDEVINE):
-            continue
-        manifest = (resource.get('manifest') or {}).get('url')
-        if not manifest:
-            continue
-        licenseServer = resource.get('license_server') or {}
-        return manifest, licenseServer.get('url')
+        return (resource['manifest']['url'],
+                (resource.get('license_server') or {}).get('url'))
 
     # Older shaped payloads carry the manifest at the top level instead
     if content.get('url'):

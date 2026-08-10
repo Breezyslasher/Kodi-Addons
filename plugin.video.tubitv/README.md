@@ -42,6 +42,18 @@ server — which needs a working Widevine CDM on the device. Clear titles play
 without any of that. In testing, a licensed film came back Widevine-only while
 a series' episodes were entirely in the clear.
 
+Tubi grades the same encrypted title twice. Its 720p renditions carry a licence
+demanding HDCP v1 and Widevine security level 2; its 576p renditions demand
+neither. A software CDM — which is all a desktop, Flatpak or LibreELEC Kodi
+has — cannot satisfy the first kind: the licence is issued, but the keys come
+back marked output-restricted and the video fails to decode with *"Failed to
+initialize a DRM session"*. So the addon prefers the HDCP-free rendition by
+default.
+
+Turn on **Allow HDCP protected streams** in the Playback settings if your device
+has hardware DRM (many Android TV boxes and Shields do) and you would rather
+have the higher quality rendition.
+
 ## Installation
 
 1. Install **t1m Library Routines** (`script.module.t1mlib`) — it ships in this
