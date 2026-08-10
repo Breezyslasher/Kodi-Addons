@@ -21,6 +21,7 @@ import base64
 import json
 import re
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urljoin, urlparse, parse_qs, unquote
 
@@ -71,13 +72,37 @@ _LAST_MASTER = None
 # limit. Filled and drained in the service process.
 _ACTIVE_LEASES = []
 
+# Apple refuses a content key with status -1004. For a stream we are entitled to
+# and have already capped to the HD band (the SD band's own -1004 is handled by
+# not requesting it), the remaining cause is the account's concurrent-stream
+# limit -- the web client shows its own "too many devices" error in exactly this
+# spot. To ISA the refusal is just a failed DRM session, so the user is told
+# plainly. Throttled: ISA requests a key per stream, so a limited account would
+# otherwise fire the notice several times for one play.
+STREAM_LIMIT_STATUS = -1004
+_LAST_LIMIT_NOTICE = 0.0
 
-def release_leases():
+
+def _warn_stream_limit():
+    global _LAST_LIMIT_NOTICE
+    now = time.monotonic()
+    if now - _LAST_LIMIT_NOTICE < 20:
+        return
+    _LAST_LIMIT_NOTICE = now
+    try:
+        kodiutils.notify(kodiutils.localize(32097), time_ms=8000)
+    except Exception as exc:
+        kodiutils.log_error("Could not show streaming-limit notice: %s" % exc)
+
+
+def release_leases(timeout=15):
     """Tell Apple each lease taken this playback has stopped. Best effort.
 
     Mirrors the web client's stop: the start request sent back with
-    lease-action "stop". Run when playback ends so a closed live stream does
-    not keep counting against the concurrent-stream limit until it times out.
+    lease-action "stop". Run when playback ends, and again on shutdown for a
+    stream still playing when Kodi quits, so a closed live stream does not keep
+    counting against the concurrent-stream limit until it times out. A short
+    timeout is used on shutdown so it cannot hold Kodi's quit up for long.
     """
     leases, _ACTIVE_LEASES[:] = list(_ACTIVE_LEASES), []
     for lease in leases:
@@ -87,7 +112,7 @@ def release_leases():
             envelope = {"streaming-request": {"version": 1,
                                               "streaming-keys": [key]}}
             resp = requests.post(lease["url"], data=json.dumps(envelope),
-                                 headers=lease["headers"], timeout=15)
+                                 headers=lease["headers"], timeout=timeout)
             kodiutils.log("Lease released (%s) -> HTTP %s"
                           % (key.get("service-id") or key.get("svcId") or "vod",
                              resp.status_code))
@@ -585,6 +610,7 @@ class _Handler(BaseHTTPRequestHandler):
             "x-apple-renewal": "true",
         }
         last_error = None
+        last_status = None
         for attempt, candidate in enumerate(candidates):
             key = {
                 "lease-action": "start",
@@ -621,6 +647,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not keys or "license" not in keys[0]:
                 status = keys[0].get("status") if keys else None
                 last_error = "no licence in response (status=%s)" % status
+                last_status = status
                 # Read Apple's own answer rather than infer from the status
                 # number: on the first miss, log the full response body and the
                 # exact key parameters sent, and the KID this attempt was for.
@@ -644,6 +671,8 @@ class _Handler(BaseHTTPRequestHandler):
 
         kodiutils.log_error("fpsRequest failed after %d attempt(s): %s"
                             % (len(candidates), last_error))
+        if last_status == STREAM_LIMIT_STATUS:
+            _warn_stream_limit()
         return None
 
 

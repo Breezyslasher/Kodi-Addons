@@ -66,6 +66,10 @@ class WatchHistory(object):
             return
         self._token = token
         self._duration = duration
+        # A live game is never "finished" just because you are at the live edge
+        # (position ~= the DVR length): leaving it must not mark the game
+        # watched while it is still being played. Only its position is reported.
+        self._live = bool(context.get("live"))
         self._active = True
         self._last_report = time.monotonic()
         kodiutils.log("Watch history: reporting this stream to Apple")
@@ -93,7 +97,7 @@ class WatchHistory(object):
         """Report the final position, then forget this stream."""
         if not self._active:
             return
-        finished = bool(self._duration) and \
+        finished = (not self._live) and bool(self._duration) and \
             self._last_position >= self._duration * FINISHED_FRACTION
         self._send(self._last_position, finished=finished)
         self.reset()
@@ -108,6 +112,7 @@ class WatchHistory(object):
     def reset(self):
         self._token = None
         self._active = False
+        self._live = False
         self._last_report = 0
         self._last_position = 0
         self._duration = 0
@@ -228,6 +233,10 @@ def main():
         if monitor.waitForAbort(1):
             break
     history.stop()
+    # Kodi is quitting: a stream still playing gets no onPlayBackStopped whose
+    # background release can finish, so release synchronously here with a short
+    # timeout, which frees a live session left open when the app is closed.
+    release_leases(timeout=4)
     proxy.stop()
     kodiutils.log("License proxy stopped")
 

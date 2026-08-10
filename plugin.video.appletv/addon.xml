@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.35" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.44" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,63 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.44 - Fix "event has not started" on games that already happened
+- FIX: A finished game could say "this event has not started yet" with a
+  future date. Its start time was being read from the whole detail document,
+  which also lists upcoming games, so every game reported the same upcoming
+  kick-off. The start time is now read from the game's own entry, so a played
+  game is recognised as played (and, if it will not play, says why).
+2026.8.43 - MLB
+- Added an MLB tab. Baseball on Apple TV+ is the same kind of live event as MLS
+  and F1 under the hood, so its games, Big Inning, shows and recaps play (and
+  resume, and pick home/away commentary) exactly like the other sports. MLB
+  sits under Apple TV+ rather than being its own channel, so it is listed as a
+  room; if it ever comes up empty, Apple has reissued the room and it needs a
+  refresh.
+2026.8.42 - Clearer message when a title will not play
+- A title with no stream for you now says why: "not part of your subscription,
+  or blacked out in your region" when you are signed in, or a plain "sign in
+  first" when you are not -- instead of one catch-all that named both causes
+  and pointed at the log.
+2026.8.41 - Finished games resume like a film again
+- FIX: A finished game (a replay) is not live, so it should resume where you
+  left off like any on-demand title -- but the live-game change had it start
+  over instead. Now only a game that is actually airing skips Kodi's resume
+  (its start is the live menu's job); a finished one resumes normally. Which
+  is which is read from the event's own live flag, no guesswork.
+2026.8.40 - Live games: "Resume where you left off" is now a menu choice
+- Kodi used to seek a live game to your last position on its own, overriding
+  whatever mode you picked. It no longer does. Instead, when Apple has a saved
+  position for the game, the live menu adds a "Resume where you left off"
+  option next to Watch Live / from Start / Catch Up, so jumping there is your
+  choice -- and the other modes start exactly where they should.
+2026.8.39 - Live games: resume shows the choices; a clear "too many devices"
+- FIX: Resuming an in-progress live game from Continue Watching skipped the
+  Watch Live / from Start / Catch Up choice and jumped straight to the saved
+  point (and even when the choice showed, it was ignored). A live game now
+  always offers the three, and the one you pick decides where it starts.
+- When Apple refuses the stream because the account is watching on too many
+  devices, that now says so plainly instead of failing as a generic playback
+  error.
+2026.8.38 - Live games: full rewind window (Watch from Start / Catch Up)
+- FIX: Watch from Start jumped in near the live edge instead of the broadcast
+  start, and scrubbing/Catch Up would snap back to "now". Apple only serves the
+  deep rewind window (the whole broadcast so far) when the player asks for it
+  with linearScrubbingSupported, which the web client sends on every live
+  manifest but the addon did not. The addon now sends it, so a live game can be
+  rewound to its start and seeked through its key plays.
+2026.8.37 - Live games: freed on app close, not marked watched
+- FIX: Closing Kodi while a live game was still playing could leave the stream
+  holding a session with Apple (its lease was only released on a clean Stop).
+  The session is now also released when the app quits.
+- FIX: Leaving a live game marked it as watched, because at the live edge the
+  position equals the stream length. A live game now only reports its position,
+  never "finished", so it is not marked watched before it is over.
+2026.8.36 - Your language first on a live game, quieter log
+- A live game with commentary in more than one language now lists your
+  language first (Apple's order was arbitrary -- Spanish sometimes sat above
+  English), so the top of the picker is the one you most likely want.
+- A game with no key plays no longer logs a 404 as an error.
 2026.8.35 - Tell Apple when a stream stops (frees your session)
 - NEW: Closing a video now releases its streaming licence with Apple, the way
   the web client does -- it re-sends the licence request with the action set

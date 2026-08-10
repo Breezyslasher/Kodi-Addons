@@ -113,6 +113,18 @@ msgctxt "#32096"
 msgid "No key plays yet"
 msgstr ""
 
+msgctxt "#32097"
+msgid "Streaming limit reached. Apple refused this stream -- you may be watching Apple TV on too many devices. Stop one and try again."
+msgstr ""
+
+msgctxt "#32098"
+msgid "Resume where you left off"
+msgstr ""
+
+msgctxt "#32099"
+msgid "Not available to watch on your account. It may not be part of your subscription, or it is blacked out in your region."
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""

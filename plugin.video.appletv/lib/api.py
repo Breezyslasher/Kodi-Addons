@@ -51,6 +51,13 @@ CHANNELS = (
     (F1_CHANNEL, "Formula 1"),
 )
 
+# MLB has no brand channel of its own the way MLS and F1 do. On tv.apple.com it
+# is an editorial room that lives under Apple TV+ -- verified: its games carry
+# channelId tvs.sbd.4000 (Apple TV+), and the "MLB" tab opens this room. So it
+# is linked as a room rather than a CHANNELS entry. An editorial id can be
+# reissued by Apple; if the tab ever comes up empty, this is what to refresh.
+MLB_ROOM = "edt.item.62327df1-6874-470e-98b2-a5bbeac509a2"
+
 # How long a scraped utsk is reused before the shell is fetched again.
 # Apple reports a two-hour life; refreshing at one keeps a wide margin.
 BOOT_CACHE_SECONDS = 3600
@@ -310,7 +317,7 @@ class AppleTVApi(object):
             headers["media-user-token"] = mut
         return headers
 
-    def _get_json(self, path, extra_params=None, _retried=False):
+    def _get_json(self, path, extra_params=None, _retried=False, quiet_404=False):
         try:
             resp = self.session.get(UTS_BASE + path, params=self._params(extra_params),
                                     headers=self._uts_headers(), timeout=30)
@@ -320,9 +327,14 @@ class AppleTVApi(object):
                 # than a failed screen.
                 kodiutils.log("UTS %s -> %s; refreshing tokens" % (path, resp.status_code))
                 self._bootstrap(force=True)
-                return self._get_json(path, extra_params, _retried=True)
+                return self._get_json(path, extra_params, _retried=True,
+                                      quiet_404=quiet_404)
             if resp.status_code != 200:
-                kodiutils.log_error("UTS %s -> %s %s" % (path, resp.status_code, resp.text[:200]))
+                # A 404 is expected on some calls (a game with no key plays),
+                # so the caller can ask for it not to be logged as an error.
+                if not (quiet_404 and resp.status_code == 404):
+                    kodiutils.log_error("UTS %s -> %s %s"
+                                        % (path, resp.status_code, resp.text[:200]))
                 return None
             return resp.json()
         except Exception as exc:
@@ -903,7 +915,13 @@ class AppleTVApi(object):
                 "title": playable.get("title") or "",
                 "duration": playable.get("duration"),
                 "language": locale.get("displayName") or "",
+                "locale": locale.get("locale") or "",
             })
+        # Offer the configured language first: Apple lists the feeds in no fixed
+        # order (Spanish came before English on an MLS game), so the top of the
+        # picker was as likely to be a language you did not want as one you did.
+        pref = (kodiutils.get_setting("locale") or "en-US").split("-")[0].lower()
+        feeds.sort(key=lambda f: 0 if (f.get("locale") or "").lower().startswith(pref) else 1)
         return {"feeds": feeds, "live": live}
 
     def _live_playable(self, data, external_id=None):
@@ -954,7 +972,9 @@ class AppleTVApi(object):
             params = {"playablePassThrough": ppt}
             if token:
                 params["nextToken"] = token
-            resp = self._get_json("/shelves/key-play", params)
+            # A game with no key plays (or paged to its end) answers 404; that
+            # is not an error worth logging.
+            resp = self._get_json("/shelves/key-play", params, quiet_404=True)
             shelf = ((resp or {}).get("data") or {}).get("shelf")
             if not isinstance(shelf, dict):
                 break
@@ -1015,17 +1035,19 @@ class AppleTVApi(object):
             return None
 
     def get_playback(self, content_id, item_type="Movie", external_id=None,
-                     start_over=False, seek_plays=None):
+                     start_over=False, seek_plays=None, seek_seconds=None):
         """Resolve a title to an ISA-playable dict, or None.
 
         start_over asks a live event's manifest for the broadcast from its
         beginning (the web player's "Watch from Start") rather than the live
-        edge.
+        edge. seek_seconds jumps the start-over stream straight to a position
+        (seconds from that beginning) -- how Resume lands on the saved point.
         """
         self.last_error = None
-        # Key plays are positions in the DVR from the broadcast start, so a play
-        # that seeks to one must be the start-over stream.
-        if seek_plays:
+        # Key plays and a resume position are both offsets into the DVR from the
+        # broadcast start, so a play that seeks to one must be the start-over
+        # stream.
+        if seek_plays or seek_seconds:
             start_over = True
         assets = self._prepare_playback(content_id, item_type, external_id)
         if not assets:
@@ -1042,25 +1064,32 @@ class AppleTVApi(object):
             kodiutils.log("Using the stream listed inline for %s" % content_id)
             self.last_error = None
             assets = self._prepared_from_assets(inline, self._media_user_token())
+        if assets.get("manifest") and "linear.tv.apple.com" in assets["manifest"]:
+            assets["manifest"] = self._linear_playback_url(assets["manifest"])
         if start_over and assets.get("manifest"):
             assets["manifest"] = self._with_start_over(assets["manifest"])
         # A manifest pasted into the override setting is not a catalogue
         # stream, so an Apple TV+ account token is not what authorises it.
         return self._build_playback(
             assets, require_user_token=not assets.get("override"),
-            seek_plays=seek_plays)
+            seek_plays=seek_plays, seek_seconds=seek_seconds)
 
-    def _write_seek_context(self, manifest_url, headers, seek_plays):
+    def _write_seek_context(self, manifest_url, headers, seek_plays,
+                            seek_seconds=None):
         """Record where the service should seek, or clear it.
 
         A key play states when it happened as wall-clock time; the stream's
         first segment carries the same clock (PROGRAM-DATE-TIME), so the
-        difference is the seek offset in seconds. Written for the service,
-        which owns the player. Cleared when a normal play carries no key plays,
-        so a later stream does not inherit an old seek.
+        difference is the seek offset in seconds. seek_seconds is already such
+        an offset (Resume's saved position), so it is written straight through.
+        Written for the service, which owns the player. Cleared when a normal
+        play carries neither, so a later stream does not inherit an old seek.
         """
         segments = []
-        if seek_plays and manifest_url:
+        if seek_seconds and seek_seconds > 0:
+            segments = [{"start": float(seek_seconds), "title": "resume"}]
+            kodiutils.log("Resume seek: %.1fs from stream start" % seek_seconds)
+        elif seek_plays and manifest_url:
             first_ms = self._manifest_start_ms(manifest_url, headers)
             if first_ms:
                 for kp in seek_plays:
@@ -1087,6 +1116,28 @@ class AppleTVApi(object):
         })
 
     @staticmethod
+    def _linear_playback_url(url):
+        """Match the web player's live-manifest request.
+
+        Apple hands the addon a bare linear hlsUrl (serviceId, l, referenceId).
+        The web client, on every live manifest it fetches, additionally sends
+        linearScrubbingSupported=true plus the webbrowser/xapsub capability
+        flags. linearScrubbingSupported is what makes Apple serve the deep DVR
+        window -- the whole broadcast so far rather than only the last minute
+        at the live edge -- so Watch from Start reaches the real start and a
+        live game can be scrubbed back through its key plays. Without it Apple
+        returns a live-edge-only window and any seek clamps to now. Verified
+        against the web client's HAR; added idempotently.
+        """
+        for key, param in (
+                ("linearScrubbingSupported=", "linearScrubbingSupported=true"),
+                ("webbrowser=", "webbrowser=true"),
+                ("xapsub=", "xapsub=accepts-css")):
+            if key not in url:
+                url += ("&" if "?" in url else "?") + param
+        return url
+
+    @staticmethod
     def _with_start_over(url):
         """Ask Apple's linear manifest for the broadcast start.
 
@@ -1098,13 +1149,15 @@ class AppleTVApi(object):
             return url
         return url + ("&" if "?" in url else "?") + "startOver=true"
 
-    def _build_playback(self, assets, require_user_token=True, seek_plays=None):
+    def _build_playback(self, assets, require_user_token=True, seek_plays=None,
+                        seek_seconds=None):
         """Turn resolved stream assets into the dict default.py plays.
 
         Shared by features and trailers: both arrive as the same asset shape
         (an hlsUrl plus the fps key-server details). seek_plays, when given,
         are key moments to jump to: their wall-clock times are turned into
         seconds from the stream start and written for the service to seek.
+        seek_seconds is a ready-made offset (Resume) written the same way.
         """
         override = bool(assets.get("override"))
         boot = self._bootstrap()
@@ -1138,7 +1191,8 @@ class AppleTVApi(object):
                 stream_headers["media-user-token"] = mut
         fps = assets.get("fps_params") or {}
         live = bool(fps.get("service-id") or fps.get("reference-id"))
-        self._write_seek_context(assets.get("manifest"), stream_headers, seek_plays)
+        self._write_seek_context(assets.get("manifest"), stream_headers,
+                                 seek_plays, seek_seconds)
         wv_keys = self._collect_widevine_keys(
             assets["manifest"], stream_headers, live=live)
         # None means the manifest could not be fetched to check for keys, not
@@ -1204,6 +1258,9 @@ class AppleTVApi(object):
                 "playable_passthrough": assets.get("playable_passthrough"),
                 "external_id": assets.get("external_id"),
                 "brand_id": assets.get("brand_id"),
+                # A live game: the watch-history report must not mark it
+                # finished just because playback sat at the live edge.
+                "live": live,
             },
         }
 
@@ -1249,6 +1306,12 @@ class AppleTVApi(object):
             kodiutils.log_error(
                 "No playable stream for %s. Likely not in your subscription/"
                 "region, or no media-user-token." % content_id)
+            # Tell the two causes apart by whether an account token was sent:
+            # signed in with no entitled stream means subscription or a
+            # regional blackout; no token means sign in first. Either beats the
+            # generic "playback could not be resolved" that named both at once.
+            self.last_error = kodiutils.localize(
+                32099 if self._media_user_token() else 32025)
             return None
 
         # A live event can carry a stream before you are allowed to watch it.
@@ -1506,10 +1569,21 @@ class AppleTVApi(object):
 
     @staticmethod
     def event_times(data):
-        """Kick-off and tune-in times (epoch seconds) of a sporting event."""
+        """Kick-off and tune-in times (epoch seconds) of a sporting event.
+
+        Read from the event's own node only. A detail document carries other
+        games too -- a related-games canvas of upcoming fixtures -- and a
+        document-wide search hits one of those first: every game, finished or
+        not, then reported the same upcoming kick-off and looked "not started".
+        The event's own time is on its content node (detail) or on the item
+        itself (a shelf tile); the whole-document search stays as a last resort
+        for a shape that has neither.
+        """
+        root = data.get("data") if isinstance(data, dict) and "data" in data \
+            else data
         event = None
-        for holder in ("content", "data"):
-            node = data.get(holder) if isinstance(data, dict) else None
+        for node in (root.get("content") if isinstance(root, dict) else None,
+                     root):
             if isinstance(node, dict) and isinstance(node.get("eventTime"), dict):
                 event = node["eventTime"]
                 break
@@ -2017,6 +2091,12 @@ class AppleTVApi(object):
         # one feed to play; a normal event tile keeps its picker so a race's
         # other feeds stay reachable.
         is_resume = raw.get("context") == "Continue"
+        # A game currently airing marks its playables airingType "Live" (the
+        # same signal list_playables uses at play time). Read from the shelf
+        # item's own playables so the listing can tell a live game from a
+        # finished one without another request: a live game's resume is a menu
+        # choice, a finished game's is an ordinary VOD resume point.
+        live = False
         for p in self._as_list(raw.get("playables")):
             if not isinstance(p, dict):
                 continue
@@ -2024,6 +2104,8 @@ class AppleTVApi(object):
                 duration = p["duration"]
             if is_resume and not external_id and p.get("externalId"):
                 external_id = p["externalId"]
+            if p.get("airingType") == "Live":
+                live = True
         resume = self._resume_point(raw)
         # A resume position belongs to one specific feed -- the one Apple was
         # tracking -- and its length is that feed's length. If the item is left
@@ -2059,6 +2141,10 @@ class AppleTVApi(object):
             "show_title": raw.get("showTitle"),
             "show_id": raw.get("showId"),
             "duration": duration,
+            # Whether the event is airing right now: a live game is played
+            # through the live-mode menu (which owns where it starts), a
+            # finished one resumes like any on-demand title.
+            "live": live,
             # The feed this event item already represents (Continue Watching),
             # so playing it resumes that feed without a picker.
             "external_id": external_id,

@@ -11,7 +11,7 @@ import xbmcplugin
 from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA
 from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
-                     PLAYBACK_REPORT_CACHE)
+                     MLB_ROOM, PLAYBACK_REPORT_CACHE)
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
@@ -71,6 +71,7 @@ S = {
     "catch_up": 32094,
     "key_plays": 32095,
     "no_key_plays": 32096,
+    "resume_live": 32098,
     "related": 32064,
     "clubs": 32065,
     "highlights": 32066,
@@ -239,9 +240,15 @@ def add_playable(entry, cast=None):
             pass
     apply_entry_info(tag, entry)
     # Apple reports how far the account already is into a title, so it can be
-    # resumed here at the point another Apple client left it.
+    # resumed here at the point another Apple client left it. A game airing
+    # live is the exception: its "resume" is a live position that Kodi would
+    # turn into a fixed seek, overriding (and so silently ignoring) the Watch
+    # Live / from Start / Catch Up / Resume choice, so it carries no Kodi resume
+    # point -- the menu owns where it starts. A finished game is an ordinary
+    # replay and resumes like a film.
+    live_sport = kind == "SportingEvent" and entry.get("live")
     resume = entry.get("resume") or {}
-    if resume.get("position") and resume.get("total"):
+    if not live_sport and resume.get("position") and resume.get("total"):
         try:
             tag.setResumePoint(resume["position"], resume["total"])
         except (TypeError, ValueError, AttributeError):
@@ -296,6 +303,12 @@ def add_playable(entry, cast=None):
     # plays that feed directly, so resuming does not re-open the feed picker.
     if entry.get("external_id"):
         play_params["external_id"] = entry["external_id"]
+    # A live game's saved position rides along so the play menu can offer it as
+    # an explicit "Resume" -- a live game carries no Kodi resume point (it would
+    # seek over the menu choice), so this is the only route left for it. A
+    # finished game keeps its Kodi resume point, so it needs no such hand-off.
+    if live_sport and (entry.get("resume") or {}).get("position"):
+        play_params["resume_pos"] = int(entry["resume"]["position"])
     xbmcplugin.addDirectoryItem(
         HANDLE,
         url(action="play", **play_params),
@@ -311,6 +324,9 @@ def main_menu(auth):
     for channel_id, name in CHANNELS:
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
+    # MLB rides on Apple TV+ as an editorial room rather than a brand channel,
+    # so it is listed here as a room instead of a CHANNELS entry.
+    add_dir("MLB", "room", room_id=MLB_ROOM, channel_id=APPLE_TV_PLUS_CHANNEL)
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
         # Not a folder. do_play answers with setResolvedUrl, which Kodi only
@@ -567,35 +583,50 @@ def pick_feed(feeds):
     return feeds[index]["external_id"]
 
 
-def pick_live_mode():
-    """How to watch a live game: live edge, from the start, or catch up.
+def pick_live_mode(resume_seconds=None):
+    """How to watch a live game: live edge, from the start, catch up, or resume.
 
-    Returns "live", "start" or "catchup", or None if cancelled. Catch Up plays
-    the key moments in turn (Apple's own is the start-over stream skipped
-    through the key plays).
+    Returns "live", "start", "catchup", "resume", or None if cancelled. Catch
+    Up plays the key moments in turn (Apple's own is the start-over stream
+    skipped through the key plays). Resume is offered only when Apple reports a
+    saved position for the game, and jumps the start-over stream to it -- the
+    seek Kodi used to do on its own, now a choice rather than an override.
     """
-    index = xbmcgui.Dialog().select(
-        L("live_options"),
-        [L("watch_live"), L("watch_from_start"), L("catch_up")])
+    labels, modes = [], []
+    if resume_seconds:
+        labels.append(L("resume_live"))
+        modes.append("resume")
+    labels += [L("watch_live"), L("watch_from_start"), L("catch_up")]
+    modes += ["live", "start", "catchup"]
+    index = xbmcgui.Dialog().select(L("live_options"), labels)
     if index < 0:
         return None
-    return ("live", "start", "catchup")[index]
+    return modes[index]
 
 
-def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=None):
+def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=None,
+            resume_pos=None):
     # An event carried in with its own feed (Continue Watching) plays that
     # feed directly. Only when the feed is not already known is the picker
     # offered, and only for an event that has more than one.
     start_over = False
     seek_plays = None
+    seek_seconds = None
+    is_live = False
     if kp_start:
         # A pick from the Key Plays list: play the game jumped to that moment.
         seek_plays = [{"start_time": int(kp_start),
                        "end_time": int(kp_end) if kp_end else None}]
-    elif str(item_type) == "SportingEvent" and not external_id:
+    elif str(item_type) == "SportingEvent":
         options = api.list_playables(item_id, item_type)
         feeds = options.get("feeds") or []
-        if len(feeds) > 1:
+        # The feed picker is only for choosing between commentaries, so it is
+        # skipped when the feed is already known (Continue Watching binds one).
+        # The live-mode choice below is offered regardless: a game resumed from
+        # Continue Watching is still live, and "where to start" is Watch Live /
+        # from Start / Catch Up / Resume, not the fixed resume point Apple
+        # happened to report -- which is why picking a mode used to be ignored.
+        if not external_id and len(feeds) > 1:
             external_id = pick_feed(feeds)
             if external_id is False:
                 xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -603,12 +634,19 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
         # A game airing live can be joined at the live edge, watched from the
         # start, or caught up on; a finished or upcoming one has no such choice.
         if options.get("live"):
-            mode = pick_live_mode()
+            is_live = True
+            resume_seconds = int(resume_pos) if resume_pos else None
+            mode = pick_live_mode(resume_seconds=resume_seconds)
             if mode is None:
                 xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
                 return
             if mode == "start":
                 start_over = True
+            elif mode == "resume":
+                # Where you left off: the start-over stream sought to Apple's
+                # saved position for the game (seconds from the broadcast start).
+                start_over = True
+                seek_seconds = resume_seconds
             elif mode == "catchup":
                 seek_plays = api.get_key_plays(item_id, item_type, external_id)
                 if not seek_plays:
@@ -616,7 +654,8 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
                     kodiutils.notify(L("no_key_plays"))
                     start_over = True
     playback = api.get_playback(item_id, item_type, external_id,
-                                start_over=start_over, seek_plays=seek_plays)
+                                start_over=start_over, seek_plays=seek_plays,
+                                seek_seconds=seek_seconds)
     if not playback:
         kodiutils.ok_dialog(api.last_error or L("playback_failed"))
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -625,6 +664,13 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
     kodiutils.notify(L("sd_notice"))
     write_report_context(playback, content_id=item_id)
     play_item = build_isa_listitem(playback)
+    if is_live:
+        # A live game starts where the menu said (live edge, from start, catch
+        # up, or the Resume seek above) -- never where Kodi last left it. Kodi
+        # otherwise resumes a sporting event from its own stored bookmark for
+        # this path, seeking on top of the choice; resumetime 0 tells it not to.
+        # A finished game is left alone, so it resumes like any on-demand title.
+        play_item.setProperty("resumetime", "0")
     # Playback resolves from an id, so the item Kodi shows while playing knew
     # nothing about the title and its plot read "Not available". A title's own
     # page carries the description and the cast, which shelf items do not.
@@ -934,7 +980,8 @@ def router(paramstring):
     elif action == "play":
         do_play(api, params.get("item_id"), params.get("item_type", "Movie"),
                 params.get("external_id"),
-                kp_start=params.get("kp_start"), kp_end=params.get("kp_end"))
+                kp_start=params.get("kp_start"), kp_end=params.get("kp_end"),
+                resume_pos=params.get("resume_pos"))
     elif action == "key_plays":
         show_key_plays(api, params.get("item_id"),
                        params.get("item_type", "SportingEvent"),
