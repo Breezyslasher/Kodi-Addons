@@ -463,6 +463,35 @@ without a keybag; `tvs.vds.9023` (iTunes catalogue) refuses without one. The
 session — nothing about the token or the path. A purchase's keys exist only on
 `9023`, and `9023` wants the device keybag, full stop.
 
+### The last variable: fetch the offer as Android too (still -1020)
+
+One thing the runs above had not isolated: the redownload offer (and its
+`hlsUrl`) was fetched via the Windows caller (`caller=wlk`, `pfm=windows`) while
+only the *licence* identity was swapped to Android. So the stream being licensed
+was a Windows-minted one. The offer fetch was then moved to the Android caller
+(`caller=vz`, `pfm=vz`, `mfr=AndroidTV`) so the whole chain — acquire and
+licence — is the Android TV app, the client that actually plays purchases over
+Widevine. Tested on a valid session (`auth-token-valid=true`) against an owned
+film (adam 1324419603, `svcId tvs.vds.9023`):
+
+```
+iTunes offer fetched via android(vz) caller
+iTunes redownload offer found: redownload SD
+Collected 3 Widevine key(s)
+License identity: android session (dsid=yes, token=NO)
+License diagnostic: HTTP 200
+{"streaming-response":{"streaming-keys":[{"id":1,"status":-1020}],"version":1}}
+sent key params={... 'adamId':'1324419603','isExternal':True,'svcId':'tvs.vds.9023','guid':''}
+```
+
+Identical `-1020`. The sent request carries `guid: ''` and no `kbsync`; the
+Android app's real request carries both. So the offer caller was never the
+variable either: with the fully coherent Android chain — Android-fetched
+Widevine stream, Android identity, valid session, correct key params — the
+purchase key server still refuses for the missing device keybag. Every variable
+short of `kbsync` (and the device guid / per-request signing that accompany it)
+is now eliminated. This is the wall, confirmed rather than inferred.
+
 What the captures say instead is that the key system splits cleanly by
 playlist, without a single exception:
 
