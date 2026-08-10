@@ -52,6 +52,10 @@ Features:
   error. The purchase streams over Widevine (as Apple's own Android app plays
   it), but the key server refuses it (status -1020) without a device keybag its
   client apps attach, which this add-on cannot reproduce.
+- Experimental: the redownload stream is now fetched as the Android TV app
+  (caller=vz), matching the identity the licence request uses, instead of as the
+  Windows desktop client. Paste a fresh Android (mz_at_ssl) session to test
+  whether the coherent Android path licenses where the mixed one did not.
 2026.8.10 - Subtitles: a steady 10-second sync
 - FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
   both films and shows (the previous per-title guess got some titles wrong).

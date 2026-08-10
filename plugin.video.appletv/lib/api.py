@@ -2073,9 +2073,24 @@ class AppleTVApi(object):
         if not content_id:
             return None
         kind = "episodes" if playable.get("contentType") == "Episode" else "movies"
-        data = self._store_detail(kind, content_id)
+        # Fetch the redownload offer as the client that actually plays a purchase
+        # over Widevine -- the Android TV app (caller=vz, pfm=vz) -- so the hlsUrl
+        # is that path's stream. Fetching it as the Windows desktop client
+        # (caller=wlk, pfm=windows) but then licensing with the Android identity
+        # is a platform mismatch: the Windows client licenses via FairPlay with a
+        # device keybag, so a Windows-minted hlsUrl can pin the licence onto that
+        # keybag path. Prefer the Android caller when a session is pasted; fall
+        # back to the Windows store caller (it is the only one that answers with
+        # no session, and still names the offer for the ownership test).
+        path = "/%s/%s" % (kind, content_id)
+        data = self._vz_json(path, quiet=True)
+        source = "android(vz)"
+        if not data:
+            data = self._store_detail(kind, content_id)
+            source = "windows(wlk)"
         if not data:
             return None
+        kodiutils.log("iTunes offer fetched via %s caller" % source)
         playables = self._deep_find(data, "playables")
         if isinstance(playables, dict):
             candidates = list(playables.values())
