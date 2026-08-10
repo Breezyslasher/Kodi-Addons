@@ -2318,9 +2318,63 @@ class AppleTVApi(object):
             if not rows or not nxt:
                 break
             offset += len(rows)
+        if items:
+            self._enrich_purchases(items, headers)
         kodiutils.log("MediaAPI purchases (%s): %d owned title(s)"
                       % (kind, len(items)))
         return items
+
+    def _enrich_purchases(self, items, headers):
+        """Give each owned title its canonical id and resume point.
+
+        The app resolves each purchase's adam id to a canonical umc id (the
+        reverse-lookup) and then opens it as an ordinary /movie/{id} -- which is
+        what gives it trailers, extras, cast and the normal play path. Do the
+        same here: route the entry by canonical id, keeping the adam id as the
+        external id so the redownload offer still resolves. Resume comes from
+        the MediaAPI playback-positions call, one request for the whole account.
+        """
+        lookup = self._reverse_lookup([e["adam_id"] for e in items])
+        positions = self._media_positions(headers)
+        for e in items:
+            hit = lookup.get(e["adam_id"])
+            if hit and hit.get("canonical_id"):
+                e["external_id"] = e["adam_id"]
+                e["id"] = str(hit["canonical_id"])
+            pos = positions.get(e["adam_id"])
+            if pos and e.get("duration"):
+                e["resume"] = {"position": float(pos),
+                               "total": float(e["duration"])}
+
+    def _media_positions(self, headers):
+        """Where the account left every owned title, from MediaAPI
+        /v1/me/playback/positions -- {content id: seconds}. One call for all."""
+        data = self._media_get(MEDIA_API_HOST, "/v1/me/playback/positions",
+                               {"types": "movies,tv-episodes", "mode": "all"},
+                               headers)
+        out = {}
+        rows = self._as_list((data or {}).get("data") if isinstance(data, dict)
+                             else data)
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            rid = str(row.get("id") or "")
+            attrs = row.get("attributes") or row
+            # positionInMilliseconds is ms; position/positionSeconds are seconds.
+            if attrs.get("positionInMilliseconds") is not None:
+                pos = attrs["positionInMilliseconds"] / 1000.0
+            else:
+                pos = attrs.get("positionSeconds")
+                if pos is None:
+                    pos = attrs.get("position")
+            if rid and pos:
+                try:
+                    out[rid] = float(pos)
+                except (TypeError, ValueError):
+                    pass
+        if out:
+            kodiutils.log("MediaAPI positions: %d resumable title(s)" % len(out))
+        return out
 
     def media_family_members(self):
         """Family members who share purchases, from the app's MediaAPI call

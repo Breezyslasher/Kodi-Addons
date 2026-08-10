@@ -75,6 +75,10 @@ Features:
 - FIX: a film whose MediaAPI description came back as an object rather than a
   string crashed the whole library list; the plot is now read correctly and can
   never break the listing.
+- Library titles now resolve to their canonical id (as the app does), so a
+  purchased film carries its trailers, bonus features, cast and the normal play
+  path -- and resumes where you left off, via the app's playback-positions call
+  (/v1/me/playback/positions). All on the ordinary Apple TV+ session.
 2026.8.10 - Subtitles: a steady 10-second sync
 - FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
   both films and shows (the previous per-title guess got some titles wrong).
