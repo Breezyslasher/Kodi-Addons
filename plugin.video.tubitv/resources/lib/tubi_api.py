@@ -171,8 +171,12 @@ class TubiApi(object):
                 ordered.append(channel)
         return ordered, groups
 
-    def liveProgramming(self, channelIds):
-        """The programme guide for the given channels, a batch at a time."""
+    def liveProgramming(self, channelIds, tolerant=False):
+        """The programme guide for the given channels, a batch at a time.
+
+        With tolerant set, a batch that fails is skipped instead of losing
+        the whole guide - a partial guide beats none at all.
+        """
         rows = []
         for start in range(0, len(channelIds), EPG_BATCH):
             batch = channelIds[start:start + EPG_BATCH]
@@ -182,7 +186,12 @@ class TubiApi(object):
                       ('content_id', ','.join(str(i) for i in batch))] + LIMIT_RESOLUTIONS
             if self.userId is not None:
                 params.append(('user_id', self.userId))
-            data = self.get(''.join([EPG_API, '/content/epg/programming']), params)
+            try:
+                data = self.get(''.join([EPG_API, '/content/epg/programming']), params)
+            except TubiApiError:
+                if not tolerant:
+                    raise
+                continue
             rows.extend(data.get('rows') or [])
         return rows
 

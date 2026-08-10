@@ -77,6 +77,12 @@ be switched off if you would rather keep the channels inside the addon.
 The channel line-up is served as JSON-STREAMS and the guide as JSON-EPG, both
 written back over the callback socket IPTV Manager supplies.
 
+The callback socket is opened before the document is built. IPTV Manager gives
+an addon ten seconds to call back and then waits as long as the connection
+stays open, and building the guide takes one request per batch of channels —
+comfortably more than ten seconds — so connecting first is what keeps the guide
+from arriving empty.
+
 ## Installation
 
 1. Install **t1m Library Routines** (`script.module.t1mlib`) — it ships in this

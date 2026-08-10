@@ -22,13 +22,21 @@ CHANNELS_ROUTE = '/iptv/channels'
 EPG_ROUTE = '/iptv/epg'
 
 
-def send(port, data):
-    """Hand a JSON document back to IPTV Manager over its callback socket."""
+def send(port, produce):
+    """Hand a JSON document back to IPTV Manager over its callback socket.
+
+    IPTV Manager allows ten seconds for the addon to connect and then waits
+    as long as the connection stays open, so the socket is opened *before*
+    the document is built. Building the guide takes a request per batch of
+    channels, which is far more than ten seconds' work - doing it first is
+    what makes IPTV Manager give up and leave the guide empty.
+    """
     connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     connection.settimeout(TIMEOUT)
     try:
         connection.connect(('127.0.0.1', int(port)))
-        connection.sendall(json.dumps(data).encode('utf-8'))
+        connection.settimeout(None)
+        connection.sendall(json.dumps(produce()).encode('utf-8'))
     finally:
         connection.close()
 
@@ -68,10 +76,11 @@ def epg(api, channelIds):
     """The JSON-EPG document for the given channels.
 
     Tubi timestamps its programmes in ISO-8601 UTC already, which is what
-    IPTV Manager wants, so they go across untouched.
+    IPTV Manager wants, so they go across untouched. A batch that fails is
+    skipped rather than abandoning the whole guide.
     """
     guide = {}
-    for row in api.liveProgramming(channelIds):
+    for row in api.liveProgramming(channelIds, tolerant=True):
         programs = []
         for program in row.get('programs') or []:
             entry = {'start': program.get('start_time'),
@@ -95,13 +104,21 @@ def epg(api, channelIds):
     return {'version': VERSION, 'epg': guide}
 
 
+def guideFor(api):
+    lineUp, _ = api.liveChannels()
+    return epg(api, [str(channel.get('id')) for channel in lineUp])
+
+
 def handle(route, port, api, playPath, log=None):
-    """Answer one IPTV Manager call. Returns True when it was ours."""
+    """Answer one IPTV Manager call. Returns True when it was ours.
+
+    The work is deferred into a callable so the socket can be opened first -
+    see send().
+    """
     if route.endswith(CHANNELS_ROUTE):
-        data = channels(api, playPath)
+        produce = lambda: channels(api, playPath)
     elif route.endswith(EPG_ROUTE):
-        lineUp, _ = api.liveChannels()
-        data = epg(api, [str(channel.get('id')) for channel in lineUp])
+        produce = lambda: guideFor(api)
     else:
         return False
 
@@ -109,7 +126,7 @@ def handle(route, port, api, playPath, log=None):
         # Nothing to reply to - the call did not come from IPTV Manager
         xbmc.log(msg='plugin.video.tubitv : iptv call without a port', level=xbmc.LOGWARNING)
         return True
-    send(port, data)
+    send(port, produce)
     if log is not None:
         log(''.join(['iptv manager served ', route]))
     return True
