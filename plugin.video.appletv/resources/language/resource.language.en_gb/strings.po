@@ -145,6 +145,10 @@ msgctxt "#32104"
 msgid "Shared by %s"
 msgstr ""
 
+msgctxt "#32105"
+msgid "Season %s"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""

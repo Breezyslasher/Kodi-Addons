@@ -89,6 +89,7 @@ S = {
     "films": 32077,
     "tv_shows": 32078,
     "shared_by": 32104,
+    "season_n": 32105,
 }
 
 
@@ -607,11 +608,28 @@ def do_itunes_family_tv(api, member_id):
                content="tvshows")
 
 
-def do_itunes_show(api, show_id, member_id=None):
+def do_itunes_show(api, show_id, member_id=None, season=None):
     """The episodes of an owned show that the account (or a family member)
-    actually owns, via the MediaAPI tv-episodes filter."""
-    show_items(api.media_purchases("episodes", show_id=show_id,
-                                   family_member=member_id), content="episodes")
+    actually owns, via the MediaAPI tv-episodes filter.
+
+    A show with more than one owned season opens to a folder per season; a
+    single-season show (or a chosen season) lists its episodes directly.
+    """
+    episodes = api.media_purchases("episodes", show_id=show_id,
+                                   family_member=member_id)
+    seasons = sorted({e.get("season") for e in episodes
+                      if e.get("season") is not None})
+    if season is None and len(seasons) > 1:
+        for s in seasons:
+            count = sum(1 for e in episodes if e.get("season") == s)
+            add_dir(L("season_n") % s, "itunes_show", media_type="season",
+                    show_id=show_id, member_id=member_id or "", season=str(s))
+        xbmcplugin.setContent(HANDLE, "seasons")
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+    if season is not None:
+        episodes = [e for e in episodes if str(e.get("season")) == str(season)]
+    show_items(episodes, content="episodes")
 
 
 def _with_resume(store, items):
@@ -1175,7 +1193,8 @@ def router(paramstring):
     elif action == "itunes_family_tv":
         do_itunes_family_tv(api, params.get("member_id"))
     elif action == "itunes_show":
-        do_itunes_show(api, params.get("show_id"), params.get("member_id"))
+        do_itunes_show(api, params.get("show_id"), params.get("member_id"),
+                       params.get("season"))
     elif action == "search":
         do_search(api)
     elif action == "play":
