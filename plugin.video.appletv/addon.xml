@@ -167,7 +167,7 @@ Features:
   license server not configured". A fetch failure is now kept distinct from a
   keyless stream, so an outage no longer masquerades as a DRM problem.
 2026.8.8 - Cast members open their own page
-- NEW: A name in "Cast & crew" is now a folder. Opening it shows that
+- NEW: A name in "Cast and crew" is now a folder. Opening it shows that
   person's other work -- their Movies, Shows, and roles as producer or guest
   -- exactly as Apple lists it. Their page opens with an "About" entry whose
   Information holds Apple's biography, birth date and birthplace, with a
