@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.tubitv" name="TubiTV" version="2026.8.10.7" provider-name="Lunatixz, Breezyslasher">
+<addon id="plugin.video.tubitv" name="TubiTV" version="2026.8.10.8" provider-name="Lunatixz, Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.t1mlib" version="4.0.9"/>
@@ -28,6 +28,12 @@
 		<website>http://www.tubitv.com/</website>
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
 		<news>
+2026.8.10.8 - Guide text
+- FIXED: Some guide titles and descriptions arrived HTML-escaped and were
+  passed on as-is, so Kodi displayed "Amos &amp;amp; Andrew" and
+  "caf&amp;eacute;" literally. Entities are now resolved to the characters
+  they stand for.
+
 2026.8.10.7 - Faster live guide
 - CHANGED: The guide's batches are now fetched a few at a time instead of
   one after another, cutting a refresh from tens of seconds to a few. The
