@@ -88,6 +88,7 @@ S = {
     "itunes_sign_in_failed": 32073,
     "films": 32077,
     "tv_shows": 32078,
+    "shared_by": 32104,
 }
 
 
@@ -154,7 +155,10 @@ def apply_entry_info(tag, entry):
         except (TypeError, ValueError, AttributeError, KeyError):
             pass
     if entry.get("plot"):
-        tag.setPlot(entry["plot"])
+        try:
+            tag.setPlot(entry["plot"])
+        except (TypeError, ValueError, AttributeError):
+            pass
     if entry.get("year"):
         try:
             tag.setYear(int(entry["year"]))
@@ -569,10 +573,19 @@ def do_itunes_sign_in(auth):
 
 
 def do_itunes_library(api, auth):
-    """The two halves of the store locker, which are separate requests."""
+    """The library's sections: your films and TV, plus each family member who
+    shares purchases (the app's Family Sharing view)."""
     add_dir(L("films"), "itunes_movies")
     add_dir(L("tv_shows"), "itunes_tv")
+    for member in api.media_family_members():
+        add_dir(L("shared_by") % member["name"], "itunes_family",
+                member_id=member["id"])
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_family(api, member_id):
+    """A family member's shared films, via the MediaAPI shared-purchases view."""
+    show_items(api.media_purchases("movie", family_member=member_id))
 
 
 def _with_resume(store, items):
@@ -1129,6 +1142,8 @@ def router(paramstring):
         do_itunes_tv(api, auth)
     elif action == "itunes_season":
         do_itunes_season(api, auth, params.get("season_id"))
+    elif action == "itunes_family":
+        do_itunes_family(api, params.get("member_id"))
     elif action == "search":
         do_search(api)
     elif action == "play":

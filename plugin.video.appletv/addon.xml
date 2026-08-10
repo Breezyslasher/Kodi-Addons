@@ -69,6 +69,12 @@ Features:
   media-user-token), so films and shows you own list with no store-page or
   Android session needed at all -- the website has no library tab, but this is
   the call the app makes.
+- Family Sharing in the library: each family member who shares purchases is
+  listed (the app's /v1/me/purchases/shared/members call), and opening one shows
+  their shared films -- same Apple TV+ session, no store login.
+- FIX: a film whose MediaAPI description came back as an object rather than a
+  string crashed the whole library list; the plot is now read correctly and can
+  never break the listing.
 2026.8.10 - Subtitles: a steady 10-second sync
 - FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
   both films and shows (the previous per-title guess got some titles wrong).

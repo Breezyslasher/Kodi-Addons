@@ -2322,6 +2322,51 @@ class AppleTVApi(object):
                       % (kind, len(items)))
         return items
 
+    def media_family_members(self):
+        """Family members who share purchases, from the app's MediaAPI call
+        (GET /v1/me/purchases/shared/members). Same web bearer + media-user-
+        token as the library, so it needs no store session -- unlike the old
+        family roster, which read the store bag and 403'd. Each member's own
+        titles are then listed with media_purchases(family_member=<id>)."""
+        boot = self._bootstrap()
+        bearer = boot.get("developer_token")
+        mut = self._media_user_token()
+        if not bearer or not mut:
+            return []
+        headers = {
+            "Authorization": "Bearer " + bearer,
+            "media-user-token": mut,
+            "Origin": WEB_HOME,
+            "Content-Type": "application/json",
+            "Accept": "*/*",
+            "User-Agent": self.session.headers.get("User-Agent", ""),
+            "X-Apple-Store-Front": "%s-1,42" % self._storefront(),
+        }
+        dsid = self._store_dsid()
+        if dsid:
+            headers["X-Dsid"] = dsid
+        data = self._media_get(MEDIA_API_HOST, "/v1/me/purchases/shared/members",
+                               {}, headers)
+        rows = self._as_list((data or {}).get("data") if isinstance(data, dict)
+                             else data)
+        out = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            # Members can be flat ({id, firstName, ...}) or MediaAPI-wrapped
+            # ({id, attributes:{...}}). Read whichever this account returns.
+            attrs = row.get("attributes") or row
+            if attrs.get("sharingPurchases") is False:
+                continue
+            member_id = str(row.get("id") or attrs.get("id") or "")
+            name = (" ".join(x for x in (attrs.get("firstName"),
+                                         attrs.get("lastName")) if x).strip()
+                    or attrs.get("accountName") or attrs.get("name"))
+            if member_id and name:
+                out.append({"id": member_id, "name": name})
+        kodiutils.log("MediaAPI family: %d member(s) sharing purchases" % len(out))
+        return out
+
     def _media_get(self, host, path, params, headers):
         """GET a MediaAPI (amp-api) endpoint, returning parsed JSON or None."""
         try:
@@ -2349,6 +2394,16 @@ class AppleTVApi(object):
         adam_id = str(row.get("id") or attrs.get("id") or "")
         if not title or not adam_id:
             return None
+        # MediaAPI descriptions are objects ({standard, short}), not strings.
+        desc = attrs.get("description")
+        if isinstance(desc, dict):
+            desc = desc.get("standard") or desc.get("short")
+        long_desc = attrs.get("longDescription")
+        if isinstance(long_desc, dict):
+            long_desc = long_desc.get("standard") or long_desc.get("short")
+        plot = desc or long_desc
+        if not isinstance(plot, str):
+            plot = None
         art = {}
         artwork = attrs.get("artwork") or {}
         url = artwork.get("url")
@@ -2364,7 +2419,7 @@ class AppleTVApi(object):
             "title": title,
             "sort_title": title,
             "type": "Movie" if is_movie else "Show",
-            "plot": attrs.get("description") or attrs.get("longDescription"),
+            "plot": plot,
             "art": art,
             "duration": attrs.get("durationInMilliseconds", 0) // 1000 or None,
             "itunes": True,

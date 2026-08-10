@@ -141,6 +141,10 @@ msgctxt "#32103"
 msgid "This iTunes purchase won't play here. Apple's own apps unlock it over Widevine, but the licence needs a device keybag their client attaches, which this add-on cannot reproduce."
 msgstr ""
 
+msgctxt "#32104"
+msgid "Shared by %s"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""
