@@ -56,6 +56,29 @@ See the [addon README](service.watchparty/README.md) for setup and details.
 
 ---
 
+### 📺 [TubiTV](plugin.video.tubitv/)
+Browse and watch Tubi — free, ad-supported films and TV shows — from inside Kodi. A fork of Lunatixz's addon, kept here so the sign-in stays maintained.
+
+**Recent updates:**
+- Sign-in repaired — Tubi retired the old login endpoint, so the addon now performs the web client's handshake (signed anonymous device token → account login → web session handover)
+- A failed sign-in no longer kills the addon on startup; Tubi is free to browse, so it carries on anonymously
+- Tokens are cached in the addon profile instead of being re-fetched on every browse and playback
+
+See the [addon README](plugin.video.tubitv/README.md) for details.
+
+**Requirements:** Kodi 19+, `script.module.t1mlib` (in this repository). A Tubi account is optional.
+
+---
+
+### 🧰 [t1m Library Routines](script.module.t1mlib/)
+Shared support routines for t1m's Kodi video addons. A dependency module, not something to install on its own — it is carried here because TubiTV needs it.
+
+See the [addon README](script.module.t1mlib/README.md) for details.
+
+**Requirements:** Kodi 19+
+
+---
+
 ### 🔗 [Webhook Runner](script.webhook.runner/)
 Fire Home Assistant (or any) webhooks from Kodi — either by remote-button press or automatically on Kodi events.
 
@@ -108,6 +131,8 @@ Kodi-Addons/
 ├── script.scrcpy-launcher/          # scrcpy launcher addon
 ├── script.webhook.runner/           # Webhook runner addon
 ├── service.watchparty/              # Watch Party sync addon
+├── plugin.video.tubitv/             # TubiTV addon
+├── script.module.t1mlib/            # t1m shared library (TubiTV dependency)
 ├── repository.breezyslasher/        # Repository metadata
 ├── zips/                           # Generated ZIP files
 ├── .github/workflows/              # CI/CD workflows
@@ -130,6 +155,8 @@ Each addon has its own license:
 - **scrcpy Launcher**: MIT
 - **Watch Party**: MIT
 - **Webhook Runner**: MIT
+- **TubiTV**: GPL-2.0-or-later
+- **t1m Library Routines**: GPL-2.0-or-later
 
 ## 🔗 Links
 

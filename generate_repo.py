@@ -16,7 +16,9 @@ ADDON_FOLDERS = [
     "context.plexkodiconnect.download",
     "plugin.audio.audiobookshelf",
     "script.webhook.runner",
-    "service.watchparty"
+    "service.watchparty",
+    "script.module.t1mlib",
+    "plugin.video.tubitv"
 ]
 
 def get_addon_xml_content(folder):
