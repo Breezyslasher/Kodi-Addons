@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.37" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.38" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,13 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.38 - Live games: full rewind window (Watch from Start / Catch Up)
+- FIX: Watch from Start jumped in near the live edge instead of the broadcast
+  start, and scrubbing/Catch Up would snap back to "now". Apple only serves the
+  deep rewind window (the whole broadcast so far) when the player asks for it
+  with linearScrubbingSupported, which the web client sends on every live
+  manifest but the addon did not. The addon now sends it, so a live game can be
+  rewound to its start and seeked through its key plays.
 2026.8.37 - Live games: freed on app close, not marked watched
 - FIX: Closing Kodi while a live game was still playing could leave the stream
   holding a session with Apple (its lease was only released on a clean Stop).

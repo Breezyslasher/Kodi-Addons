@@ -1055,6 +1055,8 @@ class AppleTVApi(object):
             kodiutils.log("Using the stream listed inline for %s" % content_id)
             self.last_error = None
             assets = self._prepared_from_assets(inline, self._media_user_token())
+        if assets.get("manifest") and "linear.tv.apple.com" in assets["manifest"]:
+            assets["manifest"] = self._linear_playback_url(assets["manifest"])
         if start_over and assets.get("manifest"):
             assets["manifest"] = self._with_start_over(assets["manifest"])
         # A manifest pasted into the override setting is not a catalogue
@@ -1098,6 +1100,28 @@ class AppleTVApi(object):
             # "jump here and carry on".
             "chain": len(segments) > 1,
         })
+
+    @staticmethod
+    def _linear_playback_url(url):
+        """Match the web player's live-manifest request.
+
+        Apple hands the addon a bare linear hlsUrl (serviceId, l, referenceId).
+        The web client, on every live manifest it fetches, additionally sends
+        linearScrubbingSupported=true plus the webbrowser/xapsub capability
+        flags. linearScrubbingSupported is what makes Apple serve the deep DVR
+        window -- the whole broadcast so far rather than only the last minute
+        at the live edge -- so Watch from Start reaches the real start and a
+        live game can be scrubbed back through its key plays. Without it Apple
+        returns a live-edge-only window and any seek clamps to now. Verified
+        against the web client's HAR; added idempotently.
+        """
+        for key, param in (
+                ("linearScrubbingSupported=", "linearScrubbingSupported=true"),
+                ("webbrowser=", "webbrowser=true"),
+                ("xapsub=", "xapsub=accepts-css")):
+            if key not in url:
+                url += ("&" if "?" in url else "?") + param
+        return url
 
     @staticmethod
     def _with_start_over(url):
