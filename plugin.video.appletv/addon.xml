@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.42" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.43" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,13 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.43 - MLB
+- Added an MLB tab. Baseball on Apple TV+ is the same kind of live event as MLS
+  and F1 under the hood, so its games, Big Inning, shows and recaps play (and
+  resume, and pick home/away commentary) exactly like the other sports. MLB
+  sits under Apple TV+ rather than being its own channel, so it is listed as a
+  room; if it ever comes up empty, Apple has reissued the room and it needs a
+  refresh.
 2026.8.42 - Clearer message when a title will not play
 - A title with no stream for you now says why: "not part of your subscription,
   or blacked out in your region" when you are signed in, or a plain "sign in

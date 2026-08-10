@@ -51,6 +51,13 @@ CHANNELS = (
     (F1_CHANNEL, "Formula 1"),
 )
 
+# MLB has no brand channel of its own the way MLS and F1 do. On tv.apple.com it
+# is an editorial room that lives under Apple TV+ -- verified: its games carry
+# channelId tvs.sbd.4000 (Apple TV+), and the "MLB" tab opens this room. So it
+# is linked as a room rather than a CHANNELS entry. An editorial id can be
+# reissued by Apple; if the tab ever comes up empty, this is what to refresh.
+MLB_ROOM = "edt.item.62327df1-6874-470e-98b2-a5bbeac509a2"
+
 # How long a scraped utsk is reused before the shell is fetched again.
 # Apple reports a two-hour life; refreshing at one keeps a wide margin.
 BOOT_CACHE_SECONDS = 3600

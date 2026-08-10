@@ -11,7 +11,7 @@ import xbmcplugin
 from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA
 from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
-                     PLAYBACK_REPORT_CACHE)
+                     MLB_ROOM, PLAYBACK_REPORT_CACHE)
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
@@ -324,6 +324,9 @@ def main_menu(auth):
     for channel_id, name in CHANNELS:
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
+    # MLB rides on Apple TV+ as an editorial room rather than a brand channel,
+    # so it is listed here as a room instead of a CHANNELS entry.
+    add_dir("MLB", "room", room_id=MLB_ROOM, channel_id=APPLE_TV_PLUS_CHANNEL)
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
         # Not a folder. do_play answers with setResolvedUrl, which Kodi only
