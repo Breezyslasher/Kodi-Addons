@@ -48,6 +48,9 @@ Features:
   search returns titles that exist only as purchases (Green Book, Oppenheimer,
   ...), not just Apple TV+ originals. It stays on by default, since a purchase
   may not play past the keybag wall.
+- Playing an iTunes purchase now shows a plain message -- "can only be played on
+  an Apple device" -- instead of a generic DRM error. Apple's FairPlay refuses
+  the key (status -1020) without a device keybag only its own hardware can make.
 2026.8.10 - Subtitles: a steady 10-second sync
 - FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
   both films and shows (the previous per-title guess got some titles wrong).

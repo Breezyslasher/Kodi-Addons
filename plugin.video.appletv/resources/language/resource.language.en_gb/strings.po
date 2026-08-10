@@ -137,6 +137,10 @@ msgctxt "#32102"
 msgid "Subtitle delay in seconds (blank = 10; adjust if subtitles run early or late)"
 msgstr ""
 
+msgctxt "#32103"
+msgid "This iTunes purchase can only be played on an Apple device. Its FairPlay DRM requires Apple hardware, which Kodi does not have."
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""

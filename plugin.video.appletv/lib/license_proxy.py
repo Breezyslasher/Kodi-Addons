@@ -92,6 +92,14 @@ _ACTIVE_LEASES = []
 STREAM_LIMIT_STATUS = -1004
 _LAST_LIMIT_NOTICE = 0.0
 
+# An iTunes purchase's key is refused with -1020: the request authenticated but
+# carries no device keybag (kbsync), a FairPlay attestation only real Apple
+# hardware can produce (see docs/itunes-library.md). To ISA this is just a
+# failed DRM session, so the user is told plainly it is Apple-device-only rather
+# than left with a generic error. Throttled like the stream-limit notice.
+ITUNES_KEYBAG_STATUS = -1020
+_LAST_ITUNES_NOTICE = 0.0
+
 
 def _warn_stream_limit():
     global _LAST_LIMIT_NOTICE
@@ -103,6 +111,18 @@ def _warn_stream_limit():
         kodiutils.notify(kodiutils.localize(32097), time_ms=8000)
     except Exception as exc:
         kodiutils.log_error("Could not show streaming-limit notice: %s" % exc)
+
+
+def _warn_itunes_keybag():
+    global _LAST_ITUNES_NOTICE
+    now = time.monotonic()
+    if now - _LAST_ITUNES_NOTICE < 20:
+        return
+    _LAST_ITUNES_NOTICE = now
+    try:
+        kodiutils.notify(kodiutils.localize(32103), time_ms=9000)
+    except Exception as exc:
+        kodiutils.log_error("Could not show iTunes DRM notice: %s" % exc)
 
 
 def release_leases(timeout=15):
@@ -799,6 +819,10 @@ class _Handler(BaseHTTPRequestHandler):
                             % (len(candidates), last_error))
         if last_status == STREAM_LIMIT_STATUS:
             _warn_stream_limit()
+        elif last_status == ITUNES_KEYBAG_STATUS and ctx.get("itunes"):
+            # An owned iTunes title whose key server refused for want of a
+            # device keybag: say so plainly instead of a generic DRM error.
+            _warn_itunes_keybag()
         return None
 
 
