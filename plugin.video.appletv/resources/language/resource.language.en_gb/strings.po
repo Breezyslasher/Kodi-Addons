@@ -138,7 +138,7 @@ msgid "Subtitle delay in seconds (blank = 10; adjust if subtitles run early or l
 msgstr ""
 
 msgctxt "#32103"
-msgid "This iTunes purchase can only be played on an Apple device. Its FairPlay DRM requires Apple hardware, which Kodi does not have."
+msgid "This iTunes purchase won't play here. Apple's own apps unlock it over Widevine, but the licence needs a device keybag their client attaches, which this add-on cannot reproduce."
 msgstr ""
 
 msgctxt "#32050"

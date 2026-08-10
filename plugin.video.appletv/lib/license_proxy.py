@@ -93,10 +93,12 @@ STREAM_LIMIT_STATUS = -1004
 _LAST_LIMIT_NOTICE = 0.0
 
 # An iTunes purchase's key is refused with -1020: the request authenticated but
-# carries no device keybag (kbsync), a FairPlay attestation only real Apple
-# hardware can produce (see docs/itunes-library.md). To ISA this is just a
-# failed DRM session, so the user is told plainly it is Apple-device-only rather
-# than left with a generic error. Throttled like the stream-limit notice.
+# carries no device keybag (kbsync). This is the Widevine path (the same one
+# Apple's Android TV app uses -- no FairPlay, no Apple hardware involved); the
+# key server still wants the keybag and per-request signing Apple's client apps
+# attach, which pure Python cannot reproduce (see docs/itunes-library.md). To
+# ISA this is just a failed DRM session, so the user is told plainly rather than
+# left with a generic error. Throttled like the stream-limit notice.
 ITUNES_KEYBAG_STATUS = -1020
 _LAST_ITUNES_NOTICE = 0.0
 
