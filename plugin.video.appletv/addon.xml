@@ -44,6 +44,10 @@ Features:
   iTunes purchase's key server needs a device keybag Apple issues only to its
   own hardware, so purchase *playback* may still be blocked even though the
   library lists and resolves; browsing and naming work regardless.
+- Search can include the store again: with "Search Apple TV+ only" turned off,
+  search returns titles that exist only as purchases (Green Book, Oppenheimer,
+  ...), not just Apple TV+ originals. It stays on by default, since a purchase
+  may not play past the keybag wall.
 2026.8.53 - Subtitles: a steady 10-second sync
 - FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
   both films and shows (the previous per-title guess got some titles wrong).

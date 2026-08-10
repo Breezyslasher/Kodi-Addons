@@ -829,11 +829,24 @@ class AppleTVApi(object):
         a Movies shelf plus a TV Shows shelf, and the shelves overlap, so a
         title in Top Results and again under Movies is listed once.
 
-        tv.apple.com's search answers with Apple TV+ titles, which is what this
-        client plays.
+        Which catalogue is searched is the caller's doing. tv.apple.com's
+        search answers with Apple TV+ titles, while the same API asked as the
+        store app also returns titles that exist only as purchases (Green Book,
+        Oppenheimer, ...). Purchases license under FairPlay's device-keybag
+        wall and may not play here, so by default the store is left out and
+        search lists what can actually be watched; turning "Search Apple TV+
+        only" off searches everything. Filtering the store results down to what
+        the account owns would cost one request per hit and is not attempted.
         """
-        return self._search_results(
-            self._get_json("/search", {"searchTerm": query}))
+        if kodiutils.get_setting_bool("search_appletv_only", True):
+            return self._search_results(
+                self._get_json("/search", {"searchTerm": query}))
+        data = self._store_json("/search", {"searchTerm": query})
+        if not data:
+            kodiutils.log("Store search unavailable; falling back to the web "
+                          "search, which lists Apple TV+ titles only")
+            data = self._get_json("/search", {"searchTerm": query})
+        return self._search_results(data)
 
     def _search_results(self, data):
         """Flatten a search response's shelves, keeping each title once."""
