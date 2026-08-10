@@ -2413,6 +2413,10 @@ class AppleTVApi(object):
         else:
             kodiutils.log("MediaAPI family: raw response=%s"
                           % json.dumps(data)[:800])
+        # The account's own entry appears in this list (you share with the
+        # family too); drop it, since your own purchases are the Films/TV Shows
+        # sections already. Identify self by the dsid on the session.
+        own_dsid = self._store_dsid()
         out = []
         for row in rows:
             if not isinstance(row, dict):
@@ -2427,10 +2431,13 @@ class AppleTVApi(object):
                     or attrs.get("accountName") or attrs.get("name")
                     or attrs.get("appleId") or member_id)
             sharing = attrs.get("sharingPurchases")
-            kodiutils.log("MediaAPI family: member id=%s name=%r sharing=%r"
-                          % (member_id or "?", name, sharing))
-            # Keep unless it explicitly says not sharing.
-            if sharing is False:
+            is_self = bool(own_dsid) and member_id == own_dsid
+            kodiutils.log("MediaAPI family: member id=%s name=%r sharing=%r%s"
+                          % (member_id or "?", name, sharing,
+                             " (self)" if is_self else ""))
+            # Keep unless it explicitly says not sharing, and skip the account
+            # itself.
+            if sharing is False or is_self:
                 continue
             if member_id:
                 out.append({"id": member_id, "name": name or member_id})
