@@ -11,6 +11,7 @@
 #
 import json
 import socket
+import time
 
 import xbmc
 
@@ -109,6 +110,16 @@ def guideFor(api):
     return epg(api, [str(channel.get('id')) for channel in lineUp])
 
 
+def summarise(route, data, seconds):
+    if 'streams' in data:
+        what = '%d channels' % len(data['streams'])
+    else:
+        guide = data.get('epg') or {}
+        what = '%d channels, %d programmes' % (len(guide),
+                                               sum(len(v) for v in guide.values()))
+    return 'iptv served %s : %s in %.1fs' % (route, what, seconds)
+
+
 def handle(route, port, api, playPath, log=None):
     """Answer one IPTV Manager call. Returns True when it was ours.
 
@@ -116,9 +127,9 @@ def handle(route, port, api, playPath, log=None):
     see send().
     """
     if route.endswith(CHANNELS_ROUTE):
-        produce = lambda: channels(api, playPath)
+        build = lambda: channels(api, playPath)
     elif route.endswith(EPG_ROUTE):
-        produce = lambda: guideFor(api)
+        build = lambda: guideFor(api)
     else:
         return False
 
@@ -126,7 +137,22 @@ def handle(route, port, api, playPath, log=None):
         # Nothing to reply to - the call did not come from IPTV Manager
         xbmc.log(msg='plugin.video.tubitv : iptv call without a port', level=xbmc.LOGWARNING)
         return True
-    send(port, produce)
-    if log is not None:
-        log(''.join(['iptv manager served ', route]))
+
+    # Report what was handed over, so a guide that arrives empty can be told
+    # apart from one that was never asked for.
+    outcome = {}
+
+    def produce():
+        started = time.time()
+        data = build()
+        outcome['message'] = summarise(route, data, time.time() - started)
+        return data
+
+    try:
+        send(port, produce)
+    finally:
+        message = outcome.get('message', ''.join(['iptv failed to serve ', route]))
+        xbmc.log(msg=''.join(['plugin.video.tubitv : ', message]), level=xbmc.LOGINFO)
+        if log is not None:
+            log(message)
     return True
