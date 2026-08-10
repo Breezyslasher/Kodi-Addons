@@ -270,13 +270,20 @@ def add_playable(entry, cast=None):
     if kind in ("Movie", "Show", "Vod", "MovieBundle"):
         extras_context_menu(item, entry["id"], kind)
     elif kind == "SportingEvent":
-        # A match links to the other games in its league and to its clubs.
+        # A match links to the other games in its league, and to its two clubs.
+        sport = entry.get("sport")
         item.addContextMenuItems([
             (L("related"), "Container.Update(%s)" % url(
                 action="related", item_id=entry["id"],
                 league=entry.get("league_id") or "")),
-            (L("clubs"), "Container.Update(%s)" % url(
-                action="clubs", item_id=entry["id"])),
+        ]
+            # Clubs are the two sides of a match -- a Soccer idea (MLS, Leagues
+            # Cup). A Motorsports race and a Baseball game are not club-vs-club,
+            # so the entry is offered for Soccer only rather than on every sport.
+          + ([(L("clubs"), "Container.Update(%s)" % url(
+                action="clubs", item_id=entry["id"]))]
+             if sport == "Soccer" else [])
+          + [
             (L("key_plays"), "Container.Update(%s)" % url(
                 action="key_plays", item_id=entry["id"])),
             (L("highlights"), "Container.Update(%s)" % url(
@@ -285,9 +292,8 @@ def add_playable(entry, cast=None):
                 action="event_extras", kind="spotlight", item_id=entry["id"])),
         ] + ([(L("race_weekend"), "Container.Update(%s)" % url(
                 action="event_extras", kind="weekend", item_id=entry["id"]))]
-             # Only Motorsports fixtures have a weekend of sessions; a match
-             # in any other sport carries clubs and no weekend at all.
-             if entry.get("sport") == "Motorsports" else [])
+             # Only Motorsports fixtures have a weekend of sessions.
+             if sport == "Motorsports" else [])
           + watchlist_menu_items(entry["id"])
           + [mark_watched_menu_item(entry["id"])])
     elif kind == "Episode":

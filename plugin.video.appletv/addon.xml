@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.45" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.46" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,10 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.46 - "Clubs" only on soccer
+- The "Clubs" context-menu entry (a match's two clubs) now shows only on
+  soccer fixtures (MLS, Leagues Cup). A Formula 1 race and an MLB game are not
+  club-vs-club, so it no longer appears on them.
 2026.8.45 - Stop a doomed watch-history call on live games
 - FIX: Playing a live game (Watch from Start, Catch Up, Key Plays, Resume)
   logged a 400 from Apple's now-playing endpoint. That endpoint is for
