@@ -34,4 +34,11 @@ except TubiAuthError as err:
                                       xbmcgui.NOTIFICATION_WARNING)
 
 ma.api = TubiApi(ma.defaultHeaders, ma.auth.deviceId)
+
+# Kodi hands back a query with the '=' trimmed off any empty value, e.g.
+# "?mode=GM&url", which t1mlib splits on '=' and chokes on. Put it back.
+if len(sys.argv) > 2 and sys.argv[2].startswith('?'):
+    args = [arg if '=' in arg else ''.join([arg, '=']) for arg in sys.argv[2][1:].split('&') if arg]
+    sys.argv[2] = ''.join(['?', '&'.join(args)])
+
 ma.processAddonEvent()
