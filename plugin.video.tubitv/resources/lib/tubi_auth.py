@@ -304,17 +304,49 @@ class TubiAuth(object):
         except Exception as err:
             raise TubiAuthError(str(err))
 
-    def apply(self, headers):
-        """Add the Tubi cookies to the header dict used for content calls.
+    def bearer(self):
+        """The token the content API authenticates with.
 
-        The device cookie is set even when the sign-in blows up, so browsing
-        anonymously keeps working.
+        The signed in user token when there is a live one, otherwise the
+        anonymous device token - Tubi serves its free catalogue to either.
         """
-        cookies = [''.join(['deviceId=', self.deviceId])]
+        session = self.cache.get('user') or {}
+        if session.get('access_token') and session.get('expires_at', 0) > time.time() + EXPIRY_MARGIN:
+            return session['access_token']
+        return self.anonymousToken()
+
+    @property
+    def signedIn(self):
+        session = self.cache.get('user') or {}
+        return bool(session.get('access_token'))
+
+    def apply(self, headers):
+        """Fill in the headers the content API expects.
+
+        Signing in is best effort: when it fails, the anonymous device token
+        still gets browsing working, so the headers are filled in as far as
+        they can be before the failure is reported.
+        """
+        error = None
+        session = None
         try:
             session = self.session()
-            if session and session.get('connect_sid'):
-                cookies.append(''.join(['connect.sid=', session['connect_sid']]))
-        finally:
-            headers['Cookie'] = ''.join(['; '.join(cookies), ';'])
+        except TubiAuthError as err:
+            error = err
+
+        cookies = [''.join(['deviceId=', self.deviceId])]
+        if session and session.get('connect_sid'):
+            cookies.append(''.join(['connect.sid=', session['connect_sid']]))
+        headers['Cookie'] = ''.join(['; '.join(cookies), ';'])
+        headers['Origin'] = WEB_API
+        headers['Referer'] = ''.join([WEB_API, '/'])
+
+        try:
+            headers['Authorization'] = ''.join(['Bearer ', self.bearer()])
+        except TubiAuthError as err:
+            if error is None:
+                error = err
+
+        if error is not None:
+            raise error
         return headers

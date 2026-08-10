@@ -9,6 +9,7 @@ import xbmcaddon
 import xbmcgui
 
 from resources.lib.scraper import myAddon
+from resources.lib.tubi_api import TubiApi
 from resources.lib.tubi_auth import TubiAuth, TubiAuthError
 
 ADDON_ID = 'plugin.video.tubitv'
@@ -20,7 +21,8 @@ addonName = re.search(r'plugin\://plugin\.video\.(.+?)/', str(sys.argv[0])).grou
 ma = myAddon(addonName)
 
 # Tubi is free to browse, so a missing or rejected sign-in is not fatal - the
-# addon carries on anonymously and only the account features are lost.
+# addon carries on with the anonymous device token and only the account
+# features and the sign-in gated titles are lost.
 ma.auth = TubiAuth(__settings__)
 try:
     ma.auth.apply(ma.defaultHeaders)
@@ -31,4 +33,5 @@ except TubiAuthError as err:
                                       __settings__.getLocalizedString(30021) % err,
                                       xbmcgui.NOTIFICATION_WARNING)
 
+ma.api = TubiApi(ma.defaultHeaders, ma.auth.deviceId)
 ma.processAddonEvent()
