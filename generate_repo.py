@@ -15,6 +15,7 @@ ADDON_FOLDERS = [
     "repository.breezyslasher",
     "context.plexkodiconnect.download",
     "plugin.audio.audiobookshelf",
+    "plugin.video.appletv",
     "script.webhook.runner",
     "service.watchparty",
     "script.module.t1mlib",
