@@ -179,7 +179,7 @@ class TubiApi(object):
             params = [('platform', PLATFORM),
                       ('device_id', self.deviceId),
                       ('lookahead', 1),
-                      ('content_id', ','.join(str(i) for i in batch))]
+                      ('content_id', ','.join(str(i) for i in batch))] + LIMIT_RESOLUTIONS
             if self.userId is not None:
                 params.append(('user_id', self.userId))
             data = self.get(''.join([EPG_API, '/content/epg/programming']), params)
