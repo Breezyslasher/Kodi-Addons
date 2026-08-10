@@ -126,7 +126,11 @@ msgid "Not available to watch on your account. It may not be part of your subscr
 msgstr ""
 
 msgctxt "#32100"
-msgid "Fetch subtitles for films, shows and replays (Kodi's language and English)"
+msgid "Fetch subtitles for films, shows and replays"
+msgstr ""
+
+msgctxt "#32101"
+msgid "Fetch all subtitle languages (off: only Kodi's language and English)"
 msgstr ""
 
 msgctxt "#32050"

@@ -16,6 +16,7 @@
         <setting id="live_max_height" type="number" label="32085" default="1080" />
         <setting id="hide_watchlist_in_continue" type="bool" label="32086" default="true" />
         <setting id="external_subs" type="bool" label="32100" default="true" />
+        <setting id="all_subs" type="bool" label="32101" default="true" />
         <setting id="sdr_only" type="bool" label="32043" default="true" />
         <setting id="avc_only" type="bool" label="32044" default="true" />
         <setting id="media_user_token" type="text" label="32008" option="hidden" default="" />

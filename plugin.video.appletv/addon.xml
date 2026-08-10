@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.51" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.52" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,13 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.52 - Subtitles: every language, and synced on every title
+- All of Apple's subtitle languages are now fetched, not just yours and
+  English (in parallel, so it stays quick). Turn it back to two in settings if
+  you prefer.
+- FIX: the timing shift is now read from each title's own video, so subtitles
+  line up whether a title needs a 10-second offset (some shows) or none
+  (some films) -- one build had synced one and not the other.
 2026.8.51 - One subtitle entry per language, not two
 - The blank subtitle tracks InputStream Adaptive lists for on-demand titles
   (Apple's WebVTT, which it cannot render) are now removed from the stream, so
