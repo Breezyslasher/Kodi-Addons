@@ -283,9 +283,13 @@ def add_playable(entry, cast=None):
           + ([(L("clubs"), "Container.Update(%s)" % url(
                 action="clubs", item_id=entry["id"]))]
              if sport == "Soccer" else [])
+            # Key Plays are a live game's moments so far, to catch up on the
+            # broadcast while it airs. A finished game has Highlights instead,
+            # so Key Plays is offered only while the game is live.
+          + ([(L("key_plays"), "Container.Update(%s)" % url(
+                action="key_plays", item_id=entry["id"]))]
+             if entry.get("live") else [])
           + [
-            (L("key_plays"), "Container.Update(%s)" % url(
-                action="key_plays", item_id=entry["id"])),
             (L("highlights"), "Container.Update(%s)" % url(
                 action="event_extras", kind="highlights", item_id=entry["id"])),
             (L("spotlight"), "Container.Update(%s)" % url(
