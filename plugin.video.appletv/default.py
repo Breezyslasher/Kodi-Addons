@@ -239,9 +239,13 @@ def add_playable(entry, cast=None):
             pass
     apply_entry_info(tag, entry)
     # Apple reports how far the account already is into a title, so it can be
-    # resumed here at the point another Apple client left it.
+    # resumed here at the point another Apple client left it. A sporting event
+    # is the exception: its "resume" is a live position that Kodi would turn
+    # into a fixed seek, overriding (and so silently ignoring) the Watch Live /
+    # from Start / Catch Up choice. A live game starts where that dialog says,
+    # so it carries no Kodi resume point.
     resume = entry.get("resume") or {}
-    if resume.get("position") and resume.get("total"):
+    if kind != "SportingEvent" and resume.get("position") and resume.get("total"):
         try:
             tag.setResumePoint(resume["position"], resume["total"])
         except (TypeError, ValueError, AttributeError):
@@ -592,10 +596,16 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
         # A pick from the Key Plays list: play the game jumped to that moment.
         seek_plays = [{"start_time": int(kp_start),
                        "end_time": int(kp_end) if kp_end else None}]
-    elif str(item_type) == "SportingEvent" and not external_id:
+    elif str(item_type) == "SportingEvent":
         options = api.list_playables(item_id, item_type)
         feeds = options.get("feeds") or []
-        if len(feeds) > 1:
+        # The feed picker is only for choosing between commentaries, so it is
+        # skipped when the feed is already known (Continue Watching binds one).
+        # The live-mode choice below is offered regardless: a game resumed from
+        # Continue Watching is still live, and "where to start" is Watch Live /
+        # from Start / Catch Up, not the fixed resume point Apple happened to
+        # report -- which is why picking a mode used to be ignored.
+        if not external_id and len(feeds) > 1:
             external_id = pick_feed(feeds)
             if external_id is False:
                 xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
