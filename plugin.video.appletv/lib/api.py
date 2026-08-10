@@ -1518,7 +1518,8 @@ class AppleTVApi(object):
             # skip the catalogue lookups that only make sense for a real id.
             "override": override,
             "license_url": license_proxy.license_url(),
-            "certificate_b64": self.get_widevine_certificate(),
+            "certificate_b64": self.get_widevine_certificate(
+                assets.get("widevine_cert_url")),
             "stream_headers": stream_headers,
             # WebVTT subtitle tracks fetched to local files (on-demand only),
             # so Kodi renders them itself where ISA lists but blanks them.
@@ -1642,10 +1643,19 @@ class AppleTVApi(object):
         # the whole of fps_params, so the live names reach the key server too.
         svc_id = qp.get("svcId") or qp.get("service-id") or self._q(hls, "svcId") \
             or self._q(hls, "serviceId")
+        # The app licenses Widevine against wideVineKeyServerUrl, not the
+        # FairPlay fpsKeyServerUrl (MZPlayLocal). Prefer the Widevine server
+        # when Apple names one, since sending a Widevine challenge to the
+        # FairPlay endpoint is what a purchase gets -1020 from.
+        license_server = assets.get("wideVineKeyServerUrl") \
+            or assets.get("fpsKeyServerUrl")
         return {
             "manifest": hls,
             "user_token": mut,
-            "license_server": assets.get("fpsKeyServerUrl"),
+            "license_server": license_server,
+            # The Widevine certificate the app uses for a purchase, when named;
+            # the proxy falls back to the default cert otherwise.
+            "widevine_cert_url": assets.get("wideVineCertificateUrl"),
             "adam_id": str(assets.get("assetAdamId") or qp.get("adamId") or self._q(hls, "a")),
             "svc_id": svc_id,
             # Apple's own list of licence-request key parameters, sent verbatim.
@@ -2245,9 +2255,37 @@ class AppleTVApi(object):
                 if qp:
                     kodiutils.log("iTunes key-server parameters (from document "
                                   "walk): %s" % qp)
+            # The app's getLicenseConfig sends a Widevine challenge to a
+            # DIFFERENT server than FairPlay: for Widevine it uses
+            # assets.wideVineKeyServerUrl and wideVineCertificateUrl, not the
+            # fpsKeyServerUrl (MZPlayLocal) the FairPlay path uses. Licensing a
+            # purchase against MZPlayLocal is what returns -1020. So capture the
+            # Widevine key server and cert wherever Apple puts them (the offer,
+            # the candidate, or anywhere in the document) and prefer them.
+            def find(*keys):
+                for src in (best, candidate):
+                    for k in keys:
+                        if isinstance(src, dict) and src.get(k):
+                            return src[k]
+                for k in keys:
+                    v = self._deep_find(data, k)
+                    if v:
+                        return v
+                return None
+            wv_key_server = find("wideVineKeyServerUrl")
+            wv_cert = find("wideVineCertificateUrl")
+            fps_key_server = find("fpsKeyServerUrl")
+            kodiutils.log("iTunes offer DRM: offer keys=%s; wideVineKeyServerUrl=%s "
+                          "fpsKeyServerUrl=%s wideVineCertificateUrl=%s"
+                          % (sorted(best.keys()),
+                             wv_key_server or "none", fps_key_server or "none",
+                             wv_cert or "none"))
             return {"hlsUrl": best["hlsUrl"],
                     "adamId": adam_id,
                     "fpsKeyServerQueryParameters": qp or {},
+                    "wideVineKeyServerUrl": wv_key_server,
+                    "wideVineCertificateUrl": wv_cert,
+                    "fpsKeyServerUrl": fps_key_server,
                     "isItunes": True}
         kodiutils.log("No personalizedOffers came back; the store caller alone "
                       "may not be enough without a store session")
@@ -3138,9 +3176,9 @@ class AppleTVApi(object):
             pass
         return None
 
-    def get_widevine_certificate(self):
+    def get_widevine_certificate(self, cert_url=None):
         try:
-            resp = self.session.get(WIDEVINE_CERT_URL, timeout=30)
+            resp = self.session.get(cert_url or WIDEVINE_CERT_URL, timeout=30)
             if resp.status_code == 200:
                 # The endpoint returns the raw DER certificate; ISA wants it as
                 # correctly-padded base64.
