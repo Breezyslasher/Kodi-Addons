@@ -112,9 +112,17 @@ class AppleAuth(object):
         })
 
     def clear(self):
-        self.tokens = {}
+        # Keep the anonymous bootstrap (utsk + developer token): it is the app's
+        # own browsing session, not account data, and the catalogue needs it.
+        # Wiping it made every screen after a sign-out rebuild it from a fresh
+        # tv.apple.com scrape -- so a single failed scrape took the whole
+        # catalogue down, while a signed-in session coasted on the cache. Only
+        # the account tokens and cookies are cleared; playback still needs a
+        # sign-in because the media-user-token is gone.
+        boot = self.tokens.get("boot")
+        self.tokens = {"boot": boot} if boot else {}
         self.session.cookies.clear()
-        kodiutils.delete_file(SESSION_FILE)
+        self.save()
 
     def is_authenticated(self):
         # A pasted media-user-token (advanced/debug setting) counts as signed in
