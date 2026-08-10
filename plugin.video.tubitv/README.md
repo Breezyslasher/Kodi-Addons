@@ -9,6 +9,7 @@ kept here so the sign-in can be maintained as Tubi changes its API.
 ## Features
 
 - Browse the Tubi categories, with paging through long ones
+- Tubi's linear channels as Live TV, optionally in the Kodi TV guide
 - Search the Tubi catalogue
 - Series listed by season, with episode numbers, cast, plot and artwork
 - Add a film or a whole show to the Kodi library as `.strm` files
@@ -29,6 +30,8 @@ device token otherwise:
 | Search | `search…/api/v3/search` |
 | Seasons of a series | `content-cdn…/api/v3/series/{id}/episodes` |
 | Title, metadata and streams | `content-cdn…/api/v3/content` |
+| Linear channel line-up | `tensor-cdn…/api/v2/epg` |
+| Live programme guide | `epg-cdn…/content/epg/programming` |
 
 ## Playback and DRM
 
@@ -58,6 +61,21 @@ The licence request is handed to inputstream.adaptive through `drm_legacy` on
 version 21 and later, and through the older `license_type`/`license_key`
 properties on builds that predate it — those are deprecated upstream but remain
 the only ones Kodi 19 and 20 understand.
+
+## Live TV and IPTV Manager
+
+Tubi carries 177 linear channels. They show up under **Live TV** in the addon,
+and they are all unencrypted plain HLS, so they need no CDM.
+
+The addon also implements the
+[IPTV Manager](https://github.com/add-ons/service.iptv.manager/wiki/Integration)
+integration, which puts those channels into Kodi's own TV section with a
+programme guide roughly two days deep. Install IPTV Manager and it will pick
+this addon up on its own — the **IPTV Manager** setting is on by default and can
+be switched off if you would rather keep the channels inside the addon.
+
+The channel line-up is served as JSON-STREAMS and the guide as JSON-EPG, both
+written back over the callback socket IPTV Manager supplies.
 
 ## Installation
 

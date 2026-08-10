@@ -117,12 +117,61 @@ class myAddon(t1mAddon):
             ilist = self.addMenuItem(container.get('title'), 'GS', ilist,
                                      container.get('id') or container.get('slug'),
                                      thumb, self.addonFanart, infoList, isFolder=True)
+        infoList = {'Title': self.localLang(30031)}
+        ilist = self.addMenuItem(self.localLang(30031), 'GC', ilist, 'live',
+                                 self.addonIcon, self.addonFanart, infoList, isFolder=True)
         infoList = {'Title': self.localLang(30010)}
         # Never hand out an empty url - Kodi trims the '=' off an empty query
         # value and t1mlib's parameter parser cannot read the result back.
         ilist = self.addMenuItem(self.localLang(30010), 'GM', ilist, 'search',
                                  self.addonIcon, self.addonFanart, infoList, isFolder=True)
         return(ilist)
+
+    def getAddonCats(self, url, ilist):
+        """Tubi's linear channels, browsable without IPTV Manager."""
+        try:
+            lineUp, groups = self.api.liveChannels()
+        except TubiApiError as err:
+            self.report(err)
+            return ilist
+        for channel in lineUp:
+            channelId = str(channel.get('id'))
+            infoList = {'Title': channel.get('title'),
+                        'Plot': channel.get('description'),
+                        'genre': groups.get(channelId),
+                        'mediatype': 'video'}
+            images = channel.get('images') or {}
+            img = self.firstOf(images, 'thumbnail', 'poster', 'landscape') or self.addonIcon
+            fanart = self.firstOf(images, 'background', 'landscape') or self.addonFanart
+            ilist = self.addMenuItem(channel.get('title'), 'LV', ilist, channelId, img, fanart,
+                                     infoList, isFolder=False)
+        return(ilist)
+
+    def getAddonLiveVideo(self, url):
+        """Resolve a linear channel by id - its manifest carries a token."""
+        channelId = uqp(url)
+        try:
+            lineUp, _ = self.api.liveChannels()
+        except TubiApiError as err:
+            self.report(err)
+            xbmcplugin.setResolvedUrl(int(sys.argv[1]), False, xbmcgui.ListItem(offscreen=True))
+            return
+        manifest = None
+        for channel in lineUp:
+            if str(channel.get('id')) == channelId:
+                manifest, _ = pickResource(channel)
+                break
+        if manifest is None:
+            xbmcgui.Dialog().notification(self.addonName, self.localLang(30028),
+                                          xbmcgui.NOTIFICATION_WARNING)
+            xbmcplugin.setResolvedUrl(int(sys.argv[1]), False, xbmcgui.ListItem(offscreen=True))
+            return
+        liz = xbmcgui.ListItem(path=manifest, offscreen=True)
+        liz.setMimeType('application/x-mpegURL')
+        liz.setContentLookup(False)
+        liz.setProperty('inputstream', 'inputstream.adaptive')
+        liz.setProperty('inputstream.adaptive.manifest_type', 'hls')
+        xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, liz)
 
     def getAddonShows(self, url, ilist):
         containerId, cursor = (url.split('|', 1) + ['0'])[:2]

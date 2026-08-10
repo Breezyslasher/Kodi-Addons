@@ -9,4 +9,9 @@
     <category label="30029">
         <setting id="allow_hdcp" type="bool" label="30030" default="false" />
     </category>
+    <category label="30032">
+        <setting id="iptv.enabled" type="bool" label="30033" default="true" />
+        <setting id="iptv.channels_uri" type="text" default="plugin://plugin.video.tubitv/iptv/channels" visible="false" />
+        <setting id="iptv.epg_uri" type="text" default="plugin://plugin.video.tubitv/iptv/epg" visible="false" />
+    </category>
 </settings>

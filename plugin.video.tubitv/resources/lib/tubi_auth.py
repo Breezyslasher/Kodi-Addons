@@ -320,6 +320,11 @@ class TubiAuth(object):
         session = self.cache.get('user') or {}
         return bool(session.get('access_token'))
 
+    @property
+    def userId(self):
+        """The signed in account id, which Tubi uses to personalise the guide."""
+        return (self.cache.get('user') or {}).get('user_id')
+
     def apply(self, headers):
         """Fill in the headers the content API expects.
 
