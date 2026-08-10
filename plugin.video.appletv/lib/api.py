@@ -602,6 +602,14 @@ class AppleTVApi(object):
         external_id = assets.get("external_id")
         if not passthrough or not external_id:
             return None
+        # A live game (including its start-over stream for Watch from Start,
+        # Catch Up, Key Plays and Resume) has a linear-scoped external id that
+        # the VOD now-playing endpoint rejects with HTTP 400. Live watch history
+        # is Apple's own to keep -- via the streaming lease and its own clients
+        # -- so this VOD report never worked for a live event; skip it rather
+        # than fire a request that can only fail.
+        if assets.get("live"):
+            return None
         bearer = self._bootstrap().get("developer_token")
         headers = {"Origin": WEB_HOME}
         if bearer:

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.44" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.45" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,13 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.45 - Stop a doomed watch-history call on live games
+- FIX: Playing a live game (Watch from Start, Catch Up, Key Plays, Resume)
+  logged a 400 from Apple's now-playing endpoint. That endpoint is for
+  on-demand titles only -- the web client never calls it for a live event --
+  so a live game's linear id was always rejected. The addon no longer makes
+  that call for a live stream (playback was never affected; the error is just
+  gone). Finished games and films still report as before.
 2026.8.44 - Fix "event has not started" on games that already happened
 - FIX: A finished game could say "this event has not started yet" with a
   future date. Its start time was being read from the whole detail document,
