@@ -65,6 +65,9 @@ S = {
     "search_suggestions": 32061,
     "choose_feed": 32062,
     "play_feed": 32063,
+    "live_options": 32091,
+    "watch_live": 32092,
+    "watch_from_start": 32093,
     "related": 32064,
     "clubs": 32065,
     "highlights": 32066,
@@ -513,15 +516,12 @@ def do_search(api):
     show_items(api.search(query))
 
 
-def choose_feed(api, item_id, item_type):
-    """Let the viewer pick when a match offers more than one feed.
+def pick_feed(feeds):
+    """Ask which feed to play; returns an external_id, or False if cancelled.
 
     A game is published as a full replay beside a short recap, and once per
     commentary language, so picking the first would be arbitrary.
     """
-    feeds = api.list_playables(item_id, item_type)
-    if not feeds:
-        return None
     labels = []
     for feed in feeds:
         label = feed["title"] or L("play_feed")
@@ -533,21 +533,47 @@ def choose_feed(api, item_id, item_type):
         labels.append(label)
     index = xbmcgui.Dialog().select(L("choose_feed"), labels)
     if index < 0:
-        return False  # cancelled, as distinct from "only one feed"
+        return False
     return feeds[index]["external_id"]
+
+
+def pick_live_mode():
+    """Watch a live game from the live edge or from its start.
+
+    Returns True for "from start", False for "live", or None if cancelled.
+    Apple also offers "Catch Up" -- the start-over stream fast-forwarded to
+    live -- but that is a player behaviour Kodi cannot reproduce, so it is not
+    offered here.
+    """
+    index = xbmcgui.Dialog().select(
+        L("live_options"), [L("watch_live"), L("watch_from_start")])
+    if index < 0:
+        return None
+    return index == 1
 
 
 def do_play(api, item_id, item_type, external_id=None):
     # An event carried in with its own feed (Continue Watching) plays that
     # feed directly. Only when the feed is not already known is the picker
     # offered, and only for an event that has more than one.
+    start_over = False
     if str(item_type) == "SportingEvent" and not external_id:
-        chosen = choose_feed(api, item_id, item_type)
-        if chosen is False:
-            xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
-            return
-        external_id = chosen
-    playback = api.get_playback(item_id, item_type, external_id)
+        options = api.list_playables(item_id, item_type)
+        feeds = options.get("feeds") or []
+        if len(feeds) > 1:
+            external_id = pick_feed(feeds)
+            if external_id is False:
+                xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+                return
+        # A game airing live can be joined at the live edge or watched from the
+        # start; a finished or upcoming one has no such choice.
+        if options.get("live"):
+            start_over = pick_live_mode()
+            if start_over is None:
+                xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+                return
+    playback = api.get_playback(item_id, item_type, external_id,
+                                start_over=bool(start_over))
     if not playback:
         kodiutils.ok_dialog(api.last_error or L("playback_failed"))
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())

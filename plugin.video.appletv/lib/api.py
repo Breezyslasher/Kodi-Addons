@@ -868,20 +868,23 @@ class AppleTVApi(object):
     # -- playback --------------------------------------------------------
 
     def list_playables(self, content_id, item_type="Movie"):
-        """The distinct feeds a title offers, when it offers more than one.
+        """The feeds a title offers and whether it is airing live.
 
-        A match is published several times over: a full replay beside a ten
-        minute recap, and one feed per commentary language. They differ by
-        externalId, so that is what identifies the chosen one.
+        Returns {"feeds": [...], "live": bool}. A match is published several
+        times over: a full replay beside a ten minute recap, and one feed per
+        commentary language, differing by externalId. While a game is airing,
+        each feed is marked airingType Live -- which is when "watch from the
+        start" (the startOver stream) applies.
         """
         self.last_error = None
         data, _mut = self._detail_json(content_id, item_type)
         if data is None:
-            return []
+            return {"feeds": [], "live": False}
         playables = self._deep_find(data, "playables")
         candidates = list(playables.values()) if isinstance(playables, dict) \
             else (playables or [])
         feeds = []
+        live = False
         for playable in candidates:
             if not isinstance(playable, dict):
                 continue
@@ -890,6 +893,8 @@ class AppleTVApi(object):
                 continue
             if not playable.get("isEntitledToPlay"):
                 continue
+            if playable.get("airingType") == "Live":
+                live = True
             locale = playable.get("primaryLocale") or {}
             feeds.append({
                 "external_id": playable.get("externalId"),
@@ -897,10 +902,16 @@ class AppleTVApi(object):
                 "duration": playable.get("duration"),
                 "language": locale.get("displayName") or "",
             })
-        return feeds if len(feeds) > 1 else []
+        return {"feeds": feeds, "live": live}
 
-    def get_playback(self, content_id, item_type="Movie", external_id=None):
-        """Resolve a title to an ISA-playable dict, or None."""
+    def get_playback(self, content_id, item_type="Movie", external_id=None,
+                     start_over=False):
+        """Resolve a title to an ISA-playable dict, or None.
+
+        start_over asks a live event's manifest for the broadcast from its
+        beginning (the web player's "Watch from Start") rather than the live
+        edge.
+        """
         self.last_error = None
         assets = self._prepare_playback(content_id, item_type, external_id)
         if not assets:
@@ -917,10 +928,24 @@ class AppleTVApi(object):
             kodiutils.log("Using the stream listed inline for %s" % content_id)
             self.last_error = None
             assets = self._prepared_from_assets(inline, self._media_user_token())
+        if start_over and assets.get("manifest"):
+            assets["manifest"] = self._with_start_over(assets["manifest"])
         # A manifest pasted into the override setting is not a catalogue
         # stream, so an Apple TV+ account token is not what authorises it.
         return self._build_playback(
             assets, require_user_token=not assets.get("override"))
+
+    @staticmethod
+    def _with_start_over(url):
+        """Ask Apple's linear manifest for the broadcast start.
+
+        A live event served with startOver=true begins at the top of the
+        broadcast instead of the live edge -- the request the web player makes
+        for its "Watch from Start" button.
+        """
+        if "startOver=" in url:
+            return url
+        return url + ("&" if "?" in url else "?") + "startOver=true"
 
     def _build_playback(self, assets, require_user_token=True):
         """Turn resolved stream assets into the dict default.py plays.
@@ -1554,7 +1579,12 @@ class AppleTVApi(object):
                     "No Widevine keys in %d variant(s): this stream carries no "
                     "Widevine encryption" % without_key)
         except Exception as exc:
+            # A network error (Apple unreachable, DNS down) is not the same as
+            # the stream having no keys. Returning an empty map here makes the
+            # caller play in the clear and fail with "DRM license server not
+            # configured"; signal "could not determine" so it assumes DRM.
             kodiutils.log_error("Widevine key collection failed: %s" % exc)
+            return None
         return keys
 
     @staticmethod

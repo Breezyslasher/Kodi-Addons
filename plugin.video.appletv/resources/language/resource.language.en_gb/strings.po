@@ -89,6 +89,18 @@ msgctxt "#32090"
 msgid "About %s"
 msgstr ""
 
+msgctxt "#32091"
+msgid "How would you like to watch?"
+msgstr ""
+
+msgctxt "#32092"
+msgid "Watch Live"
+msgstr ""
+
+msgctxt "#32093"
+msgid "Watch from Start"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""

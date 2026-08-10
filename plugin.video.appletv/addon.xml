@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.30" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.31" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,15 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.31 - Watch a live game from the start, and clearer errors offline
+- NEW: Playing a game that is airing live now asks whether to Watch Live (the
+  live edge) or Watch from Start (the broadcast from its beginning), the same
+  startOver stream the web player uses. Apple's third option, Catch Up, is a
+  fast-forward-to-live player trick Kodi cannot reproduce, so it is left out.
+- FIX: When the network drops mid-play, key collection could not reach Apple
+  and the stream was wrongly treated as unencrypted, failing with "DRM
+  license server not configured". A fetch failure is now kept distinct from a
+  keyless stream, so an outage no longer masquerades as a DRM problem.
 2026.8.30 - Cast members open their own page
 - NEW: A name in "Cast & crew" is now a folder. Opening it shows that
   person's other work -- their Movies, Shows, and roles as producer or guest
