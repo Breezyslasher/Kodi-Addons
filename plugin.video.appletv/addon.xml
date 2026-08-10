@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.39" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.40" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,12 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.40 - Live games: "Resume where you left off" is now a menu choice
+- Kodi used to seek a live game to your last position on its own, overriding
+  whatever mode you picked. It no longer does. Instead, when Apple has a saved
+  position for the game, the live menu adds a "Resume where you left off"
+  option next to Watch Live / from Start / Catch Up, so jumping there is your
+  choice -- and the other modes start exactly where they should.
 2026.8.39 - Live games: resume shows the choices; a clear "too many devices"
 - FIX: Resuming an in-progress live game from Continue Watching skipped the
   Watch Live / from Start / Catch Up choice and jumped straight to the saved

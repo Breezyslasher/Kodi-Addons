@@ -1028,17 +1028,19 @@ class AppleTVApi(object):
             return None
 
     def get_playback(self, content_id, item_type="Movie", external_id=None,
-                     start_over=False, seek_plays=None):
+                     start_over=False, seek_plays=None, seek_seconds=None):
         """Resolve a title to an ISA-playable dict, or None.
 
         start_over asks a live event's manifest for the broadcast from its
         beginning (the web player's "Watch from Start") rather than the live
-        edge.
+        edge. seek_seconds jumps the start-over stream straight to a position
+        (seconds from that beginning) -- how Resume lands on the saved point.
         """
         self.last_error = None
-        # Key plays are positions in the DVR from the broadcast start, so a play
-        # that seeks to one must be the start-over stream.
-        if seek_plays:
+        # Key plays and a resume position are both offsets into the DVR from the
+        # broadcast start, so a play that seeks to one must be the start-over
+        # stream.
+        if seek_plays or seek_seconds:
             start_over = True
         assets = self._prepare_playback(content_id, item_type, external_id)
         if not assets:
@@ -1063,19 +1065,24 @@ class AppleTVApi(object):
         # stream, so an Apple TV+ account token is not what authorises it.
         return self._build_playback(
             assets, require_user_token=not assets.get("override"),
-            seek_plays=seek_plays)
+            seek_plays=seek_plays, seek_seconds=seek_seconds)
 
-    def _write_seek_context(self, manifest_url, headers, seek_plays):
+    def _write_seek_context(self, manifest_url, headers, seek_plays,
+                            seek_seconds=None):
         """Record where the service should seek, or clear it.
 
         A key play states when it happened as wall-clock time; the stream's
         first segment carries the same clock (PROGRAM-DATE-TIME), so the
-        difference is the seek offset in seconds. Written for the service,
-        which owns the player. Cleared when a normal play carries no key plays,
-        so a later stream does not inherit an old seek.
+        difference is the seek offset in seconds. seek_seconds is already such
+        an offset (Resume's saved position), so it is written straight through.
+        Written for the service, which owns the player. Cleared when a normal
+        play carries neither, so a later stream does not inherit an old seek.
         """
         segments = []
-        if seek_plays and manifest_url:
+        if seek_seconds and seek_seconds > 0:
+            segments = [{"start": float(seek_seconds), "title": "resume"}]
+            kodiutils.log("Resume seek: %.1fs from stream start" % seek_seconds)
+        elif seek_plays and manifest_url:
             first_ms = self._manifest_start_ms(manifest_url, headers)
             if first_ms:
                 for kp in seek_plays:
@@ -1135,13 +1142,15 @@ class AppleTVApi(object):
             return url
         return url + ("&" if "?" in url else "?") + "startOver=true"
 
-    def _build_playback(self, assets, require_user_token=True, seek_plays=None):
+    def _build_playback(self, assets, require_user_token=True, seek_plays=None,
+                        seek_seconds=None):
         """Turn resolved stream assets into the dict default.py plays.
 
         Shared by features and trailers: both arrive as the same asset shape
         (an hlsUrl plus the fps key-server details). seek_plays, when given,
         are key moments to jump to: their wall-clock times are turned into
         seconds from the stream start and written for the service to seek.
+        seek_seconds is a ready-made offset (Resume) written the same way.
         """
         override = bool(assets.get("override"))
         boot = self._bootstrap()
@@ -1175,7 +1184,8 @@ class AppleTVApi(object):
                 stream_headers["media-user-token"] = mut
         fps = assets.get("fps_params") or {}
         live = bool(fps.get("service-id") or fps.get("reference-id"))
-        self._write_seek_context(assets.get("manifest"), stream_headers, seek_plays)
+        self._write_seek_context(assets.get("manifest"), stream_headers,
+                                 seek_plays, seek_seconds)
         wv_keys = self._collect_widevine_keys(
             assets["manifest"], stream_headers, live=live)
         # None means the manifest could not be fetched to check for keys, not
