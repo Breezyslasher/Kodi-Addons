@@ -448,6 +448,12 @@ class _Handler(BaseHTTPRequestHandler):
                 max_h = kodiutils.get_setting_int("max_height", 360)
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
             avc_only = kodiutils.get_setting_bool("avc_only", True)
+        # On-demand WebVTT subtitles are fetched to external files, because ISA
+        # lists but never renders Apple's. Drop the renditions here so only the
+        # working external copy is offered, not a broken duplicate beside it. A
+        # live event has none to drop (its captions are CEA-608 in the video).
+        drop_subs = (not _is_live(_context())
+                     and kodiutils.get_setting_bool("external_subs", True))
         lines = text.splitlines()
 
         def unwanted(tag):
@@ -487,6 +493,8 @@ class _Handler(BaseHTTPRequestHandler):
                     dropped += 1
                     continue
             elif s.startswith("#EXT-X-MEDIA"):
+                if drop_subs and "TYPE=SUBTITLES" in s:
+                    continue  # replaced by the external subtitle file
                 m = re.search(r'GROUP-ID="([^"]+)"', s)
                 if max_h and m and groups and m.group(1) not in groups:
                     continue  # rendition only used by variants we removed
@@ -498,6 +506,10 @@ class _Handler(BaseHTTPRequestHandler):
             elif s and not s.startswith("#"):
                 out.append(self._proxied(s, base_url))
             else:
+                if drop_subs and s.startswith("#EXT-X-STREAM-INF"):
+                    # Drop the reference to the subtitle group removed above, so
+                    # ISA does not warn about a group it can no longer resolve.
+                    line = re.sub(r',?\s*SUBTITLES="[^"]*"', '', line)
                 out.append(line)
 
         kodiutils.log("Manifest proxy: master served, height cap=%s, %d variant(s) dropped"

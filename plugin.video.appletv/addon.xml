@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.50" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.51" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -31,6 +31,12 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.51 - One subtitle entry per language, not two
+- The blank subtitle tracks InputStream Adaptive lists for on-demand titles
+  (Apple's WebVTT, which it cannot render) are now removed from the stream, so
+  each language shows once -- the working fetched copy -- instead of twice.
+  The fetched tracks are your Kodi language and English; other languages,
+  which never displayed anyway, are no longer listed.
 2026.8.50 - "Key Plays" only while a game is live
 - Key Plays are a live game's moments so far, to catch up on during the
   broadcast. A finished game has Highlights instead, so Key Plays now shows
