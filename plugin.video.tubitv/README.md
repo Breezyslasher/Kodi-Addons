@@ -8,12 +8,39 @@ kept here so the sign-in can be maintained as Tubi changes its API.
 
 ## Features
 
-- Browse the Tubi category rows, series and films
+- Browse the Tubi categories, with paging through long ones
 - Search the Tubi catalogue
-- Episode listings with season/episode numbers, cast, plot and artwork
+- Series listed by season, with episode numbers, cast, plot and artwork
 - Add a film or a whole show to the Kodi library as `.strm` files
 - Optional Tubi account sign-in
 - PseudoTV Live recommendation service
+
+## Which endpoints this uses
+
+Tubi retired the `/oz` endpoints the addon used to browse with. Everything now
+goes through the API the Tubi site itself uses, and every call authenticates
+with a bearer token — the signed-in user token when there is one, the anonymous
+device token otherwise:
+
+| Purpose | Endpoint |
+|---|---|
+| Category list | `tensor-cdn…/api/v1/browse_list` |
+| Category contents, paged | `tensor-cdn…/api/v7/containers/{id}` |
+| Search | `search…/api/v3/search` |
+| Seasons of a series | `content-cdn…/api/v3/series/{id}/episodes` |
+| Title, metadata and streams | `content-cdn…/api/v3/content` |
+
+## Playback and DRM
+
+Tubi encrypts some titles and not others, so the addon handles both. It asks
+for the clear `hlsv6` stream and the Widevine one, then prefers whichever clear
+stream is on offer, choosing H.264 over H.265 since more devices can decode it.
+
+When only an encrypted stream is available, playback goes through
+`inputstream.adaptive` with `com.widevine.alpha` and the title's own license
+server — which needs a working Widevine CDM on the device. Clear titles play
+without any of that. In testing, a licensed film came back Widevine-only while
+a series' episodes were entirely in the clear.
 
 ## Installation
 

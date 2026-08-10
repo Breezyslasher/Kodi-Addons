@@ -28,6 +28,14 @@ msgctxt "#30025"
 msgid "Add Movie To Library"
 msgstr ""
 
+msgctxt "#30026"
+msgid "Next page"
+msgstr ""
+
+msgctxt "#30027"
+msgid "Season"
+msgstr ""
+
 # --- Settings ---
 msgctxt "#30015"
 msgid "Tubi Login"
@@ -60,4 +68,8 @@ msgstr ""
 
 msgctxt "#30022"
 msgid "Could not reach Tubi"
+msgstr ""
+
+msgctxt "#30028"
+msgid "Tubi is not offering a playable stream for this title"
 msgstr ""
