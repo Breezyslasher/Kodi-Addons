@@ -48,7 +48,7 @@ UTS_ANDROID_VERSION = "76"
 # The exact User-Agent the Android TV app sends on the vz caller, read off a
 # capture of its top-shelf request -- Android/11, model RaspberryPi4, and the
 # firmware token, none of which the earlier approximation had.
-UTS_ANDROID_UA = ("ATVE/16.4.0 Android/11 build/34A30 maker/Raspberry "
+UTS_ANDROID_UA = ("ATVE/16.4.1 Android/11 build/J34A130 maker/Raspberry "
                   "model/RaspberryPi4 FW/RQ3A.211001.001eng.tuomas."
                   "20211123.165647")
 # The placeholder id the debug menu entry plays under. Only this id gets the
