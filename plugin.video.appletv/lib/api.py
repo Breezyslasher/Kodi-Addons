@@ -1492,6 +1492,9 @@ class AppleTVApi(object):
             "bearer": bearer or "",
             "media_user_token": mut or "",
             "adam_id": assets.get("adam_id", ""),
+            # A rented (not purchased) title carries a rental-id that Apple's
+            # own client puts in the lean licence-key object beside adamId.
+            "rental_id": assets.get("rental_id", ""),
             "svc_id": assets.get("svc_id", ""),
             "is_external": assets.get("is_external", True),
             # Apple names the exact licence-request key parameters in

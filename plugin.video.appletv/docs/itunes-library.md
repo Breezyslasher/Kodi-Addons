@@ -966,40 +966,58 @@ library, ownership and naming are done; purchase playback stops at the
 unprovisioned keybag, on any client that has not provisioned -- Apple hardware
 or not.
 
-## iTunes purchase playback — final finding
+## iTunes purchase playback — the `-1020` fix (resolved)
 
-A byte-level comparison of two Widevine license challenges on the same device
-narrows the wall from "a mysterious device keybag" to a single, provable field,
-and it refines the keybag hypothesis above.
+The earlier sections above chase `-1020` through a series of wrong inferences --
+a device keybag (`kbsync`), anisette provisioning, then Widevine
+`application_name` identity. All three are **disproven**; they are kept above as
+the record of the investigation, but this section is the actual resolution.
 
-Purchases license over **Widevine**, not FairPlay, and Apple *does* grant the
-key: the Apple TV app on the same device, using the same shared LineageOS
-keybox CDM, licenses successfully. The addon's request is accepted (HTTP 200)
-and refused only at key issuance (`-1020`). Every request-level variable was
-eliminated in turn: session/caller, `svcId`, `adamId`, KID, anisette headers,
-device `guid`, and the `checkInNonceRequest` step. `kbsync` was **disproven** --
-no keybag blob is present in the app's own granted request.
+**Root cause: extra fields in the licence-key body.** The addon's request was
+sending three fields in the `streaming-keys` object that Apple's own client does
+**not** send for a purchase: `svcId`, `isExternal`, and `guid`. The purchase key
+server (`tvs.vds.9023`) refuses with `-1020` when the request carries fields it
+does not expect -- even though the session, ownership, challenge and KID are all
+valid.
 
-The two Widevine challenges (Apple app vs. Kodi) were compared byte for byte.
-They carry an **identical `client_id` and keybox**; the sole difference is
-`application_name`:
+This was confirmed by reading the Apple TV Android app's *actual* licence
+request body during a successful purchase play. Its key object is exactly:
 
-| field | Apple TV app | Kodi |
-| --- | --- | --- |
-| `application_name` | `com.apple.atve.androidtv.appletv` | `org.xbmc.kodi` |
-| `client_id` / keybox | identical | identical |
-| CDM security level | L3, `OEMCrypto Level3 Code 8159`, CDM 16.0.0 | same |
+```json
+{
+  "id": 1,
+  "uri": "data:text/plain;base64,<PSSH>",
+  "lease-action": "start",
+  "key-system": "com.widevine.alpha",
+  "adamId": "<adamId>",
+  "challenge": "<base64 widevine challenge>"
+}
+```
 
-The `tvs.vds.9023` purchase key server gates on **application identity**, which
-the Widevine CDM stamps into the challenge from the calling package and which
-Kodi cannot forge without CDM-level impersonation. That is why the same device
-plays a purchase in Apple's app and is refused in Kodi: not the hardware, not
-the keybox, not the session -- the package name the CDM stamps. TV+ and sports
-work from Kodi because their subscription key servers do **not** gate on app
-identity.
+No `svcId`, no `isExternal`, no `guid`. Only `adamId` (plus `rental-id` for a
+rental).
 
-**Conclusion.** Purchase playback is not reachable from Kodi without CDM-level
-app-identity impersonation, which this addon does not do. TV+, sports, and the
-iTunes catalogue/library (browse, ownership, resume, metadata, trailers/extras)
-are fully functional. This is the final state of the purchase-playback
-investigation.
+**Why `application_name` was a red herring.** Kodi's Widevine challenge is
+byte-identical to the app's except `application_name` (`org.xbmc.kodi` vs
+`com.apple.atve.androidtv.appletv`). Forcing a request to `9023` proved the
+server does **not** reject on that field: a non-owned title came back `-1002`
+unknown-asset, i.e. `9023` evaluated identity and asset *first* and only then
+looked at the body. The gate was the extra fields, not the CDM identity.
+
+**The fix (in `lib/license_proxy.py`).** When the context is an iTunes purchase
+(`ctx["itunes"]`), build the lean key object -- add only `adamId` (and
+`rental-id` for a rental) and nothing else. Do not add `svcId`, `isExternal`,
+`guid`, `dsid`, or a `nonce` to the purchase `streaming-keys` object. Store
+auth (`X-Dsid`, `X-Token`, `Cookie`) still rides the HTTP *headers*; only the
+JSON body must be lean. Live/linear titles keep their hyphenated
+`service-id`/`reference-id` params (a separate branch), and TV+/sports are
+unchanged.
+
+Trap that reintroduces the bug: spreading Apple's `fpsKeyServerQueryParameters`
+(`fps_params` = `{svcId, adamId, isExternal}`) into the key with
+`key.update(fps_params)` re-adds `svcId`/`isExternal` and brings `-1020` back.
+For a purchase, take only `adamId` -- never spread the whole dict.
+
+**State.** iTunes purchase/rental playback licenses through Kodi's own Widevine
+CDM with a valid store session; TV+, sports, and the catalogue/library (browse,
+ownership, resume, metadata, trailers/extras) remain fully functional.

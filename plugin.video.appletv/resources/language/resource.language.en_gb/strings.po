@@ -138,7 +138,7 @@ msgid "Subtitle delay in seconds (blank = 10; adjust if subtitles run early or l
 msgstr ""
 
 msgctxt "#32103"
-msgid "This iTunes purchase won't play here. Apple's own apps unlock it over Widevine, but the licence needs a device keybag their client attaches, which this add-on cannot reproduce."
+msgid "This iTunes purchase could not be licensed (Apple returned -1020). Make sure a valid store session is pasted in Settings and that you own this title on this Apple ID."
 msgstr ""
 
 msgctxt "#32104"

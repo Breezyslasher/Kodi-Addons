@@ -92,13 +92,13 @@ _ACTIVE_LEASES = []
 STREAM_LIMIT_STATUS = -1004
 _LAST_LIMIT_NOTICE = 0.0
 
-# An iTunes purchase's key is refused with -1020: the request authenticated but
-# carries no device keybag (kbsync). This is the Widevine path (the same one
-# Apple's Android TV app uses -- no FairPlay, no Apple hardware involved); the
-# key server still wants the keybag and per-request signing Apple's client apps
-# attach, which pure Python cannot reproduce (see docs/itunes-library.md). To
-# ISA this is just a failed DRM session, so the user is told plainly rather than
-# left with a generic error. Throttled like the stream-limit notice.
+# An iTunes purchase's key is refused with -1020 when the streaming-keys object
+# carries fields Apple's own client does not send (svcId, isExternal, guid). The
+# proxy now sends the lean body Apple sends (adamId only, plus rental-id for a
+# rental), which is what clears it. A -1020 that survives that means a bad or
+# missing store session, or the title is not owned on this Apple ID -- shown to
+# the user plainly rather than as a generic DRM error. Throttled like the
+# stream-limit notice. (See docs/itunes-library.md.)
 ITUNES_KEYBAG_STATUS = -1020
 _LAST_ITUNES_NOTICE = 0.0
 
@@ -750,19 +750,33 @@ class _Handler(BaseHTTPRequestHandler):
             # verbatim; otherwise keep the VOD-shaped fields exactly as before
             # (a VOD adamId comes from assetAdamId, not necessarily these params).
             fps_params = ctx.get("fps_params") or {}
-            if fps_params.get("service-id") or fps_params.get("reference-id"):
+            if ctx.get("itunes"):
+                # An iTunes purchase licenses with the exact lean key object
+                # Apple's own client sends: {id, uri, lease-action, key-system,
+                # adamId, challenge} (plus rental-id for a rental). The purchase
+                # key server (tvs.vds.9023) returns -1020 when the streaming-keys
+                # object carries extra fields it does not expect -- sending
+                # svcId, isExternal or guid earns the refusal even though the
+                # session, ownership and challenge are all valid. Add only
+                # adamId (and rental-id) and nothing else. Store-session auth
+                # (X-Dsid/X-Token/Cookie) rides the HTTP headers, not the body.
+                if ctx.get("adam_id"):
+                    key["adamId"] = ctx.get("adam_id")
+                if ctx.get("rental_id"):
+                    key["rental-id"] = ctx.get("rental_id")
+            elif fps_params.get("service-id") or fps_params.get("reference-id"):
                 key.update(fps_params)
             else:
                 key["adamId"] = ctx.get("adam_id", "")
                 key["isExternal"] = bool(ctx.get("is_external", True))
                 key["svcId"] = ctx.get("svc_id", "")
             request = {"version": 1, "streaming-keys": [key]}
-            if as_store:
-                # Mirror the shape Apple's client uses for a purchase: the guid
-                # and dsid it identifies itself by, at the levels it puts them.
-                # kbsync -- a device keybag blob -- is also on the real request
-                # and cannot be produced here, so this finds out whether it is
-                # required rather than assuming either way.
+            if as_store and not ctx.get("itunes"):
+                # Diagnostic path only (store session forced onto non-purchase
+                # content): mirror the guid/dsid the store client identifies
+                # itself by. A real purchase must NOT carry guid/dsid/nonce in
+                # its streaming-keys object -- that shape is exactly what earns
+                # -1020 -- so this block is skipped for iTunes purchases.
                 key["guid"] = kodiutils.get_setting("itunes_guid") or ""
                 if headers.get("X-Dsid"):
                     request["dsid"] = headers["X-Dsid"]
@@ -790,12 +804,11 @@ class _Handler(BaseHTTPRequestHandler):
                 # the final wall -- the keybag is a native Apple-device
                 # attestation that cannot be produced off the device.
                 if status == -1020:
-                    last_error = ("status -1020: key server refused -- request "
-                                  "authenticated but has no device keybag "
-                                  "(kbsync). Apple's clients (Windows, PS4 and "
-                                  "Android TV included, not just Apple hardware) "
-                                  "obtain it through anisette device "
-                                  "provisioning, which this client has not done")
+                    last_error = ("status -1020: purchase key server refused. "
+                                  "The lean key body (adamId only) is what Apple "
+                                  "sends; a surviving -1020 means a bad/missing "
+                                  "store session or the title is not owned on "
+                                  "this Apple ID")
                 else:
                     last_error = "no licence in response (status=%s)" % status
                 # Read Apple's own answer rather than infer from the status
@@ -824,8 +837,8 @@ class _Handler(BaseHTTPRequestHandler):
         if last_status == STREAM_LIMIT_STATUS:
             _warn_stream_limit()
         elif last_status == ITUNES_KEYBAG_STATUS and ctx.get("itunes"):
-            # An owned iTunes title whose key server refused for want of a
-            # device keybag: say so plainly instead of a generic DRM error.
+            # An owned iTunes title still refused after the lean-body request:
+            # point at the store session / ownership rather than a generic error.
             _warn_itunes_keybag()
         return None
 
