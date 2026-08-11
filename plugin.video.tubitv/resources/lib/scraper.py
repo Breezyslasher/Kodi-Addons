@@ -73,6 +73,8 @@ class myAddon(t1mAddon):
         # default.py fills these in once the tokens are sorted out
         self.auth = None
         self.api = None
+        # The saved list, read once per listing rather than per item
+        self._saved = None
 
     def addMenuItem(self, name, mode, ilist=None, url=None, thumb=None, fanart=None,
                     videoInfo=None, videoStream=None, audioStream=None,
@@ -195,9 +197,27 @@ class myAddon(t1mAddon):
         return self.addMenuItem(content.get('title'), 'GV', ilist, contentId, img, fanart,
                                 infoList, isFolder=False, cm=contextMenu)
 
+    @property
+    def saved(self):
+        """Content ids on the viewer's saved list.
+
+        Read once per directory so each title can be offered the right
+        action, rather than asking about every item or guessing. Signed out
+        there is no list to read.
+        """
+        if self._saved is None:
+            self._saved = set()
+            if self.auth is not None and self.auth.signedIn:
+                try:
+                    self._saved = set(str(e['content_id']) for e in self.api.queue())
+                except TubiApiError as err:
+                    self.log(''.join(['could not read the saved list : ', str(err)]))
+        return self._saved
+
     def extrasFor(self, contentId, content, inList=False):
         """The context menu entries every title carries."""
         kind = QUEUE_SERIES if content.get('type') == SERIES else HISTORY_MOVIE
+        inList = inList or contentId in self.saved
         listing = ['queue', 'remove' if inList else 'add', contentId, kind]
         extras = [(self.localLang(30042 if inList else 30041),
                    'RunPlugin(%s?mode=DF&url=%s)' % (sys.argv[0], qp('|'.join(listing)))),
@@ -474,6 +494,7 @@ class myAddon(t1mAddon):
         except TubiApiError as err:
             self.report(err)
             return
+        self._saved = None
         xbmcgui.Dialog().notification(self.addonName, self.localLang(message))
         xbmc.executebuiltin('Container.Refresh')
 
