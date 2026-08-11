@@ -688,11 +688,18 @@ def do_itunes_rentals(api):
 
 def do_itunes_family(api, member_id):
     """A family member's shared library: Films and TV Shows, kept apart like
-    your own library -- and each shown only when they share that kind."""
+    your own library -- and each shown only when they share that kind. Films can
+    also be browsed by genre, the same as your own library, when Apple returns
+    keyed genres for their shared purchases."""
     if _has_purchases(api, "movie", member_id):
         add_dir(L("films"), "itunes_family_movies", member_id=member_id)
     if _has_purchases(api, "tv", member_id):
         add_dir(L("tv_shows"), "itunes_family_tv", member_id=member_id)
+    # Genres come from the same /v1/me/purchases/genres call with the member's
+    # filter[owner]; show the folder only when that returns genres with ids, so
+    # a member whose shared library yields none is not given an empty folder.
+    if api.media_genres(family_member=member_id):
+        add_dir(L("genres"), "itunes_family_genres", member_id=member_id)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -703,6 +710,24 @@ def do_itunes_family_movies(api, member_id):
 def do_itunes_family_tv(api, member_id):
     show_items(api.media_purchases("tv", family_member=member_id),
                content="tvshows")
+
+
+def do_itunes_family_genres(api, member_id):
+    """The genres in one family member's shared film library; each opens their
+    films of that genre."""
+    genres = api.media_genres(family_member=member_id)
+    if not genres:
+        kodiutils.notify(L("no_results"))
+    for genre in genres:
+        add_dir(genre["name"], "itunes_family_genre",
+                member_id=member_id, genre_id=genre["id"])
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_family_genre(api, member_id, genre_id):
+    """One genre of a family member's shared films."""
+    show_items(api.media_purchases("movie", family_member=member_id,
+                                   genre=genre_id))
 
 
 def do_itunes_show(api, show_id, member_id=None, season=None):
@@ -1244,6 +1269,11 @@ def router(paramstring):
         do_itunes_family_movies(api, params.get("member_id"))
     elif action == "itunes_family_tv":
         do_itunes_family_tv(api, params.get("member_id"))
+    elif action == "itunes_family_genres":
+        do_itunes_family_genres(api, params.get("member_id"))
+    elif action == "itunes_family_genre":
+        do_itunes_family_genre(api, params.get("member_id"),
+                               params.get("genre_id"))
     elif action == "itunes_show":
         do_itunes_show(api, params.get("show_id"), params.get("member_id"),
                        params.get("season"))
