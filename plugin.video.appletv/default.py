@@ -100,7 +100,7 @@ def url(**kwargs):
     return "%s?%s" % (BASE_URL, urlencode(kwargs))
 
 
-def extras_context_menu(item, item_id, item_type):
+def extras_context_menu(item, item_id, item_type, entry=None):
     """Context-menu entries that play a title's trailers and bonus features."""
     item.addContextMenuItems([
         (L("play_trailer"), "RunPlugin(%s)" % url(
@@ -111,18 +111,32 @@ def extras_context_menu(item, item_id, item_type):
             action="related", item_id=item_id)),
         (L("cast"), "Container.Update(%s)" % url(
             action="cast", item_id=item_id, item_type=item_type)),
-    ] + watchlist_menu_items(item_id) + [mark_watched_menu_item(item_id)])
+    ] + watchlist_menu_items(item_id) + [mark_watched_menu_item(item_id, entry)])
 
 
-def mark_watched_menu_item(item_id):
-    """Mark a title watched on the Apple account (POST /play-history).
+def mark_watched_menu_item(item_id, entry=None):
+    """Mark a title watched on the Apple account.
 
     Kodi's own "Mark as watched" only sets its local flag; this tells Apple, so
     the title counts as watched on your other devices and leaves Continue
     Watching. Marking unwatched is not offered -- it was not captured.
+
+    Apple TV+ titles record this with POST /play-history. An iTunes purchase is
+    not in that graph (play-history 400s "unable to fetch last episode id"), so
+    a purchased film or episode records watched the way it records resume: a
+    MediaAPI playback-position PUT at the end, keyed by its store id. So carry
+    the store id, kind and duration for an iTunes movie/episode.
     """
+    params = {"item_id": item_id}
+    if entry and entry.get("itunes") and entry.get("adam_id") \
+            and str(entry.get("type")) in ("Movie", "Episode"):
+        params["itunes"] = "1"
+        params["adam_id"] = str(entry["adam_id"])
+        params["item_type"] = str(entry.get("type") or "Movie")
+        if entry.get("duration"):
+            params["duration"] = str(int(entry["duration"]))
     return (L("mark_watched"), "RunPlugin(%s)" % url(
-        action="mark_watched", item_id=item_id))
+        action="mark_watched", **params))
 
 
 def watchlist_menu_items(item_id):
@@ -282,7 +296,7 @@ def add_playable(entry, cast=None):
     # Episodes and sporting events carry no extras shelves of their own, but
     # anything playable can go on the watchlist.
     if kind in ("Movie", "Show", "Vod", "MovieBundle"):
-        extras_context_menu(item, entry["id"], kind)
+        extras_context_menu(item, entry["id"], kind, entry)
     elif kind == "SportingEvent":
         # A match links to the other games in its league, and to its two clubs.
         sport = entry.get("sport")
@@ -313,11 +327,11 @@ def add_playable(entry, cast=None):
              # Only Motorsports fixtures have a weekend of sessions.
              if sport == "Motorsports" else [])
           + watchlist_menu_items(entry["id"])
-          + [mark_watched_menu_item(entry["id"])])
+          + [mark_watched_menu_item(entry["id"], entry)])
     elif kind == "Episode":
         # An episode takes no watchlist (Apple lists films, shows and fixtures
         # only), but it can be marked watched on the account.
-        item.addContextMenuItems([mark_watched_menu_item(entry["id"])])
+        item.addContextMenuItems([mark_watched_menu_item(entry["id"], entry)])
     # Everything else -- the sports clip types that carry their stream inline --
     # gets no watchlist entry: Apple's watchlist takes films, shows and fixtures
     # only, which is what every captured write sends, so offering it on an
@@ -1080,11 +1094,31 @@ def do_watchlist(api, item_id, add):
         kodiutils.ok_dialog(L("watchlist_failed"))
 
 
-def do_mark_watched(api, item_id):
-    """Context-menu action: mark a title watched on the Apple account."""
-    if not item_id:
-        return
-    if api.set_watched(item_id):
+def do_mark_watched(api, params):
+    """Context-menu action: mark a title watched on the Apple account.
+
+    An iTunes purchase (carrying its store id) records watched by putting its
+    playback-position at the end -- Apple counts a title past ~95% as watched,
+    so it leaves Continue Watching; the play-history route 400s for a purchase.
+    Everything else uses play-history.
+    """
+    if params.get("itunes") == "1" and params.get("adam_id"):
+        try:
+            position = float(params.get("duration") or 0)
+        except (TypeError, ValueError):
+            position = 0.0
+        # No duration to hand: a large position still reads as finished.
+        if position <= 0:
+            position = 36000.0
+        ok = api.report_playback_position(
+            params["adam_id"], params.get("item_type") or "Movie",
+            position, finished=True)
+    else:
+        item_id = params.get("item_id")
+        if not item_id:
+            return
+        ok = api.set_watched(item_id)
+    if ok:
         kodiutils.notify(L("watched_marked"))
         # Marking watched removes the title from Apple's Continue Watching, so
         # reload the screen to reflect it without leaving the tab first.
@@ -1218,7 +1252,7 @@ def router(paramstring):
     elif action == "watchlist":
         do_watchlist(api, params.get("item_id"), params.get("on") == "1")
     elif action == "mark_watched":
-        do_mark_watched(api, params.get("item_id"))
+        do_mark_watched(api, params)
     elif action == "related":
         show_items(api.get_related(params.get("item_id"),
                                    params.get("league") or None))
