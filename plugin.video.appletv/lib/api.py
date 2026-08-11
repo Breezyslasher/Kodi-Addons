@@ -2534,13 +2534,10 @@ class AppleTVApi(object):
         # The account's own entry appears in this list (you share with the
         # family too); drop it, since your own purchases are the Films/TV Shows
         # sections already. The API marks no self member, so identify yourself
-        # by the account's own dsid/email from /v1/me/account when it answers,
-        # and otherwise by the Apple ID email captured at sign-in -- both match
-        # your entry (dsid == member id, email == accountName).
-        account = self.media_account()
-        own_dsid = account.get("dsid") or ""
-        own_email = ((kodiutils.get_setting("account_email") or "").strip()
-                     or account.get("email") or "").lower()
+        # by the Apple ID email captured at sign-in, which matches your entry's
+        # accountName. (The MediaAPI has no account endpoint -- /v1/me/account
+        # 404s in the amp-videos realm -- so there is no dsid to match on here.)
+        own_email = (kodiutils.get_setting("account_email") or "").strip().lower()
         out = []
         for row in rows:
             if not isinstance(row, dict):
@@ -2556,8 +2553,7 @@ class AppleTVApi(object):
                     or account_name or attrs.get("name")
                     or attrs.get("appleId") or member_id)
             sharing = attrs.get("sharingPurchases")
-            is_self = (bool(own_dsid) and member_id == own_dsid) or (
-                bool(own_email) and own_email == account_name.lower())
+            is_self = bool(own_email) and own_email == account_name.lower()
             kodiutils.log("MediaAPI family: member id=%s name=%r sharing=%r%s"
                           % (member_id or "?", name, sharing,
                              " (self)" if is_self else ""))
@@ -2590,7 +2586,10 @@ class AppleTVApi(object):
         boot = self._bootstrap()
         if not boot.get("developer_token") or not self._media_user_token():
             return []
-        params = {"filter": "owned"}
+        # Params as the app's MediaAPIGenreLoader builds them: both media kinds,
+        # owned, name-sorted. Omitting types is what made the locker 500.
+        params = {"types": "movies,tv-episodes", "filter": "owned",
+                  "sort": "name"}
         if family_member:
             params["with"] = "sharedPurchases"
             params["filter[owner]"] = family_member
@@ -2610,31 +2609,6 @@ class AppleTVApi(object):
                 out.append({"id": gid, "name": name})
         kodiutils.log("MediaAPI genres: %d genre(s)" % len(out))
         return out
-
-    def media_account(self):
-        """The signed-in account's own info (name, dsid) from the MediaAPI
-        /v1/me/account call -- returns {} when it does not answer on the bearer
-        session (some accounts need the store commerce path for this)."""
-        boot = self._bootstrap()
-        if not boot.get("developer_token") or not self._media_user_token():
-            return {}
-        data = self._media_get(MEDIA_API_HOST, "/v1/me/account", {},
-                               self._media_headers())
-        if not isinstance(data, dict):
-            return {}
-        node = data.get("data")
-        if isinstance(node, list):
-            node = node[0] if node else {}
-        if not isinstance(node, dict):
-            node = data
-        attrs = node.get("attributes") or node
-        return {
-            "dsid": str(attrs.get("dsPersonId") or attrs.get("dsid") or ""),
-            "name": (" ".join(x for x in (attrs.get("firstName"),
-                                          attrs.get("lastName")) if x).strip()
-                     or attrs.get("appleId") or ""),
-            "email": attrs.get("appleId") or attrs.get("accountName") or "",
-        }
 
     def _media_get(self, host, path, params, headers):
         """GET a MediaAPI (amp-api) endpoint, returning parsed JSON or None."""
