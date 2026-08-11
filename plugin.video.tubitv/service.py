@@ -77,7 +77,8 @@ class TubiMonitor(xbmc.Player):
             headers = {}
             auth.apply(headers)
             api = TubiApi(headers, auth.deviceId, userId=auth.userId)
-            api.reportProgress(item['content_id'], item['content_type'], position)
+            api.reportProgress(item['content_id'], item['content_type'], position,
+                               parentId=item.get('parent_id'))
             xbmc.log(msg='%s : reported %ss of %s' % (ADDON_ID, position, item['content_id']),
                      level=xbmc.LOGDEBUG)
         except (TubiApiError, TubiAuthError, KeyError) as err:

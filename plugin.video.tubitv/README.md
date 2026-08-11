@@ -101,9 +101,9 @@ in Tubi's own apps agree. A background service does the reporting: by the time
 playback stops the plugin process that resolved the stream is long gone, so it
 leaves what is playing in a window property for the service to pick up.
 
-Films only. Tubi's history takes a content id and a type, and the only write
-ever captured was for a film — what it expects for an episode has not been
-observed, and is left alone rather than guessed at.
+A film reports as itself. An episode reports as itself too, with its series
+named alongside as a `parent_id` — a string, where the content id is a number.
+Trailers report nothing.
 
 ## Language
 

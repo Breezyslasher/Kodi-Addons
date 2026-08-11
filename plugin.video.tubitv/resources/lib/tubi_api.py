@@ -32,9 +32,12 @@ ACCOUNT_API = 'https://account.production-public.tubi.io'
 
 # The container Tubi files a viewer's part-watched titles under
 CONTINUE_WATCHING = 'continue_watching'
-# Tubi describes a title as one or the other in its queue and its history
+# Tubi describes a title as one of these. Its saved list only ever uses the
+# first two; its watch history uses the first and the third, an episode
+# carrying its series as a parent_id alongside.
 MOVIE = 'movie'
 SERIES = 'series'
+EPISODE = 'episode'
 # The only kind of saved list Tubi keeps
 WATCH_LATER = 'watch_later'
 # What a title's rating can be, and the four ways to change it
@@ -270,8 +273,12 @@ class TubiApi(object):
                            'action': action,
                            'data': [self.ratingId(contentId, isSeries)]})
 
-    def reportProgress(self, contentId, contentType, position):
+    def reportProgress(self, contentId, contentType, position, parentId=None):
         """Tell Tubi how far into a title the viewer got.
+
+        A film goes across on its own. An episode goes across as itself with
+        its series named as the parent, which Tubi sends as a string where
+        the content id is a number.
 
         Only meaningful signed in - the history belongs to the account.
         """
@@ -280,8 +287,10 @@ class TubiApi(object):
         payload = {'content_id': int(contentId),
                    'content_type': contentType,
                    'position': int(position),
-                   'platform': PLATFORM,
-                   'user_id': int(self.userId)}
+                   'platform': PLATFORM}
+        if parentId is not None:
+            payload['parent_id'] = str(parentId)
+        payload['user_id'] = int(self.userId)
         return self.post(''.join([HISTORY_API, '/api/v2/view_history']), payload)
 
     def search(self, query):
