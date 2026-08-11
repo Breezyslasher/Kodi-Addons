@@ -9,6 +9,9 @@ kept here so the sign-in can be maintained as Tubi changes its API.
 ## Features
 
 - Browse the Tubi categories, with paging through long ones
+- Home, My List and Continue Watching, taken from your account
+- Related titles and trailers on every film and series
+- Kids mode
 - Tubi's linear channels as Live TV, optionally in the Kodi TV guide
 - Search the Tubi catalogue
 - Series listed by season, with episode numbers, cast, plot and artwork
@@ -32,6 +35,10 @@ device token otherwise:
 | Title, metadata and streams | `content-cdn…/api/v3/content` |
 | Linear channel line-up | `tensor-cdn…/api/v2/epg` |
 | Live programme guide | `epg-cdn…/content/epg/programming` |
+| Personalised home rows | `tensor-cdn…/api/v8/homescreen` |
+| My List | `user-queue…/api/v2/queues` |
+| Related titles | `autopilot-cdn…/api/v3/related` |
+| Resume reporting | `lishi…/api/v2/view_history` |
 
 ## Playback and DRM
 
@@ -82,6 +89,18 @@ an addon ten seconds to call back and then waits as long as the connection
 stays open, and building the guide takes one request per batch of channels —
 comfortably more than ten seconds — so connecting first is what keeps the guide
 from arriving empty.
+
+## Resume
+
+With **Tell Tubi where you stopped watching** on and an account signed in, the
+addon reports your position when playback stops, so Continue Watching here and
+in Tubi's own apps agree. A background service does the reporting: by the time
+playback stops the plugin process that resolved the stream is long gone, so it
+leaves what is playing in a window property for the service to pick up.
+
+Films only. Tubi's history takes a content id and a type, and the only write
+ever captured was for a film — what it expects for an episode has not been
+observed, and is left alone rather than guessed at.
 
 ## Installation
 

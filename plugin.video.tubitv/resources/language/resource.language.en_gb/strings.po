@@ -40,6 +40,26 @@ msgctxt "#30031"
 msgid "Live TV"
 msgstr ""
 
+msgctxt "#30034"
+msgid "Related titles"
+msgstr ""
+
+msgctxt "#30035"
+msgid "Play trailer"
+msgstr ""
+
+msgctxt "#30036"
+msgid "Home"
+msgstr ""
+
+msgctxt "#30037"
+msgid "Continue Watching"
+msgstr ""
+
+msgctxt "#30038"
+msgid "My List"
+msgstr ""
+
 # --- Settings ---
 msgctxt "#30015"
 msgid "Tubi Login"
@@ -71,6 +91,14 @@ msgstr ""
 
 msgctxt "#30033"
 msgid "Integrate the Tubi live channels into the Kodi TV guide"
+msgstr ""
+
+msgctxt "#30039"
+msgid "Kids mode"
+msgstr ""
+
+msgctxt "#30040"
+msgid "Tell Tubi where you stopped watching (films, needs sign-in)"
 msgstr ""
 
 # --- Messages ---

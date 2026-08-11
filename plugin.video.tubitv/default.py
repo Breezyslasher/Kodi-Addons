@@ -36,7 +36,8 @@ except TubiAuthError as err:
                                       __settings__.getLocalizedString(30021) % err,
                                       xbmcgui.NOTIFICATION_WARNING)
 
-ma.api = TubiApi(ma.defaultHeaders, ma.auth.deviceId, userId=ma.auth.userId)
+ma.api = TubiApi(ma.defaultHeaders, ma.auth.deviceId, userId=ma.auth.userId,
+                 kids=__settings__.getSetting('kids_mode') == 'true')
 
 # Kodi hands back a query with the '=' trimmed off any empty value, e.g.
 # "?mode=GM&url", which t1mlib splits on '=' and chokes on. Put it back.

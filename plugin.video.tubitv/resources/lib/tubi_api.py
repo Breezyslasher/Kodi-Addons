@@ -25,6 +25,15 @@ BROWSE_API = 'https://tensor-cdn.production-public.tubi.io'
 SEARCH_API = 'https://search.production-public.tubi.io'
 CONTENT_API = 'https://content-cdn.production-public.tubi.io'
 EPG_API = 'https://epg-cdn.production-public.tubi.io'
+RELATED_API = 'https://autopilot-cdn.production-public.tubi.io'
+QUEUE_API = 'https://user-queue.production-public.tubi.io'
+HISTORY_API = 'https://lishi.production-public.tubi.io'
+
+# The container Tubi files a viewer's part-watched titles under
+CONTINUE_WATCHING = 'continue_watching'
+# Tubi describes a title as one or the other in its queue and its history
+MOVIE = 'movie'
+SERIES = 'series'
 
 # Tubi's linear channel line-up
 EPG_MODE = 'tubitv_us_linear'
@@ -70,10 +79,15 @@ class TubiApiError(Exception):
 
 class TubiApi(object):
 
-    def __init__(self, headers, deviceId, userId=None):
+    def __init__(self, headers, deviceId, userId=None, kids=False):
         self.headers = headers
         self.deviceId = deviceId
         self.userId = userId
+        self.kids = kids
+
+    @property
+    def kidsMode(self):
+        return 'true' if self.kids else 'false'
 
     def get(self, url, params):
         try:
@@ -83,12 +97,37 @@ class TubiApi(object):
         except Exception as err:
             raise TubiApiError(str(err))
 
+    def post(self, url, payload):
+        try:
+            response = requests.post(url, json=payload, headers=self.headers, timeout=TIMEOUT)
+            response.raise_for_status()
+            return True
+        except Exception as err:
+            raise TubiApiError(str(err))
+
+    @staticmethod
+    def inOrder(data, contents=None):
+        """Pull a payload's contents out in the order its containers list them.
+
+        The browse, search and related endpoints all answer with a map of
+        contents plus containers naming which ones to show and in what order.
+        """
+        contents = data.get('contents') if contents is None else contents
+        contents = contents or {}
+        ordered = []
+        for container in data.get('containers') or []:
+            for item in container.get('items') or container.get('children') or []:
+                key = item.get('id') if isinstance(item, dict) else item
+                if key in contents and contents[key] not in ordered:
+                    ordered.append(contents[key])
+        return ordered or list(contents.values())
+
     # ---------------------------------------------------------------- browse
 
     def browseList(self):
         """The category rows, in the order Tubi lists them."""
         data = self.get(''.join([BROWSE_API, '/api/v1/browse_list']),
-                        [('is_kids_mode', 'false')])
+                        [('is_kids_mode', self.kidsMode)])
         return data.get('containers') or []
 
     def container(self, containerId, cursor=0):
@@ -101,7 +140,7 @@ class TubiApi(object):
                   ('cursor', cursor),
                   ('include_channels', 'true'),
                   ('include_sponsorships', 'true'),
-                  ('is_kids_mode', 'false')] + IMAGES
+                  ('is_kids_mode', self.kidsMode)] + IMAGES
         data = self.get(''.join([BROWSE_API, '/api/v7/containers/', containerId]), params)
         container = data.get('container') or {}
         contents = data.get('contents') or {}
@@ -114,21 +153,80 @@ class TubiApi(object):
             nextCursor = None
         return items, nextCursor
 
+    def homescreen(self, cursor=0):
+        """The personalised rows Tubi puts on its own home screen.
+
+        Returns (rows, next group cursor). Each row is a container in the
+        same shape the category endpoint answers with, so opening one goes
+        back through container().
+        """
+        params = [('include_channels', 'true'),
+                  ('contents_limit', 10),
+                  ('include_empty_history', 'true'),
+                  ('include_empty_queue', 'true'),
+                  ('include_sponsorships', 'true'),
+                  ('include_ui_customization', 'true'),
+                  ('group_start', cursor),
+                  ('group_size', 7),
+                  ('is_kids_mode', self.kidsMode)] + IMAGES
+        data = self.get(''.join([BROWSE_API, '/api/v8/homescreen']), params)
+        rows = [c for c in data.get('containers') or [] if c.get('children')]
+        return rows, data.get('group_cursor')
+
+    def related(self, contentId):
+        """The "You May Also Like" titles for one title."""
+        params = [('content_id', contentId),
+                  ('limit', 18),
+                  ('include_ui_customization', 'true')] + IMAGES + VIDEO_RESOURCES
+        return self.inOrder(self.get(''.join([RELATED_API, '/api/v3/related']), params))
+
+    def queue(self):
+        """The viewer's saved list, as (content id, movie or series) pairs.
+
+        Tubi only stores the ids here, so the titles themselves have to be
+        fetched separately.
+        """
+        data = self.get(''.join([QUEUE_API, '/api/v2/queues']), [])
+        return [(str(q.get('content_id')), q.get('content_type'))
+                for q in data.get('queues') or [] if q.get('content_id')]
+
+    def contents(self, contentIds):
+        """Fetch several titles at once - there is no bulk endpoint."""
+        found = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=EPG_WORKERS) as pool:
+            for result in pool.map(self._safeContent, contentIds):
+                if result is not None:
+                    found.append(result)
+        return found
+
+    def _safeContent(self, contentId):
+        try:
+            return self.content(contentId)
+        except TubiApiError:
+            return None
+
+    def reportProgress(self, contentId, contentType, position):
+        """Tell Tubi how far into a title the viewer got.
+
+        Only meaningful signed in - the history belongs to the account.
+        """
+        if self.userId is None:
+            return False
+        payload = {'content_id': int(contentId),
+                   'content_type': contentType,
+                   'position': int(position),
+                   'platform': PLATFORM,
+                   'user_id': int(self.userId)}
+        return self.post(''.join([HISTORY_API, '/api/v2/view_history']), payload)
+
     def search(self, query):
         params = [('search', query),
                   ('include_channels', 'true'),
                   ('include_linear', 'true'),
-                  ('is_kids_mode', 'false')] + IMAGES
-        data = self.get(''.join([SEARCH_API, '/api/v3/search']), params)
-        contents = data.get('contents') or {}
-        # The containers list carries the relevance ordering, the contents map
-        # does not, so walk it when it is there.
-        ordered = []
-        for container in data.get('containers') or []:
-            for item in container.get('items') or []:
-                if item.get('id') in contents:
-                    ordered.append(contents[item['id']])
-        return ordered or list(contents.values())
+                  ('is_kids_mode', self.kidsMode)] + IMAGES
+        # The containers list carries the relevance ordering, the contents
+        # map does not, so the shared helper walks it.
+        return self.inOrder(self.get(''.join([SEARCH_API, '/api/v3/search']), params))
 
     # ---------------------------------------------------------------- titles
 

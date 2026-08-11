@@ -8,6 +8,8 @@
     </category>
     <category label="30029">
         <setting id="allow_hdcp" type="bool" label="30030" default="false" />
+        <setting id="kids_mode" type="bool" label="30039" default="false" />
+        <setting id="report_progress" type="bool" label="30040" default="true" />
     </category>
     <category label="30032">
         <setting id="iptv.enabled" type="bool" label="30033" default="true" />
