@@ -2543,16 +2543,37 @@ class AppleTVApi(object):
         ever fetches for a purchase the account holds.
         """
         adam_id = str(adam_id)
+        # The title may be your own or a family member's -- a shared purchase is
+        # owned by them, so your own list is empty for it (filter[owner]). The
+        # play url does not carry which member, so try your own library first,
+        # then each sharing member until the row turns up.
+        owners = [None] + [m["id"] for m in self.media_family_members()]
         if str(item_type) == "Episode":
             info = (self._reverse_lookup([adam_id]) or {}).get(adam_id) or {}
             show_id = info.get("show_id")
             if not show_id:
-                kodiutils.log("Delisted play: no showId for %s" % adam_id)
+                kodiutils.log("Delisted play: no show_id for %s" % adam_id)
                 return None
-            entries = self.media_purchases("episodes", show_id=show_id,
-                                           enrich=False)
+            for owner in owners:
+                hit = self._match_purchase_offer(
+                    self.media_purchases("episodes", show_id=show_id,
+                                         family_member=owner, enrich=False),
+                    adam_id)
+                if hit:
+                    return hit
         else:
-            entries = self.media_purchases("movie", enrich=False)
+            for owner in owners:
+                hit = self._match_purchase_offer(
+                    self.media_purchases("movie", family_member=owner,
+                                         enrich=False), adam_id)
+                if hit:
+                    return hit
+        kodiutils.log("Delisted play: no MediaAPI personalizedOffers hlsUrl for "
+                      "%s" % adam_id)
+        return None
+
+    def _match_purchase_offer(self, entries, adam_id):
+        """The captured redownload offer of the entry whose store id matches."""
         for e in entries:
             if str(e.get("adam_id")) == adam_id and e.get("itunes_hls"):
                 kodiutils.log("Delisted play: redownload hlsUrl via MediaAPI "
@@ -2566,8 +2587,6 @@ class AppleTVApi(object):
                         "wideVineKeyServerUrl": None,
                         "wideVineCertificateUrl": None,
                         "fpsKeyServerUrl": None, "isItunes": True}
-        kodiutils.log("Delisted play: no MediaAPI personalizedOffers hlsUrl for "
-                      "%s" % adam_id)
         return None
 
     def media_purchases(self, kind="movie", family_member=None, show_id=None,
