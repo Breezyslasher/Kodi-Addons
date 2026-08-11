@@ -73,8 +73,10 @@ class myAddon(t1mAddon):
         # default.py fills these in once the tokens are sorted out
         self.auth = None
         self.api = None
-        # The saved list, read once per listing rather than per item
+        # The saved list and the part-watched list, each read once per
+        # listing rather than once per item
         self._saved = None
+        self._watching = None
 
     def addMenuItem(self, name, mode, ilist=None, url=None, thumb=None, fanart=None,
                     videoInfo=None, videoStream=None, audioStream=None,
@@ -194,8 +196,9 @@ class myAddon(t1mAddon):
         contextMenu = [(self.localLang(30025),
                         'RunPlugin(%s?mode=AM&url=%s)' % (sys.argv[0], qp(contentId)))]
         contextMenu.extend(self.extrasFor(contentId, content, inList))
-        return self.addMenuItem(content.get('title'), 'GV', ilist, contentId, img, fanart,
-                                infoList, isFolder=False, cm=contextMenu)
+        ilist = self.addMenuItem(content.get('title'), 'GV', ilist, contentId, img, fanart,
+                                 infoList, isFolder=False, cm=contextMenu)
+        return self.applyResume(ilist, contentId)
 
     @property
     def saved(self):
@@ -214,6 +217,45 @@ class myAddon(t1mAddon):
                     self.log(''.join(['could not read the saved list : ', str(err)]))
         return self._saved
 
+    @property
+    def watching(self):
+        """What the account has part-watched, keyed by content id.
+
+        Each value carries the position to resume from and, for a title
+        Tubi tracks in its own right, the history entry id that removing it
+        from Continue Watching needs. A series is tracked as itself with its
+        episodes nested, so both are indexed.
+        """
+        if self._watching is None:
+            self._watching = {}
+            if self.auth is not None and self.auth.signedIn:
+                try:
+                    entries = self.api.history()
+                except TubiApiError as err:
+                    self.log(''.join(['could not read the watch history : ', str(err)]))
+                    entries = []
+                for entry in entries:
+                    self._watching[str(entry.get('content_id'))] = {
+                        'history_id': entry.get('id'),
+                        'position': entry.get('position'),
+                        'length': entry.get('content_length')}
+                    for episode in entry.get('episodes') or []:
+                        self._watching[str(episode.get('content_id'))] = {
+                            'history_id': None,
+                            'position': episode.get('position'),
+                            'length': episode.get('content_length')}
+        return self._watching
+
+    def applyResume(self, ilist, contentId):
+        """Let Kodi offer to resume where Tubi says the viewer stopped."""
+        entry = self.watching.get(str(contentId)) or {}
+        position, length = entry.get('position'), entry.get('length')
+        if ilist and position and length:
+            liz = ilist[-1][1]
+            liz.setProperty('ResumeTime', str(position))
+            liz.setProperty('TotalTime', str(length))
+        return ilist
+
     def extrasFor(self, contentId, content, inList=False):
         """The context menu entries every title carries."""
         kind = QUEUE_SERIES if content.get('type') == SERIES else HISTORY_MOVIE
@@ -226,6 +268,11 @@ class myAddon(t1mAddon):
         if content.get('has_trailer') or content.get('trailers'):
             extras.append((self.localLang(30035),
                            'PlayMedia(%s?mode=GV&url=%s)' % (sys.argv[0], qp('|'.join(['trailer', contentId])))))
+        historyId = (self.watching.get(contentId) or {}).get('history_id')
+        if historyId:
+            extras.append((self.localLang(30054),
+                           'RunPlugin(%s?mode=DF&url=%s)' % (
+                               sys.argv[0], qp('|'.join(['unwatch', historyId])))))
         series = '1' if content.get('type') == SERIES else '0'
         for label, action in ((30045, LIKE), (30046, DISLIKE)):
             extras.append((self.localLang(label),
@@ -407,6 +454,7 @@ class myAddon(t1mAddon):
             playUrl = '|'.join([str(episode.get('id')), str(seriesId), str(season.get('season'))])
             ilist = self.addMenuItem(title, 'GV', ilist, playUrl, img, fanart,
                                      infoList, isFolder=False)
+            ilist = self.applyResume(ilist, episode.get('id'))
         return ilist
 
     def getAddonEpisodes(self, url, ilist):
@@ -473,6 +521,19 @@ class myAddon(t1mAddon):
             self.toggleQueue(parts[1], parts[2], parts[3] if len(parts) > 3 else HISTORY_MOVIE)
         elif parts[0] == 'rate' and len(parts) > 3:
             self.toggleRating(parts[1], parts[2], parts[3] == '1')
+        elif parts[0] == 'unwatch' and len(parts) > 1:
+            self.forget(parts[1])
+
+    def forget(self, historyId):
+        """Take a title out of Continue Watching."""
+        try:
+            self.api.removeFromHistory(historyId)
+        except TubiApiError as err:
+            self.report(err)
+            return
+        self._watching = None
+        xbmcgui.Dialog().notification(self.addonName, self.localLang(30055))
+        xbmc.executebuiltin('Container.Refresh')
 
     def toggleQueue(self, action, contentId, kind):
         """Put a title on the saved list, or take it off.

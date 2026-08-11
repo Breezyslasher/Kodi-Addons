@@ -84,6 +84,14 @@ msgctxt "#30049"
 msgid "Rating cleared"
 msgstr ""
 
+msgctxt "#30054"
+msgid "Remove from Continue Watching"
+msgstr ""
+
+msgctxt "#30055"
+msgid "Removed from Continue Watching"
+msgstr ""
+
 msgctxt "#30050"
 msgid "Language"
 msgstr ""
