@@ -686,13 +686,7 @@ class _Handler(BaseHTTPRequestHandler):
         store_cookies = (kodiutils.get_setting("itunes_uts_cookies") or "").strip() \
             or (kodiutils.get_setting("itunes_cookies") or "").strip()
         store_token = (kodiutils.get_setting("itunes_token") or "").strip()
-        force_store = kodiutils.get_setting("diag_force_store_license") == "true"
-        as_store = bool((ctx.get("override") or force_store)
-                        and (store_cookies or store_token))
-        if force_store and as_store and not ctx.get("override"):
-            kodiutils.log("DIAGNOSTIC: forcing Android/store session onto a "
-                          "licence request, svcId=%s"
-                          % (ctx.get("svc_id") or "none"))
+        as_store = bool(ctx.get("override") and (store_cookies or store_token))
         android = False
         if as_store:
             # A store session names its account in more than one cookie:

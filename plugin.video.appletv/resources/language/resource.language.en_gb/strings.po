@@ -165,6 +165,19 @@ msgctxt "#32109"
 msgid "Signed-in Apple ID email (internal)"
 msgstr ""
 
+# --- Settings: categories (added) ---
+msgctxt "#32110"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#32111"
+msgid "Subtitles"
+msgstr ""
+
+msgctxt "#32112"
+msgid "Library"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""
