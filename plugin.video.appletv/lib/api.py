@@ -389,6 +389,139 @@ class AppleTVApi(object):
 
     # -- catalogue -------------------------------------------------------
 
+    def get_channels(self):
+        """The brand tabs Apple lists across the top of its home page -- Apple
+        TV+ and each sports brand (MLS, Formula 1, and any Apple adds later).
+
+        Read live from the same place the web app reads its navigation from:
+        /configurations returns data.applicationProps.tabs, one Brand target
+        per tab, each with the brand's channel id and a localised title.
+        Discovering them means a league Apple launches needs no code change and
+        every name comes straight from Apple. Cached on disk for an hour; on any
+        failure (or a response naming no brand tab) the built-in list stands in
+        so the tabs never vanish.
+        """
+        cached = self.auth.tokens.get("channels") or {}
+        items = cached.get("items")
+        stamp = cached.get("stamp") or 0
+        if items and 0 <= time.time() - stamp < BOOT_CACHE_SECONDS:
+            return [(c["id"], c["name"]) for c in items]
+        found = self._fetch_channels()
+        if found:
+            self.auth.tokens["channels"] = {
+                "items": [{"id": i, "name": n} for i, n in found],
+                "stamp": time.time()}
+            self.auth.save()
+            return found
+        # A stale cache still beats the built-in list if the fetch just failed.
+        if items:
+            return [(c["id"], c["name"]) for c in items]
+        return list(CHANNELS)
+
+    def _fetch_channels(self):
+        """Discover the brand tabs, trying Apple's channels endpoint first.
+
+        The Android app's route table defines /uts/v3/channels (getChannelsById
+        is its per-id sibling), so that endpoint -- asked as the Android caller
+        the app itself uses -- is Apple's own source for the brand list and is
+        tried first. Its response is not in any capture, so the raw shape is
+        logged and it is used only when it clearly names Apple TV+ plus at least
+        one more brand; otherwise the web app's navigation (/configurations ->
+        applicationProps.tabs, which the captures do show listing Apple TV+ with
+        the sports brands) is read instead. Either path leaves the caller to
+        fall back to the built-in list.
+        """
+        return self._channels_from_endpoint() or self._channels_from_config()
+
+    def _channels_from_endpoint(self):
+        """Try the app's own /channels endpoint (Android caller), logging the
+        raw shape since no capture of it exists to parse against."""
+        data = self._vz_json("/channels", quiet=True)
+        if not isinstance(data, dict):
+            return []
+        node = data.get("data")
+        kodiutils.log("channels endpoint: top=%s data=%s"
+                      % (list(data.keys()),
+                         list(node.keys()) if isinstance(node, dict)
+                         else type(node).__name__))
+        raw = None
+        if isinstance(node, dict):
+            raw = node.get("channels") or node.get("brands") or node.get("tabs")
+        elif isinstance(node, list):
+            raw = node
+        if isinstance(raw, dict):
+            entries = list(raw.values())
+        elif isinstance(raw, list):
+            entries = raw
+        else:
+            kodiutils.log("channels endpoint: no channel list found; using tabs")
+            return []
+        out, seen = [], set()
+        for ch in entries:
+            if not isinstance(ch, dict):
+                continue
+            target = ch.get("target") or {}
+            cid = ch.get("id") or target.get("id")
+            if not cid or cid in seen or ch.get("isItunes") or cid == ITUNES_CHANNEL:
+                continue
+            seen.add(cid)
+            name = ("Apple TV+" if cid == APPLE_TV_PLUS_CHANNEL
+                    else (ch.get("name") or ch.get("title")
+                          or target.get("title") or cid))
+            out.append((cid, name))
+        # Trust it only when it clearly names the Apple TV+ brand plus another;
+        # anything less falls through to the verified web source.
+        if any(c == APPLE_TV_PLUS_CHANNEL for c, _ in out) and len(out) >= 2:
+            kodiutils.log("Channels via /channels: %s"
+                          % ", ".join(n for _, n in out))
+            return out
+        kodiutils.log("channels endpoint gave no usable brand list; using tabs")
+        return []
+
+    def _channels_from_config(self):
+        """Read the brand tabs off /configurations (applicationProps.tabs)."""
+        boot = self._bootstrap()
+        if not boot.get("developer_token"):
+            return []
+        # The web nav call keys the storefront as sfh and sends no utsk/utscf,
+        # so this asks exactly as the site does rather than via _params.
+        params = {"caller": "web", "locale": self._locale(), "pfm": "web",
+                  "sfh": self._storefront(), "v": UTS_VERSION}
+        try:
+            resp = self.session.get(UTS_BASE + "/configurations", params=params,
+                                    headers=self._uts_headers(), timeout=30)
+            if resp.status_code != 200:
+                kodiutils.log_error("configurations (channels) -> %s %s"
+                                    % (resp.status_code, resp.text[:200]))
+                return []
+            tabs = (((resp.json().get("data") or {})
+                     .get("applicationProps") or {}).get("tabs")) or []
+        except Exception as exc:
+            kodiutils.log_error("Channels fetch failed: %s" % exc)
+            return []
+        out, seen = [], set()
+        for tab in tabs:
+            target = tab.get("target") or {}
+            if target.get("type") != "Brand":
+                continue
+            cid = target.get("id")
+            if not cid or cid in seen:
+                continue
+            seen.add(cid)
+            # Apple names the originals brand "Apple TV"; the addon has always
+            # called it "Apple TV+", so keep that clearer label and take Apple's
+            # own title for every other brand.
+            name = ("Apple TV+" if cid == APPLE_TV_PLUS_CHANNEL
+                    else (tab.get("title") or cid))
+            out.append((cid, name))
+        # The Apple TV+ brand anchors the menu, so make sure it leads even if it
+        # is ever absent from the tab list.
+        if not any(cid == APPLE_TV_PLUS_CHANNEL for cid, _ in out):
+            out.insert(0, (APPLE_TV_PLUS_CHANNEL, "Apple TV+"))
+        kodiutils.log("Channels via tabs: %d brand tab(s): %s"
+                      % (len(out), ", ".join(n for _, n in out)))
+        return out
+
     def get_originals_shelves(self):
         return self.get_channel_shelves(APPLE_TV_PLUS_CHANNEL)
 
@@ -2193,56 +2326,6 @@ class AppleTVApi(object):
                     kodiutils.log("Featured: %d item(s) via %s" % (len(items), label))
                     return items
         kodiutils.log("Featured: 0 item(s)")
-        return []
-
-    def get_play_next(self):
-        """The account's Up Next / Play Next row -- the next titles Apple queues
-        to watch (the show's next episode, a film to start), distinct from
-        Continue Watching's in-progress titles. Fetched the same way as the
-        other account shelves, over the ordinary Apple TV+ sign-in."""
-        for getter, label in ((self._vz_json, "vz"), (self._get_json, "web")):
-            data = getter("/shelves/play-next",
-                          {"ctx_brand": APPLE_TV_PLUS_CHANNEL})
-            shelf = ((data or {}).get("data") or {}).get("shelf")
-            if isinstance(shelf, dict):
-                items = self._extract_items(shelf.get("items"))
-                if items:
-                    kodiutils.log("Up Next: %d item(s) via %s" % (len(items), label))
-                    return items
-        kodiutils.log("Up Next: 0 item(s)")
-        return []
-
-    def get_watchlist(self):
-        """The titles on your Watchlist (what the Add to Watchlist action adds),
-        as a browsable list. The app serves it as a canvas of shelves; take the
-        items across them. Logs the response shape when nothing parses so a
-        differing shape is fixed rather than a silent zero."""
-        for path in ("/watchlists/canvas", "/watchlist"):
-            for getter, label in ((self._vz_json, "vz"), (self._get_json, "web")):
-                data = getter(path, {"ctx_brand": APPLE_TV_PLUS_CHANNEL})
-                if not data:
-                    continue
-                items = []
-                for shelf in self._extract_shelves(data):
-                    items.extend(shelf.get("items") or [])
-                node = (data.get("data") or {}) if isinstance(data, dict) else {}
-                one = node.get("shelf")
-                if isinstance(one, dict):
-                    items.extend(self._extract_items(one.get("items")))
-                # De-duplicate by id, keeping order.
-                seen, out = set(), []
-                for it in items:
-                    if it.get("id") not in seen:
-                        seen.add(it.get("id"))
-                        out.append(it)
-                if out:
-                    kodiutils.log("Watchlist: %d item(s) via %s %s"
-                                  % (len(out), label, path))
-                    return out
-                if isinstance(node, dict) and node:
-                    kodiutils.log("Watchlist: %s %s -> top-level=%s"
-                                  % (label, path, list(node.keys())))
-        kodiutils.log("Watchlist: 0 item(s)")
         return []
 
     def _page_continue_watching(self, getter, label, path, ctx, max_pages):
