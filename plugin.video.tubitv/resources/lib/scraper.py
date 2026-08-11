@@ -30,6 +30,19 @@ LICENSE_HEADERS = [('Content-Type', 'application/octet-stream'),
 DRM_PROPERTIES_SINCE = 21
 
 
+# InfoTagVideo's own setters, and the stream detail classes, arrived in Kodi
+# 20. Kodi 19 only has ListItem.setInfo()/addStreamInfo(), which everything
+# after it warns about on every single list item.
+INFOTAG_SETTERS = hasattr(xbmc, 'VideoStreamDetail')
+
+
+def asInt(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def inputstreamMajor():
     """Major version of the installed inputstream.adaptive, 0 if unknown."""
     try:
@@ -50,6 +63,72 @@ class myAddon(t1mAddon):
         # default.py fills these in once the tokens are sorted out
         self.auth = None
         self.api = None
+
+    def addMenuItem(self, name, mode, ilist=None, url=None, thumb=None, fanart=None,
+                    videoInfo=None, videoStream=None, audioStream=None,
+                    subtitleStream=None, cm=None, isFolder=True):
+        """As t1mlib's, but filling the info tag through its own setters.
+
+        t1mlib still builds list items with ListItem.setInfo() and
+        addStreamInfo(), which Kodi deprecated and warns about once per item -
+        several lines of log for every directory. Overriding it here leaves
+        the shared module alone for whatever else depends on it.
+        """
+        if not INFOTAG_SETTERS:
+            return t1mAddon.addMenuItem(self, name, mode, ilist, url, thumb, fanart,
+                                        videoInfo, videoStream, audioStream,
+                                        subtitleStream, cm, isFolder)
+        liz = xbmcgui.ListItem(name, offscreen=True)
+        liz.setArt({'thumb': thumb, 'fanart': fanart, 'poster': thumb})
+        self.fillInfoTag(liz, videoInfo or {})
+        if cm is not None:
+            liz.addContextMenuItems(cm)
+        if not isFolder:
+            liz.setProperty('IsPlayable', 'true')
+        u = ''.join([sys.argv[0], '?mode=', str(mode), '&url='])
+        if url is not None:
+            u = ''.join([u, qp(url)])
+        ilist.append((u, liz, isFolder))
+        return ilist
+
+    def fillInfoTag(self, liz, info):
+        """Put an addMenuItem info dict onto a list item's video tag."""
+        tag = liz.getVideoInfoTag()
+        if info.get('mediatype'):
+            tag.setMediaType(info['mediatype'])
+        if info.get('Title'):
+            tag.setTitle(info['Title'])
+        if info.get('TVShowTitle'):
+            tag.setTvShowTitle(info['TVShowTitle'])
+        if info.get('Plot'):
+            tag.setPlot(info['Plot'])
+        if info.get('MPAA'):
+            tag.setMpaa(info['MPAA'])
+        if info.get('director'):
+            tag.setDirectors([info['director']])
+        if info.get('genre'):
+            # The dict carries them joined for the old setInfo, split them back
+            tag.setGenres([g.strip() for g in str(info['genre']).split('/') if g.strip()])
+        if info.get('cast'):
+            tag.setCast([xbmc.Actor(str(person)) for person in info['cast']])
+        for key, setter in (('Year', tag.setYear),
+                            ('duration', tag.setDuration),
+                            ('Season', tag.setSeason),
+                            ('Episode', tag.setEpisode)):
+            value = asInt(info.get(key))
+            if value is not None:
+                setter(value)
+        # t1mlib attaches the same nominal stream details to every item
+        tag.addVideoStream(xbmc.VideoStreamDetail(
+            width=self.defaultVidStream['width'],
+            height=self.defaultVidStream['height'],
+            aspect=self.defaultVidStream['aspect'],
+            codec=self.defaultVidStream['codec']))
+        tag.addAudioStream(xbmc.AudioStreamDetail(
+            codec=self.defaultAudStream['codec'],
+            language=self.defaultAudStream['language']))
+        tag.addSubtitleStream(xbmc.SubtitleStreamDetail(
+            language=self.defaultSubStream['language']))
 
     def report(self, err):
         """Surface an API failure without taking the whole directory down."""

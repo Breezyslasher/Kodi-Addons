@@ -34,7 +34,6 @@ jobs:
             'script.webhook.runner',
             'script.scrcpy-launcher',
             'service.watchparty',
-            'script.module.t1mlib',
             'plugin.video.tubitv'
         ]
         
