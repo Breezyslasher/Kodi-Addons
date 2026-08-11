@@ -1990,43 +1990,22 @@ class AppleTVApi(object):
         return assets
 
 
-    @staticmethod
-    def _header_safe(value):
-        """A cookie value HTTP can actually send, or '' if it cannot.
-
-        HTTP headers are latin-1, so a value pasted with a stray character an
-        editor introduced -- an ellipsis from a truncated copy, a smart quote
-        -- makes requests raise rather than send, and the whole shelf fails
-        with an opaque codec error. Catch it here and say what it is, so a bad
-        paste reads as a clear instruction rather than a traceback.
-        """
-        try:
-            value.encode("latin-1")
-            return value
-        except (UnicodeEncodeError, AttributeError):
-            kodiutils.log_error("Store cookie contains a character HTTP cannot "
-                                "send -- a truncated paste with an ellipsis? "
-                                "Re-paste the full cookie value.")
-            return ""
-
     def _vz_json(self, path, extra=None, quiet=False):
         """Ask the UTS API as the Android TV app (caller=vz).
 
         The account-wide Continue Watching shelf is served to this caller and
-        not to the web or Windows-store ones. A capture of the app's request
-        shows caller=vz with vz=true, pfm=vz and mfr=AndroidTV, on the store
-        host, authenticated by the mz_at_ssl store cookie and X-Dsid rather
-        than a bearer. So this sends the pasted store session under that shape;
-        with no session it cannot ask, and says so by returning nothing.
+        not to the web or Windows-store ones. Apple merges iTunes into that
+        shelf on the strength of the caller, not a store session, so it is asked
+        with the ordinary Apple TV+ tokens (bearer + media-user-token) -- the
+        same pair that licenses purchases -- and the shelf populates with no
+        store paste (verified: shelf=yes with a bearer-only request).
         """
-        # The UTS/Android service (Continue Watching) authenticates with an
-        # mz_at_ssl cookie, while the MZStoreElements locker wants the store
-        # cookies -- two different sessions. Keep them apart: prefer a session
-        # pasted specifically for this caller, and fall back to the store one
-        # only so a single combined paste still works.
-        cookies = self._header_safe(
-            (kodiutils.get_setting("itunes_uts_cookies") or "").strip()
-            or (kodiutils.get_setting("itunes_cookies") or "").strip())
+        boot = self._bootstrap()
+        bearer = boot.get("developer_token")
+        mut = self._media_user_token()
+        if not bearer or not mut:
+            kodiutils.log("Android caller: no Apple TV+ tokens; cannot ask")
+            return None
         params = {
             "caller": UTS_ANDROID_CALLER,
             "vz": "true",
@@ -2041,39 +2020,9 @@ class AppleTVApi(object):
         headers = {
             "User-Agent": UTS_ANDROID_UA,
             "Content-Type": "application/json",
+            "Authorization": "Bearer " + bearer,
+            "media-user-token": mut,
         }
-        if cookies:
-            # The app's own path: the Android store session (mz_at_ssl), which
-            # names the dsid inside itself.
-            headers["Cookie"] = cookies
-            found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
-                or re.search(r"X-Dsid=(\d+)", cookies)
-            if found:
-                headers["X-Dsid"] = found.group(1)
-            auth = "mz_at_ssl cookie=%s" % ("yes" if "mz_at_ssl" in cookies else "NO")
-        else:
-            # No Android session pasted: try the vz caller with the ordinary
-            # Apple TV+ tokens (bearer + media-user-token) that already license
-            # purchases. This tests whether Apple merges iTunes into the Continue
-            # Watching shelf on the strength of the caller rather than the
-            # mz_at_ssl cookie -- if so, the shelf populates with no store paste.
-            boot = self._bootstrap()
-            bearer = boot.get("developer_token")
-            mut = self._media_user_token()
-            if not bearer or not mut:
-                kodiutils.log("Android caller: no mz_at_ssl session and no Apple "
-                              "TV+ tokens; cannot ask")
-                return None
-            headers["Authorization"] = "Bearer " + bearer
-            headers["media-user-token"] = mut
-            dsid = self._store_dsid()
-            if dsid:
-                headers["X-Dsid"] = dsid
-            auth = "bearer+media-user-token (no store session)"
-        # This shelf fills in only when the identity is accepted; name up front
-        # what is being sent so an empty shelf is diagnosable.
-        kodiutils.log("Android caller: %s, X-Dsid=%s"
-                      % (auth, "yes" if headers.get("X-Dsid") else "NO"))
         try:
             resp = self.session.get(UTS_STORE_BASE + path, params=params,
                                     headers=headers, timeout=20)
@@ -2442,9 +2391,6 @@ class AppleTVApi(object):
             "User-Agent": self.session.headers.get("User-Agent", ""),
             "X-Apple-Store-Front": "%s-1,42" % self._storefront(),
         }
-        dsid = self._store_dsid()
-        if dsid:
-            headers["X-Dsid"] = dsid
         # Params exactly as the app's LibraryPage builds them (types values from
         # app.js: movies / tv-shows). Owned, paged in 100s; sharedPurchases
         # pulls a family member's copies when one is asked.
@@ -2543,9 +2489,6 @@ class AppleTVApi(object):
             "User-Agent": self.session.headers.get("User-Agent", ""),
             "X-Apple-Store-Front": "%s-1,42" % self._storefront(),
         }
-        dsid = self._store_dsid()
-        if dsid:
-            headers["X-Dsid"] = dsid
         data = self._media_get(MEDIA_API_HOST, "/v1/me/purchases/shared/members",
                                {}, headers)
         # Debug: the response shape here was read off the app's schema, not a
@@ -2581,9 +2524,8 @@ class AppleTVApi(object):
         # The account's own entry appears in this list (you share with the
         # family too); drop it, since your own purchases are the Films/TV Shows
         # sections already. The API marks no self member, so identify yourself
-        # by the store dsid when a session is pasted, and otherwise by the Apple
-        # ID email captured at sign-in, which matches your entry's accountName.
-        own_dsid = self._store_dsid()
+        # by the Apple ID email captured at sign-in, which matches your entry's
+        # accountName.
         own_email = (kodiutils.get_setting("account_email") or "").strip().lower()
         out = []
         for row in rows:
@@ -2600,8 +2542,7 @@ class AppleTVApi(object):
                     or account_name or attrs.get("name")
                     or attrs.get("appleId") or member_id)
             sharing = attrs.get("sharingPurchases")
-            is_self = (bool(own_dsid) and member_id == own_dsid) or (
-                bool(own_email) and own_email == account_name.lower())
+            is_self = bool(own_email) and own_email == account_name.lower()
             kodiutils.log("MediaAPI family: member id=%s name=%r sharing=%r%s"
                           % (member_id or "?", name, sharing,
                              " (self)" if is_self else ""))
@@ -2712,18 +2653,6 @@ class AppleTVApi(object):
             if pattrs.get("recordedAtTimestamp") is not None:
                 entry["recorded_at"] = pattrs.get("recordedAtTimestamp")
         return entry
-
-    def _store_dsid(self):
-        """The account dsid, from a pasted store/mz_at_ssl cookie if there is
-        one. MediaAPI accepts the media-user-token alone, but the app also
-        sends X-Dsid, so it is included when known."""
-        for key in ("itunes_uts_cookies", "itunes_cookies", "itunes_sp_dsid"):
-            val = (kodiutils.get_setting(key) or "").strip()
-            m = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", val) \
-                or re.search(r"^(\d+)$", val) or re.search(r"X-Dsid=(\d+)", val)
-            if m:
-                return m.group(1)
-        return ""
 
     def _reverse_lookup(self, external_ids):
         """Map iTunes store (external) ids to their canonical umc ids.
@@ -3131,18 +3060,10 @@ class AppleTVApi(object):
         }
         if extra:
             params.update(extra)
+        # The Windows-store caller authenticates with the developer token in the
+        # UTS headers -- the redownload offer comes back on that alone, no store
+        # session (verified: "offer fetched via windows(wlk)").
         headers = dict(self._uts_headers())
-        # The capture identifies itself to this endpoint with the store dsid
-        # and its cookies rather than a bearer. Send those too when a session
-        # has been pasted in; the dsid names itself inside the cookie.
-        cookies = self._header_safe(
-            (kodiutils.get_setting("itunes_cookies") or "").strip())
-        if cookies:
-            headers["Cookie"] = cookies
-            found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
-                or re.search(r"X-Dsid=(\d+)", cookies)
-            if found:
-                headers["X-DSID"] = found.group(1)
         try:
             resp = self.session.get(UTS_STORE_BASE + path, params=params,
                                     headers=headers, timeout=20)
