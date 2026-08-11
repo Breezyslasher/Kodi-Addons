@@ -2195,6 +2195,56 @@ class AppleTVApi(object):
         kodiutils.log("Featured: 0 item(s)")
         return []
 
+    def get_play_next(self):
+        """The account's Up Next / Play Next row -- the next titles Apple queues
+        to watch (the show's next episode, a film to start), distinct from
+        Continue Watching's in-progress titles. Fetched the same way as the
+        other account shelves, over the ordinary Apple TV+ sign-in."""
+        for getter, label in ((self._vz_json, "vz"), (self._get_json, "web")):
+            data = getter("/shelves/play-next",
+                          {"ctx_brand": APPLE_TV_PLUS_CHANNEL})
+            shelf = ((data or {}).get("data") or {}).get("shelf")
+            if isinstance(shelf, dict):
+                items = self._extract_items(shelf.get("items"))
+                if items:
+                    kodiutils.log("Up Next: %d item(s) via %s" % (len(items), label))
+                    return items
+        kodiutils.log("Up Next: 0 item(s)")
+        return []
+
+    def get_watchlist(self):
+        """The titles on your Watchlist (what the Add to Watchlist action adds),
+        as a browsable list. The app serves it as a canvas of shelves; take the
+        items across them. Logs the response shape when nothing parses so a
+        differing shape is fixed rather than a silent zero."""
+        for path in ("/watchlists/canvas", "/watchlist"):
+            for getter, label in ((self._vz_json, "vz"), (self._get_json, "web")):
+                data = getter(path, {"ctx_brand": APPLE_TV_PLUS_CHANNEL})
+                if not data:
+                    continue
+                items = []
+                for shelf in self._extract_shelves(data):
+                    items.extend(shelf.get("items") or [])
+                node = (data.get("data") or {}) if isinstance(data, dict) else {}
+                one = node.get("shelf")
+                if isinstance(one, dict):
+                    items.extend(self._extract_items(one.get("items")))
+                # De-duplicate by id, keeping order.
+                seen, out = set(), []
+                for it in items:
+                    if it.get("id") not in seen:
+                        seen.add(it.get("id"))
+                        out.append(it)
+                if out:
+                    kodiutils.log("Watchlist: %d item(s) via %s %s"
+                                  % (len(out), label, path))
+                    return out
+                if isinstance(node, dict) and node:
+                    kodiutils.log("Watchlist: %s %s -> top-level=%s"
+                                  % (label, path, list(node.keys())))
+        kodiutils.log("Watchlist: 0 item(s)")
+        return []
+
     def _page_continue_watching(self, getter, label, path, ctx, max_pages):
         """Page one (caller, path, ctx) shape, logging its raw outcome.
 

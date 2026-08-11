@@ -80,6 +80,7 @@ S = {
     "cast": 32069,
     "featured": 32082,
     "continue_watching": 32060,
+    "up_next": 32115,
     "itunes_library": 32012,
     "films": 32077,
     "tv_shows": 32078,
@@ -357,6 +358,10 @@ def main_menu(auth):
     # TV+. Unlike the per-tab Up Next, it mixes in iTunes films in progress.
     if auth.is_authenticated():
         add_dir(L("continue_watching"), "continue_watching")
+        # Up Next (the show's next episode, a film to start) and the Watchlist,
+        # both personalised, so only when signed in.
+        add_dir(L("up_next"), "up_next")
+        add_dir(L("watchlist"), "watchlist_list")
     # The iTunes library (and purchase playback) now works off the ordinary
     # Apple TV+ sign-in -- listing via the MediaAPI, the redownload offer via
     # the store caller's dev token, and licensing with the bearer +
@@ -1223,6 +1228,10 @@ def router(paramstring):
         show_items(api.get_featured())
     elif action == "continue_watching":
         show_items(api.get_continue_watching())
+    elif action == "up_next":
+        show_items(api.get_play_next())
+    elif action == "watchlist_list":
+        show_items(api.get_watchlist())
     elif action == "itunes":
         do_itunes_library(api, auth)
     elif action == "itunes_movies":

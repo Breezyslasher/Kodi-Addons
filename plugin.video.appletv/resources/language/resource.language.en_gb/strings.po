@@ -186,6 +186,10 @@ msgctxt "#32114"
 msgid "Rentals"
 msgstr ""
 
+msgctxt "#32115"
+msgid "Up Next"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""
