@@ -1717,6 +1717,24 @@ class AppleTVApi(object):
 
         data, mut = self._detail_json(content_id, item_type)
         if data is None:
+            # A delisted owned iTunes title 404s on its /episodes|/movies detail
+            # page -- the catalogue entry is gone, though the account still owns
+            # it (a whole delisted season lists fine but each episode's page is
+            # "Content Not Available"). The normal path bails here, before the
+            # redownload fallback that actually plays a purchase. When the store
+            # id is in hand (a numeric external id), ask the store/Android caller
+            # for the redownload offer directly by canonical id -- the path the
+            # Android TV app uses to play an owned title whose page is delisted,
+            # and the same _itunes_offer a listed purchase already plays through.
+            if external_id and str(external_id).isdigit():
+                kind = "Episode" if str(item_type) == "Episode" else "Movie"
+                kodiutils.log("Detail 404 for owned iTunes %s %s; asking the "
+                              "store caller for the redownload offer directly"
+                              % (kind, content_id))
+                owned = self._itunes_offer({"canonicalId": content_id,
+                                            "contentType": kind})
+                if owned:
+                    return self._prepared_from_assets(owned, mut)
             return None
 
         # A title can have several playables (feature you are entitled to, an
