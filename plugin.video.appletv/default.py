@@ -133,8 +133,37 @@ def mark_watched_menu_item(item_id, entry=None):
         params["itunes"] = "1"
         params["adam_id"] = str(entry["adam_id"])
         params["item_type"] = str(entry.get("type") or "Movie")
+    # The item's own play path, rebuilt exactly as add_playable lays it out, so
+    # the action can clear Kodi's local resume bookmark for it -- Apple clears
+    # its position when a title is marked watched, but a bar Kodi cached from an
+    # earlier in-Kodi playback would otherwise linger.
+    if entry:
+        play_kwargs = {"item_id": item_id,
+                       "item_type": str(entry.get("type") or "Movie")}
+        if entry.get("external_id"):
+            play_kwargs["external_id"] = str(entry["external_id"])
+        params["play_path"] = url(action="play", **play_kwargs)
     return (L("mark_watched"), "RunPlugin(%s)" % url(
         action="mark_watched", **params))
+
+
+def clear_local_resume(path):
+    """Clear Kodi's own stored resume point for a plugin item and mark it
+    watched locally, so a title just marked watched on Apple stops showing a
+    progress bar Kodi cached from an earlier in-Kodi playback.
+
+    Uses Files.SetFileDetails (Kodi 20+); older Kodi lacks the method, so this
+    is best-effort and silently skips when it is not available.
+    """
+    if not path:
+        return
+    req = {"jsonrpc": "2.0", "id": 1, "method": "Files.SetFileDetails",
+           "params": {"file": path, "media": "video", "playcount": 1,
+                      "resume": {"position": 0, "total": 0}}}
+    try:
+        xbmc.executeJSONRPC(json.dumps(req))
+    except Exception as exc:
+        kodiutils.log("clear_local_resume skipped: %s" % exc)
 
 
 def watchlist_menu_items(item_id):
@@ -1120,6 +1149,10 @@ def do_mark_watched(api, params):
                             and params.get("adam_id")):
         return
     if ok:
+        # Also drop Kodi's own resume bookmark for the item (and tick it watched
+        # locally), so the progress bar clears without waiting on the next Apple
+        # read -- and even if Kodi had cached a bar of its own.
+        clear_local_resume(params.get("play_path"))
         kodiutils.notify(L("watched_marked"))
         # Marking watched removes the title from Apple's Continue Watching, so
         # reload the screen to reflect it without leaving the tab first.
