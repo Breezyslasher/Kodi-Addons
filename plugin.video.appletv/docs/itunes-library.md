@@ -965,3 +965,41 @@ a separate (and DRM-provisioning) undertaking this addon does not attempt. The
 library, ownership and naming are done; purchase playback stops at the
 unprovisioned keybag, on any client that has not provisioned -- Apple hardware
 or not.
+
+## iTunes purchase playback — final finding
+
+A byte-level comparison of two Widevine license challenges on the same device
+narrows the wall from "a mysterious device keybag" to a single, provable field,
+and it refines the keybag hypothesis above.
+
+Purchases license over **Widevine**, not FairPlay, and Apple *does* grant the
+key: the Apple TV app on the same device, using the same shared LineageOS
+keybox CDM, licenses successfully. The addon's request is accepted (HTTP 200)
+and refused only at key issuance (`-1020`). Every request-level variable was
+eliminated in turn: session/caller, `svcId`, `adamId`, KID, anisette headers,
+device `guid`, and the `checkInNonceRequest` step. `kbsync` was **disproven** --
+no keybag blob is present in the app's own granted request.
+
+The two Widevine challenges (Apple app vs. Kodi) were compared byte for byte.
+They carry an **identical `client_id` and keybox**; the sole difference is
+`application_name`:
+
+| field | Apple TV app | Kodi |
+| --- | --- | --- |
+| `application_name` | `com.apple.atve.androidtv.appletv` | `org.xbmc.kodi` |
+| `client_id` / keybox | identical | identical |
+| CDM security level | L3, `OEMCrypto Level3 Code 8159`, CDM 16.0.0 | same |
+
+The `tvs.vds.9023` purchase key server gates on **application identity**, which
+the Widevine CDM stamps into the challenge from the calling package and which
+Kodi cannot forge without CDM-level impersonation. That is why the same device
+plays a purchase in Apple's app and is refused in Kodi: not the hardware, not
+the keybox, not the session -- the package name the CDM stamps. TV+ and sports
+work from Kodi because their subscription key servers do **not** gate on app
+identity.
+
+**Conclusion.** Purchase playback is not reachable from Kodi without CDM-level
+app-identity impersonation, which this addon does not do. TV+, sports, and the
+iTunes catalogue/library (browse, ownership, resume, metadata, trailers/extras)
+are fully functional. This is the final state of the purchase-playback
+investigation.
