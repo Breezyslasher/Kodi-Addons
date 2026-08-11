@@ -1063,3 +1063,102 @@ pair. Verified on device:
 The library layout is a setting: off, your **Your Films**/**Your TV Shows** plus
 a **Shared by X** folder per sharing member (empty ones hidden); on, everyone's
 shared purchases merge into single **Films**/**TV Shows** folders.
+
+## Brand tabs and channels (discovered, not hardcoded)
+
+The top-level brand tabs used to be a hardcoded tuple (Apple TV+, MLS, Formula
+1). They are now read live, and settling *where* from took ruling out the
+obvious-looking source.
+
+**The tab list is `/configurations`, `applicationProps.tabs`.** A capture of
+the web app's own navigation document lists exactly the brand tabs, each a
+`Brand` target with an id and a localised title:
+
+```
+GET tv.apple.com/api/uts/v3/configurations?caller=web&pfm=web&sfh=<storefront>&v=96
+  → data.applicationProps.tabs[]:
+      { title: "Apple TV",   target: { type: "Brand", id: "tvs.sbd.4000"   } }
+      { title: "Formula 1",  target: { type: "Brand", id: "tvs.sbd.241000" } }
+      { title: "MLS",        target: { type: "Brand", id: "tvs.sbd.7000"   } }
+```
+
+Verified across several HARs; the map never varied. The addon reads Brand
+targets from this and keeps its friendlier "Apple TV+" label for the originals
+brand (which Apple titles plainly "Apple TV"). A league Apple adds to its nav
+now appears with no code change, its name straight from Apple.
+
+**What is *not* the tab source: the `channels` map inside a canvas response.**
+`/canvases/channels/tvs.sbd.4000` carries a `channels` dict, but it is only a
+per-response lookup for channels the returned shelves reference — in every
+capture it held Apple TV+, iTunes and MLS, and **never** Formula 1. Reading
+brand tabs from it would silently drop F1.
+
+**And `/uts/v3/channels` is a different thing entirely.** The Android app's
+route table defines it (`getChannelsById` is its per-id sibling), so it was
+tried — answered as the Android (vz) caller with bearer + media-user-token, the
+same caller Continue Watching needs. A device run settled its shape: `data`
+holds a `channels` map of ~37 entries, and it is the **Apple TV Channels
+subscription catalogue** (Trailers, BBC Select, ALLBLK, Cinemax, MGM+, MUBI,
+Shudder, Paramount+, STARZ, BritBox, …), *not* the navigation — no MLS, no F1.
+So it is the wrong source for brand tabs, and listing it whole would fill the
+menu with 36 channels the account mostly cannot watch.
+
+It is, however, the right source for **the channels the account subscribes
+to.** Each channel object carries `isSubscribed` (confirmed from a live sample:
+its keys include `isSubscribed`, `isAppleTvPlus`, `isItunes`, `isMountainBrand`,
+`name`, `title`, `type`, …). The addon appends only `isSubscribed` channels to
+the brand tabs, so a subscribed add-on (Paramount+, say) shows and the rest do
+not. This also matches why an unsubscribed channel's title will not play: it
+resolves to an iTunes store playable with no `personalizedOffers` (Apple only
+offers to buy/rent it), so there is no stream — exactly the empty-offer path a
+Cinemax attempt fell through on an account not subscribed to it.
+
+Whether `isSubscribed` reflects real entitlement for this caller is checked
+rather than assumed: the addon logs `isSubscribed` for the Apple TV+ channel
+(one the account is known to hold), so a `true` there confirms an empty
+subscribed list is genuine and a `false` would expose a false negative.
+
+## Renting or buying a purchase (feasibility only — not implemented)
+
+The buy request is more constructable than the earlier store-sign-in wall
+suggested, and one earlier assumption about it was wrong. Recorded because the
+line between "possible" and "worth doing" sits in a specific place.
+
+**The body is already in hand.** An iTunes title's offer carries the exact
+`buyParams` a purchase POSTs, seen in a capture:
+
+```
+buyParams: productType=V&price=14990&salableAdamId=1805971117
+           &pricingParameters=HCSD&pg=default      (kind=buy, "$14.99")
+```
+
+A rental offer is the same shape with a rental pricing tier. The endpoint is
+Apple's own, named in `bag.xml`:
+
+```
+POST buy.itunes.apple.com/WebObjects/MZBuy.woa/wa/buyProduct
+```
+
+**Playback is not the blocker any more.** With the `-1020` lean-body fix an
+owned purchase plays through Kodi's Widevine CDM off the ordinary Apple TV+
+sign-in, so a *completed* purchase would be watchable here. (This corrects the
+earlier reasoning that a bought title still could not play.)
+
+**The blocker is the charge-authorisation handshake, in a realm the TV+ tokens
+do not reach.** `buy.itunes.apple.com` is the store-commerce realm: it does not
+accept the bearer + media-user-token that licenses playback. It needs a store
+session (`X-Dsid` + `X-Token` + `mz_at_ssl`) plus a device `guid` — and the app
+does not assemble any of this in JavaScript. `InAppPurchasing.js` calls the
+native StoreKit bridge, `InAppPurchases.purchase(ProductType, …)`, with auth
+dialogs; the native layer drives the `MZFinance.woa/wa/authenticate` password
+**+ two-factor** re-verification and returns the `passwordToken`/`kbsync` a
+charge is gated on. Reproducing that over raw HTTP is the same device/StoreKit
+identity work refused throughout — now on a live-money endpoint, where a wrong
+item or price has real cost.
+
+So a hand-built `buyProduct` could plausibly succeed in a happy path (password
+cached, no hard 2FA prompt) and the film would then play, but making it
+reliable means rebuilding Apple's password-+-2FA-+-`kbsync` authorisation. The
+feasible, safe shape of this feature is a **"Rent/Buy on Apple TV" deep link**
+that shows the offer price and hands the purchase to Apple's own flow; the
+in-addon charge path is deliberately left unimplemented.
