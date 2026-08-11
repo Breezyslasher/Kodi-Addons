@@ -31,10 +31,6 @@
         <setting id="manifest_url_override" type="text" label="32009" default="" />
         <setting id="media_user_token" type="text" label="32008" option="hidden" default="" />
         <setting id="developer_token" type="text" label="32083" option="hidden" default="" />
-        <setting id="itunes_cookies" type="text" label="32075" option="hidden" default="" />
-        <setting id="itunes_sp_dsid" type="text" label="32076" option="hidden" default="" />
-        <setting id="itunes_token" type="text" label="32079" option="hidden" default="" />
-        <setting id="itunes_uts_cookies" type="text" label="32081" option="hidden" default="" />
         <setting id="account_email" type="text" label="32109" option="hidden" default="" />
     </category>
 </settings>
