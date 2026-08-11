@@ -571,18 +571,34 @@ def _combined_library():
     return kodiutils.get_setting_bool("itunes_library_combined", False)
 
 
-def _library_purchases(api, kind):
+def _library_purchases(api, kind, genre=None):
     """Owned titles of one kind, plus -- when the combined-library setting is on
-    -- every sharing family member's, merged and de-duplicated by id."""
-    items = api.media_purchases(kind)
+    -- every sharing family member's, merged and de-duplicated by id. An
+    optional genre filters both."""
+    items = api.media_purchases(kind, genre=genre)
     if _combined_library():
         seen = {it.get("id") for it in items}
         for member in api.media_family_members():
-            for it in api.media_purchases(kind, family_member=member["id"]):
+            for it in api.media_purchases(kind, family_member=member["id"],
+                                          genre=genre):
                 if it.get("id") not in seen:
                     seen.add(it.get("id"))
                     items.append(it)
     return items
+
+
+def _library_genres(api):
+    """The genres across your library, plus every sharing member's when the
+    combined-library setting is on, de-duplicated by id."""
+    genres = list(api.media_genres())
+    if _combined_library():
+        seen = {g.get("id") for g in genres}
+        for member in api.media_family_members():
+            for g in api.media_genres(family_member=member["id"]):
+                if g.get("id") not in seen:
+                    seen.add(g.get("id"))
+                    genres.append(g)
+    return genres
 
 
 def _has_purchases(api, kind, member_id=None):
@@ -644,8 +660,9 @@ def do_itunes_library(api, auth):
 
 
 def do_itunes_genres(api):
-    """The genres in your film library; each opens its films."""
-    genres = api.media_genres()
+    """The genres in your film library (and family-shared, when combined); each
+    opens its films."""
+    genres = _library_genres(api)
     if not genres:
         kodiutils.notify(L("no_results"))
     for genre in genres:
@@ -654,8 +671,8 @@ def do_itunes_genres(api):
 
 
 def do_itunes_genre(api, genre_id):
-    """Owned films of one genre."""
-    show_items(api.media_purchases("movie", genre=genre_id))
+    """Films of one genre -- yours, plus family-shared when combined."""
+    show_items(_library_purchases(api, "movie", genre=genre_id))
 
 
 def do_itunes_rentals(api):
