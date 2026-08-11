@@ -96,6 +96,9 @@ CHANNELS = (
     (MLS_CHANNEL, "MLS"),
     (F1_CHANNEL, "Formula 1"),
 )
+# Bumped whenever the discovered-channels source changes shape, so a cache an
+# older build wrote is ignored instead of served for its last hour.
+CHANNELS_CACHE_VERSION = "tabs1"
 
 # MLB has no brand channel of its own the way MLS and F1 do. On tv.apple.com it
 # is an editorial room that lives under Apple TV+ -- verified: its games carry
@@ -404,82 +407,36 @@ class AppleTVApi(object):
         cached = self.auth.tokens.get("channels") or {}
         items = cached.get("items")
         stamp = cached.get("stamp") or 0
-        if items and 0 <= time.time() - stamp < BOOT_CACHE_SECONDS:
+        # The marker moves when the source changes, so a cache written by an
+        # older build (e.g. the /channels catalogue that mislisted every
+        # subscription channel) is ignored rather than shown for its last hour.
+        fresh = (cached.get("src") == CHANNELS_CACHE_VERSION
+                 and 0 <= time.time() - stamp < BOOT_CACHE_SECONDS)
+        if items and fresh:
             return [(c["id"], c["name"]) for c in items]
         found = self._fetch_channels()
         if found:
             self.auth.tokens["channels"] = {
                 "items": [{"id": i, "name": n} for i, n in found],
-                "stamp": time.time()}
+                "stamp": time.time(), "src": CHANNELS_CACHE_VERSION}
             self.auth.save()
             return found
-        # A stale cache still beats the built-in list if the fetch just failed.
-        if items:
+        # A stale but same-source cache still beats the built-in list if the
+        # fetch just failed; a mismatched-source one is dropped.
+        if items and cached.get("src") == CHANNELS_CACHE_VERSION:
             return [(c["id"], c["name"]) for c in items]
         return list(CHANNELS)
 
     def _fetch_channels(self):
-        """Discover the brand tabs, trying Apple's channels endpoint first.
+        """Read the brand tabs off /configurations (applicationProps.tabs).
 
-        The Android app's route table defines /uts/v3/channels (getChannelsById
-        is its per-id sibling), so that endpoint -- asked as the Android caller
-        the app itself uses -- is Apple's own source for the brand list and is
-        tried first. Its response is not in any capture, so the raw shape is
-        logged and it is used only when it clearly names Apple TV+ plus at least
-        one more brand; otherwise the web app's navigation (/configurations ->
-        applicationProps.tabs, which the captures do show listing Apple TV+ with
-        the sports brands) is read instead. Either path leaves the caller to
-        fall back to the built-in list.
+        The Android app's /uts/v3/channels endpoint was tried first, but a
+        capture proved it returns the whole Apple TV Channels subscription
+        catalogue (Paramount+, STARZ, MGM+, ...) -- not the navigation, and
+        without MLS or Formula 1 -- so it is the wrong source for the top-level
+        brand tabs. The web app's own navigation lists exactly those tabs, so it
+        is read instead; the caller falls back to the built-in list.
         """
-        return self._channels_from_endpoint() or self._channels_from_config()
-
-    def _channels_from_endpoint(self):
-        """Try the app's own /channels endpoint (Android caller), logging the
-        raw shape since no capture of it exists to parse against."""
-        data = self._vz_json("/channels", quiet=True)
-        if not isinstance(data, dict):
-            return []
-        node = data.get("data")
-        kodiutils.log("channels endpoint: top=%s data=%s"
-                      % (list(data.keys()),
-                         list(node.keys()) if isinstance(node, dict)
-                         else type(node).__name__))
-        raw = None
-        if isinstance(node, dict):
-            raw = node.get("channels") or node.get("brands") or node.get("tabs")
-        elif isinstance(node, list):
-            raw = node
-        if isinstance(raw, dict):
-            entries = list(raw.values())
-        elif isinstance(raw, list):
-            entries = raw
-        else:
-            kodiutils.log("channels endpoint: no channel list found; using tabs")
-            return []
-        out, seen = [], set()
-        for ch in entries:
-            if not isinstance(ch, dict):
-                continue
-            target = ch.get("target") or {}
-            cid = ch.get("id") or target.get("id")
-            if not cid or cid in seen or ch.get("isItunes") or cid == ITUNES_CHANNEL:
-                continue
-            seen.add(cid)
-            name = ("Apple TV+" if cid == APPLE_TV_PLUS_CHANNEL
-                    else (ch.get("name") or ch.get("title")
-                          or target.get("title") or cid))
-            out.append((cid, name))
-        # Trust it only when it clearly names the Apple TV+ brand plus another;
-        # anything less falls through to the verified web source.
-        if any(c == APPLE_TV_PLUS_CHANNEL for c, _ in out) and len(out) >= 2:
-            kodiutils.log("Channels via /channels: %s"
-                          % ", ".join(n for _, n in out))
-            return out
-        kodiutils.log("channels endpoint gave no usable brand list; using tabs")
-        return []
-
-    def _channels_from_config(self):
-        """Read the brand tabs off /configurations (applicationProps.tabs)."""
         boot = self._bootstrap()
         if not boot.get("developer_token"):
             return []
