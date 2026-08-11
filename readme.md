@@ -78,20 +78,10 @@ Browse and watch Tubi — free, ad-supported films and TV shows — from inside 
 
 See the [addon README](plugin.video.tubitv/README.md) for details.
 
-**Requirements:** Kodi 19+, `script.module.t1mlib` (in this repository). A Tubi account is optional.
+**Requirements:** Kodi 19+. `script.module.t1mlib` comes from the official Kodi repository, and a Tubi account is optional.
 
 ---
 
-### [t1m Library Routines](script.module.t1mlib/)
-Shared support routines for t1m's Kodi video addons. A dependency module, not something to install on its own — it is carried here because TubiTV needs it.
-
-See the [addon README](script.module.t1mlib/README.md) for details.
-
-**Requirements:** Kodi 19+
-
----
-
-(script.webhook.runner/)
 ### [Webhook Runner](script.webhook.runner/)
 Fire Home Assistant (or any) webhooks from Kodi — either by remote-button press or automatically on Kodi events.
 
@@ -145,7 +135,6 @@ Kodi-Addons/
 ├── script.webhook.runner/           # Webhook runner addon
 ├── service.watchparty/              # Watch Party sync addon
 ├── plugin.video.tubitv/             # TubiTV addon
-├── script.module.t1mlib/            # t1m shared library (TubiTV dependency)
 ├── repository.breezyslasher/        # Repository metadata
 ├── zips/                           # Generated ZIP files
 ├── .github/workflows/              # CI/CD workflows
@@ -169,7 +158,6 @@ Each addon has its own license:
 - **Watch Party**: MIT
 - **Webhook Runner**: MIT
 - **TubiTV**: GPL-2.0-or-later
-- **t1m Library Routines**: GPL-2.0-or-later
 
 ## Links
 

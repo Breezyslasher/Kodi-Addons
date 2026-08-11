@@ -18,7 +18,6 @@ ADDON_FOLDERS = [
     "plugin.video.appletv",
     "script.webhook.runner",
     "service.watchparty",
-    "script.module.t1mlib",
     "plugin.video.tubitv"
 ]
 

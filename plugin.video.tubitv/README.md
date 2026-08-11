@@ -85,11 +85,11 @@ from arriving empty.
 
 ## Installation
 
-1. Install **t1m Library Routines** (`script.module.t1mlib`) — it ships in this
-   same repository and Kodi pulls it in automatically when installing from the
-   repository
-2. In Kodi: Settings → Add-ons → Install from repository → Breezyslasher
-   Repository → Video add-ons → TubiTV
+In Kodi: Settings → Add-ons → Install from repository → Breezyslasher
+Repository → Video add-ons → TubiTV.
+
+The one dependency, **t1m Library Routines** (`script.module.t1mlib`), comes
+from the official Kodi add-on repository, so Kodi pulls it in by itself.
 
 ## Configuration
 
@@ -130,7 +130,8 @@ not hammer the login endpoint.
 ## Credits
 
 - Original addon by [Lunatixz](https://github.com/Lunatixz)
-- `script.module.t1mlib` by [t1m](https://github.com/learningit)
+- `script.module.t1mlib` by [t1m](https://github.com/learningit), from the
+  official Kodi add-on repository
 
 ## License
 
