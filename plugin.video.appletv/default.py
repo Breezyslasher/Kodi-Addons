@@ -10,7 +10,7 @@ import xbmcplugin
 
 from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA
-from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
+from lib.api import (AppleTVApi, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
                      MLB_ROOM, PLAYBACK_REPORT_CACHE)
 
 HANDLE = int(sys.argv[1])
@@ -343,11 +343,14 @@ def add_playable(entry, cast=None):
 
 # -- menus ---------------------------------------------------------------
 
-def main_menu(auth):
+def main_menu(auth, api):
     # The featured Apple Originals hero shelf, as the TV app leads with it.
     add_dir(L("featured"), "featured")
-    # One entry per brand tab along the top of tv.apple.com's home page.
-    for channel_id, name in CHANNELS:
+    # One entry per brand tab along the top of tv.apple.com's home page. The
+    # list is read live from Apple's own nav (get_channels) rather than
+    # hardcoded, so a brand Apple adds -- a new league, say -- shows up without
+    # a code change; it falls back to the built-in brands if that read fails.
+    for channel_id, name in api.get_channels():
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
     # MLB rides on Apple TV+ as an editorial room rather than a brand channel,
@@ -571,18 +574,34 @@ def _combined_library():
     return kodiutils.get_setting_bool("itunes_library_combined", False)
 
 
-def _library_purchases(api, kind):
+def _library_purchases(api, kind, genre=None):
     """Owned titles of one kind, plus -- when the combined-library setting is on
-    -- every sharing family member's, merged and de-duplicated by id."""
-    items = api.media_purchases(kind)
+    -- every sharing family member's, merged and de-duplicated by id. An
+    optional genre filters both."""
+    items = api.media_purchases(kind, genre=genre)
     if _combined_library():
         seen = {it.get("id") for it in items}
         for member in api.media_family_members():
-            for it in api.media_purchases(kind, family_member=member["id"]):
+            for it in api.media_purchases(kind, family_member=member["id"],
+                                          genre=genre):
                 if it.get("id") not in seen:
                     seen.add(it.get("id"))
                     items.append(it)
     return items
+
+
+def _library_genres(api):
+    """The genres across your library, plus every sharing member's when the
+    combined-library setting is on, de-duplicated by id."""
+    genres = list(api.media_genres())
+    if _combined_library():
+        seen = {g.get("id") for g in genres}
+        for member in api.media_family_members():
+            for g in api.media_genres(family_member=member["id"]):
+                if g.get("id") not in seen:
+                    seen.add(g.get("id"))
+                    genres.append(g)
+    return genres
 
 
 def _has_purchases(api, kind, member_id=None):
@@ -644,8 +663,9 @@ def do_itunes_library(api, auth):
 
 
 def do_itunes_genres(api):
-    """The genres in your film library; each opens its films."""
-    genres = api.media_genres()
+    """The genres in your film library (and family-shared, when combined); each
+    opens its films."""
+    genres = _library_genres(api)
     if not genres:
         kodiutils.notify(L("no_results"))
     for genre in genres:
@@ -654,8 +674,8 @@ def do_itunes_genres(api):
 
 
 def do_itunes_genre(api, genre_id):
-    """Owned films of one genre."""
-    show_items(api.media_purchases("movie", genre=genre_id))
+    """Films of one genre -- yours, plus family-shared when combined."""
+    show_items(_library_purchases(api, "movie", genre=genre_id))
 
 
 def do_itunes_rentals(api):
@@ -668,11 +688,18 @@ def do_itunes_rentals(api):
 
 def do_itunes_family(api, member_id):
     """A family member's shared library: Films and TV Shows, kept apart like
-    your own library -- and each shown only when they share that kind."""
+    your own library -- and each shown only when they share that kind. Films can
+    also be browsed by genre, the same as your own library, when Apple returns
+    keyed genres for their shared purchases."""
     if _has_purchases(api, "movie", member_id):
         add_dir(L("films"), "itunes_family_movies", member_id=member_id)
     if _has_purchases(api, "tv", member_id):
         add_dir(L("tv_shows"), "itunes_family_tv", member_id=member_id)
+    # Genres come from the same /v1/me/purchases/genres call with the member's
+    # filter[owner]; show the folder only when that returns genres with ids, so
+    # a member whose shared library yields none is not given an empty folder.
+    if api.media_genres(family_member=member_id):
+        add_dir(L("genres"), "itunes_family_genres", member_id=member_id)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -683,6 +710,24 @@ def do_itunes_family_movies(api, member_id):
 def do_itunes_family_tv(api, member_id):
     show_items(api.media_purchases("tv", family_member=member_id),
                content="tvshows")
+
+
+def do_itunes_family_genres(api, member_id):
+    """The genres in one family member's shared film library; each opens their
+    films of that genre."""
+    genres = api.media_genres(family_member=member_id)
+    if not genres:
+        kodiutils.notify(L("no_results"))
+    for genre in genres:
+        add_dir(genre["name"], "itunes_family_genre",
+                member_id=member_id, genre_id=genre["id"])
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_family_genre(api, member_id, genre_id):
+    """One genre of a family member's shared films."""
+    show_items(api.media_purchases("movie", family_member=member_id,
+                                   genre=genre_id))
 
 
 def do_itunes_show(api, show_id, member_id=None, season=None):
@@ -1149,7 +1194,7 @@ def router(paramstring):
     api = AppleTVApi(auth)
 
     if not action:
-        main_menu(auth)
+        main_menu(auth, api)
     elif action == "originals":
         show_shelves(api, api.get_originals_shelves())
     elif action == "channel":
@@ -1224,6 +1269,11 @@ def router(paramstring):
         do_itunes_family_movies(api, params.get("member_id"))
     elif action == "itunes_family_tv":
         do_itunes_family_tv(api, params.get("member_id"))
+    elif action == "itunes_family_genres":
+        do_itunes_family_genres(api, params.get("member_id"))
+    elif action == "itunes_family_genre":
+        do_itunes_family_genre(api, params.get("member_id"),
+                               params.get("genre_id"))
     elif action == "itunes_show":
         do_itunes_show(api, params.get("show_id"), params.get("member_id"),
                        params.get("season"))
@@ -1243,14 +1293,14 @@ def router(paramstring):
                   params.get("kind", "trailers"))
     elif action == "sign_in":
         do_sign_in(auth, api)
-        main_menu(auth)
+        main_menu(auth, api)
     elif action == "sign_out":
         do_sign_out(auth, api)
-        main_menu(auth)
+        main_menu(auth, api)
     elif action == "debug_play":
         do_play(api, "debug", "Movie")
     else:
-        main_menu(auth)
+        main_menu(auth, api)
 
 
 if __name__ == "__main__":

@@ -68,6 +68,12 @@ APPLE_TV_PLUS_CHANNEL = "tvs.sbd.4000"
 # this addon reaches through the Windows-store/Android callers. See
 # docs/itunes-library.md.
 ITUNES_CHANNEL = "tvs.sbd.9001"
+# The purchase key server for an iTunes-catalogue title ("iTunes US Catalog",
+# seen stated as serviceId on a purchase playable). Only ever context here --
+# the lean licence body for a purchase sends adamId alone -- but kept named so
+# a MediaAPI-sourced offer, which carries no serviceId of its own, still labels
+# its key params the way a UTS-sourced one does.
+ITUNES_CATALOG_SVC_ID = "tvs.vds.9023"
 # The MediaAPI host the Apple TV app's Library page reads owned titles from --
 # GET /v1/me/purchases (movies) and /v1/me/purchases/tv-episodes -- read off the
 # app's own LibraryPage.js (MediaAPIPurchaseLoader). Authenticated by the same
@@ -96,6 +102,9 @@ CHANNELS = (
     (MLS_CHANNEL, "MLS"),
     (F1_CHANNEL, "Formula 1"),
 )
+# Bumped whenever the discovered-channels source changes shape, so a cache an
+# older build wrote is ignored instead of served for its last hour.
+CHANNELS_CACHE_VERSION = "tabs2"
 
 # MLB has no brand channel of its own the way MLS and F1 do. On tv.apple.com it
 # is an editorial room that lives under Apple TV+ -- verified: its games carry
@@ -388,6 +397,150 @@ class AppleTVApi(object):
             return None
 
     # -- catalogue -------------------------------------------------------
+
+    def get_channels(self):
+        """The brand tabs Apple lists across the top of its home page -- Apple
+        TV+ and each sports brand (MLS, Formula 1, and any Apple adds later).
+
+        Read live from the same place the web app reads its navigation from:
+        /configurations returns data.applicationProps.tabs, one Brand target
+        per tab, each with the brand's channel id and a localised title.
+        Discovering them means a league Apple launches needs no code change and
+        every name comes straight from Apple. Cached on disk for an hour; on any
+        failure (or a response naming no brand tab) the built-in list stands in
+        so the tabs never vanish.
+        """
+        cached = self.auth.tokens.get("channels") or {}
+        items = cached.get("items")
+        stamp = cached.get("stamp") or 0
+        # The marker moves when the source changes, so a cache written by an
+        # older build (e.g. the /channels catalogue that mislisted every
+        # subscription channel) is ignored rather than shown for its last hour.
+        fresh = (cached.get("src") == CHANNELS_CACHE_VERSION
+                 and 0 <= time.time() - stamp < BOOT_CACHE_SECONDS)
+        if items and fresh:
+            return [(c["id"], c["name"]) for c in items]
+        found = self._fetch_channels()
+        if found:
+            self.auth.tokens["channels"] = {
+                "items": [{"id": i, "name": n} for i, n in found],
+                "stamp": time.time(), "src": CHANNELS_CACHE_VERSION}
+            self.auth.save()
+            return found
+        # A stale but same-source cache still beats the built-in list if the
+        # fetch just failed; a mismatched-source one is dropped.
+        if items and cached.get("src") == CHANNELS_CACHE_VERSION:
+            return [(c["id"], c["name"]) for c in items]
+        return list(CHANNELS)
+
+    def _fetch_channels(self):
+        """The brand tabs, plus the Apple TV Channels the account subscribes to.
+
+        Two sources, because they answer two different questions. The web app's
+        navigation (/configurations -> applicationProps.tabs) lists the brand
+        tabs -- Apple TV+, MLS, Formula 1 -- and is the reliable source for
+        those. The Android app's /uts/v3/channels returns the whole Apple TV
+        Channels catalogue (Paramount+, STARZ, MGM+, ... some 36 of them), far
+        too many to list and most not watchable, so it is filtered to the ones
+        the account is actually subscribed to and those are appended. A title in
+        a channel you do not subscribe to has no entitled stream -- Apple only
+        offers to buy or rent it through iTunes -- which is why listing only
+        subscribed channels keeps the menu to what will actually play.
+        """
+        tabs = self._channels_from_config()
+        out, seen = [], set()
+        for cid, name in tabs + self._subscribed_channels():
+            if cid in seen:
+                continue
+            seen.add(cid)
+            out.append((cid, name))
+        # Anchor Apple TV+ even if the tab read failed but subscribed channels
+        # came back, so the main brand is never dropped from the menu.
+        if out and not any(cid == APPLE_TV_PLUS_CHANNEL for cid, _ in out):
+            out.insert(0, (APPLE_TV_PLUS_CHANNEL, "Apple TV+"))
+        return out
+
+    def _subscribed_channels(self):
+        """The Apple TV Channels the account subscribes to, from /channels.
+
+        Response shape is data.channels, a map of channel id -> channel; only
+        the subscribed ones are wanted. The field name is logged from a live
+        sample (isSubscribed on the canvas channel map) so a differing key shows
+        up rather than silently listing nothing.
+        """
+        data = self._vz_json("/channels", quiet=True)
+        node = ((data or {}).get("data") or {}) if isinstance(data, dict) else {}
+        channels = node.get("channels")
+        if not isinstance(channels, dict) or not channels:
+            return []
+        sample = next((v for v in channels.values() if isinstance(v, dict)), {})
+        kodiutils.log("channels endpoint: %d channel(s); sample keys=%s"
+                      % (len(channels), sorted(sample.keys())))
+        # Sanity check the flag against a channel the account is known to hold:
+        # Apple TV+ itself. If its isSubscribed is not true here, the flag is not
+        # populated for this caller and the empty subscribed list is a false
+        # negative rather than a genuine "no add-on channels".
+        atvp = channels.get(APPLE_TV_PLUS_CHANNEL)
+        if isinstance(atvp, dict):
+            kodiutils.log("channels endpoint: Apple TV+ isSubscribed=%s"
+                          % atvp.get("isSubscribed"))
+        out = []
+        for cid, ch in channels.items():
+            if not isinstance(ch, dict):
+                continue
+            if cid == APPLE_TV_PLUS_CHANNEL or cid == ITUNES_CHANNEL \
+                    or ch.get("isItunes") or ch.get("isAppleTvPlus"):
+                continue
+            if not (ch.get("isSubscribed") or ch.get("subscribed")):
+                continue
+            out.append((cid, ch.get("name") or ch.get("title") or cid))
+        kodiutils.log("Subscribed channels: %s"
+                      % (", ".join(n for _, n in out) or "(none)"))
+        return out
+
+    def _channels_from_config(self):
+        """Read the brand tabs off /configurations (applicationProps.tabs)."""
+        boot = self._bootstrap()
+        if not boot.get("developer_token"):
+            return []
+        # The web nav call keys the storefront as sfh and sends no utsk/utscf,
+        # so this asks exactly as the site does rather than via _params.
+        params = {"caller": "web", "locale": self._locale(), "pfm": "web",
+                  "sfh": self._storefront(), "v": UTS_VERSION}
+        try:
+            resp = self.session.get(UTS_BASE + "/configurations", params=params,
+                                    headers=self._uts_headers(), timeout=30)
+            if resp.status_code != 200:
+                kodiutils.log_error("configurations (channels) -> %s %s"
+                                    % (resp.status_code, resp.text[:200]))
+                return []
+            tabs = (((resp.json().get("data") or {})
+                     .get("applicationProps") or {}).get("tabs")) or []
+        except Exception as exc:
+            kodiutils.log_error("Channels fetch failed: %s" % exc)
+            return []
+        out, seen = [], set()
+        for tab in tabs:
+            target = tab.get("target") or {}
+            if target.get("type") != "Brand":
+                continue
+            cid = target.get("id")
+            if not cid or cid in seen:
+                continue
+            seen.add(cid)
+            # Apple names the originals brand "Apple TV"; the addon has always
+            # called it "Apple TV+", so keep that clearer label and take Apple's
+            # own title for every other brand.
+            name = ("Apple TV+" if cid == APPLE_TV_PLUS_CHANNEL
+                    else (tab.get("title") or cid))
+            out.append((cid, name))
+        # The Apple TV+ brand anchors the menu, so make sure it leads even if it
+        # is ever absent from the tab list.
+        if not any(cid == APPLE_TV_PLUS_CHANNEL for cid, _ in out):
+            out.insert(0, (APPLE_TV_PLUS_CHANNEL, "Apple TV+"))
+        kodiutils.log("Channels via tabs: %d brand tab(s): %s"
+                      % (len(out), ", ".join(n for _, n in out)))
+        return out
 
     def get_originals_shelves(self):
         return self.get_channel_shelves(APPLE_TV_PLUS_CHANNEL)
@@ -1570,6 +1723,30 @@ class AppleTVApi(object):
 
         data, mut = self._detail_json(content_id, item_type)
         if data is None:
+            # A delisted owned iTunes title 404s on its /episodes|/movies detail
+            # page -- the catalogue entry is gone, though the account still owns
+            # it (a whole delisted season lists fine but each episode's page is
+            # "Content Not Available"). The normal path bails here, before the
+            # redownload fallback that actually plays a purchase. When the store
+            # id is in hand (a numeric external id), ask the store/Android caller
+            # for the redownload offer directly by canonical id -- the path the
+            # Android TV app uses to play an owned title whose page is delisted,
+            # and the same _itunes_offer a listed purchase already plays through.
+            if external_id and str(external_id).isdigit():
+                kind = "Episode" if str(item_type) == "Episode" else "Movie"
+                kodiutils.log("Detail 404 for owned iTunes %s %s; asking the "
+                              "store caller for the redownload offer directly"
+                              % (kind, content_id))
+                owned = self._itunes_offer({"canonicalId": content_id,
+                                            "contentType": kind})
+                if not owned:
+                    # The UTS detail 404s on every caller for a delisted title;
+                    # the MediaAPI purchases list still carries its redownload
+                    # hlsUrl, which is the route the Android Library itself uses.
+                    owned = self._itunes_offer_from_purchases(external_id,
+                                                              item_type)
+                if owned:
+                    return self._prepared_from_assets(owned, mut)
             return None
 
         # A title can have several playables (feature you are entitled to, an
@@ -1764,6 +1941,7 @@ class AppleTVApi(object):
             "premiered": self._release_date(content.get("releaseDate")),
             "title": content.get("title"),
             "show_title": content.get("showTitle"),
+            "art": self._item_art(content.get("images") or {}, item_type),
             "cast": [],
         }
         for raw in self._extra_shelf_items(data, "uts.col.CastAndCrew"):
@@ -2353,6 +2531,65 @@ class AppleTVApi(object):
                       "may not be enough without a store session")
         return None
 
+    def _itunes_offer_from_purchases(self, adam_id, item_type):
+        """The redownload stream straight from the MediaAPI purchases list.
+
+        The Android Library plays an owned title from the personalizedOffers
+        hlsUrl carried on its own /v1/me/purchases row -- never the UTS
+        /movies|/episodes detail page -- which is why it plays a delisted
+        purchase whose catalogue page 404s on every caller. This walks the same
+        owned list (films flat; an episode's show found via the reverse-lookup's
+        showId, since episodes have no flat route) and returns the matching
+        row's captured offer. Ownership already lists the title, so this only
+        ever fetches for a purchase the account holds.
+        """
+        adam_id = str(adam_id)
+        # The title may be your own or a family member's -- a shared purchase is
+        # owned by them, so your own list is empty for it (filter[owner]). The
+        # play url does not carry which member, so try your own library first,
+        # then each sharing member until the row turns up.
+        owners = [None] + [m["id"] for m in self.media_family_members()]
+        if str(item_type) == "Episode":
+            info = (self._reverse_lookup([adam_id]) or {}).get(adam_id) or {}
+            show_id = info.get("show_id")
+            if not show_id:
+                kodiutils.log("Delisted play: no show_id for %s" % adam_id)
+                return None
+            for owner in owners:
+                hit = self._match_purchase_offer(
+                    self.media_purchases("episodes", show_id=show_id,
+                                         family_member=owner, enrich=False),
+                    adam_id)
+                if hit:
+                    return hit
+        else:
+            for owner in owners:
+                hit = self._match_purchase_offer(
+                    self.media_purchases("movie", family_member=owner,
+                                         enrich=False), adam_id)
+                if hit:
+                    return hit
+        kodiutils.log("Delisted play: no MediaAPI personalizedOffers hlsUrl for "
+                      "%s" % adam_id)
+        return None
+
+    def _match_purchase_offer(self, entries, adam_id):
+        """The captured redownload offer of the entry whose store id matches."""
+        for e in entries:
+            if str(e.get("adam_id")) == adam_id and e.get("itunes_hls"):
+                kodiutils.log("Delisted play: redownload hlsUrl via MediaAPI "
+                              "purchases row")
+                qp = {"svcId": ITUNES_CATALOG_SVC_ID, "adamId": adam_id,
+                      "isExternal": True}
+                if e.get("rental_id"):
+                    qp["rental-id"] = e["rental_id"]
+                return {"hlsUrl": e["itunes_hls"], "adamId": adam_id,
+                        "fpsKeyServerQueryParameters": qp,
+                        "wideVineKeyServerUrl": None,
+                        "wideVineCertificateUrl": None,
+                        "fpsKeyServerUrl": None, "isItunes": True}
+        return None
+
     def media_purchases(self, kind="movie", family_member=None, show_id=None,
                         max_pages=20, sort=None, enrich=True, genre=None):
         """Owned titles from MediaAPI /v1/me/purchases -- the Apple TV app's
@@ -2455,9 +2692,47 @@ class AppleTVApi(object):
         # adamId -> canonical reverse-lookup the full listing does.
         if items and enrich:
             self._enrich_purchases(items)
+            # A show's purchase row carries neither a synopsis nor (often) a
+            # poster; its own title page does, and survives even when its
+            # episodes are delisted, so fill those in from it.
+            if kind == "tv":
+                self._enrich_show_details(items)
         kodiutils.log("MediaAPI purchases (%s): %d owned title(s)"
                       % (kind, len(items)))
         return items
+
+    def _enrich_show_details(self, items):
+        """Give an owned show its poster, plot, genres and cast from its own
+        title page -- the /shows/{id} document, which the purchases row lacks.
+        The reverse-lookup has already put the canonical id on each entry.
+        Best-effort and capped, so opening the TV library stays responsive.
+        """
+        budget = 20
+        for e in items:
+            if budget <= 0:
+                break
+            if str(e.get("type")) != "Show":
+                continue
+            cid = str(e.get("id") or "")
+            if not cid.startswith("umc."):
+                continue
+            budget -= 1
+            try:
+                info = self.get_title_info(cid, "Show")
+            except Exception as exc:
+                kodiutils.log_error("Show info %s failed: %s" % (cid, exc))
+                continue
+            if not info:
+                continue
+            for key in ("plot", "genres", "mpaa", "premiered", "tagline",
+                        "studio", "year", "cast"):
+                if info.get(key) and not e.get(key):
+                    e[key] = info[key]
+            art = info.get("art")
+            if isinstance(art, dict) and art:
+                merged = dict(e.get("art") or {})
+                merged.update({k: v for k, v in art.items() if v})
+                e["art"] = merged
 
     def _enrich_purchases(self, items):
         """Route each owned title by its canonical id, as the app does.
@@ -2726,6 +3001,21 @@ class AppleTVApi(object):
             "duration": duration,
             "itunes": True,
         }
+        # Genre and release year ride the purchase row even when a synopsis does
+        # not (TV purchases carry no description at all), so read them straight
+        # off it -- a show with no plot still shows its genre and year.
+        genre_names = attrs.get("genreNames")
+        if isinstance(genre_names, list):
+            names = [g for g in genre_names if isinstance(g, str) and g]
+            if names:
+                entry["genres"] = names
+        released = self._release_date(attrs.get("releaseDate"))
+        if released:
+            entry["premiered"] = released
+            try:
+                entry["year"] = int(str(released)[:4])
+            except (TypeError, ValueError):
+                pass
         if item_type == "Episode":
             # Season/episode numbers so Kodi sorts and labels them, and the show
             # they belong to for the info screen.
@@ -2735,6 +3025,17 @@ class AppleTVApi(object):
                 entry["episode"] = attrs.get("episodeNumber")
             if attrs.get("artistName"):
                 entry["show_title"] = attrs.get("artistName")
+        # The redownload stream Apple hands the Library page inline: each owned
+        # row carries attributes.personalizedOffers, whose hlsUrl the app plays
+        # directly (its "play" vs "navigate" choice turns on this url existing).
+        # It answers for a delisted purchase the UTS /movies|/episodes page
+        # 404s, so capture it for the delisted-playback fallback.
+        for off in (attrs.get("personalizedOffers") or []):
+            if isinstance(off, dict) and off.get("hlsUrl"):
+                entry["itunes_hls"] = off["hlsUrl"]
+                if off.get("rentalId"):
+                    entry["rental_id"] = off["rentalId"]
+                break
         # Resume comes inline as the playback-position relationship
         # (include[movies]=playback-position): positionInMilliseconds on its
         # first data entry. Kodi wants seconds and a total to draw the bar.
