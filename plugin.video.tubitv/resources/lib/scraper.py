@@ -15,6 +15,7 @@ import xbmcvfs
 from t1mlib import t1mAddon
 
 from resources.lib.tubi_api import CONTINUE_WATCHING, TubiApi, TubiApiError, pickResource
+from resources.lib.tubi_api import EPISODE as HISTORY_EPISODE
 from resources.lib.tubi_api import MOVIE as HISTORY_MOVIE
 from resources.lib.tubi_api import SERIES as QUEUE_SERIES
 from resources.lib.tubi_api import (DISLIKE, LIKE, RATING_DISLIKED, RATING_LIKED,
@@ -516,22 +517,24 @@ class myAddon(t1mAddon):
     def rememberPlaying(self, url, content):
         """Leave the service what it needs to report progress on stop.
 
-        Only films are recorded. Tubi's history takes a content id and a type,
-        and the only write ever captured was for a film; what it wants for an
-        episode has not been observed, so those are left alone rather than
-        guessed at.
+        A film reports as itself. An episode reports as itself too, with its
+        series named as the parent. Trailers report nothing.
         """
         window = xbmcgui.Window(10000)
         window.clearProperty(PLAYING)
         parts = uqp(url).split('|')
-        if len(parts) != 1 or not self.addon.getSetting('report_progress') == 'true':
+        if parts[0] == 'trailer' or self.addon.getSetting('report_progress') != 'true':
             return
         contentId = asInt(content.get('id'))
         if contentId is None:
             return
-        window.setProperty(PLAYING, json.dumps({'content_id': contentId,
-                                                'content_type': HISTORY_MOVIE,
-                                                'duration': content.get('duration')}))
+        playing = {'content_id': contentId,
+                   'content_type': HISTORY_MOVIE,
+                   'duration': content.get('duration')}
+        if len(parts) >= 3:
+            playing['content_type'] = HISTORY_EPISODE
+            playing['parent_id'] = parts[1]
+        window.setProperty(PLAYING, json.dumps(playing))
 
     def getAddonVideo(self, url):
         try:
