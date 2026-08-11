@@ -470,6 +470,14 @@ class AppleTVApi(object):
         sample = next((v for v in channels.values() if isinstance(v, dict)), {})
         kodiutils.log("channels endpoint: %d channel(s); sample keys=%s"
                       % (len(channels), sorted(sample.keys())))
+        # Sanity check the flag against a channel the account is known to hold:
+        # Apple TV+ itself. If its isSubscribed is not true here, the flag is not
+        # populated for this caller and the empty subscribed list is a false
+        # negative rather than a genuine "no add-on channels".
+        atvp = channels.get(APPLE_TV_PLUS_CHANNEL)
+        if isinstance(atvp, dict):
+            kodiutils.log("channels endpoint: Apple TV+ isSubscribed=%s"
+                          % atvp.get("isSubscribed"))
         out = []
         for cid, ch in channels.items():
             if not isinstance(ch, dict):
