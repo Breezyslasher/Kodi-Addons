@@ -584,16 +584,35 @@ def _library_purchases(api, kind):
     return items
 
 
+def _library_has(api, kind, members=None):
+    """Cheap check: would the Films/TV Shows folder have anything in it? One
+    page is enough to know it is not empty. In combined mode a sharing member's
+    copy counts too, so the folder is not hidden when only they own the kind."""
+    if api.media_purchases(kind, max_pages=1):
+        return True
+    if _combined_library():
+        for member in (members if members is not None
+                       else api.media_family_members()):
+            if api.media_purchases(kind, family_member=member["id"], max_pages=1):
+                return True
+    return False
+
+
 def do_itunes_library(api, auth):
     """The library's sections. Combined, Films and TV Shows list everyone's
     shared titles together. Otherwise they are your own, labelled "Your Films"/
     "Your TV Shows" to set them apart from a folder per family member who shares
     purchases (the app's Family Sharing view), with your own entry hidden."""
     combined = _combined_library()
-    add_dir(L("films") if combined else L("your_films"), "itunes_movies")
-    add_dir(L("tv_shows") if combined else L("your_tv_shows"), "itunes_tv")
+    members = api.media_family_members()
+    # Only show a Films / TV Shows folder when there is something in it, so an
+    # account that owns only films (or only shows) is not given an empty folder.
+    if _library_has(api, "movie", members):
+        add_dir(L("films") if combined else L("your_films"), "itunes_movies")
+    if _library_has(api, "tv", members):
+        add_dir(L("tv_shows") if combined else L("your_tv_shows"), "itunes_tv")
     if not combined:
-        for member in api.media_family_members():
+        for member in members:
             add_dir(L("shared_by") % member["name"], "itunes_family",
                     member_id=member["id"])
     xbmcplugin.endOfDirectory(HANDLE)
