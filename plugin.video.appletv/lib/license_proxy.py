@@ -622,10 +622,12 @@ class _Handler(BaseHTTPRequestHandler):
         ctx = _context()
         bearer = ctx.get("bearer")
         mut = ctx.get("media_user_token")
-        # A purchase is licensed with a store session instead, so the Apple
-        # TV+ pair is only required when that is what will be sent.
-        if (not bearer or not mut) and not (ctx.get("override")
-                                            or ctx.get("itunes")):
+        # An iTunes purchase now licenses with the Apple TV+ pair (bearer +
+        # media-user-token) and the lean key body, the same identity TV+ uses --
+        # proven by an owned title reaching "License OK" with no store session
+        # pasted. So the pair is required here too; only the debug manifest
+        # override, which supplies its own stream, is exempt.
+        if (not bearer or not mut) and not ctx.get("override"):
             kodiutils.log_error("License proxy missing bearer/media-user-token")
             return None
 
@@ -673,25 +675,23 @@ class _Handler(BaseHTTPRequestHandler):
                          sorted((ctx.get("fps_params") or {}).keys()) or "none"))
 
         url = ctx.get("license_server") or FPS_URL
-        # An iTunes purchase is not authorised by an Apple TV+ identity. A
-        # capture of Apple's own client licensing one sends store credentials
-        # instead -- X-Dsid, X-Token and the store cookies, under the library
-        # agent's user agent -- and a TV+ bearer plus media-user-token is
-        # refused with status -1020. So when a store session has been pasted in
-        # and this is a purchase, send what Apple's client sends. The Android
-        # mz_at_ssl session may live in its own setting; prefer it, since it is
-        # the identity that reaches the licence decision. A diagnostic toggle
-        # can force it onto TV+ content to probe whether the session licenses at
-        # all (TV+ keys need no keybag; a purchase's do).
+        # An iTunes purchase licenses with the Apple TV+ identity (bearer +
+        # media-user-token) and the lean key body -- NOT the store session. The
+        # earlier "-1020 = wrong session, send store creds" reading is disproven:
+        # an owned title reaches "License OK" on bearer + media-user-token with
+        # no store session pasted, and the store-identity switch would in fact
+        # regress playback for anyone who has pasted a Continue Watching session
+        # for that shelf. So a purchase never flips to the store identity; that
+        # path survives only for the manifest override and the diagnostic toggle.
         store_cookies = (kodiutils.get_setting("itunes_uts_cookies") or "").strip() \
             or (kodiutils.get_setting("itunes_cookies") or "").strip()
         store_token = (kodiutils.get_setting("itunes_token") or "").strip()
         force_store = kodiutils.get_setting("diag_force_store_license") == "true"
-        as_store = bool((ctx.get("override") or ctx.get("itunes") or force_store)
+        as_store = bool((ctx.get("override") or force_store)
                         and (store_cookies or store_token))
-        if force_store and as_store and not (ctx.get("override") or ctx.get("itunes")):
+        if force_store and as_store and not ctx.get("override"):
             kodiutils.log("DIAGNOSTIC: forcing Android/store session onto a "
-                          "non-purchase (TV+) licence request, svcId=%s"
+                          "licence request, svcId=%s"
                           % (ctx.get("svc_id") or "none"))
         android = False
         if as_store:

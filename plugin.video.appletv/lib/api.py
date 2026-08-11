@@ -2027,10 +2027,6 @@ class AppleTVApi(object):
         cookies = self._header_safe(
             (kodiutils.get_setting("itunes_uts_cookies") or "").strip()
             or (kodiutils.get_setting("itunes_cookies") or "").strip())
-        if not cookies:
-            kodiutils.log("Android caller needs a valid mz_at_ssl session; none "
-                          "pasted (or the pasted value has bad characters)")
-            return None
         params = {
             "caller": UTS_ANDROID_CALLER,
             "vz": "true",
@@ -2045,22 +2041,39 @@ class AppleTVApi(object):
         headers = {
             "User-Agent": UTS_ANDROID_UA,
             "Content-Type": "application/json",
-            "Cookie": cookies,
         }
-        # The dsid names itself in the mz_at_ssl cookie; fall back to the other
-        # store cookies and to an explicit X-Dsid the same way _store_json does.
-        found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
-            or re.search(r"X-Dsid=(\d+)", cookies)
-        if found:
-            headers["X-Dsid"] = found.group(1)
-        # This shelf fills in only when the session is accepted, and the store
-        # cookie that carries that acceptance is mz_at_ssl -- the one the app's
-        # request used. A session pasted from another client (the Windows
-        # library login) may not have it, which reads as an empty shelf rather
-        # than an error, so name up front what is being sent.
-        kodiutils.log("Android caller: mz_at_ssl cookie=%s, X-Dsid=%s"
-                      % ("yes" if "mz_at_ssl" in cookies else "NO",
-                         "yes" if headers.get("X-Dsid") else "NO"))
+        if cookies:
+            # The app's own path: the Android store session (mz_at_ssl), which
+            # names the dsid inside itself.
+            headers["Cookie"] = cookies
+            found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
+                or re.search(r"X-Dsid=(\d+)", cookies)
+            if found:
+                headers["X-Dsid"] = found.group(1)
+            auth = "mz_at_ssl cookie=%s" % ("yes" if "mz_at_ssl" in cookies else "NO")
+        else:
+            # No Android session pasted: try the vz caller with the ordinary
+            # Apple TV+ tokens (bearer + media-user-token) that already license
+            # purchases. This tests whether Apple merges iTunes into the Continue
+            # Watching shelf on the strength of the caller rather than the
+            # mz_at_ssl cookie -- if so, the shelf populates with no store paste.
+            boot = self._bootstrap()
+            bearer = boot.get("developer_token")
+            mut = self._media_user_token()
+            if not bearer or not mut:
+                kodiutils.log("Android caller: no mz_at_ssl session and no Apple "
+                              "TV+ tokens; cannot ask")
+                return None
+            headers["Authorization"] = "Bearer " + bearer
+            headers["media-user-token"] = mut
+            dsid = self._store_dsid()
+            if dsid:
+                headers["X-Dsid"] = dsid
+            auth = "bearer+media-user-token (no store session)"
+        # This shelf fills in only when the identity is accepted; name up front
+        # what is being sent so an empty shelf is diagnosable.
+        kodiutils.log("Android caller: %s, X-Dsid=%s"
+                      % (auth, "yes" if headers.get("X-Dsid") else "NO"))
         try:
             resp = self.session.get(UTS_STORE_BASE + path, params=params,
                                     headers=headers, timeout=20)
@@ -2103,15 +2116,69 @@ class AppleTVApi(object):
             (self._store_json, "store", CONTINUE_WATCHING_SHELF,
              {"ctx_brand": APPLE_TV_PLUS_CHANNEL}),
         ]
+        items = []
         for getter, label, path, ctx in attempts:
-            items = self._page_continue_watching(getter, label, path, ctx,
+            found = self._page_continue_watching(getter, label, path, ctx,
                                                   max_pages)
-            if items:
+            if found:
                 kodiutils.log("Continue Watching: %d item(s) via %s %s"
-                              % (len(items), label, path))
-                return items
-        kodiutils.log("Continue Watching: 0 item(s)")
-        return []
+                              % (len(found), label, path))
+                items = found
+                break
+        # Apple only serves the iTunes part of this shelf to the Android (vz)
+        # caller, which needs a pasted mz_at_ssl session -- so the web and store
+        # callers come back with an empty shell. The same resume data rides
+        # inline on the owned-films list (include[movies]=playback-position),
+        # which the plain Apple TV+ sign-in already reads, so derive the iTunes
+        # part from there and merge it in. That makes purchases in progress show
+        # in Continue Watching with no store session pasted at all.
+        seen = {it.get("id") for it in items}
+        for entry in self._itunes_continue_watching(max_pages):
+            if entry.get("id") not in seen:
+                seen.add(entry.get("id"))
+                items.append(entry)
+        if not items:
+            kodiutils.log("Continue Watching: 0 item(s)")
+        return items
+
+    def _itunes_continue_watching(self, max_pages=10):
+        """Owned iTunes films in progress, from the MediaAPI playback-position.
+
+        A title is in progress when its inline resume point is past the very
+        start and short of essentially finished. This is the same owned-films
+        call the app's LibraryPage makes (there is no separate iTunes
+        continue-watching endpoint -- the app builds it from /v1/me/purchases
+        too), sorted mostRecent as its "recent" view does, so it needs only the
+        Apple TV+ sign-in -- no store session -- and each entry plays and
+        resumes through the ordinary purchase path. Results are ordered by
+        recordedAtTimestamp (most-recently-watched first), the field the app
+        keys recency off. TV episodes are not included: /v1/me/purchases/
+        tv-episodes is a per-show loader, so their resume points do not come
+        back on a single flat call the way films' do.
+        """
+        try:
+            owned = self.media_purchases("movie", max_pages=max_pages,
+                                         sort="mostRecent")
+        except Exception as exc:
+            kodiutils.log_error("iTunes Continue Watching lookup failed: %s" % exc)
+            return []
+        in_progress = []
+        for entry in owned:
+            resume = entry.get("resume") or {}
+            pos = resume.get("position") or 0
+            total = resume.get("total") or 0
+            kodiutils.log("iTunes CW candidate: %r pos=%.0fs total=%.0fs "
+                          "recorded_at=%s" % (entry.get("title"), pos, total,
+                                              entry.get("recorded_at")))
+            if pos > 30 and total and pos < total * 0.95:
+                in_progress.append(entry)
+        # Order by when the position was last saved, newest first. mostRecent
+        # already sorts the fetch, but sorting here as well keeps the order right
+        # even if the server sort covers owned-date rather than watched-date.
+        in_progress.sort(key=lambda e: e.get("recorded_at") or "", reverse=True)
+        kodiutils.log("iTunes Continue Watching: %d in-progress of %d owned "
+                      "film(s)" % (len(in_progress), len(owned)))
+        return in_progress
 
     def get_featured(self):
         """Apple's featured hero shelf -- the "Apple Original Shows and Movies"
@@ -2295,7 +2362,7 @@ class AppleTVApi(object):
         return None
 
     def media_purchases(self, kind="movie", family_member=None, show_id=None,
-                        max_pages=20):
+                        max_pages=20, sort=None):
         """Owned titles from MediaAPI /v1/me/purchases -- the Apple TV app's
         Library page call, read off its LibraryPage.js.
 
@@ -2346,11 +2413,15 @@ class AppleTVApi(object):
         elif kind == "movie":
             # include[movies]=playback-position brings the resume point back
             # inline as a relationship, so no separate positions call is needed.
-            base = {"filter": "owned", "sort": "name", "types": "movies",
+            # sort defaults to name (the library's A-Z view); a caller can ask
+            # for "mostRecent" -- the app's recency sort (LibraryPage.js "recent"
+            # view) -- to order by how lately each title was played.
+            base = {"filter": "owned", "sort": sort or "name", "types": "movies",
                     "include[movies]": "playback-position"}
         else:
-            base = {"filter": "owned", "sort": "artistName", "types": "tv-shows",
-                    "include[tv-shows]": "episodes", "limit[episodes]": 1}
+            base = {"filter": "owned", "sort": sort or "artistName",
+                    "types": "tv-shows", "include[tv-shows]": "episodes",
+                    "limit[episodes]": 1}
         if family_member:
             base["with"] = "sharedPurchases"
             base["filter[owner]"] = family_member
@@ -2361,8 +2432,16 @@ class AppleTVApi(object):
             params = dict(base, limit=100, offset=offset)
             data = self._media_get(MEDIA_API_HOST, path, params, headers)
             rows = self._as_list((data or {}).get("data"))
+            # include[...]=playback-position returns the position resources in a
+            # top-level `included` array (JSON:API), with the row's relationship
+            # holding only a {type,id} linkage. Index them so _purchase_entry can
+            # resolve the resume point whichever way Apple returns it.
+            included = {}
+            for res in self._as_list((data or {}).get("included")):
+                if isinstance(res, dict) and res.get("id"):
+                    included[(res.get("type"), res.get("id"))] = res
             for row in rows:
-                entry = self._purchase_entry(row, kind)
+                entry = self._purchase_entry(row, kind, included)
                 if entry and entry["id"] not in seen:
                     seen.add(entry["id"])
                     items.append(entry)
@@ -2503,10 +2582,13 @@ class AppleTVApi(object):
             kodiutils.log_error("MediaAPI %s response was not JSON" % path)
             return None
 
-    def _purchase_entry(self, row, kind):
+    def _purchase_entry(self, row, kind, included=None):
         """One MediaAPI purchase row -> the addon's list entry.
 
-        kind is "movie", "tv" (a show) or "episodes" (an episode of a show)."""
+        kind is "movie", "tv" (a show) or "episodes" (an episode of a show).
+        included is the response's JSON:API `included` index {(type,id): res},
+        used to resolve the playback-position when it is returned there rather
+        than inline on the relationship."""
         if not isinstance(row, dict):
             return None
         attrs = row.get("attributes") or {}
@@ -2560,11 +2642,25 @@ class AppleTVApi(object):
         # first data entry. Kodi wants seconds and a total to draw the bar.
         rel = (row.get("relationships") or {}).get("playback-position") or {}
         pdata = self._as_list(rel.get("data"))
-        if pdata and duration:
-            pms = (pdata[0].get("attributes") or {}).get("positionInMilliseconds")
-            if pms:
+        if pdata:
+            linkage = pdata[0] if isinstance(pdata[0], dict) else {}
+            # The position attributes are inline on the relationship for some
+            # responses and in the top-level `included` array for others; take
+            # whichever carries them.
+            pattrs = linkage.get("attributes") or {}
+            if not pattrs.get("positionInMilliseconds") and included:
+                res = included.get((linkage.get("type"), linkage.get("id")))
+                if isinstance(res, dict):
+                    pattrs = res.get("attributes") or pattrs
+            pms = pattrs.get("positionInMilliseconds")
+            if pms and duration:
                 entry["resume"] = {"position": pms / 1000.0,
                                    "total": float(duration)}
+            # recordedAtTimestamp is when the position was last saved -- the
+            # field LibraryPage.js keys recency off, so Continue Watching can
+            # order by most-recently-watched.
+            if pattrs.get("recordedAtTimestamp") is not None:
+                entry["recorded_at"] = pattrs.get("recordedAtTimestamp")
         return entry
 
     def _store_dsid(self):
