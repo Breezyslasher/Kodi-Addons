@@ -584,18 +584,33 @@ def _library_purchases(api, kind):
     return items
 
 
+def _has_purchases(api, kind, member_id=None):
+    """Cheap one-page probe: is there any title of this kind (yours, or a family
+    member's when member_id is given)? Skips the reverse-lookup enrichment the
+    full listing does, so it is only used to decide folder visibility."""
+    return bool(api.media_purchases(kind, family_member=member_id,
+                                    max_pages=1, enrich=False))
+
+
 def _library_has(api, kind, members=None):
-    """Cheap check: would the Films/TV Shows folder have anything in it? One
-    page is enough to know it is not empty. In combined mode a sharing member's
-    copy counts too, so the folder is not hidden when only they own the kind."""
-    if api.media_purchases(kind, max_pages=1):
+    """Would the Films/TV Shows folder have anything in it? In combined mode a
+    sharing member's copy counts too, so the folder is not hidden when only they
+    own the kind."""
+    if _has_purchases(api, kind):
         return True
     if _combined_library():
         for member in (members if members is not None
                        else api.media_family_members()):
-            if api.media_purchases(kind, family_member=member["id"], max_pages=1):
+            if _has_purchases(api, kind, member["id"]):
                 return True
     return False
+
+
+def _member_shares_anything(api, member_id):
+    """Whether a family member shares any film or show with this account, so an
+    empty 'Shared by' folder is not shown."""
+    return (_has_purchases(api, "movie", member_id)
+            or _has_purchases(api, "tv", member_id))
 
 
 def do_itunes_library(api, auth):
@@ -613,16 +628,21 @@ def do_itunes_library(api, auth):
         add_dir(L("tv_shows") if combined else L("your_tv_shows"), "itunes_tv")
     if not combined:
         for member in members:
-            add_dir(L("shared_by") % member["name"], "itunes_family",
-                    member_id=member["id"])
+            # Skip a member who shares nothing you can see, so their folder does
+            # not open onto an empty library.
+            if _member_shares_anything(api, member["id"]):
+                add_dir(L("shared_by") % member["name"], "itunes_family",
+                        member_id=member["id"])
     xbmcplugin.endOfDirectory(HANDLE)
 
 
 def do_itunes_family(api, member_id):
     """A family member's shared library: Films and TV Shows, kept apart like
-    your own library."""
-    add_dir(L("films"), "itunes_family_movies", member_id=member_id)
-    add_dir(L("tv_shows"), "itunes_family_tv", member_id=member_id)
+    your own library -- and each shown only when they share that kind."""
+    if _has_purchases(api, "movie", member_id):
+        add_dir(L("films"), "itunes_family_movies", member_id=member_id)
+    if _has_purchases(api, "tv", member_id):
+        add_dir(L("tv_shows"), "itunes_family_tv", member_id=member_id)
     xbmcplugin.endOfDirectory(HANDLE)
 
 

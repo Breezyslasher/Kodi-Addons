@@ -2405,7 +2405,7 @@ class AppleTVApi(object):
         return None
 
     def media_purchases(self, kind="movie", family_member=None, show_id=None,
-                        max_pages=20, sort=None):
+                        max_pages=20, sort=None, enrich=True):
         """Owned titles from MediaAPI /v1/me/purchases -- the Apple TV app's
         Library page call, read off its LibraryPage.js.
 
@@ -2495,7 +2495,9 @@ class AppleTVApi(object):
         if family_member:
             for e in items:
                 e["member_id"] = family_member
-        if items:
+        # A one-page existence probe (folder visibility) does not need the
+        # adamId -> canonical reverse-lookup the full listing does.
+        if items and enrich:
             self._enrich_purchases(items)
         kodiutils.log("MediaAPI purchases (%s): %d owned title(s)"
                       % (kind, len(items)))
