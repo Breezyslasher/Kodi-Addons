@@ -98,7 +98,7 @@ CHANNELS = (
 )
 # Bumped whenever the discovered-channels source changes shape, so a cache an
 # older build wrote is ignored instead of served for its last hour.
-CHANNELS_CACHE_VERSION = "tabs1"
+CHANNELS_CACHE_VERSION = "tabs2"
 
 # MLB has no brand channel of its own the way MLS and F1 do. On tv.apple.com it
 # is an editorial room that lives under Apple TV+ -- verified: its games carry
@@ -428,15 +428,64 @@ class AppleTVApi(object):
         return list(CHANNELS)
 
     def _fetch_channels(self):
-        """Read the brand tabs off /configurations (applicationProps.tabs).
+        """The brand tabs, plus the Apple TV Channels the account subscribes to.
 
-        The Android app's /uts/v3/channels endpoint was tried first, but a
-        capture proved it returns the whole Apple TV Channels subscription
-        catalogue (Paramount+, STARZ, MGM+, ...) -- not the navigation, and
-        without MLS or Formula 1 -- so it is the wrong source for the top-level
-        brand tabs. The web app's own navigation lists exactly those tabs, so it
-        is read instead; the caller falls back to the built-in list.
+        Two sources, because they answer two different questions. The web app's
+        navigation (/configurations -> applicationProps.tabs) lists the brand
+        tabs -- Apple TV+, MLS, Formula 1 -- and is the reliable source for
+        those. The Android app's /uts/v3/channels returns the whole Apple TV
+        Channels catalogue (Paramount+, STARZ, MGM+, ... some 36 of them), far
+        too many to list and most not watchable, so it is filtered to the ones
+        the account is actually subscribed to and those are appended. A title in
+        a channel you do not subscribe to has no entitled stream -- Apple only
+        offers to buy or rent it through iTunes -- which is why listing only
+        subscribed channels keeps the menu to what will actually play.
         """
+        tabs = self._channels_from_config()
+        out, seen = [], set()
+        for cid, name in tabs + self._subscribed_channels():
+            if cid in seen:
+                continue
+            seen.add(cid)
+            out.append((cid, name))
+        # Anchor Apple TV+ even if the tab read failed but subscribed channels
+        # came back, so the main brand is never dropped from the menu.
+        if out and not any(cid == APPLE_TV_PLUS_CHANNEL for cid, _ in out):
+            out.insert(0, (APPLE_TV_PLUS_CHANNEL, "Apple TV+"))
+        return out
+
+    def _subscribed_channels(self):
+        """The Apple TV Channels the account subscribes to, from /channels.
+
+        Response shape is data.channels, a map of channel id -> channel; only
+        the subscribed ones are wanted. The field name is logged from a live
+        sample (isSubscribed on the canvas channel map) so a differing key shows
+        up rather than silently listing nothing.
+        """
+        data = self._vz_json("/channels", quiet=True)
+        node = ((data or {}).get("data") or {}) if isinstance(data, dict) else {}
+        channels = node.get("channels")
+        if not isinstance(channels, dict) or not channels:
+            return []
+        sample = next((v for v in channels.values() if isinstance(v, dict)), {})
+        kodiutils.log("channels endpoint: %d channel(s); sample keys=%s"
+                      % (len(channels), sorted(sample.keys())))
+        out = []
+        for cid, ch in channels.items():
+            if not isinstance(ch, dict):
+                continue
+            if cid == APPLE_TV_PLUS_CHANNEL or cid == ITUNES_CHANNEL \
+                    or ch.get("isItunes") or ch.get("isAppleTvPlus"):
+                continue
+            if not (ch.get("isSubscribed") or ch.get("subscribed")):
+                continue
+            out.append((cid, ch.get("name") or ch.get("title") or cid))
+        kodiutils.log("Subscribed channels: %s"
+                      % (", ".join(n for _, n in out) or "(none)"))
+        return out
+
+    def _channels_from_config(self):
+        """Read the brand tabs off /configurations (applicationProps.tabs)."""
         boot = self._bootstrap()
         if not boot.get("developer_token"):
             return []
