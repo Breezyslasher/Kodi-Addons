@@ -1,0 +1,1215 @@
+# The iTunes library
+
+Apple TV+ and iTunes purchases are two different services behind one app, and
+this addon speaks the first fluently. Purchases were the one thing it could
+never reach: **tv.apple.com does not expose them at all**, so no amount of
+browser capture would have found them.
+
+They were found instead in Apple's **Windows** client, whose traffic decrypts
+with an ordinary proxy — no root, no device patching, no certificate fight.
+
+## The chain
+
+Four calls, in order. All observed; none guessed.
+
+### 1. Sign in to the store
+
+```
+POST buy.itunes.apple.com/WebObjects/MZFinance.woa/wa/authenticate
+     Content-Type: application/x-apple-plist
+
+     appleId, password, guid, createSession=true, rmp=0
+  →  passwordToken, clearToken, altDsid, dsPersonId,
+     accountInfo, subscriptionStatus, accountFlags
+```
+
+Note what this is **not**: the web sign-in this addon already implements does
+`authorize → SRP → two-factor → trust`. This endpoint takes the password
+directly, in a plist, with a machine `guid`. Two separate services; a session
+for one is not a session for the other.
+
+`status` in the response body says whether it worked — a refusal still comes
+back as HTTP 200.
+
+### 2. List what the account owns
+
+```
+POST pd.itunes.apple.com/WebObjects/MZPurchaseDaap.woa/purchase/databases/101/items
+  →  gzipped DMAP  (application/x-dmap-tagged)
+```
+
+DMAP is the old iTunes sharing format: a four-character tag, a big-endian
+length, then that many bytes; some tags are containers holding more of the
+same. There is a content-code dictionary that says which tags are strings and
+which are integers — this does not fetch it, and guesses from the payload
+instead, which is enough for the tags below.
+
+```
+adbs
+  mstt  status          200
+  mtco  total count       1
+  mrco  returned count    1
+  mlcl
+    mlit                    one per owned title
+```
+
+Per title, the fields that matter:
+
+| Tag | Meaning |
+|-----|---------|
+| `minm` | title |
+| `ajci` | **UTS content id** (`umc.cmc.*`) — hands straight to the rest of the addon |
+| `aeSI` | adam id — also the key the resume store uses |
+| `ajhu` | an HLS playlist url, already carrying its token |
+| `asyr` `asgn` `ascn` `aslc` | year, genre, short and long synopsis |
+| `aeCR` | certificate, as `mpaa\|PG\|200\|reason` |
+| `aecv` `aeat` `aeCa` | artwork |
+| `assn` `asal` | show and collection titles |
+| `ajEU` | iTunes Extras, when the title has any |
+
+`ajci` is the important one: a purchase is a normal catalogue item from there
+on, so it opens, describes and plays through paths that already exist.
+
+### 3. Resume positions
+
+```
+POST upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/getAll
+     domain = com.apple.upp
+  →  values[]:  key = adam id
+                value = raw-deflate → binary plist
+```
+
+The inner plist is the state:
+
+```
+bktm   position in seconds        4993.663
+hbpl   has been played            true / false
+plct   play count
+tstm   timestamp, Apple epoch (2001-01-01)
+```
+
+Purchases do **not** appear in the now-playing service Apple TV+ reports to.
+This is a separate key-value store, and the whole domain comes back in one
+request rather than one per title — cheaper than anything on the TV+ side.
+
+Only titles with playback state appear here. A film owned and never opened is
+absent, so this is a viewing history, not a second way to list the library.
+
+### 4. Mark watched, or save a position
+
+```
+POST upp.itunes.apple.com/WebObjects/MZBookkeeper.woa/wa/put
+     domain = com.apple.upp, key = adam id, value = <same encoding>
+  →  version, domain-version   (both increment, ordering concurrent writes)
+```
+
+Marking watched and unwatched differ only in `hbpl` and `plct`.
+
+## Family sharing is not in the library
+
+The DAAP listing holds what **this account bought**. A film shared by a family
+member is absent from it, which matches Apple's own Windows client: it does
+not show family purchases in its sidebar either.
+
+Those titles are still reachable, and by an easier route. Searching for one
+and opening it returns a playable on the iTunes channel:
+
+```
+playable  tvs.sbd.9001:1324419603:8804f8d9
+   channelId          tvs.sbd.9001
+   isItunes           True
+   isEntitledToPlay   True
+   entitlementReason  Unknown        (a purchase reads "Purchase" here)
+```
+
+`isEntitledToPlay` says the account may watch it, and that much is readable
+with no store session at all. It does **not** hand over a stream:
+
+```
+playables: tvs.sbd.9001:1324419603:8804f8d9
+           isEntitledToPlay = True
+           assets           = {}        <- empty
+```
+
+An Apple TV+ playable carries `assets.hlsUrl` on this same response, which is
+how the addon resolves playback. An iTunes one carries nothing. The stream for
+a purchase comes from the redownload below, which needs the store session --
+so entitlement is visible without signing in, and playback is not.
+
+## Getting a purchase back
+
+There is no endpoint called "redownload". The cloud-download button is an
+ordinary purchase with the price set to zero:
+
+```
+POST p18-buy.itunes.apple.com/WebObjects/MZBuy.woa/wa/buyProduct
+     Content-Type: application/x-apple-plist
+
+     salableAdamId, productType=V, pricingParameters=STDRDL, price=0,
+     ownerDsid, guid, kbsync, machineName, supportsGpuContentProtection
+  →  status=0, authorized, keybag, songList[]
+```
+
+`ownerDsid` takes a **family member's** dsid, and the capture this was read
+from redownloads a film the signed-in account does not own itself. So family
+sharing is not a listing quirk — shared titles are genuinely fetchable.
+
+Each `songList` entry carries two routes and a description:
+
+| key | what it is |
+|-----|------------|
+| `URL` | a progressive `.m4v`, with an `accessKey` in the query string |
+| `hls-playlist-url` | `play-edge…/MZPlayLocal.woa/hls/playlist.m3u8?a=<adam id>&…` |
+| `hls-key-server-url` | `play-edge…/MZPlayLocal.woa/wa/fpsRequest` |
+| `hls-key-cert-url` | `s.mzstatic.com/skdtool_2021_certbundle.bin` |
+| `sinfs` | FairPlay key blobs, wrapped to the device that asked |
+| `metadata` | the fullest description the store gives of a title |
+| `has-4k` `has-hdr` `has-dolby-vision` | what editions exist |
+
+The progressive file needs no cookies — its access key is the whole
+authorisation — but it is FairPlay encrypted, and the `sinf` boxes bind the
+keys to the requesting device. It also carries the account holder's real name
+in cleartext, which is worth knowing before sharing one.
+
+**The HLS route offers Widevine, and it was tested.** The suspicion was that
+a purchase would be FairPlay-only, since the key certificate Apple hands the
+Windows client is the FairPlay bundle, which Kodi cannot use. That is not
+what the playlist serves. Pasted into this addon's manifest override and
+played in Kodi:
+
+```
+[plugin.video.appletv] Collected 2 Widevine key(s)
+[plugin.video.appletv] DRM property set (pre_init=True)
+[plugin.video.appletv] Manifest proxy: master served, 24 variant(s) dropped
+inputstream.adaptive: Manifest successfully parsed (Streams: 3)
+```
+
+Two things that matters for. The licence host is `MZPlayLocal/fpsRequest` —
+the very one this addon already proxies Widevine through for Apple TV+, so
+the machinery needs nothing new. And **the playlist itself needs no store
+session**: it was fetched with no cookies, no `X-Token` and no dsid beyond
+the one already in its query string. The FairPlay certificate is what
+Apple's own client asked for, not the only thing on offer.
+
+### The licence is requested, and refused
+
+Run again on a machine with a Widevine CDM, the exchange completes and Apple
+answers:
+
+```
+Manifest proxy: variant served, 1 KEYID added, 1 init segment(s) routed
+Init segment …_video_gr205_sdr_470x352: patched 1 tenc KID(s)
+  -> 0000000021ca6c756330202020202020
+License request: challenge=1708 bytes, wants KID=0000000021ca6c756330…,
+  known KIDs=[…6330…, …6336…]
+fpsRequest failed: no licence in response
+  {"streaming-response":{"streaming-keys":[{"id":1,"status":-1020}]}}
+```
+
+Worth reading carefully, because it is not a generic failure:
+
+- Apple **accepted and parsed** the challenge. The reply is a well-formed
+  `streaming-response`, not an HTTP error or an auth rejection.
+- The key id is **Apple's own**, read out of the PSSH in its manifest, and
+  the challenge asked for one this addon had already seen. Nothing was
+  invented or mismatched.
+- The refusal is per key: `status: -1020` on key `id: 1`. What that number
+  means is not documented anywhere reachable and is not guessed at here.
+
+Signing in to Apple TV+ and repeating it changes nothing:
+
+```
+License identity: bearer=yes, media-user-token=yes, adamId=252260696
+… status: -1020
+```
+
+**An Apple TV+ identity does not authorise a purchase.** That is a tested
+result, not an inference.
+
+### What Apple's own client sends instead
+
+Captures of the Windows client streaming a purchase — the `hls/playlist.m3u8`
+with `?a=<adamId>` form, not the `subscription/` one — carry its licence
+request, and it is a different animal:
+
+```
+POST play-edge…/MZPlayLocal.woa/wa/fpsRequest
+     X-Dsid: <dsid>          X-Token: AwIAAAEC…
+     Cookie: <store session>
+     User-Agent: AMPLibraryAgent/1.6.4 …
+     X-Apple-Store-Front: 143441-1,42
+
+{"fairplay-streaming-request":{
+   "streaming-keys":[{"guid":"16D0454F…","id":"1","adamId":"387548805",
+                      "uri":"skd://itunes.apple.com/p1136803310/c1","spc":"…"}],
+   "kbsync":"…","dsid":"…","version":1}}
+
+→ {"fairplay-streaming-response":{"streaming-keys":[
+     {"id":"1","status":"0","ckc":"…","renew-after":"780"}]}}
+```
+
+Four differences, all of them load-bearing:
+
+| | Apple TV+ (works today) | a purchase |
+|---|---|---|
+| authorises with | Bearer + media-user-token | `X-Dsid` + `X-Token` + store cookies |
+| user agent | the web player's | `AMPLibraryAgent` |
+| key system | Widevine (`challenge` → `license`) | FairPlay (`spc` → `ckc`) |
+| extra | — | `kbsync`, a device keybag |
+
+So the licence is gated by the **store** session, the same door the sign-in
+and the locker are behind — and Apple's client asks for FairPlay even though
+the manifest carries Widevine keys, which this addon collected two of.
+
+The addon now sends the store shape when a store session has been pasted in
+and the stream came from the override: store headers, the library agent's
+user agent, and the `guid` and `dsid` at the levels Apple puts them. What it
+cannot send is `kbsync`.
+
+## The stream is in the detail response after all
+
+That whole FairPlay detour turns out to be Apple's Windows *iTunes* client,
+not its TV app — and it is not how a purchase has to be played. Apple TV on
+Android has no FairPlay at all and plays purchases, so a Widevine path
+exists. Finding it needed one more look at captures already in hand.
+
+**A purchase's stream is not in `assets`.** That field is empty on every
+iTunes playable, whatever the caller. It is in `itunesMediaApiData`, which
+the same `/movies/{id}` detail request the addon already makes returns, split
+into two lists:
+
+```
+data.playables["tvs.sbd.9001:<adamId>:8804f8d9"].itunesMediaApiData
+   offers[]              kind=buy | rent    price=19990   ← everyone gets these
+   personalizedOffers[]  kind=redownload    price=0       ← only the store caller
+      hlsUrl  …/hls/playlist.m3u8?cc=US&a=<adamId>&id=<programId>&aec=SD
+              &l=en&dsid=<dsid>
+```
+
+`personalizedOffers` is the account's own copy, and its `hlsUrl` is the exact
+url Apple's TV app then played. The difference is the caller:
+
+| | `caller=web` on tv.apple.com | `caller=wlk` on uts-api.itunes.apple.com |
+|---|---|---|
+| `itunesMediaApiData` | yes | yes |
+| `offers` (buy/rent) | yes | yes |
+| **`personalizedOffers`** | **no** | **yes** |
+
+So the website is not refused a purchase — it is never offered one. That is
+why tv.apple.com cannot play what an Apple TV app on any other device can,
+and why every earlier reading of "Apple sends no stream for these" was
+looking at the wrong field on the wrong caller.
+
+The addon now falls back to that endpoint whenever an iTunes playable comes
+back with no assets, and plays the redownload offer if Apple names one.
+
+### Surfacing purchases in Continue Watching
+
+The home page's resume row is `uts.col.ChannelUpNext.tvs.sbd.4000` — scoped
+to the Apple TV+ channel, so an in-progress iTunes film never shows in it (a
+capture of it came back with `isItunes:true` count zero, only
+`channelId tvs.sbd.4000`). Apple keeps a **second, account-wide** resume shelf
+that does mix the two, and its own `configurations` document names the
+endpoint rather than leaving it to be guessed:
+
+```
+getContinueWatchingShelf  →  /uts/v3/shelves/continue-watching
+```
+
+A capture of that shelf (from the TV app) carried The Greatest Showman — an
+iTunes purchase — beside Apple TV+ episodes, each item the ordinary UTS shape
+the shelf parser already reads. The addon adds a **Continue Watching** entry
+to its top menu that asks this shelf as the signed-in account and lists what
+comes back; an iTunes film there opens through the same redownload path as
+opening it from the library. Whether Apple serves *this* identity the iTunes
+rows or only the Apple TV+ ones is left to the response to answer rather than
+assumed — the shelf exists and mixes services, which the capture proves; that
+the web bearer is shown the same mix is what a run confirms.
+
+### Where this stands, tested
+
+Everything up to the licence works, with **no store session at all** — the
+Apple TV+ bearer and media-user-token are enough:
+
+```
+iTunes playable tvs.sbd.9001:1324419603:8804f8d9 carries no assets;
+  asking the store app's endpoint for a redownload offer
+iTunes redownload offer found: redownload SD
+iTunes key-server parameters: {adamId 1324419603, isExternal True,
+                               svcId tvs.vds.9023}
+Collected 3 Widevine key(s)
+Manifest parsed (Streams: 30)          ← a real feature, 138 variants
+Init segment P544700800_A1324419603_FF_video_…
+License request: … adamId=1324419603, svcId=tvs.vds.9023
+  → status -1020
+```
+
+`personalizedOffers` also turns out to be a dependable **ownership test**.
+Asked for a title nobody in the family owns it returns nothing, and asked for
+the family-shared one it returns the redownload — so "do I own this" is
+answerable without the locker, and therefore without a store session.
+
+What is left is the licence alone. Every field that can be read off Apple's
+own responses now matches what its granted requests carry: the key id out of
+its PSSH, the adam id, and an svcId taken from the title's own document
+rather than assumed. It is still refused.
+
+The svcId source was later pinned down exactly. A capture of The Greatest
+Showman in the **Continue Watching** shelf carries the purchase playable with
+`serviceId: tvs.vds.9023` ("iTunes US Catalog") stated outright, while a
+studio title beside it in the same shelf carries `tvs.vds.4105`. A purchase
+has no assets of its own, so `fpsKeyServerQueryParameters` for it do not
+exist; walking the detail document for *some* svcId can therefore pick up a
+neighbouring playable's — a trailer, the background loop — on a different
+service. The addon now prefers the purchase playable's own `serviceId` and
+only walks the document as a last resort. For this title both paths yield
+`tvs.vds.9023`, so it changes no outcome here; it stops a wrong svcId being
+sent for a title whose page mixes services. The licence is still `-1020` with
+the correct svcId, under both the account's identities — so svcId was never
+what it turned on.
+
+**A pasted store session was then tried, and refused identically.** With
+`X-Dsid`, `X-Token` and the store cookies on the licence request — the exact
+credentials Apple's own client uses — the answer is still `-1020`. So the
+refusal is not about who is asking. Both identities the account has were
+offered and both were declined.
+
+### The Android session narrows it to the device, not the credentials
+
+Continue Watching later gave a way to prove the store session was genuinely
+valid, not stale: it populates (7 items, `auth-token-valid=true`) only for the
+Android caller with a fresh `mz_at_ssl` cookie. Taking that same proven-good
+session to the licence request settled what `-1020` is not:
+
+| licence request | result |
+|---|---|
+| web bearer + media-user-token | `-1020` |
+| Android `mz_at_ssl` cookie **+ Windows `X-Token`** | empty `403` |
+| Android `mz_at_ssl` + `X-Dsid`, ATVE agent, no `X-Token` | `-1020` |
+
+Two things fall out. The `mz_at_ssl` dsid was being dropped by a cookie regex
+that matched `amia-`/`mt-tkn-`/`mz_at0-` but not `mz_at_ssl-`, so a licence
+request under that session went out with no `X-Dsid` at all; that is fixed. And
+mixing the Android cookie with a Windows `X-Token` earns an **empty 403** — the
+same shape Apple's store sign-in returns to a request missing device
+attestation — whereas the **coherent** Android identity (cookie + `X-Dsid`, its
+own agent, no foreign token) is *accepted and processed*, and declined at the
+licence decision with `-1020`.
+
+So with a fresh, proven-valid session, the correct `X-Dsid`, the right svcId,
+adam id and key id, and no credential mismatch, Apple still returns `-1020`. It
+is not auth, not the caller, not the request shape — every one of those is now
+correct. What remains is what the request cannot carry: `kbsync`, the device
+keybag, and the per-request signing Apple's native clients (the Android app's
+Luna SDK among them) attach. `-1020` is a licence-decision refusal for not
+being a provisioned device, the same class of wall as the store sign-in's
+attestation — and the end of the road for a pure-Python client on purchase
+playback.
+
+Final confirmation, two back-to-back runs on one owned film, same build, the
+only variable the session:
+
+| `mz_at_ssl` session | licence result |
+|---|---|
+| expired (`auth-token-valid=false`) | HTTP **403**, empty body — rejected at auth |
+| freshly captured, valid | HTTP **200**, `streaming-keys:[{status:-1020}]` — accepted, key refused |
+
+This separates the two walls cleanly and for good. The `403` was only ever the
+stale cookie: a fresh session is *accepted and processed* (200), the licence
+pipeline runs end to end — redownload offer, three Widevine keys, manifest,
+DRM init — and Apple declines at the last step with `-1020` for the missing
+device keybag. Refreshing the session is necessary and it is not sufficient;
+nothing a non-Apple client can send changes the `-1020`. Purchase *naming* is
+complete (films and delisted TV alike); purchase *playback* stops here, at the
+device attestation, by design.
+
+The full licence response was then captured (valid session, `auth-token-valid=
+true`) to read Apple's own reason rather than infer it. Verbatim:
+
+```
+HTTP 200
+apple-tk: false
+x-apple-jingle-correlation-key: YMVKPMNLNRG7ERIENCAEHG2WQA
+X-Apple-Jingle-Responding-Instance: MZPlayLocal-mzplay-main-…
+{"streaming-response":{"streaming-keys":[{"id":1,"status":-1020}],"version":1}}
+```
+
+Fact, not read into: the request reached Apple's play/licence backend
+(`MZPlay…`) and was answered with the bare `-1020` and no explanatory field —
+no dialog, customerMessage, failureType, or auth challenge. The response
+carries a header `apple-tk: false`; its meaning is not documented here and is
+not guessed. This run also used a *delisted* film (adam 387548805), which still
+resolved a redownload HD offer and keys, so delisted content reaches the same
+`-1020`, not an earlier block.
+
+The last cell — does the Android session itself license anything, or is it the
+wrong credential — was then filled directly. A TV+ Original was played with the
+Android `mz_at_ssl` session forced onto its licence request (its own key server
+and `svcId tvs.vds.4105` kept, only the identity swapped):
+
+| content | identity on the licence request | key server | result |
+|---|---|---|---|
+| TV+ Original | web bearer + media-user-token | `tvs.vds.4105` | `status 0`, plays |
+| TV+ Original | **Android `mz_at_ssl`** | `tvs.vds.4105` | **`status 0`, plays** |
+| iTunes purchase | web bearer + media-user-token | `tvs.vds.9023` | `-1020` |
+| iTunes purchase | Android `mz_at_ssl` | `tvs.vds.9023` | `-1020` |
+
+So the Android session is a fully valid *licensing* credential — it issued a
+real licence (both keys, `status 0`) for TV+ content and the stream played. The
+credential, the caller, the request shape are all fine. The only thing that
+changes the answer is the **key server**: `tvs.vds.4105` (TV+/studio) issues
+without a keybag; `tvs.vds.9023` (iTunes catalogue) refuses without one. The
+`-1020` is entirely the purchase key server's keybag requirement, on either
+session — nothing about the token or the path. A purchase's keys exist only on
+`9023`, and `9023` wants the device keybag, full stop.
+
+### The last variable: fetch the offer as Android too (still -1020)
+
+One thing the runs above had not isolated: the redownload offer (and its
+`hlsUrl`) was fetched via the Windows caller (`caller=wlk`, `pfm=windows`) while
+only the *licence* identity was swapped to Android. So the stream being licensed
+was a Windows-minted one. The offer fetch was then moved to the Android caller
+(`caller=vz`, `pfm=vz`, `mfr=AndroidTV`) so the whole chain — acquire and
+licence — is the Android TV app, the client that actually plays purchases over
+Widevine. Tested on a valid session (`auth-token-valid=true`) against an owned
+film (adam 1324419603, `svcId tvs.vds.9023`):
+
+```
+iTunes offer fetched via android(vz) caller
+iTunes redownload offer found: redownload SD
+Collected 3 Widevine key(s)
+License identity: android session (dsid=yes, token=NO)
+License diagnostic: HTTP 200
+{"streaming-response":{"streaming-keys":[{"id":1,"status":-1020}],"version":1}}
+sent key params={... 'adamId':'1324419603','isExternal':True,'svcId':'tvs.vds.9023','guid':''}
+```
+
+Identical `-1020`. The sent request carries `guid: ''` and no `kbsync`; the
+Android app's real request carries both. So the offer caller was never the
+variable either: with the fully coherent Android chain — Android-fetched
+Widevine stream, Android identity, valid session, correct key params — the
+purchase key server still refuses for the missing device keybag. Every variable
+short of `kbsync` (and the device guid / per-request signing that accompany it)
+is now eliminated. This is the wall, confirmed rather than inferred.
+
+What the captures say instead is that the key system splits cleanly by
+playlist, without a single exception:
+
+| playlist | licensed with |
+|---|---|
+| `hls/subscription/…` — Apple TV+ | **Widevine**, in 4 captures |
+| `hls/playlist.m3u8?a=…` — a purchase | **FairPlay**, in 3 captures |
+
+Kodi has no FairPlay CDM, and cannot have one. **So an iTunes purchase does
+not play in this addon**, and that is the conclusion rather than a step
+towards one.
+
+Two things keep it from being flatly impossible, both worth recording:
+
+- The purchase manifest **carries Widevine keys** — three were collected from
+  it. Apple would not provision Widevine PSSHs into a manifest nothing is
+  ever meant to decrypt under Widevine, so the content is prepared for it and
+  the licence decision is being made per request, not per title.
+- Apple TV on **Android** plays purchases, and Android has no FairPlay. Either
+  Apple issues Widevine to that client where it refuses this one, or that app
+  is given a different playlist entirely. The Android TV app was then run on a
+  rooted LineageOS build (Raspberry Pi 4) with a substitute CA injected into
+  the conscrypt trust store, and its traffic did decrypt — but only the browse
+  calls. Its own `WVCdm` logcat confirms it licenses through a **Widevine L3
+  software CDM** (`form_factor: L3`, `soc_model: Software`, `AddKey` succeeds),
+  so a generic CDM is enough for that client. What never crossed the proxy is
+  the licence HTTP POST itself: it rides Apple's native, certificate-pinned
+  (and partly QUIC) path, so the endpoint, headers and body that turn a
+  Widevine challenge into a granted purchase key were not captured. The one
+  `AddKey` that was visible carried a placeholder PSSH
+  (`0123456789012345ABCDEFGHIJKLMNOP`) — the app's start-up DRM self-check,
+  not a title. So the Android route confirmed *that* a generic Widevine CDM is
+  licensed, without revealing *how* the request is signed.
+
+Everything short of the licence works, and is worth keeping: store search
+finds purchases, `personalizedOffers` says whether the account owns one,
+family-shared titles resolve like any other, and the stream that comes back
+is the same feature manifest Apple's own client plays.
+
+The differences that remain, beyond the key system, are ones nothing here can
+supply:
+
+- the **store session** — `X-Dsid` and `X-Token`, which the addon will now
+  send on a purchase's licence request if one has been pasted in
+- **`kbsync`**, the device keybag, which is not reproducible
+- **the key system itself.** Every granted Widevine licence observed is for
+  an Apple TV+ title. No capture exists of Apple granting a *Widevine*
+  licence for a purchase — its own clients on Windows and macOS ask in
+  FairPlay. That Apple TV on Android plays purchases, and Android has no
+  FairPlay, is good reason to believe the path exists; it is not the same
+  thing as having seen it.
+
+One thing capture cannot settle: Apple's client changed **two** things at
+once — it asks as `wlk` *and* authenticates with `X-DSID` plus store cookies
+rather than a bearer. Whether the caller alone is enough, or the store
+session is needed too, only a live request answers. The addon asks with what
+it holds and adds a pasted store session when one is set, and logs which of
+the two happened.
+
+### Family sharing needs nothing extra here
+
+The title that produced that offer — The Greatest Showman, adam id
+1324419603 — is **not owned by the account that asked**. Cross-referencing
+the lockers settles it:
+
+| locker | contains 1324419603 |
+|---|---|
+| `spDsid=12305910250` (own, 2 films) | no |
+| `spDsid=210495396` (family, 93 films) | **yes** |
+
+Yet its `personalizedOffers` came back priced at zero, marked `redownload`,
+with `dsid=12305910250` — the asking account's own number — in the url.
+
+So Apple resolves the family entitlement on its side and issues the offer to
+whoever is signed in. Playing a family-shared purchase needs no `spDsid`, no
+family member's number, and no separate code path: it is the same request as
+playing one's own. `spDsid` and `ownerDsid` matter for *listing* a library
+and for the store's own redownload call, not for this.
+
+The obstacle is `kbsync`: a device keybag blob on the request, the same class
+of thing as the attestation headers below. The addon sends the request
+without it and reports what Apple says rather than assuming.
+
+### `metadata` is the best description of a purchase
+
+Fuller than the lookup, and the only place an owned episode says which show
+and season it belongs to:
+
+```
+kind              tv-episode
+itemName          High Rise Hair Raiser
+show-name         The Scooby-Doo Show
+playlistName      The Scooby-Doo Show, Season 1
+season-number     1
+episode-number    S1E1        episode-sort-id  1
+network-name      CBS         trackCount       16
+duration          1463505     (milliseconds)
+rating            {label: TV-G, system: us-tv, rank: 300}
+longDescription   …
+releaseDate       1976-09-11T07:00:00Z
+```
+
+Note the naming: this block is hyphenated where the lookup is camel-cased,
+and a season is `playlistName` rather than a collection. They are two
+different schemas for the same thing and cannot share a mapper.
+
+Their resume positions are in the bookkeeper -- the adam id above is one of
+the five, at 3669 seconds -- but reading that store also needs the session.
+
+## A second, simpler route: the JSON locker
+
+iTunes for Windows lists the same library as plain JSON rather than DMAP:
+
+```
+GET se-edge.itunes.apple.com/WebObjects/MZStoreElements.woa/wa/purchases
+    ?dataOnly=true&mt=6&restoreMode=false&spDsid=<dsid>
+  → {"lockerData":{"content":{"1080487524":[1080487524], ...}}}
+```
+
+`mt` selects the media type, and the numbers are not what the tab names
+suggest. Each was checked by looking up what the locker returned:
+
+| mt | what comes back |
+|----|-----------------|
+| 1 | songs |
+| 4 | **television**, as `tvEpisode` rows |
+| 6 | films |
+| 3 | nothing — 200 with an empty locker on every account tried |
+
+`mt=3` was the earlier guess for television, taken from watching the client
+ask for it while the TV Shows tab was open. It is wrong: that request returns
+an empty locker even for the account that owns fifteen episodes, and those
+fifteen arrive under `mt=4` instead.
+
+**Television is listed as episodes, never as seasons or series.** The fifteen
+owned episodes span five seasons of five different shows, and no season row
+appears anywhere in the locker. Each episode does say where it belongs —
+`collectionId`, `collectionName` ("Treasure Quest, Season 1"),
+`episodeSeasonNumber`, `episodeNumber` — so seasons can be grouped from the
+episodes without another request, which is what this addon does.
+
+One thing television does not carry: a synopsis. Under the
+`redownload-image` profile the field is absent rather than empty on both
+`tvSeason` and `tvEpisode` rows, while films have `itunesNotes.standard`. The
+fuller description of an episode exists, but it arrives with a redownload
+rather than a lookup.
+
+`artistName` also means two different things by kind — the director of a
+film, the series of an episode — so it cannot be read without checking
+`kind` first.
+
+The values are store ids, sometimes several per title where a film exists in
+more than one edition. **Not every key is an id**: `content` also holds an
+`orderedKeys` entry giving the display order, and counting it as a title asks
+Apple to look up an id called "orderedKeys", which it rejects -- taking the
+real ids down with it, since they travel in the same batch. Only the film
+lockers carry it; the music and television ones do not. Titles then come from
+`client-api.itunes.apple.com/.../MZStorePlatform.woa/wa/lookup?id=<ids>`,
+asked with `p=redownload-image`, which is the profile the library view uses;
+`p=lockup` is what store browsing sends.
+
+### Where the family dsids come from
+
+There is no endpoint for this. The bag lists `commerce/family/permission/get`
+and the sharing toggles, but nothing that enumerates members. The roster is
+embedded in the purchases **page** instead, as JSON:
+
+```json
+{"iCloudDsid":"…","iTunesPreferredDsid":"…","accountName":"…",
+ "displayName":"…","sharingPurchases":true,"isMe":false}
+```
+
+`iTunesPreferredDsid` is what `spDsid` wants and `sharingPurchases` says
+whether asking will return anything. Parsing one real page gives four
+members, all sharing — and two of those dsids are the ones the client was
+seen asking with, which is corroboration rather than coincidence. So the
+number never has to be typed in by hand, given a store session.
+
+**`spDsid` says whose purchases to list, and that is how family sharing
+works.** One capture makes it plain: signed in as one account throughout,
+
+| spDsid | items |
+|--------|-------|
+| the signed-in account's own dsid | 0 |
+| a family member's dsid | 511 music, 93 films, 15 episodes |
+
+So the account in that capture owns one film of its own -- which is exactly
+what the DAAP call returned -- and sees 93 through the family. Apple's TV app
+offers no such switch in its sidebar, which is why family purchases never
+appear there; the limitation is that client's, not the API's.
+
+This route is easier to consume than DMAP and is the one to implement if the
+authentication below is ever solved. It is what the addon uses when a store
+session has been pasted in.
+
+### The locker works; naming what is in it does not
+
+With a pasted session the locker answers properly — the roster parses, four
+members with three sharing, and the film locker returns its ids. Turning
+those ids into titles is where it stops, and all three routes were tried:
+
+| route | answer |
+|---|---|
+| `MZStorePlatform/lookup` (Apple's own) | **403** |
+| `itunes.apple.com/lookup` (public) | **works, but not for everything** |
+| `uts/v3/contents/play-metadata/vod` | **460**, content does not match condition |
+
+#### What the token actually is
+
+The storefront bundle is in the captures — `di6-storefront-bootstrap_modern.js`,
+2.2 MB — and it contains the whole construction:
+
+```js
+_setSignedRequestQueryParams: function (url) {
+  var n = Math.round(new Date().getTime() / 1e3)
+  var whitelist = its.serverData.properties["SF6.StorePlatform.whitelistParams"]
+  var o = ""                                  // sort the query, concatenate
+  ...  u = url.split("?")[1].split("&").sort() //   the VALUES of whitelisted keys
+       if (whitelist[key]) o += value
+  var f = [n, iTunes.storefront, decodeURIComponent(o)].join("")
+  return url + "&X-JS-SP-TOKEN=" + encodeURIComponent(
+                 iTunes.signStorePlatformRequestData(f))
+             + "&X-JS-TIMESTAMP=" + n
+}
+```
+
+The whitelist is served alongside it: `["caller", "dsid", "id", "p"]`. So the
+signed string is fully known — timestamp, storefront, then the values of those
+four parameters in sorted-key order.
+
+**What is not known is the signing.** `signStorePlatformRequestData` appears
+exactly once in 2.2 MB, as a call on the native `iTunes` bridge, and is never
+defined in JavaScript. It is in the client binary.
+
+Its output is 16 bytes, which is MD5-shaped, so that was worth testing: 720
+combinations of MD5, SHA-1, SHA-256, SHA-512 and BLAKE2s over six storefront
+spellings, four separators, three field orders and two encodings. None
+reproduce a captured token. It is keyed or proprietary, not a bare hash of a
+string anyone can assemble.
+
+That is as far as captures go. Recovering it would mean reversing the native
+function or running a real client, which is a different kind of work from
+anything else here.
+
+The first is refused. `X-JS-SP-TOKEN` is the obvious suspect — 142 captured
+lookups carry 142 distinct tokens across only 26 timestamps, so it signs each
+request rather than the session — but that is a suspicion, not a finding. The
+request was also being sent as the TV app rather than iTunes, with a plist
+content type and a client header the real one does not have; those are fixed
+now, and the device values Apple's client carries (`X-Apple-I-MD` and its
+companions, `X-Apple-Cuid`) are still missing. Blaming the token before
+accounting for those would be guessing.
+
+**The second carries the library, and one measurement of it was badly
+misleading.** Asked for a single id it answered `resultCount: 0`, which read
+like a service that cannot do this at all. Asked for the real library — 94
+ids across four lockers — it resolved **89**. It works; that first id is
+simply not in its index, along with four others.
+
+The id that misled was *Despicable Me*, which the addon's own search finds
+without difficulty. Both facts hold at once: the public service and the UTS
+catalogue are different indexes, and a title can sit in one and not the
+other. A sample of one said "impossible" where a sample of ninety-four says
+"mostly".
+
+The third maps a store id to its canonical one, which would be ideal, and it
+negotiates: without a duration it says `hlsAssetDurationInSeconds is
+required`, and with a nominal one it says the content does not match a
+condition — most likely that the duration must match the real asset, which is
+not knowable before the title is resolved. Apple's client also sends a
+`playablePassthrough` carrying an internal leg id that cannot be derived for
+an arbitrary store id.
+
+So the library works. It lists what the account owns and what its family
+shares — 89 of 94 in the run this describes, across four lockers — logs the
+handful no lookup will name, and its entries open: a title picked from it
+resolves its redownload offer and reaches the licence exactly as one picked
+from search does.
+
+Sixteen ids across the two lockers resolve through neither public route --
+five films and one complete season of eleven episodes. That is **not**
+because Apple has dropped them. Its own lookup names every one of them:
+
+```
+387548805   Despicable Me            302596216  The Merchant Royal
+1538303219  Greenland                303292916  Pirates!
+1140582200  Kubo and the Two Strings 303885799  The Legend
+779516213   Last Vegas               …           Treasure Quest, Season 1
+826848074   Mr. Peabody & Sherman       (all eleven episodes)
+```
+
+That endpoint is the one refused with a 403, and its profile name says what
+it is for: `redownload-image-tracklist-item`. It is the **library** service,
+and it describes what an account owns whether or not the title is still
+published. The public lookup and the catalogue describe what is currently on
+sale, which is a different question and a smaller set.
+
+So this is one blocker wearing two faces, not two problems. An iPhone lists
+these titles because Apple's client can call that service; this cannot,
+because each call is signed per request.
+
+Which is why the five films could be rescued and the eleven episodes could
+not, and the difference is about **ids, not availability**:
+
+| | asked with a store id | answer |
+|---|---|---|
+| `/movies/<id>` | accepted | the five films, in full |
+| `/episodes/<id>` | **400, malformed** | never gets as far as looking |
+
+So `/movies/<episode id>` answering 404 says only *"that id is not a movie"*,
+which is true and useless. It is not evidence the episode is unpublished, and
+reading it that way was a mistake. Whether those episodes are in the current
+catalogue is simply **not known** -- no endpoint here accepts an episode's
+store id to ask with.
+
+A season would be the way in, since an episode's lookup names its
+`collectionId`. That id comes from the lookup that is refused, so it is out of
+reach for exactly the titles that need it.
+
+**A locker holds one person's purchases**, which is easy to miss and was
+missed here for a while: asking only for the signed-in account returned a
+single film while the family between them own ninety-odd. The roster is read
+anyway, so every member who shares is asked and the ids merged.
+
+It stops where everything else stops, at the licence. What needs no store
+session at all, and is the more useful half: **search finds purchases, and
+opening one says whether the account owns it** — the `personalizedOffers`
+test.
+
+## Borrowing a session instead of minting one
+
+Since Apple's own software proves itself in ways that cannot be reproduced,
+the way round is not to reproduce it. Sign in with a real Apple client, take
+the session it established, and hand it to the addon: two advanced settings
+accept the cookie header and, optionally, a family member's dsid.
+
+That needs no attestation, because a genuine client already did that part.
+What it costs is that the session is captured by hand and expires on Apple's
+schedule rather than the addon's.
+
+## What is verified, and what is not
+
+Verified by replaying real captures through this code:
+
+- the DMAP parse — one owned title, `mtco` of 1, every field resolving,
+  including the UTS content id
+- the resume decode — five positions recovered from a live `getAll`, with a
+  finished title correctly skipped
+- the resume encode — round-trips through deflate and back
+- the runtime — `astm` is inside `aeif`, not on the title, which was
+  established by parsing `aefl`'s payload and finding it consumes exactly as
+  DMAP; the film's 5,678,891 ms comes out as its real 1:34:38
+
+**Tried, and refused: the store sign-in.** Apple answers `403`. The guid was
+the suspected obstacle; the capture shows something harder. The real request
+carries three headers generated on the device:
+
+```
+X-Apple-ActionSignature   a signed blob, ~200 bytes
+X-Apple-AMD               attestation data
+X-Apple-AMD-M             a longer companion value
+```
+
+These are Apple's device attestation. They are computed by Apple's own client
+from material it holds, and nothing here can produce them -- this is the same
+family of values other projects obtain from an "anisette" provider running on
+genuine Apple software. Aligning everything else that differed (the pod host
+`p18-buy`, the guid in the query string as well as the body, the `com.apple.TV`
+client header, the `t:tv1` storefront suffix, the TV user agent) is done, and
+is worth having, but it is unlikely to be enough on its own.
+
+This blocks more than the listing. Everything on the store side is behind the
+same door:
+
+| | needs the store session |
+|---|---|
+| listing what the account owns | yes |
+| the stream for a purchase (`buyProduct`) | yes |
+| resume positions (`MZBookkeeper`) | yes |
+| **knowing a title is owned** (`isEntitledToPlay`) | **no** |
+| **the file a redownload points at** (`accessKey`) | **no** |
+| **the HLS playlist a redownload points at** | **no** |
+
+Only the last is reachable, because it rides the ordinary UTS detail response.
+Search does return store films -- "Green Book" comes back with 14 results
+across Top Results, Movies and TV Shows -- but the results carry no
+entitlement or channel at all, only id, title, type, genres, duration,
+release date and artwork. Whether one is owned shows only once it is opened.
+
+**That is true of the store app's caller, and not of the website's.** The
+same search asked as tv.apple.com returns Apple TV+ originals and nothing
+else: "ted" gives Ted Lasso, Shrinking, Wolfs and Ghosted, where the store
+caller for "green book" gives Green Book, Oppenheimer, Hidden Figures and
+BlacKkKlansman -- none of which are on Apple TV+ at all. So the caller
+decides what search will admit exists, exactly as it decides whether
+`personalizedOffers` is sent, and a purchase cannot be opened from a search
+that will not list it. The addon asks as the store app and keeps the
+website's search as a fallback.
+
+So an iTunes title can be found, described and shown as owned. It cannot be
+played, and that is unlikely to change without device attestation.
+
+Also unverified: whether a purchased stream *decrypts* under Kodi's Widevine
+CDM. It is now known that one is *offered* a Widevine key — the addon
+collected two from a real purchase's playlist — and that the playlist needs
+no store session. What remains untested is the licence exchange itself,
+which stopped at a machine with no CDM installed.
+
+Verified since, by replaying a redownload capture through this code:
+
+- the redownload parse — one film's two routes, both certificate urls, and
+  every edition flag
+- the metadata mapper — an owned episode resolving to show, season, episode
+  number, network, certificate and a 1463-second runtime
+- the television grouping — fifteen locker episodes gathering into their
+  five real seasons, with the right episode counts
+
+## How the capture was taken
+
+Worth recording, because two things made the difference after a long detour
+through an Android TV emulator that ended at a pinned native layer:
+
+1. **The Windows client does not pin.** Fiddler Classic decrypts it with its
+   CA in the Windows trust store, and Store apps need
+   `CheckNetIsolation.exe LoopbackExempt` — or Fiddler's WinConfig button —
+   before a loopback proxy sees them at all.
+2. **Rules → Performance → Disable Caching.** Without it the interesting
+   canvases return `304 Not Modified` with no body, which reads exactly like
+   an endpoint that does not work.
+
+`init.itunes.apple.com/bag.xml` is Apple's own service-discovery document —
+744 keys of endpoint urls, including several the client never calls. That is
+where `commerce/account/purchases` and the whole `MZBookkeeper` family were
+found by name. It is a far more durable source of endpoints than scraping
+markup, and worth re-reading whenever something breaks.
+
+## Security
+
+A capture of this chain contains the account's password in the sign-in
+request, its session tokens everywhere after, and — in a redownload — the
+account holder's name inside the `sinf` blobs. Nothing here is ever written
+into the repository: sessions live only in Kodi's settings at runtime, and
+are pasted by hand rather than minted or stored by this addon. Run
+`tools/sanitize_har.py` over anything before sharing it, and treat an
+unsanitised capture as the account itself.
+
+## What the keybag actually is (from the app's own code)
+
+A capture of the Apple TV app's JavaScript (`atvjs`) settled two things the
+`-1020` runs could only infer.
+
+**Listing.** The Library page lists owned titles from the MediaAPI, not the
+Windows store locker and not a UTS shelf: `GET /v1/me/purchases` with
+`types=movies` (and `types=tv-shows`), `filter=owned`, on
+`amp-api.videos.apple.com`, authenticated by the ordinary web bearer +
+media-user-token. The addon uses this now, so the library lists from the plain
+Apple TV+ sign-in -- no store or Android session. The website simply has no
+Library tab; the endpoint exists regardless.
+
+**The keybag is not Apple-hardware-only.** Purchases play on Windows iTunes,
+the PlayStation app and Android TV, none of them Apple silicon -- so `kbsync`
+is not a Secure Enclave secret. The app's error enums name where it comes from:
+`anisetteProvisioningStart`, `anisetteGetGUID`, `anisetteProvisioning`,
+`failedImportKeyBag`, `failedKeyBagSyncData`, `failedKeyBagInit`. So the keybag
+is *imported and synced* off an **anisette device provisioning** step -- the
+same machine-identity provisioning those non-Apple clients all perform -- not
+computed in the app's JavaScript. `-1020` is the purchase key server refusing a
+licence request that carries no provisioned keybag. Replicating it means
+standing up the anisette provisioning + keybag sync those clients do, which is
+a separate (and DRM-provisioning) undertaking this addon does not attempt. The
+library, ownership and naming are done; purchase playback stops at the
+unprovisioned keybag, on any client that has not provisioned -- Apple hardware
+or not.
+
+## iTunes purchase playback — the `-1020` fix (resolved)
+
+The earlier sections above chase `-1020` through a series of wrong inferences --
+a device keybag (`kbsync`), anisette provisioning, then Widevine
+`application_name` identity. All three are **disproven**; they are kept above as
+the record of the investigation, but this section is the actual resolution.
+
+**Root cause: extra fields in the licence-key body.** The addon's request was
+sending three fields in the `streaming-keys` object that Apple's own client does
+**not** send for a purchase: `svcId`, `isExternal`, and `guid`. The purchase key
+server (`tvs.vds.9023`) refuses with `-1020` when the request carries fields it
+does not expect -- even though the session, ownership, challenge and KID are all
+valid.
+
+This was confirmed by reading the Apple TV Android app's *actual* licence
+request body during a successful purchase play. Its key object is exactly:
+
+```json
+{
+  "id": 1,
+  "uri": "data:text/plain;base64,<PSSH>",
+  "lease-action": "start",
+  "key-system": "com.widevine.alpha",
+  "adamId": "<adamId>",
+  "challenge": "<base64 widevine challenge>"
+}
+```
+
+No `svcId`, no `isExternal`, no `guid`. Only `adamId` (plus `rental-id` for a
+rental).
+
+**Why `application_name` was a red herring.** Kodi's Widevine challenge is
+byte-identical to the app's except `application_name` (`org.xbmc.kodi` vs
+`com.apple.atve.androidtv.appletv`). Forcing a request to `9023` proved the
+server does **not** reject on that field: a non-owned title came back `-1002`
+unknown-asset, i.e. `9023` evaluated identity and asset *first* and only then
+looked at the body. The gate was the extra fields, not the CDM identity.
+
+**The fix (in `lib/license_proxy.py`).** When the context is an iTunes purchase
+(`ctx["itunes"]`), build the lean key object -- add only `adamId` (and
+`rental-id` for a rental) and nothing else. Do not add `svcId`, `isExternal`,
+`guid`, `dsid`, or a `nonce` to the purchase `streaming-keys` object. Store
+auth (`X-Dsid`, `X-Token`, `Cookie`) still rides the HTTP *headers*; only the
+JSON body must be lean. Live/linear titles keep their hyphenated
+`service-id`/`reference-id` params (a separate branch), and TV+/sports are
+unchanged.
+
+Trap that reintroduces the bug: spreading Apple's `fpsKeyServerQueryParameters`
+(`fps_params` = `{svcId, adamId, isExternal}`) into the key with
+`key.update(fps_params)` re-adds `svcId`/`isExternal` and brings `-1020` back.
+For a purchase, take only `adamId` -- never spread the whole dict.
+
+**State.** iTunes purchase/rental playback licenses through Kodi's own Widevine
+CDM off the ordinary Apple TV+ sign-in (bearer + media-user-token); TV+,
+sports, and the catalogue/library (browse, ownership, resume, metadata,
+trailers/extras) remain fully functional.
+
+## Current architecture (one Apple TV+ sign-in)
+
+Everything runs off the single Apple TV+ / Apple ID sign-in -- there is no
+separate iTunes Store login, and no pasted store session. The store-locker
+subsystem (`lib/itunes.py`, `ItunesStore`) and the pasted-session settings were
+removed once every path was proven to work on the bearer + media-user-token
+pair. Verified on device:
+
+- **Library listing** -- MediaAPI `GET /v1/me/purchases` (`types=movies` /
+  `tv-shows`, `filter=owned`, `include[movies]=playback-position`), and
+  `/v1/me/purchases/tv-episodes` (`filter[tvShowId]`) for an owned show's
+  episodes.
+- **Family Sharing** -- `GET /v1/me/purchases/shared/members`; a member's
+  library uses `with=sharedPurchases&filter[owner]=<id>`. Your own entry is
+  hidden by matching the Apple ID email captured at sign-in (`account_email`)
+  against its `accountName` -- the API marks no self member, and
+  `GET /v1/me/account` is **404 in the amp-videos realm**, so there is no dsid
+  to match on.
+- **Genres** -- `GET /v1/me/purchases/genres` with
+  `types=movies,tv-episodes&filter=owned&sort=name` (omitting `types` 500s the
+  Purchase Lockers service); a genre filters the film list with
+  `filter[genres]=<id>`.
+- **Rentals** -- `GET /v1/me/purchases` with `filter=rentals`; a rental carries
+  the `rental-id` the licence proxy adds beside `adamId`.
+- **Redownload offer** -- fetched over the dev token (wlk caller) or the
+  Android (vz) caller, both bearer-authenticated; no store cookies.
+- **Continue Watching** -- the Android (vz) shelf, asked with bearer +
+  media-user-token (Apple gates the iTunes merge on the caller, not a store
+  session). A film tile's poster is fetched from the title's own page
+  (`content.images.posterArt`) because that shelf carries only 16:9 art.
+- **Resume reporting** -- an iTunes purchase saves its position the way the app
+  does: `PUT /v1/me/playback/positions/{movies|tv-episodes}/{adamId}` with
+  `{type:"playback-positions", attributes:{positionInMilliseconds,
+  recordedAtTimestamp}}`. The old FairPlay/bookkeeper report
+  (`MZBookkeeper.woa`) is gone -- it required a device keybag/store session and
+  never worked here.
+- **Mark watched** -- an iTunes purchase marks watched exactly the way the app's
+  `MarkAsWatched` (app.js) does, and **not** via a playback-position at the end.
+  The app makes two calls: (1) `POST /play-history {"id": <canonicalId>}` (its
+  `markItemAsWatched` route) -- the record that actually flips the title to
+  watched across devices, and it takes the title's *canonical umc id*, which an
+  owned title already has from the reverse-lookup enrichment, so it is the same
+  call the Apple TV+ side uses; (2) for a title with a store id it also
+  `PUT`s the playback-position to **0** (not the end), keyed by the adam id, so
+  the title leaves Continue Watching. Writing the position to the *end* -- an
+  earlier attempt -- registered as watched nowhere (Apple's watched state comes
+  from play-history, not from a large position). The earlier belief that "iTunes
+  is not in the play-history graph (it 400s)" was a **misdiagnosis**: that 400
+  (`unable to fetch last episode id for episode's show`) came from marking a
+  *fully delisted* show (Treasure Quest, removed from the catalogue), whose show
+  no longer resolves -- not from any iTunes/play-history incompatibility. A
+  delisted title still 400s on play-history (its show is gone), but the position
+  clear still drops it from Continue Watching.
+
+The library layout is a setting: off, your **Your Films**/**Your TV Shows** plus
+a **Shared by X** folder per sharing member (empty ones hidden); on, everyone's
+shared purchases merge into single **Films**/**TV Shows** folders.
+
+### Delisted purchases now play (the MediaAPI offer, as the app does)
+
+Earlier sections leave a delisted owned title -- a whole delisted TV season, in
+the case that surfaced it -- as unplayable: it lists (reverse-lookup resolves
+every episode to a canonical id), but its UTS `/episodes/{id}` (and `/movies/{id}`)
+detail page returns **404 "Content Not Available"** on *every* caller (web,
+Android `vz`, Windows `wlk`), so the normal detail+assets path never reaches a
+redownload offer. That is now resolved, by copying what the Android app itself
+does.
+
+The Apple TV app's Library never loads that detail page to play an owned title.
+Each `/v1/me/purchases` row carries its redownload stream inline, on
+`attributes.personalizedOffers[0].hlsUrl`, and the app plays that url directly
+(its "play" vs "navigate" choice on a library tile turns on the url existing).
+That list still includes a delisted purchase, so the stream is reachable where
+the catalogue page is gone. Verified on device against a delisted,
+family-shared season -- the episode licenses (`status 0`) and plays:
+
+```
+Detail 404 for owned iTunes Episode umc.cmc.…; asking the store caller …
+MediaAPI purchases (episodes): 0 owned title(s)     ← your own library
+MediaAPI purchases (episodes): 15 owned title(s)    ← the sharing member
+Delisted play: redownload hlsUrl via MediaAPI purchases row
+License OK … Creating video codec: h264
+```
+
+So when the detail page 404s and the store id is in hand, the addon reads the
+redownload `hlsUrl` off the purchases row instead: a film from the flat owned
+list, an episode via its show (found through the reverse-lookup's `show_id`,
+since episodes have no flat route). Because the play link carries no family
+member, it searches owners in turn -- your own library first, then each sharing
+member -- so a family-shared delisted title resolves too. Matched by store id,
+so it only ever fetches for a title the account (or its family) already owns.
+
+## Brand tabs and channels (discovered, not hardcoded)
+
+The top-level brand tabs used to be a hardcoded tuple (Apple TV+, MLS, Formula
+1). They are now read live, and settling *where* from took ruling out the
+obvious-looking source.
+
+**The tab list is `/configurations`, `applicationProps.tabs`.** A capture of
+the web app's own navigation document lists exactly the brand tabs, each a
+`Brand` target with an id and a localised title:
+
+```
+GET tv.apple.com/api/uts/v3/configurations?caller=web&pfm=web&sfh=<storefront>&v=96
+  → data.applicationProps.tabs[]:
+      { title: "Apple TV",   target: { type: "Brand", id: "tvs.sbd.4000"   } }
+      { title: "Formula 1",  target: { type: "Brand", id: "tvs.sbd.241000" } }
+      { title: "MLS",        target: { type: "Brand", id: "tvs.sbd.7000"   } }
+```
+
+Verified across several HARs; the map never varied. The addon reads Brand
+targets from this and keeps its friendlier "Apple TV+" label for the originals
+brand (which Apple titles plainly "Apple TV"). A league Apple adds to its nav
+now appears with no code change, its name straight from Apple.
+
+**What is *not* the tab source: the `channels` map inside a canvas response.**
+`/canvases/channels/tvs.sbd.4000` carries a `channels` dict, but it is only a
+per-response lookup for channels the returned shelves reference — in every
+capture it held Apple TV+, iTunes and MLS, and **never** Formula 1. Reading
+brand tabs from it would silently drop F1.
+
+**And `/uts/v3/channels` is a different thing entirely.** The Android app's
+route table defines it (`getChannelsById` is its per-id sibling), so it was
+tried — answered as the Android (vz) caller with bearer + media-user-token, the
+same caller Continue Watching needs. A device run settled its shape: `data`
+holds a `channels` map of ~37 entries, and it is the **Apple TV Channels
+subscription catalogue** (Trailers, BBC Select, ALLBLK, Cinemax, MGM+, MUBI,
+Shudder, Paramount+, STARZ, BritBox, …), *not* the navigation — no MLS, no F1.
+So it is the wrong source for brand tabs, and listing it whole would fill the
+menu with 36 channels the account mostly cannot watch.
+
+It is, however, the right source for **the channels the account subscribes
+to.** Each channel object carries `isSubscribed` (confirmed from a live sample:
+its keys include `isSubscribed`, `isAppleTvPlus`, `isItunes`, `isMountainBrand`,
+`name`, `title`, `type`, …). The addon appends only `isSubscribed` channels to
+the brand tabs, so a subscribed add-on (Paramount+, say) shows and the rest do
+not. This also matches why an unsubscribed channel's title will not play: it
+resolves to an iTunes store playable with no `personalizedOffers` (Apple only
+offers to buy/rent it), so there is no stream — exactly the empty-offer path a
+Cinemax attempt fell through on an account not subscribed to it.
+
+Whether `isSubscribed` reflects real entitlement for this caller is checked
+rather than assumed: the addon logs `isSubscribed` for the Apple TV+ channel
+(one the account is known to hold), so a `true` there confirms an empty
+subscribed list is genuine and a `false` would expose a false negative.
+
+## Renting or buying a purchase (feasibility only — not implemented)
+
+The buy request is more constructable than the earlier store-sign-in wall
+suggested, and one earlier assumption about it was wrong. Recorded because the
+line between "possible" and "worth doing" sits in a specific place.
+
+**The body is already in hand.** An iTunes title's offer carries the exact
+`buyParams` a purchase POSTs, seen in a capture:
+
+```
+buyParams: productType=V&price=14990&salableAdamId=1805971117
+           &pricingParameters=HCSD&pg=default      (kind=buy, "$14.99")
+```
+
+A rental offer is the same shape with a rental pricing tier. The endpoint is
+Apple's own, named in `bag.xml`:
+
+```
+POST buy.itunes.apple.com/WebObjects/MZBuy.woa/wa/buyProduct
+```
+
+**Playback is not the blocker any more.** With the `-1020` lean-body fix an
+owned purchase plays through Kodi's Widevine CDM off the ordinary Apple TV+
+sign-in, so a *completed* purchase would be watchable here. (This corrects the
+earlier reasoning that a bought title still could not play.)
+
+**The blocker is the charge-authorisation handshake, in a realm the TV+ tokens
+do not reach.** `buy.itunes.apple.com` is the store-commerce realm: it does not
+accept the bearer + media-user-token that licenses playback. It needs a store
+session (`X-Dsid` + `X-Token` + `mz_at_ssl`) plus a device `guid` — and the app
+does not assemble any of this in JavaScript. `InAppPurchasing.js` calls the
+native StoreKit bridge, `InAppPurchases.purchase(ProductType, …)`, with auth
+dialogs; the native layer drives the `MZFinance.woa/wa/authenticate` password
+**+ two-factor** re-verification and returns the `passwordToken`/`kbsync` a
+charge is gated on. Reproducing that over raw HTTP is the same device/StoreKit
+identity work refused throughout — now on a live-money endpoint, where a wrong
+item or price has real cost.
+
+So a hand-built `buyProduct` could plausibly succeed in a happy path (password
+cached, no hard 2FA prompt) and the film would then play, but making it
+reliable means rebuilding Apple's password-+-2FA-+-`kbsync` authorisation. The
+feasible, safe shape of this feature is a **"Rent/Buy on Apple TV" deep link**
+that shows the offer price and hands the purchase to Apple's own flow; the
+in-addon charge path is deliberately left unimplemented.
