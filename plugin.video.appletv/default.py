@@ -82,10 +82,6 @@ S = {
     "featured": 32082,
     "continue_watching": 32060,
     "itunes_library": 32012,
-    "itunes_sign_in": 32070,
-    "itunes_sign_out": 32071,
-    "itunes_sign_in_ok": 32072,
-    "itunes_sign_in_failed": 32073,
     "films": 32077,
     "tv_shows": 32078,
     "shared_by": 32104,
@@ -354,12 +350,15 @@ def main_menu(auth):
     # MLB rides on Apple TV+ as an editorial room rather than a brand channel,
     # so it is listed here as a room instead of a CHANNELS entry.
     add_dir("MLB", "room", room_id=MLB_ROOM, channel_id=APPLE_TV_PLUS_CHANNEL)
-    store = ItunesStore(auth.session)
     # The account-wide resume row: personalised, so only when signed in to Apple
     # TV+. Unlike the per-tab Up Next, it mixes in iTunes films in progress.
     if auth.is_authenticated():
         add_dir(L("continue_watching"), "continue_watching")
-    if store.is_signed_in() or store.pasted_cookies() or auth.is_authenticated():
+    # The iTunes library (and purchase playback) now works off the ordinary
+    # Apple TV+ sign-in -- listing via the MediaAPI, the redownload offer via
+    # the store caller's dev token, and licensing with the bearer +
+    # media-user-token. No separate store login is required any more.
+    if auth.is_authenticated():
         add_dir(L("itunes_library"), "itunes")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
@@ -374,10 +373,6 @@ def main_menu(auth):
         add_dir(L("sign_out"), "sign_out")
     else:
         add_dir(L("sign_in"), "sign_in")
-    # The store is a separate service with its own login, so signing in to
-    # Apple TV+ does not sign in to it.
-    add_dir(L("itunes_sign_out") if store.is_signed_in() else L("itunes_sign_in"),
-            "itunes_sign_out" if store.is_signed_in() else "itunes_sign_in")
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -558,26 +553,6 @@ def do_show(api, show_id):
                 media_type="season", show_id=show_id, season=season["number"])
     xbmcplugin.setContent(HANDLE, "seasons")
     xbmcplugin.endOfDirectory(HANDLE)
-
-
-def do_itunes_sign_in(auth):
-    """Sign in to the store, which is not the Apple TV+ sign-in.
-
-    Apple takes the password directly here rather than through the SRP flow
-    the website uses, so this asks for it again rather than reusing anything.
-    """
-    apple_id = kodiutils.input_text(L("enter_apple_id"))
-    if not apple_id:
-        return
-    password = kodiutils.input_text(L("enter_password"), hidden=True)
-    if not password:
-        return
-    store = ItunesStore(auth.session)
-    if store.sign_in(apple_id, password):
-        kodiutils.notify(L("itunes_sign_in_ok"))
-    else:
-        kodiutils.ok_dialog("%s\n%s" % (L("itunes_sign_in_failed"),
-                                        store.last_error or ""))
 
 
 def do_itunes_library(api, auth):
@@ -1172,12 +1147,6 @@ def router(paramstring):
         show_items(api.get_featured())
     elif action == "continue_watching":
         show_items(api.get_continue_watching())
-    elif action == "itunes_sign_in":
-        do_itunes_sign_in(auth)
-        main_menu(auth)
-    elif action == "itunes_sign_out":
-        ItunesStore(auth.session).sign_out()
-        main_menu(auth)
     elif action == "itunes":
         do_itunes_library(api, auth)
     elif action == "itunes_movies":
