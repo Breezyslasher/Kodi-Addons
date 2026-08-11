@@ -2154,6 +2154,9 @@ class AppleTVApi(object):
             resume = entry.get("resume") or {}
             pos = resume.get("position") or 0
             total = resume.get("total") or 0
+            kodiutils.log("iTunes CW candidate: %r pos=%.0fs total=%.0fs "
+                          "recorded_at=%s" % (entry.get("title"), pos, total,
+                                              entry.get("recorded_at")))
             if pos > 30 and total and pos < total * 0.95:
                 in_progress.append(entry)
         # Order by when the position was last saved, newest first. mostRecent
@@ -2416,8 +2419,16 @@ class AppleTVApi(object):
             params = dict(base, limit=100, offset=offset)
             data = self._media_get(MEDIA_API_HOST, path, params, headers)
             rows = self._as_list((data or {}).get("data"))
+            # include[...]=playback-position returns the position resources in a
+            # top-level `included` array (JSON:API), with the row's relationship
+            # holding only a {type,id} linkage. Index them so _purchase_entry can
+            # resolve the resume point whichever way Apple returns it.
+            included = {}
+            for res in self._as_list((data or {}).get("included")):
+                if isinstance(res, dict) and res.get("id"):
+                    included[(res.get("type"), res.get("id"))] = res
             for row in rows:
-                entry = self._purchase_entry(row, kind)
+                entry = self._purchase_entry(row, kind, included)
                 if entry and entry["id"] not in seen:
                     seen.add(entry["id"])
                     items.append(entry)
@@ -2558,10 +2569,13 @@ class AppleTVApi(object):
             kodiutils.log_error("MediaAPI %s response was not JSON" % path)
             return None
 
-    def _purchase_entry(self, row, kind):
+    def _purchase_entry(self, row, kind, included=None):
         """One MediaAPI purchase row -> the addon's list entry.
 
-        kind is "movie", "tv" (a show) or "episodes" (an episode of a show)."""
+        kind is "movie", "tv" (a show) or "episodes" (an episode of a show).
+        included is the response's JSON:API `included` index {(type,id): res},
+        used to resolve the playback-position when it is returned there rather
+        than inline on the relationship."""
         if not isinstance(row, dict):
             return None
         attrs = row.get("attributes") or {}
@@ -2615,10 +2629,18 @@ class AppleTVApi(object):
         # first data entry. Kodi wants seconds and a total to draw the bar.
         rel = (row.get("relationships") or {}).get("playback-position") or {}
         pdata = self._as_list(rel.get("data"))
-        if pdata and duration:
-            pattrs = pdata[0].get("attributes") or {}
+        if pdata:
+            linkage = pdata[0] if isinstance(pdata[0], dict) else {}
+            # The position attributes are inline on the relationship for some
+            # responses and in the top-level `included` array for others; take
+            # whichever carries them.
+            pattrs = linkage.get("attributes") or {}
+            if not pattrs.get("positionInMilliseconds") and included:
+                res = included.get((linkage.get("type"), linkage.get("id")))
+                if isinstance(res, dict):
+                    pattrs = res.get("attributes") or pattrs
             pms = pattrs.get("positionInMilliseconds")
-            if pms:
+            if pms and duration:
                 entry["resume"] = {"position": pms / 1000.0,
                                    "total": float(duration)}
             # recordedAtTimestamp is when the position was last saved -- the
