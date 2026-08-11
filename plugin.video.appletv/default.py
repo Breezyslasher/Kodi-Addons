@@ -84,6 +84,8 @@ S = {
     "itunes_library": 32012,
     "films": 32077,
     "tv_shows": 32078,
+    "your_films": 32107,
+    "your_tv_shows": 32108,
     "shared_by": 32104,
     "season_n": 32105,
 }
@@ -508,6 +510,13 @@ def do_sign_in(auth, api):
         status = auth.submit_2fa_code(code)
 
     if status == STATUS_OK:
+        # Remember the Apple ID email: the account's own entry in the Family
+        # Sharing list carries it as accountName, so this is how we recognise
+        # (and hide) yourself there -- the API marks no self member otherwise.
+        try:
+            kodiutils.set_setting("account_email", account)
+        except Exception:
+            pass
         # Mint the media-user-token now, while the fresh myacinfo cookie is in
         # the session, so playback (a separate process) does not have to. This
         # must never break the sign-in result, so guard it.
@@ -576,13 +585,14 @@ def _library_purchases(api, kind):
 
 
 def do_itunes_library(api, auth):
-    """The library's sections: your films and TV, plus (unless the combined
-    setting is on) each family member who shares purchases -- the app's Family
-    Sharing view. Combined, Films and TV Shows list everyone's shared titles
-    together and the per-member folders are dropped."""
-    add_dir(L("films"), "itunes_movies")
-    add_dir(L("tv_shows"), "itunes_tv")
-    if not _combined_library():
+    """The library's sections. Combined, Films and TV Shows list everyone's
+    shared titles together. Otherwise they are your own, labelled "Your Films"/
+    "Your TV Shows" to set them apart from a folder per family member who shares
+    purchases (the app's Family Sharing view), with your own entry hidden."""
+    combined = _combined_library()
+    add_dir(L("films") if combined else L("your_films"), "itunes_movies")
+    add_dir(L("tv_shows") if combined else L("your_tv_shows"), "itunes_tv")
+    if not combined:
         for member in api.media_family_members():
             add_dir(L("shared_by") % member["name"], "itunes_family",
                     member_id=member["id"])
