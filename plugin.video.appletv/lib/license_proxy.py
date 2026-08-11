@@ -82,6 +82,16 @@ _ACTIVE_LEASES = []
 STREAM_LIMIT_STATUS = -1004
 _LAST_LIMIT_NOTICE = 0.0
 
+# An iTunes purchase's key is refused with -1020 when the streaming-keys object
+# carries fields Apple's own client does not send (svcId, isExternal, guid). The
+# proxy now sends the lean body Apple sends (adamId only, plus rental-id for a
+# rental), which is what clears it. A -1020 that survives that means a bad or
+# missing store session, or the title is not owned on this Apple ID -- shown to
+# the user plainly rather than as a generic DRM error. Throttled like the
+# stream-limit notice. (See docs/itunes-library.md.)
+ITUNES_KEYBAG_STATUS = -1020
+_LAST_ITUNES_NOTICE = 0.0
+
 
 def _warn_stream_limit():
     global _LAST_LIMIT_NOTICE
@@ -93,6 +103,18 @@ def _warn_stream_limit():
         kodiutils.notify(kodiutils.localize(32097), time_ms=8000)
     except Exception as exc:
         kodiutils.log_error("Could not show streaming-limit notice: %s" % exc)
+
+
+def _warn_itunes_keybag():
+    global _LAST_ITUNES_NOTICE
+    now = time.monotonic()
+    if now - _LAST_ITUNES_NOTICE < 20:
+        return
+    _LAST_ITUNES_NOTICE = now
+    try:
+        kodiutils.notify(kodiutils.localize(32103), time_ms=9000)
+    except Exception as exc:
+        kodiutils.log_error("Could not show iTunes DRM notice: %s" % exc)
 
 
 def release_leases(timeout=15):
@@ -564,6 +586,11 @@ class _Handler(BaseHTTPRequestHandler):
         ctx = _context()
         bearer = ctx.get("bearer")
         mut = ctx.get("media_user_token")
+        # An iTunes purchase now licenses with the Apple TV+ pair (bearer +
+        # media-user-token) and the lean key body, the same identity TV+ uses --
+        # proven by an owned title reaching "License OK" with no store session
+        # pasted. So the pair is required here too; only the debug manifest
+        # override, which supplies its own stream, is exempt.
         if (not bearer or not mut) and not ctx.get("override"):
             kodiutils.log_error("License proxy missing bearer/media-user-token")
             return None
@@ -612,6 +639,10 @@ class _Handler(BaseHTTPRequestHandler):
                          sorted((ctx.get("fps_params") or {}).keys()) or "none"))
 
         url = ctx.get("license_server") or FPS_URL
+        # Everything -- Apple TV+, sports and iTunes purchases alike -- licenses
+        # with the Apple TV+ identity (bearer + media-user-token) and the lean
+        # key body. A purchase reaches "License OK" on this pair with no store
+        # session, so there is no separate store-identity path.
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
@@ -640,13 +671,27 @@ class _Handler(BaseHTTPRequestHandler):
             # verbatim; otherwise keep the VOD-shaped fields exactly as before
             # (a VOD adamId comes from assetAdamId, not necessarily these params).
             fps_params = ctx.get("fps_params") or {}
-            if fps_params.get("service-id") or fps_params.get("reference-id"):
+            if ctx.get("itunes"):
+                # An iTunes purchase licenses with the exact lean key object
+                # Apple's own client sends: {id, uri, lease-action, key-system,
+                # adamId, challenge} (plus rental-id for a rental). The purchase
+                # key server (tvs.vds.9023) returns -1020 when the streaming-keys
+                # object carries extra fields it does not expect -- sending
+                # svcId, isExternal or guid earns the refusal even though the
+                # session, ownership and challenge are all valid. Add only
+                # adamId (and rental-id) and nothing else.
+                if ctx.get("adam_id"):
+                    key["adamId"] = ctx.get("adam_id")
+                if ctx.get("rental_id"):
+                    key["rental-id"] = ctx.get("rental_id")
+            elif fps_params.get("service-id") or fps_params.get("reference-id"):
                 key.update(fps_params)
             else:
                 key["adamId"] = ctx.get("adam_id", "")
                 key["isExternal"] = bool(ctx.get("is_external", True))
                 key["svcId"] = ctx.get("svc_id", "")
-            envelope = {"streaming-request": {"version": 1, "streaming-keys": [key]}}
+            request = {"version": 1, "streaming-keys": [key]}
+            envelope = {"streaming-request": request}
             resp = requests.post(url, data=json.dumps(envelope), headers=headers, timeout=30)
             if resp.status_code != 200:
                 last_error = "HTTP %s %s" % (resp.status_code, resp.text[:150])
@@ -658,8 +703,21 @@ class _Handler(BaseHTTPRequestHandler):
                 continue
             if not keys or "license" not in keys[0]:
                 status = keys[0].get("status") if keys else None
-                last_error = "no licence in response (status=%s)" % status
                 last_status = status
+                # -1020 is the FairPlay key server's answer to a request that
+                # authenticated but carries no device keybag (kbsync): the
+                # session was accepted (HTTP 200, not the 403 an expired one
+                # gets) and the key was still refused. For a purchase this is
+                # the final wall -- the keybag is a native Apple-device
+                # attestation that cannot be produced off the device.
+                if status == -1020:
+                    last_error = ("status -1020: purchase key server refused. "
+                                  "The lean key body (adamId only) is what Apple "
+                                  "sends; a surviving -1020 means a bad/missing "
+                                  "store session or the title is not owned on "
+                                  "this Apple ID")
+                else:
+                    last_error = "no licence in response (status=%s)" % status
                 # Read Apple's own answer rather than infer from the status
                 # number: on the first miss, log the full response body and the
                 # exact key parameters sent, and the KID this attempt was for.
@@ -685,6 +743,10 @@ class _Handler(BaseHTTPRequestHandler):
                             % (len(candidates), last_error))
         if last_status == STREAM_LIMIT_STATUS:
             _warn_stream_limit()
+        elif last_status == ITUNES_KEYBAG_STATUS and ctx.get("itunes"):
+            # An owned iTunes title still refused after the lean-body request:
+            # point at the store session / ownership rather than a generic error.
+            _warn_itunes_keybag()
         return None
 
 

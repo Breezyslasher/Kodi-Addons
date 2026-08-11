@@ -10,7 +10,7 @@ import xbmcplugin
 
 from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA
-from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
+from lib.api import (AppleTVApi, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
                      MLB_ROOM, PLAYBACK_REPORT_CACHE)
 
 HANDLE = int(sys.argv[1])
@@ -78,6 +78,17 @@ S = {
     "spotlight": 32067,
     "race_weekend": 32068,
     "cast": 32069,
+    "featured": 32082,
+    "continue_watching": 32060,
+    "itunes_library": 32012,
+    "films": 32077,
+    "tv_shows": 32078,
+    "your_films": 32107,
+    "your_tv_shows": 32108,
+    "genres": 32113,
+    "rentals": 32114,
+    "shared_by": 32104,
+    "season_n": 32105,
 }
 
 
@@ -89,7 +100,7 @@ def url(**kwargs):
     return "%s?%s" % (BASE_URL, urlencode(kwargs))
 
 
-def extras_context_menu(item, item_id, item_type):
+def extras_context_menu(item, item_id, item_type, entry=None):
     """Context-menu entries that play a title's trailers and bonus features."""
     item.addContextMenuItems([
         (L("play_trailer"), "RunPlugin(%s)" % url(
@@ -100,18 +111,59 @@ def extras_context_menu(item, item_id, item_type):
             action="related", item_id=item_id)),
         (L("cast"), "Container.Update(%s)" % url(
             action="cast", item_id=item_id, item_type=item_type)),
-    ] + watchlist_menu_items(item_id) + [mark_watched_menu_item(item_id)])
+    ] + watchlist_menu_items(item_id) + [mark_watched_menu_item(item_id, entry)])
 
 
-def mark_watched_menu_item(item_id):
-    """Mark a title watched on the Apple account (POST /play-history).
+def mark_watched_menu_item(item_id, entry=None):
+    """Mark a title watched on the Apple account.
 
     Kodi's own "Mark as watched" only sets its local flag; this tells Apple, so
     the title counts as watched on your other devices and leaves Continue
     Watching. Marking unwatched is not offered -- it was not captured.
+
+    Every title records this with POST /play-history, keyed by its canonical id
+    (the app's markItemAsWatched) -- an iTunes purchase included, since it
+    resolves to a canonical umc id like everything else. An iTunes purchase also
+    carries its store id, so the action can clear its resume point to zero (the
+    app's second call) and drop it out of Continue Watching.
     """
+    params = {"item_id": item_id}
+    if entry and entry.get("itunes") and entry.get("adam_id") \
+            and str(entry.get("type")) in ("Movie", "Episode"):
+        params["itunes"] = "1"
+        params["adam_id"] = str(entry["adam_id"])
+        params["item_type"] = str(entry.get("type") or "Movie")
+    # The item's own play path, rebuilt exactly as add_playable lays it out, so
+    # the action can clear Kodi's local resume bookmark for it -- Apple clears
+    # its position when a title is marked watched, but a bar Kodi cached from an
+    # earlier in-Kodi playback would otherwise linger.
+    if entry:
+        play_kwargs = {"item_id": item_id,
+                       "item_type": str(entry.get("type") or "Movie")}
+        if entry.get("external_id"):
+            play_kwargs["external_id"] = str(entry["external_id"])
+        params["play_path"] = url(action="play", **play_kwargs)
     return (L("mark_watched"), "RunPlugin(%s)" % url(
-        action="mark_watched", item_id=item_id))
+        action="mark_watched", **params))
+
+
+def clear_local_resume(path):
+    """Clear Kodi's own stored resume point for a plugin item and mark it
+    watched locally, so a title just marked watched on Apple stops showing a
+    progress bar Kodi cached from an earlier in-Kodi playback.
+
+    Uses Files.SetFileDetails (Kodi 20+); older Kodi lacks the method, so this
+    is best-effort and silently skips when it is not available.
+    """
+    if not path:
+        return
+    req = {"jsonrpc": "2.0", "id": 1, "method": "Files.SetFileDetails",
+           "params": {"file": path, "media": "video", "playcount": 1,
+                      "resume": {"position": 0, "total": 0}}}
+    try:
+        xbmc.executeJSONRPC(json.dumps(req))
+    except Exception as exc:
+        kodiutils.log("clear_local_resume skipped: %s" % exc)
 
 
 def watchlist_menu_items(item_id):
@@ -144,7 +196,10 @@ def apply_entry_info(tag, entry):
         except (TypeError, ValueError, AttributeError, KeyError):
             pass
     if entry.get("plot"):
-        tag.setPlot(entry["plot"])
+        try:
+            tag.setPlot(entry["plot"])
+        except (TypeError, ValueError, AttributeError):
+            pass
     if entry.get("year"):
         try:
             tag.setYear(int(entry["year"]))
@@ -268,7 +323,7 @@ def add_playable(entry, cast=None):
     # Episodes and sporting events carry no extras shelves of their own, but
     # anything playable can go on the watchlist.
     if kind in ("Movie", "Show", "Vod", "MovieBundle"):
-        extras_context_menu(item, entry["id"], kind)
+        extras_context_menu(item, entry["id"], kind, entry)
     elif kind == "SportingEvent":
         # A match links to the other games in its league, and to its two clubs.
         sport = entry.get("sport")
@@ -299,11 +354,11 @@ def add_playable(entry, cast=None):
              # Only Motorsports fixtures have a weekend of sessions.
              if sport == "Motorsports" else [])
           + watchlist_menu_items(entry["id"])
-          + [mark_watched_menu_item(entry["id"])])
+          + [mark_watched_menu_item(entry["id"], entry)])
     elif kind == "Episode":
         # An episode takes no watchlist (Apple lists films, shows and fixtures
         # only), but it can be marked watched on the account.
-        item.addContextMenuItems([mark_watched_menu_item(entry["id"])])
+        item.addContextMenuItems([mark_watched_menu_item(entry["id"], entry)])
     # Everything else -- the sports clip types that carry their stream inline --
     # gets no watchlist entry: Apple's watchlist takes films, shows and fixtures
     # only, which is what every captured write sends, so offering it on an
@@ -329,14 +384,29 @@ def add_playable(entry, cast=None):
 
 # -- menus ---------------------------------------------------------------
 
-def main_menu(auth):
-    # One entry per brand tab along the top of tv.apple.com's home page.
-    for channel_id, name in CHANNELS:
+def main_menu(auth, api):
+    # The featured Apple Originals hero shelf, as the TV app leads with it.
+    add_dir(L("featured"), "featured")
+    # One entry per brand tab along the top of tv.apple.com's home page. The
+    # list is read live from Apple's own nav (get_channels) rather than
+    # hardcoded, so a brand Apple adds -- a new league, say -- shows up without
+    # a code change; it falls back to the built-in brands if that read fails.
+    for channel_id, name in api.get_channels():
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
         add_dir(label, "channel", channel_id=channel_id)
     # MLB rides on Apple TV+ as an editorial room rather than a brand channel,
     # so it is listed here as a room instead of a CHANNELS entry.
     add_dir("MLB", "room", room_id=MLB_ROOM, channel_id=APPLE_TV_PLUS_CHANNEL)
+    # The account-wide resume row: personalised, so only when signed in to Apple
+    # TV+. Unlike the per-tab Up Next, it mixes in iTunes films in progress.
+    if auth.is_authenticated():
+        add_dir(L("continue_watching"), "continue_watching")
+    # The iTunes library (and purchase playback) now works off the ordinary
+    # Apple TV+ sign-in -- listing via the MediaAPI, the redownload offer via
+    # the store caller's dev token, and licensing with the bearer +
+    # media-user-token. No separate store login is required any more.
+    if auth.is_authenticated():
+        add_dir(L("itunes_library"), "itunes")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
         # Not a folder. do_play answers with setResolvedUrl, which Kodi only
@@ -378,7 +448,14 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
 def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL, cast=None):
     """Add a catalogue entry: shows and rooms are folders, the rest play."""
     kind = str(entry.get("type"))
-    if kind == "Show":
+    if kind == "Show" and entry.get("itunes"):
+        # An owned show opens to the episodes you own (via the MediaAPI
+        # tv-episodes filter), not the whole catalogue show.
+        add_dir(entry["title"], "itunes_show", art=entry.get("art"),
+                info=entry, media_type="tvshow",
+                show_id=entry.get("adam_id") or entry["id"],
+                member_id=entry.get("member_id") or "")
+    elif kind == "Show":
         add_dir(entry["title"], "show", art=entry.get("art"),
                 extras_for=(entry["id"], "Show"), info=entry,
                 media_type="tvshow", show_id=entry["id"])
@@ -478,6 +555,13 @@ def do_sign_in(auth, api):
         status = auth.submit_2fa_code(code)
 
     if status == STATUS_OK:
+        # Remember the Apple ID email: the account's own entry in the Family
+        # Sharing list carries it as accountName, so this is how we recognise
+        # (and hide) yourself there -- the API marks no self member otherwise.
+        try:
+            kodiutils.set_setting("account_email", account)
+        except Exception:
+            pass
         # Mint the media-user-token now, while the fresh myacinfo cookie is in
         # the session, so playback (a separate process) does not have to. This
         # must never break the sign-in result, so guard it.
@@ -523,6 +607,212 @@ def do_show(api, show_id):
                 media_type="season", show_id=show_id, season=season["number"])
     xbmcplugin.setContent(HANDLE, "seasons")
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def _combined_library():
+    """Setting: fold every family member's shared purchases into one Films/TV
+    Shows library, rather than a folder per member."""
+    return kodiutils.get_setting_bool("itunes_library_combined", False)
+
+
+def _library_purchases(api, kind, genre=None):
+    """Owned titles of one kind, plus -- when the combined-library setting is on
+    -- every sharing family member's, merged and de-duplicated by id. An
+    optional genre filters both."""
+    items = api.media_purchases(kind, genre=genre)
+    if _combined_library():
+        seen = {it.get("id") for it in items}
+        for member in api.media_family_members():
+            for it in api.media_purchases(kind, family_member=member["id"],
+                                          genre=genre):
+                if it.get("id") not in seen:
+                    seen.add(it.get("id"))
+                    items.append(it)
+    return items
+
+
+def _library_genres(api):
+    """The genres across your library, plus every sharing member's when the
+    combined-library setting is on, de-duplicated by id."""
+    genres = list(api.media_genres())
+    if _combined_library():
+        seen = {g.get("id") for g in genres}
+        for member in api.media_family_members():
+            for g in api.media_genres(family_member=member["id"]):
+                if g.get("id") not in seen:
+                    seen.add(g.get("id"))
+                    genres.append(g)
+    return genres
+
+
+def _has_purchases(api, kind, member_id=None):
+    """Cheap one-page probe: is there any title of this kind (yours, or a family
+    member's when member_id is given)? Skips the reverse-lookup enrichment the
+    full listing does, so it is only used to decide folder visibility."""
+    return bool(api.media_purchases(kind, family_member=member_id,
+                                    max_pages=1, enrich=False))
+
+
+def _library_has(api, kind, members=None):
+    """Would the Films/TV Shows folder have anything in it? In combined mode a
+    sharing member's copy counts too, so the folder is not hidden when only they
+    own the kind."""
+    if _has_purchases(api, kind):
+        return True
+    if _combined_library():
+        for member in (members if members is not None
+                       else api.media_family_members()):
+            if _has_purchases(api, kind, member["id"]):
+                return True
+    return False
+
+
+def _member_shares_anything(api, member_id):
+    """Whether a family member shares any film or show with this account, so an
+    empty 'Shared by' folder is not shown."""
+    return (_has_purchases(api, "movie", member_id)
+            or _has_purchases(api, "tv", member_id))
+
+
+def do_itunes_library(api, auth):
+    """The library's sections. Combined, Films and TV Shows list everyone's
+    shared titles together. Otherwise they are your own, labelled "Your Films"/
+    "Your TV Shows" to set them apart from a folder per family member who shares
+    purchases (the app's Family Sharing view), with your own entry hidden."""
+    combined = _combined_library()
+    members = api.media_family_members()
+    # Only show a Films / TV Shows folder when there is something in it, so an
+    # account that owns only films (or only shows) is not given an empty folder.
+    if _library_has(api, "movie", members):
+        add_dir(L("films") if combined else L("your_films"), "itunes_movies")
+    if _library_has(api, "tv", members):
+        add_dir(L("tv_shows") if combined else L("your_tv_shows"), "itunes_tv")
+    # Browse your films by genre, and active rentals -- each only when there is
+    # something behind it (the app's genre and rental library views).
+    if _has_purchases(api, "movie"):
+        add_dir(L("genres"), "itunes_genres")
+    if _has_purchases(api, "rental"):
+        add_dir(L("rentals"), "itunes_rentals")
+    if not combined:
+        for member in members:
+            # Skip a member who shares nothing you can see, so their folder does
+            # not open onto an empty library.
+            if _member_shares_anything(api, member["id"]):
+                add_dir(L("shared_by") % member["name"], "itunes_family",
+                        member_id=member["id"])
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_genres(api):
+    """The genres in your film library (and family-shared, when combined); each
+    opens its films."""
+    genres = _library_genres(api)
+    if not genres:
+        kodiutils.notify(L("no_results"))
+    for genre in genres:
+        add_dir(genre["name"], "itunes_genre", genre_id=genre["id"])
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_genre(api, genre_id):
+    """Films of one genre -- yours, plus family-shared when combined."""
+    show_items(_library_purchases(api, "movie", genre=genre_id))
+
+
+def do_itunes_rentals(api):
+    """Your active iTunes rentals (films)."""
+    items = api.media_purchases("rental")
+    if not items:
+        kodiutils.notify(L("no_results"))
+    show_items(items)
+
+
+def do_itunes_family(api, member_id):
+    """A family member's shared library: Films and TV Shows, kept apart like
+    your own library -- and each shown only when they share that kind. Films can
+    also be browsed by genre, the same as your own library, when Apple returns
+    keyed genres for their shared purchases."""
+    if _has_purchases(api, "movie", member_id):
+        add_dir(L("films"), "itunes_family_movies", member_id=member_id)
+    if _has_purchases(api, "tv", member_id):
+        add_dir(L("tv_shows"), "itunes_family_tv", member_id=member_id)
+    # Genres come from the same /v1/me/purchases/genres call with the member's
+    # filter[owner]; show the folder only when that returns genres with ids, so
+    # a member whose shared library yields none is not given an empty folder.
+    if api.media_genres(family_member=member_id):
+        add_dir(L("genres"), "itunes_family_genres", member_id=member_id)
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_family_movies(api, member_id):
+    show_items(api.media_purchases("movie", family_member=member_id))
+
+
+def do_itunes_family_tv(api, member_id):
+    show_items(api.media_purchases("tv", family_member=member_id),
+               content="tvshows")
+
+
+def do_itunes_family_genres(api, member_id):
+    """The genres in one family member's shared film library; each opens their
+    films of that genre."""
+    genres = api.media_genres(family_member=member_id)
+    if not genres:
+        kodiutils.notify(L("no_results"))
+    for genre in genres:
+        add_dir(genre["name"], "itunes_family_genre",
+                member_id=member_id, genre_id=genre["id"])
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_family_genre(api, member_id, genre_id):
+    """One genre of a family member's shared films."""
+    show_items(api.media_purchases("movie", family_member=member_id,
+                                   genre=genre_id))
+
+
+def do_itunes_show(api, show_id, member_id=None, season=None):
+    """The episodes of an owned show that the account (or a family member)
+    actually owns, via the MediaAPI tv-episodes filter.
+
+    A show with more than one owned season opens to a folder per season; a
+    single-season show (or a chosen season) lists its episodes directly.
+    """
+    episodes = api.media_purchases("episodes", show_id=show_id,
+                                   family_member=member_id)
+    seasons = sorted({e.get("season") for e in episodes
+                      if e.get("season") is not None})
+    if season is None and len(seasons) > 1:
+        for s in seasons:
+            count = sum(1 for e in episodes if e.get("season") == s)
+            add_dir(L("season_n") % s, "itunes_show", media_type="season",
+                    show_id=show_id, member_id=member_id or "", season=str(s))
+        xbmcplugin.setContent(HANDLE, "seasons")
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+    if season is not None:
+        episodes = [e for e in episodes if str(e.get("season")) == str(season)]
+    show_items(episodes, content="episodes")
+
+
+def do_itunes_movies(api, auth):
+    """Films the account owns, from the MediaAPI /v1/me/purchases route (the
+    Apple TV app's own Library call) -- the ordinary Apple TV+ bearer +
+    media-user-token, no store session."""
+    items = _library_purchases(api, "movie")
+    if not items:
+        kodiutils.notify(L("no_results"))
+    show_items(items)
+
+
+def do_itunes_tv(api, auth):
+    """Owned television as a flat list of shows, from the MediaAPI route -- the
+    ordinary Apple TV+ session, no store session. An owned show opens to the
+    episodes you own via do_itunes_show."""
+    shows = _library_purchases(api, "tv")
+    if not shows:
+        kodiutils.notify(L("no_results"))
+    show_items(shows, content="tvshows")
 
 
 def do_search(api):
@@ -672,7 +962,7 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
         return
 
     kodiutils.notify(L("sd_notice"))
-    write_report_context(playback, content_id=item_id)
+    write_report_context(playback, content_id=item_id, item_type=item_type)
     play_item = build_isa_listitem(playback)
     if is_live:
         # A live game starts where the menu said (live edge, from start, catch
@@ -730,7 +1020,8 @@ def apply_title_info(item, info):
             pass
 
 
-def write_report_context(playback, duration=None, content_id=None):
+def write_report_context(playback, duration=None, content_id=None,
+                         item_type=None):
     """Leave the service what it needs to report this stream to Apple.
 
     Playback runs in a different process from this one, so the ids that mint
@@ -744,9 +1035,11 @@ def write_report_context(playback, duration=None, content_id=None):
         # Also what Continue Watching sends as its playerContentId.
         report["content_id"] = content_id
     if playback.get("adam_id"):
-        # A purchase reports to the store's key-value bookkeeper instead of
-        # the now-playing service, and is keyed by its store id.
+        # A purchase reports its resume point to the MediaAPI playback-positions
+        # endpoint (not the now-playing service), keyed by its store id; the
+        # item type chooses the movies vs tv-episodes path.
         report["adam_id"] = playback["adam_id"]
+        report["item_type"] = item_type or "Movie"
     kodiutils.write_json(PLAYBACK_REPORT_CACHE, report)
 
 
@@ -828,11 +1121,38 @@ def do_watchlist(api, item_id, add):
         kodiutils.ok_dialog(L("watchlist_failed"))
 
 
-def do_mark_watched(api, item_id):
-    """Context-menu action: mark a title watched on the Apple account."""
-    if not item_id:
+def do_mark_watched(api, params):
+    """Context-menu action: mark a title watched on the Apple account.
+
+    Mirrors what the Apple TV app does (app.js MarkAsWatched): it POSTs the
+    title's canonical id to play-history (markItemAsWatched) -- the record that
+    actually marks it watched across devices -- and, for a title that also
+    carries a store/external id (an iTunes purchase), clears its resume point to
+    zero so it leaves Continue Watching. An iTunes purchase resolves to a
+    canonical umc id like everything else, so the same play-history POST works
+    for it; the earlier per-purchase position-at-the-end write did not register
+    as watched anywhere (it wrote a position, never the watched record).
+    """
+    item_id = params.get("item_id")
+    ok = False
+    # The watched record: canonical id -> play-history, for iTunes purchases too.
+    if item_id:
+        ok = api.set_watched(item_id)
+    # An iTunes purchase additionally clears its resume to 0 (keyed by the store
+    # id), the app's second call, so it drops out of Continue Watching.
+    if params.get("itunes") == "1" and params.get("adam_id"):
+        cleared = api.report_playback_position(
+            params["adam_id"], params.get("item_type") or "Movie", 0.0,
+            finished=True)
+        ok = ok or cleared
+    if not item_id and not (params.get("itunes") == "1"
+                            and params.get("adam_id")):
         return
-    if api.set_watched(item_id):
+    if ok:
+        # Also drop Kodi's own resume bookmark for the item (and tick it watched
+        # locally), so the progress bar clears without waiting on the next Apple
+        # read -- and even if Kodi had cached a bar of its own.
+        clear_local_resume(params.get("play_path"))
         kodiutils.notify(L("watched_marked"))
         # Marking watched removes the title from Apple's Continue Watching, so
         # reload the screen to reflect it without leaving the tab first.
@@ -942,7 +1262,7 @@ def router(paramstring):
     api = AppleTVApi(auth)
 
     if not action:
-        main_menu(auth)
+        main_menu(auth, api)
     elif action == "originals":
         show_shelves(api, api.get_originals_shelves())
     elif action == "channel":
@@ -966,7 +1286,7 @@ def router(paramstring):
     elif action == "watchlist":
         do_watchlist(api, params.get("item_id"), params.get("on") == "1")
     elif action == "mark_watched":
-        do_mark_watched(api, params.get("item_id"))
+        do_mark_watched(api, params)
     elif action == "related":
         show_items(api.get_related(params.get("item_id"),
                                    params.get("league") or None))
@@ -995,6 +1315,36 @@ def router(paramstring):
         show_items(api.get_show_episodes(show_id, season=params.get("season")),
                    content="episodes",
                    cast=api.get_cast(show_id, "Show"))
+    elif action == "featured":
+        show_items(api.get_featured())
+    elif action == "continue_watching":
+        show_items(api.get_continue_watching())
+    elif action == "itunes":
+        do_itunes_library(api, auth)
+    elif action == "itunes_movies":
+        do_itunes_movies(api, auth)
+    elif action == "itunes_tv":
+        do_itunes_tv(api, auth)
+    elif action == "itunes_genres":
+        do_itunes_genres(api)
+    elif action == "itunes_genre":
+        do_itunes_genre(api, params.get("genre_id"))
+    elif action == "itunes_rentals":
+        do_itunes_rentals(api)
+    elif action == "itunes_family":
+        do_itunes_family(api, params.get("member_id"))
+    elif action == "itunes_family_movies":
+        do_itunes_family_movies(api, params.get("member_id"))
+    elif action == "itunes_family_tv":
+        do_itunes_family_tv(api, params.get("member_id"))
+    elif action == "itunes_family_genres":
+        do_itunes_family_genres(api, params.get("member_id"))
+    elif action == "itunes_family_genre":
+        do_itunes_family_genre(api, params.get("member_id"),
+                               params.get("genre_id"))
+    elif action == "itunes_show":
+        do_itunes_show(api, params.get("show_id"), params.get("member_id"),
+                       params.get("season"))
     elif action == "search":
         do_search(api)
     elif action == "play":
@@ -1011,14 +1361,14 @@ def router(paramstring):
                   params.get("kind", "trailers"))
     elif action == "sign_in":
         do_sign_in(auth, api)
-        main_menu(auth)
+        main_menu(auth, api)
     elif action == "sign_out":
         do_sign_out(auth, api)
-        main_menu(auth)
+        main_menu(auth, api)
     elif action == "debug_play":
         do_play(api, "debug", "Movie")
     else:
-        main_menu(auth)
+        main_menu(auth, api)
 
 
 if __name__ == "__main__":
