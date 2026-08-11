@@ -134,10 +134,15 @@ docker build -t kodi-watchparty-relay . && docker run -d -p 8765:8765 --restart 
   buffering / locked / no-poll states, relay health (poll round-trip,
   commands per minute, corrective seeks) and other rooms. It keeps the
   last good snapshot on screen if the relay goes away, and reads fine on
-  a phone. `/status.json` serves the same data as JSON.
-  Room codes are masked there by default since they double as the
-  access tokens — set `WATCHPARTY_SHOW_CODES=1` to show them in full
-  on a private deployment. `/status.json` serves the same data as JSON.
+  a phone. Cover art is uploaded to the relay by whoever started the item
+  and served from there, so it shows even when the artwork lives on a
+  media server the viewer cannot reach — and it keeps its own shape,
+  square for music covers, tall for posters.
+  Room codes are masked by default since they double as the access
+  token — set `WATCHPARTY_SHOW_CODES=1` to show them in full on a
+  private deployment. Media-server credentials are stripped from every
+  URL the dashboard and `/status.json` publish, on both the addon and
+  the relay, so a token never reaches the page.
   The embedded in-Kodi relay serves the same dashboard for its room
   (`http://kodi-ip:8765/status`) — handy on a phone while hosting.
 
@@ -184,6 +189,22 @@ copy.
 - With the embedded relay, the party lives in the hosting Kodi — if the
   host quits, the party ends. A standalone relay keeps the room alive
   independently of any member.
+
+## Testing
+
+Two checklists ship as issue templates, so each pass is recorded and
+linkable: *Smoke Test — Watch Party* (47 checks, ~20 min, run it after
+every change) and *Testing Checklist — Watch Party* (434 checks, for
+releases). [`TESTING.md`](TESTING.md) is the companion: rig, suggested
+order, where bugs are most likely, and what is a known limit rather than
+a bug. Problems go in the *Watch Party — bug report* template.
+
+The automated suite (relay protocol + engine decision logic, no Kodi
+needed) runs on every PR:
+
+```
+python3 -m unittest discover service.watchparty/tests
+```
 
 ## Requirements
 

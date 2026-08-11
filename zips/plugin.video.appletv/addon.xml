@@ -1,0 +1,475 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.11" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="22.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, live sports and your iTunes movie and TV library, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+
+Features:
+* Apple ID sign-in with two-factor authentication
+* Browse Apple TV+ Originals (shows and movies)
+* Live sports: MLS, Formula 1 and MLB
+* Browse your iTunes purchased/rented movie and TV library
+* Search the Apple TV catalogue
+* Widevine playback via InputStream Adaptive</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>
+2026.8.10 - iTunes library is back
+- The iTunes movie and TV library returns, on top of all the Apple TV+ and
+  live-sports work: your purchased/rented films and shows list under "My iTunes
+  Library", grouped into Films and TV Shows (television by season), with resume
+  points where the store knows them. It has its own sign-in, separate from
+  Apple TV+, and can also use a pasted store session.
+- Purchase playback asks Apple's store/Android licence path for a redownload
+  and reports the exact reason if it is refused. Note the standing wall: an
+  iTunes purchase's key server needs a device keybag Apple issues only to its
+  own hardware, so purchase *playback* may still be blocked even though the
+  library lists and resolves; browsing and naming work regardless.
+- Search can include the store again: with "Search Apple TV+ only" turned off,
+  search returns titles that exist only as purchases (Green Book, Oppenheimer,
+  ...), not just Apple TV+ originals. It stays on by default, since a purchase
+  may not play past the keybag wall.
+- Playing an iTunes purchase now shows a plain message instead of a generic DRM
+  error. The purchase streams over Widevine (as Apple's own Android app plays
+  it), but the key server refuses it (status -1020) without a device keybag its
+  client apps attach, which this add-on cannot reproduce.
+- Experimental: the redownload stream is now fetched as the Android TV app
+  (caller=vz), matching the identity the licence request uses, instead of as the
+  Windows desktop client. Paste a fresh Android (mz_at_ssl) session to test
+  whether the coherent Android path licenses where the mixed one did not.
+- The account-wide Continue Watching row is back, and the Featured hero row: the
+  cross-service resume list (which mixes in iTunes films in progress, unlike the
+  per-tab Up Next) and the "Apple Original Shows and Movies" shelf both return
+  to the home screen.
+- The iTunes library locker now also tries the Android (mz_at_ssl) session, not
+  only the store-page one, so a single pasted session can populate both Continue
+  Watching and the library instead of 403-ing the library.
+- The iTunes library now lists via the Apple TV app's own MediaAPI route
+  (/v1/me/purchases, types=movies / tv-shows), read off the app's LibraryPage
+  code. It authenticates with the ordinary Apple TV+ sign-in (bearer +
+  media-user-token), so films and shows you own list with no store-page or
+  Android session needed at all -- the website has no library tab, but this is
+  the call the app makes.
+- Family Sharing in the library: each family member who shares purchases is
+  listed (the app's /v1/me/purchases/shared/members call), and opening one shows
+  their shared films -- same Apple TV+ session, no store login.
+- FIX: a film whose MediaAPI description came back as an object rather than a
+  string crashed the whole library list; the plot is now read correctly and can
+  never break the listing.
+- Library titles now resolve to their canonical id (as the app does), so a
+  purchased film carries its trailers, bonus features, cast and the normal play
+  path -- and resumes where you left off, via the app's playback-positions call
+  (/v1/me/playback/positions). All on the ordinary Apple TV+ session.
+2026.8.10 - Subtitles: a steady 10-second sync
+- FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
+  both films and shows (the previous per-title guess got some titles wrong).
+  A new "Subtitle delay in seconds" setting lets you trim it if you ever need
+  a different value.
+2026.8.10 - Subtitles: every language, and synced on every title
+- All of Apple's subtitle languages are now fetched, not just yours and
+  English (in parallel, so it stays quick). Turn it back to two in settings if
+  you prefer.
+- FIX: the timing shift is now read from each title's own video, so subtitles
+  line up whether a title needs a 10-second offset (some shows) or none
+  (some films) -- one build had synced one and not the other.
+2026.8.10 - One subtitle entry per language, not two
+- The blank subtitle tracks InputStream Adaptive lists for on-demand titles
+  (Apple's WebVTT, which it cannot render) are now removed from the stream, so
+  each language shows once -- the working fetched copy -- instead of twice.
+  The fetched tracks are your Kodi language and English; other languages,
+  which never displayed anyway, are no longer listed.
+2026.8.10 - "Key Plays" only while a game is live
+- Key Plays are a live game's moments so far, to catch up on during the
+  broadcast. A finished game has Highlights instead, so Key Plays now shows
+  only while a game is actually airing -- not on finished games or races.
+2026.8.10 - Subtitle timing
+- Subtitles were running early because Apple's timing map (X-TIMESTAMP-MAP)
+  was dropped when the track was saved. That offset is now applied to the cue
+  times, so subtitles line up with the video. If any are still out, it is a
+  fixed number of seconds -- say how far and which way and it can be trimmed.
+2026.8.10 - Subtitles on films, shows and replays (new)
+- Apple's on-demand subtitles are WebVTT that InputStream Adaptive lists but
+  leaves blank on screen. The addon now fetches the track (your Kodi language,
+  and English) and hands Kodi its own copy to display, so subtitles work on
+  films, shows and finished-game replays. Turn it off in settings if you like.
+  Live games are not covered -- their captions are baked into the video.
+  New; please report any timing offset so the sync can be dialled in.
+2026.8.10 - Browsing keeps working after you sign out
+- FIX: Signing out wiped the app's anonymous browsing token along with your
+  account, so every tab (Apple TV+, MLS, F1, MLB) then had to rebuild it from
+  scratch on each screen -- and if that failed, the catalogue failed with it,
+  clearing up only when you signed back in. Sign-out now keeps that browsing
+  token (it is not account data) and clears only your account, so the catalogue
+  keeps loading signed out. Playback still needs a sign-in.
+2026.8.10 - "Clubs" only on soccer
+- The "Clubs" context-menu entry (a match's two clubs) now shows only on
+  soccer fixtures (MLS, Leagues Cup). A Formula 1 race and an MLB game are not
+  club-vs-club, so it no longer appears on them.
+2026.8.10 - Stop a doomed watch-history call on live games
+- FIX: Playing a live game (Watch from Start, Catch Up, Key Plays, Resume)
+  logged a 400 from Apple's now-playing endpoint. That endpoint is for
+  on-demand titles only -- the web client never calls it for a live event --
+  so a live game's linear id was always rejected. The addon no longer makes
+  that call for a live stream (playback was never affected; the error is just
+  gone). Finished games and films still report as before.
+2026.8.10 - Fix "event has not started" on games that already happened
+- FIX: A finished game could say "this event has not started yet" with a
+  future date. Its start time was being read from the whole detail document,
+  which also lists upcoming games, so every game reported the same upcoming
+  kick-off. The start time is now read from the game's own entry, so a played
+  game is recognised as played (and, if it will not play, says why).
+2026.8.10 - MLB
+- Added an MLB tab. Baseball on Apple TV+ is the same kind of live event as MLS
+  and F1 under the hood, so its games, Big Inning, shows and recaps play (and
+  resume, and pick home/away commentary) exactly like the other sports. MLB
+  sits under Apple TV+ rather than being its own channel, so it is listed as a
+  room; if it ever comes up empty, Apple has reissued the room and it needs a
+  refresh.
+2026.8.10 - Clearer message when a title will not play
+- A title with no stream for you now says why: "not part of your subscription,
+  or blacked out in your region" when you are signed in, or a plain "sign in
+  first" when you are not -- instead of one catch-all that named both causes
+  and pointed at the log.
+2026.8.10 - Finished games resume like a film again
+- FIX: A finished game (a replay) is not live, so it should resume where you
+  left off like any on-demand title -- but the live-game change had it start
+  over instead. Now only a game that is actually airing skips Kodi's resume
+  (its start is the live menu's job); a finished one resumes normally. Which
+  is which is read from the event's own live flag, no guesswork.
+2026.8.10 - Live games: "Resume where you left off" is now a menu choice
+- Kodi used to seek a live game to your last position on its own, overriding
+  whatever mode you picked. It no longer does. Instead, when Apple has a saved
+  position for the game, the live menu adds a "Resume where you left off"
+  option next to Watch Live / from Start / Catch Up, so jumping there is your
+  choice -- and the other modes start exactly where they should.
+2026.8.10 - Live games: resume shows the choices; a clear "too many devices"
+- FIX: Resuming an in-progress live game from Continue Watching skipped the
+  Watch Live / from Start / Catch Up choice and jumped straight to the saved
+  point (and even when the choice showed, it was ignored). A live game now
+  always offers the three, and the one you pick decides where it starts.
+- When Apple refuses the stream because the account is watching on too many
+  devices, that now says so plainly instead of failing as a generic playback
+  error.
+2026.8.10 - Live games: full rewind window (Watch from Start / Catch Up)
+- FIX: Watch from Start jumped in near the live edge instead of the broadcast
+  start, and scrubbing/Catch Up would snap back to "now". Apple only serves the
+  deep rewind window (the whole broadcast so far) when the player asks for it
+  with linearScrubbingSupported, which the web client sends on every live
+  manifest but the addon did not. The addon now sends it, so a live game can be
+  rewound to its start and seeked through its key plays.
+2026.8.10 - Live games: freed on app close, not marked watched
+- FIX: Closing Kodi while a live game was still playing could leave the stream
+  holding a session with Apple (its lease was only released on a clean Stop).
+  The session is now also released when the app quits.
+- FIX: Leaving a live game marked it as watched, because at the live edge the
+  position equals the stream length. A live game now only reports its position,
+  never "finished", so it is not marked watched before it is over.
+2026.8.10 - Your language first on a live game, quieter log
+- A live game with commentary in more than one language now lists your
+  language first (Apple's order was arbitrary -- Spanish sometimes sat above
+  English), so the top of the picker is the one you most likely want.
+- A game with no key plays no longer logs a 404 as an error.
+2026.8.10 - Tell Apple when a stream stops (frees your session)
+- NEW: Closing a video now releases its streaming licence with Apple, the way
+  the web client does -- it re-sends the licence request with the action set
+  to "stop". Without this, a closed live game kept counting against Apple's
+  concurrent-stream limit until it timed out, which could make the next live
+  stream refuse to start. The release runs in the background so closing stays
+  instant.
+2026.8.10 - Key Plays and Catch Up for live games (experimental)
+- NEW: "Key Plays" on a live game's context menu lists its goals and big
+  moments; picking one jumps the game to that moment and plays on. The list
+  follows Apple's own, however few or many there are.
+- NEW: "Catch Up" joins the live options (Watch Live / Watch from Start /
+  Catch Up) and plays the key moments in turn, skipping the lulls between --
+  the same key plays Apple's own Catch Up seeks through.
+- Both work by seeking the live DVR to each moment's time; seeking a live
+  stream is best effort, so this is experimental and may land a little early
+  or late.
+2026.8.10 - Watch a live game from the start, and clearer errors offline
+- NEW: Playing a game that is airing live now asks whether to Watch Live (the
+  live edge) or Watch from Start (the broadcast from its beginning), the same
+  startOver stream the web player uses. Apple's third option, Catch Up, is a
+  fast-forward-to-live player trick Kodi cannot reproduce, so it is left out.
+- FIX: When the network drops mid-play, key collection could not reach Apple
+  and the stream was wrongly treated as unencrypted, failing with "DRM
+  license server not configured". A fetch failure is now kept distinct from a
+  keyless stream, so an outage no longer masquerades as a DRM problem.
+2026.8.8 - Cast members open their own page
+- NEW: A name in "Cast and crew" is now a folder. Opening it shows that
+  person's other work -- their Movies, Shows, and roles as producer or guest
+  -- exactly as Apple lists it. Their page opens with an "About" entry whose
+  Information holds Apple's biography, birth date and birthplace, with a
+  headshot. Before, cast names were dead text.
+2026.8.8 - Mark watched on your Apple account
+- NEW: A "Mark watched on Apple TV" entry on films, shows, episodes and
+  fixtures tells Apple the title is watched (the same POST /play-history the
+  website sends), so it counts as watched on your other devices and leaves
+  Continue Watching. Kodi's own "Mark as watched" only sets a local flag and
+  never reached Apple; this does. Marking unwatched is not offered yet.
+2026.8.8 - Continue Watching shows only what you have started
+- NEW: Apple's "Continue Watching on Apple TV" shelf also lists titles you
+  have merely added to your Watchlist (Apple marks them "AddedToUpNext"), so
+  a film you never played appeared there the moment you watchlisted it. A new
+  setting, on by default, keeps only the titles you have actually started;
+  the watchlisted ones still show on the Watchlist. Turn it off to mirror
+  Apple exactly.
+2026.8.7 - Housekeeping: remove dead code
+- Internal only, no change to behaviour: removed unused code left over from
+  earlier versions -- the Watchlist fetch that nothing calls (the list is
+  shown via Apple's own shelf), two unused helpers, an unused sign-in proof
+  accessor, and an unused import.
+2026.8.7 - Drop the addon-made "Following" folder
+- The "Following" folder was not something Apple sends; it was assembled from
+  the follow flags on the club tiles. Apple already lists a club you follow as
+  its own shelf on the tab, so the extra folder is gone. Following and
+  unfollowing a club still works from the club's context menu, and the star
+  on a followed club still updates on the spot.
+2026.8.7 - Following and Watchlist update on the spot
+- FIX: Following or unfollowing a club, or adding or removing a Watchlist
+  title, showed no change until you left to the main menu and came back into
+  the tab. The screen now refreshes in place: the Watchlist is re-read from
+  Apple, and a club's follow state is updated in the cached tab so the
+  Following folder and the club tiles reflect it at once.
+2026.8.7 - Clubs show their crest
+- NEW: A football club now shows its crest. Apple ships the badge as a square
+  logo, the one shape the artwork sort treated as "not artwork", so clubs
+  were listed blank; the crest is used for them now (as a transparent png).
+2026.8.7 - Fix a stray settings entry, and name the list consistently
+- FIX: "Add to Watchlist" in a title's context menu showed the text of the
+  new live-events height setting instead. The setting had been given a label
+  number already in use, so the two collided; it now has its own.
+- FIX: The pop-up after adding or removing a title still said "Up Next"
+  though the menu and folder call the list "Watchlist", as Apple does. All
+  three now say "Watchlist".
+2026.8.7 - Resuming a match plays the feed it belongs to
+- FIX: A sporting event you had part-watched offered Resume before asking
+  which feed to play, and then applied that position to whichever feed you
+  picked -- so resuming an hour into the full replay could seek clean past
+  the end of the half-hour race. The saved position belongs to one feed, so
+  the event now plays that feed when you resume, its length matching the
+  position. Where the feed cannot be identified, the resume is dropped rather
+  than risk seeking past the end.
+2026.8.7 - A flaky manifest fetch no longer breaks a fresh play
+- FIX: Starting a title the instant the previous one closed sometimes hit a
+  transient 500 from Apple's manifest server while collecting keys. That was
+  misread as "this stream has no DRM", so it played in the clear and failed
+  ("license server url has not been configured"). The manifest fetch now
+  retries a server error, and if it still cannot be read the stream is
+  treated as encrypted -- the licence proxy finds the keys as it serves the
+  variants -- rather than played in the clear.
+2026.8.7 - Live events play in HD, where Apple grants the key
+- FIX: A live event (Formula 1, MLS) failed with a DRM error (-1004). Apple
+  licenses a live event's keys per quality band, and for these it does not
+  grant the SD band's key at all -- only the HD H.264 band, which is the tier
+  its own web player uses. The addon was capped to SD, as it is for on-demand
+  titles, so it asked for the one key Apple refuses. Live events now use a
+  separate, higher cap (1080p by default, in Settings) and reach the tier
+  Apple actually licenses.
+2026.8.7 - A future event says so instead of erroring
+- FIX: Playing a sporting event that has not started yet showed a stream
+  download error and a DRM failure. It now shows the kick-off time, as it
+  was meant to: when the detail lookup withholds a stream because the event
+  is still to come, playback stops on that reason instead of falling through
+  to an inline stream that Apple has not published yet.
+2026.8.7 - Streamlined to a clean Apple TV+ client
+- This build is the Apple TV+ web client on its own: sign-in, Originals and
+  the brand tabs, Search, and Widevine playback. The iTunes purchase
+  library, Continue Watching and the Featured row have been removed for a
+  focused, dependable core.
+2026.8.7 - Owned TV names itself, and a token escape hatch
+- Your purchased TV episodes now show their real titles and show name even
+  when Apple has pulled the title from sale. Apple keeps no catalogue entry
+  for a delisted purchase, so the episode is named from the address of its
+  own page, which still carries the name.
+- NEW: An advanced "Developer token override" setting. If Apple ever
+  changes its website so the addon can no longer read its own session
+  token, paste one from a browser and the addon keeps working.
+2026.8.3 - Resume where you left off, trailers fixed
+- NEW: A title part-watched on another Apple device now resumes at the
+  right place here. Apple states the position on each item of the
+  Continue Watching shelf; the addon was discarding it.
+- FIX: Trailers played no picture at all. Their init segment, which holds
+  the MOOV atom, was pointed at the addon's own proxy instead of Apple.
+- FIX: Trailers played in the wrong colours -- Apple offers them in Dolby
+  Vision, which Kodi renders with badly shifted colours. Those variants
+  are skipped now whether or not a stream is encrypted.
+- The list you add titles to is called "Watchlist", as Apple calls it,
+  rather than "Up Next", and sits on each brand tab rather than in the
+  main menu, since Apple keeps a separate one per tab.
+- The "Continue Watching" menu entry is gone. It asked for the player's
+  Up Next tab, which Apple refuses outside playback, and it was never
+  needed: that shelf is already listed on the Apple TV+ tab.
+2026.7.31.19 - Faster browsing
+- The session token is kept for an hour instead of being scraped again on
+  every screen. Kodi starts a new process for each navigation, so the
+  addon was downloading a megabyte of page markup before every listing.
+  If a kept token is ever rejected, it refreshes and retries once.
+2026.7.31.18 - Choose a match feed, related rows, real sign-out
+- NEW: A match that offers more than one feed now asks which to play: the
+  full replay or the short recap, and English, Spanish or French
+  commentary. Each is listed with its runtime.
+- NEW: "Related" on a title lists more like it; on a match it lists the
+  other games in the league, and "Clubs" lists the two sides.
+- Sign out now ends the session with Apple instead of only forgetting the
+  tokens locally. The tokens are cleared either way.
+2026.7.31.17 - Shows open to their seasons
+- NEW: A show with more than one season opens to a season list with each
+  season's episode count, instead of every episode in one flat run. A
+  179-episode show now opens to five seasons.
+- Shows with a single season still go straight to their episodes.
+2026.7.31.16 - Continue Watching, and a better Search
+- NEW: "Continue Watching" in the main menu lists what you have part
+  watched, the same list the addon now feeds by reporting playback.
+- NEW: Opening Search without typing anything shows Apple's browse page
+  instead of an empty list.
+- NEW: After typing, Apple's suggestions are offered, with what you typed
+  kept as the first choice.
+2026.7.31.15 - Following section, and a real follow toggle
+- NEW: A "Following" folder at the top of the MLS tab lists the clubs you
+  follow. Apple's own favourites shelf there is an empty placeholder the
+  website fills in itself, so the addon does the same from the follow flag
+  each club carries.
+- The club context menu now offers only the action that applies: Follow on
+  a club you do not follow, Unfollow on one you do. A capture of following
+  a club confirms the flag updates on the very next request.
+2026.7.31.14 - Followed clubs are marked
+- Clubs you follow are marked with a * in "Browse All Clubs", and the
+  context menu offers the fitting action first. Apple reports the follow
+  state on each club tile, so this needs no extra request.
+2026.7.31.13 - Grand Prix weekends open
+- NEW: The 22 race tiles on the Formula 1 tab are folders now. Each opens
+  its weekend: practice, qualifying and the race, the Sky Sports feed, and
+  the round's highlights, interviews and team-radio clips.
+- That was the last navigation tile still being hidden; rooms, clubs and
+  Grand Prix weekends now all open.
+2026.7.31.12 - Up Next list and subscription status
+- NEW: "Up Next" in the main menu lists what is on your watchlist, so the
+  titles you add are visible in Kodi rather than only on Apple's clients.
+- NEW: Settings shows your Apple TV+ subscription status: whether it is
+  active, when it renews or expires, and whether it comes through Family
+  Sharing.
+2026.7.31.11 - Trailers play
+- FIX: Trailers carry no DRM at all -- no key of any kind in the manifest.
+  The addon was still asking InputStream Adaptive for a Widevine session,
+  which then waited for a licence that could never arrive. Streams with no
+  keys now play as plain HLS.
+- Trailers play at full quality: the 360-line, H.264 and SDR limits exist
+  only to satisfy the Widevine CDM, which an unencrypted stream never
+  reaches.
+- FIX: Key collection read its key from the first variant in the manifest,
+  which is usually one the quality filter drops. Since Apple keys each tier
+  separately, that was the wrong key. It now reads from the variants that
+  are actually played, and says so in the log when a stream has no keys.
+2026.7.31.10 - Watch history syncs to your Apple account
+- NEW: What you watch through the addon now updates Apple's Continue
+  Watching, and resumes at the right place on your other Apple devices.
+  Progress is reported every 30 seconds and once more when playback stops;
+  past 95% the title counts as finished. Trailers and bonus features are
+  never reported.
+- The utsk session token is now requested from Apple's own configurations
+  endpoint when the web shell does not carry one, instead of relying on
+  scraping alone.
+2026.7.31.9 - Follow clubs and manage Up Next
+- NEW: Context menu on an MLS club follows or unfollows it.
+- NEW: Context menu on any title, episode or sporting event adds it to
+  Up Next or removes it.
+- Both directions are offered rather than one toggle, because Apple gives
+  no way to read back what is already followed or listed. Neither sends
+  anything unless you are signed in.
+2026.7.31.8 - MLS club pages open
+- NEW: The 30 clubs under "Browse All Clubs" are folders now. Each opens
+  its team page: Featured, Matches, Past Matches, Every Goal, best-of
+  reels and player compilations.
+2026.7.31.7 - Browse categories (rooms) open
+- NEW: The category tiles under "Browse All Apple Originals" -- Kids amp;
+  Family, Sci-Fi, Comedies, Coming to Apple TV and the rest -- are folders
+  now instead of being hidden. Each opens its own canvas of shelves.
+2026.7.31.6 - Open a shelf the way the website does
+- Opening a shelf now refetches it from the start instead of continuing
+  from the copy the home page embedded. Personalised shelves return a
+  different selection each time, so pairing a stale first page with freshly
+  paged ones could leave gaps.
+2026.7.31.5 - Shelves open to all their items
+- A canvas only sends each shelf's first page. Opening a shelf now follows
+  its own paging token to the end, so "All Documentaries" is no longer 20
+  items when Apple has more.
+- Shelves with more to fetch show their count as "20+".
+2026.7.31.4 - Every shelf on a tab, not just the first page
+- Channel canvases are paged: the response carries a nextToken offset to
+  hand back for the next batch of shelves. The addon now walks that to the
+  end, as the website does.
+- Apple TV+ goes from 10 shelves to 20, MLS from 5 to 13. Formula 1 sends
+  no token and is a single page.
+2026.7.31.3 - MLS and Formula 1 tabs, bonus content
+- NEW: The MLS and Formula 1 brand tabs from tv.apple.com's home page are
+  now browsable alongside Apple TV+, each with all of its shelves.
+- NEW: "Bonus content" context-menu entry sits next to "Play trailer" on
+  movies and shows (Ted Lasso has twelve bonus features).
+- The sports channels list clip types (highlights, interviews, key plays)
+  that have no detail endpoint of their own but carry their stream in the
+  shelf itself; that stream is kept so the clips play.
+- Navigation tiles (teams, Grand Prix rounds, browse rooms) no longer
+  appear as playable items, since Apple gives them no stream at all.
+2026.7.31.2 - Play trailers from the context menu
+- NEW: Movies and shows have a "Play trailer" context-menu entry. Apple
+  lists a title's trailers in its detail response, each already carrying
+  its own stream, so no extra request is needed. Titles with several
+  trailers (Ted Lasso has seven) offer a chooser.
+- Trailers play without a subscription, so a missing media-user-token no
+  longer blocks them.
+2026.7.31.1 - Artwork no longer cut off
+- Apple ships both tall posters and wide stills for a title. The addon now
+  reads each artwork's declared dimensions, sends the tall one to Kodi's
+  poster slot and the wide one to thumb/fanart, and requests each at its
+  own aspect ratio instead of forcing everything into a 16:9 box.
+- Titles with no tall artwork (episodes, sporting events) simply get no
+  poster rather than a cropped one; logos and team badges are ignored.
+2026.7.31 - Encrypted playback working (Kodi 22 required)
+- REQUIRES Kodi 22 with InputStream Adaptive 22 or newer. Playback uses
+  the inputstream.adaptive.drm property, which the 21.x series does not
+  have, so Kodi 21 support has been dropped rather than left broken.
+- NEW: Sporting events play, list their kick-off time, and report when a
+  game has not started yet instead of failing.
+- Playback now works on Kodi 22 with InputStream Adaptive 22, using the
+  new inputstream.adaptive.drm property (secure_decoder, pre_init_data).
+- Streams are limited to the lowest quality tier (360p by default), H.264
+  and SDR: Apple keys each tier separately and the CDM reports the higher
+  tiers' keys as output restricted, cannot decode HEVC, and Kodi renders
+  Dolby Vision with shifted colours.
+- Key ids are supplied to ISA via KEYID and the init segment's tenc box,
+  which Apple leaves empty.
+2026.7.30 - Experimental release (matched to real web client)
+- NEW: Apple ID sign-in rebuilt from a real tv.apple.com capture:
+  authorize -> SRP init/complete with X-Apple-HC hashcash -> two-factor
+  (trusted-device or SMS) -> session trust. Real OAuth client id.
+- NEW: Catalogue via confirmed UTS endpoints (Apple TV+ Originals
+  channel canvas, search) with tokens scraped from the web shell.
+- NEW: Widevine playback pipeline: HLS via InputStream Adaptive with a
+  local licence proxy that wraps the challenge in Apple's fpsRequest
+  JSON envelope (Apple serves Widevine to non-Apple clients).
+- NOTE: Two playback tokens (account media-user-token and the per-title
+  playback token) are still being reproduced; advanced settings accept
+  pasted values to test playback meanwhile. SD only (Widevine L3).
+		</news>
+	</extension>
+</addon>

@@ -1,0 +1,201 @@
+name: Watch Party — bug report
+description: Something in the Watch Party addon or relay does not work
+title: "[Watch Party] "
+labels: ["bug", "service.watchparty"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing. Sync bugs are almost always diagnosable from
+        the logs of **both** devices — the one that misbehaved and the one
+        that was driving — so please include both if you can.
+
+        Checklist case ids come from
+        [`service.watchparty/TESTING.md`](../blob/main/service.watchparty/TESTING.md).
+
+  - type: input
+    id: summary
+    attributes:
+      label: What went wrong
+      description: One sentence.
+      placeholder: Guest played a different song after the host toggled shuffle
+    validations:
+      required: true
+
+  - type: input
+    id: case
+    attributes:
+      label: Checklist case
+      description: The `WP-nnn` id this relates to, if any.
+      placeholder: WP-126
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Playback sync (play/pause/seek/stop)
+        - Following an item (wrong/failed content)
+        - Queues, repeat or shuffle
+        - Joining / room codes / connection
+        - Relay (standalone, Docker, persistence)
+        - Remote access (tunnel, HTTPS, proxy)
+        - Dashboard (/status)
+        - Addon UI or settings
+        - Performance / freeze
+        - Something else
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often
+      options:
+        - Every time
+        - Often, but not always
+        - Rarely / once
+        - Only under a specific condition (describe below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Say which device did what, in order.
+      placeholder: |
+        1. Device A (host) starts a party on the Docker relay, room MOVIE
+        2. Device B joins
+        3. A plays an album from Plex (18 tracks), B follows fine
+        4. A toggles shuffle at ~0:40 into track 3
+        5. B keeps playing track 3, but the next track differs from A's
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+      placeholder: |
+        Expected: both devices advance to the same next track.
+        Actual: A played "Photograph", B played "Perfect".
+    validations:
+      required: true
+
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions
+      description: |
+        Addon version per device (Settings → Add-ons → Watch Party), Kodi
+        version and platform, and the relay's protocol (shown at the top
+        of the dashboard, or `GET /ping`).
+      value: |
+        - Device A: addon  · Kodi  · platform
+        - Device B: addon  · Kodi  · platform
+        - Device C (if any): addon  · Kodi  · platform
+        - Relay: protocol v  · image tag / commit
+    validations:
+      required: true
+
+  - type: dropdown
+    id: relay
+    attributes:
+      label: Relay setup
+      options:
+        - Embedded (hosted inside Kodi)
+        - Standalone script on the LAN
+        - Docker on the LAN
+        - Docker/VPS reachable over the internet
+        - Behind a reverse proxy or tunnel (HTTPS)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: relay_opts
+    attributes:
+      label: Relay options in use
+      options:
+        - label: Fixed rooms (`WATCHPARTY_ROOMS`)
+        - label: State persistence (`WATCHPARTY_STATE` / mounted volume)
+        - label: Full room codes shown (`WATCHPARTY_SHOW_CODES=1`)
+        - label: All devices are running the same addon version
+        - label: The relay was rebuilt/pulled after the last addon update
+
+  - type: dropdown
+    id: content
+    attributes:
+      label: Content being played
+      multiple: true
+      options:
+        - Local library file on a network share (SMB/NFS)
+        - Library item, different copy/path per device
+        - Plex via PlexKodiConnect, same server
+        - Plex via PlexKodiConnect, different servers
+        - Jellyfin / Emby
+        - YouTube addon
+        - Subscription/DRM addon (Disney+, etc.)
+        - Music (single tracks)
+        - Music (album or playlist queue)
+        - TV episodes / season queue
+        - Live TV / PVR
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: Relevant settings
+      description: Only the ones that differ from defaults.
+      value: |
+        - Follow party item: on/off
+        - Send my play/pause/seek: on/off
+        - Lock control to me: on/off
+        - Drift threshold: 3s
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        `[Watch Party]` lines from **both** devices around the moment it
+        went wrong (a minute either side is plenty), plus relay output
+        (`docker logs kodi-watchparty-relay`) if you have it. Redact
+        tokens in any URLs you paste — stream and art URLs often carry
+        one.
+      render: text
+      placeholder: |
+        --- Device A (driving) ---
+        16:17:42 [Watch Party] sharing queue: 20 entries @ 0, 20 with identity
+        --- Device B (misbehaved) ---
+        16:17:44 [Watch Party] following party queue (20 items @ 0)
+    validations:
+      required: false
+
+  - type: textarea
+    id: statusjson
+    attributes:
+      label: /status.json at the time (optional)
+      description: Very helpful for sync and dashboard issues.
+      render: json
+    validations:
+      required: false
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Screenshots of the dashboard or Kodi's playlist window,
+        network conditions, whether it recovers on its own, etc.
+    validations:
+      required: false

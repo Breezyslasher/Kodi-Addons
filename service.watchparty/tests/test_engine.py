@@ -134,6 +134,66 @@ class EntryRefTest(unittest.TestCase):
         self.assertEqual(engine._local_entry_ref({'file': ''}), (None, ''))
 
 
+class ArtTest(unittest.TestCase):
+    def test_http_art_shared(self):
+        self.assertEqual(
+            engine._shareable_art('http://img.youtube.com/vi/a/hq.jpg'),
+            'http://img.youtube.com/vi/a/hq.jpg')
+
+    def test_kodi_image_wrapper_unwrapped(self):
+        self.assertEqual(
+            engine._shareable_art('image://http%3a%2f%2fnas%2fp.jpg/'),
+            'http://nas/p.jpg')
+
+    def test_local_paths_not_shared(self):
+        self.assertEqual(
+            engine._shareable_art('/storage/.kodi/thumbs/a.jpg'), '')
+        self.assertEqual(
+            engine._shareable_art('image://%2fstorage%2fart.jpg/'), '')
+
+    def test_square_request_box_is_dropped(self):
+        # Kodi asks Plex for a square box; a wide or tall source fitted
+        # into it comes back padded, and those bars are baked in
+        url = ('https://plex.local:32400/photo/:/transcode?width=1920'
+               '&height=1920&minSize=1&upscale=0&url=/library/x')
+        out = engine._shrink_art(url)
+        self.assertIn('width=640', out)
+        self.assertNotIn('height=', out)
+        self.assertIn('minSize=1', out)     # other params untouched
+        self.assertIn('url=%2Flibrary%2Fx', out)
+
+    def test_non_square_request_is_only_clamped(self):
+        url = 'https://s.example/p.jpg?width=1600&height=900'
+        out = engine._shrink_art(url)
+        self.assertIn('width=640', out)
+        self.assertIn('height=640', out)    # kept, just clamped
+
+    def test_youtube_letterboxed_thumbnails_swapped(self):
+        # hqdefault/sddefault/default are 4:3 with bars burnt in
+        for boxed in ('hqdefault', 'sddefault', 'default'):
+            out = engine._shrink_art(
+                f'https://i.ytimg.com/vi/CFdOh0bUoKg/{boxed}.jpg')
+            self.assertEqual(
+                out, 'https://i.ytimg.com/vi/CFdOh0bUoKg/mqdefault.jpg')
+
+    def test_youtube_clean_thumbnails_untouched(self):
+        for clean in ('mqdefault', 'maxresdefault', 'hq720'):
+            url = f'https://i.ytimg.com/vi/abc/{clean}.jpg'
+            self.assertEqual(engine._shrink_art(url), url)
+
+    def test_art_without_size_params_untouched(self):
+        url = 'https://images.example.com/poster.jpg'
+        self.assertEqual(engine._shrink_art(url), url)
+
+    def test_credentialed_art_never_shared(self):
+        # the dashboard is unauthenticated — a media server token must
+        # not be published on it
+        self.assertEqual(engine._shareable_art(
+            'https://plex.local:32400/photo/x?X-Plex-Token=SECRET'), '')
+        self.assertEqual(engine._shareable_art(
+            'https://s.example/p.jpg?api_key=k'), '')
+
+
 class IdentityTest(unittest.TestCase):
     def test_song_identity(self):
         info = {'type': 'song', 'title': 'Stop the Rain',
