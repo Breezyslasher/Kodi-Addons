@@ -2545,7 +2545,7 @@ class AppleTVApi(object):
         adam_id = str(adam_id)
         if str(item_type) == "Episode":
             info = (self._reverse_lookup([adam_id]) or {}).get(adam_id) or {}
-            show_id = info.get("showId")
+            show_id = info.get("show_id")
             if not show_id:
                 kodiutils.log("Delisted play: no showId for %s" % adam_id)
                 return None
