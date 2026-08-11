@@ -2027,10 +2027,6 @@ class AppleTVApi(object):
         cookies = self._header_safe(
             (kodiutils.get_setting("itunes_uts_cookies") or "").strip()
             or (kodiutils.get_setting("itunes_cookies") or "").strip())
-        if not cookies:
-            kodiutils.log("Android caller needs a valid mz_at_ssl session; none "
-                          "pasted (or the pasted value has bad characters)")
-            return None
         params = {
             "caller": UTS_ANDROID_CALLER,
             "vz": "true",
@@ -2045,22 +2041,39 @@ class AppleTVApi(object):
         headers = {
             "User-Agent": UTS_ANDROID_UA,
             "Content-Type": "application/json",
-            "Cookie": cookies,
         }
-        # The dsid names itself in the mz_at_ssl cookie; fall back to the other
-        # store cookies and to an explicit X-Dsid the same way _store_json does.
-        found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
-            or re.search(r"X-Dsid=(\d+)", cookies)
-        if found:
-            headers["X-Dsid"] = found.group(1)
-        # This shelf fills in only when the session is accepted, and the store
-        # cookie that carries that acceptance is mz_at_ssl -- the one the app's
-        # request used. A session pasted from another client (the Windows
-        # library login) may not have it, which reads as an empty shelf rather
-        # than an error, so name up front what is being sent.
-        kodiutils.log("Android caller: mz_at_ssl cookie=%s, X-Dsid=%s"
-                      % ("yes" if "mz_at_ssl" in cookies else "NO",
-                         "yes" if headers.get("X-Dsid") else "NO"))
+        if cookies:
+            # The app's own path: the Android store session (mz_at_ssl), which
+            # names the dsid inside itself.
+            headers["Cookie"] = cookies
+            found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
+                or re.search(r"X-Dsid=(\d+)", cookies)
+            if found:
+                headers["X-Dsid"] = found.group(1)
+            auth = "mz_at_ssl cookie=%s" % ("yes" if "mz_at_ssl" in cookies else "NO")
+        else:
+            # No Android session pasted: try the vz caller with the ordinary
+            # Apple TV+ tokens (bearer + media-user-token) that already license
+            # purchases. This tests whether Apple merges iTunes into the Continue
+            # Watching shelf on the strength of the caller rather than the
+            # mz_at_ssl cookie -- if so, the shelf populates with no store paste.
+            boot = self._bootstrap()
+            bearer = boot.get("developer_token")
+            mut = self._media_user_token()
+            if not bearer or not mut:
+                kodiutils.log("Android caller: no mz_at_ssl session and no Apple "
+                              "TV+ tokens; cannot ask")
+                return None
+            headers["Authorization"] = "Bearer " + bearer
+            headers["media-user-token"] = mut
+            dsid = self._store_dsid()
+            if dsid:
+                headers["X-Dsid"] = dsid
+            auth = "bearer+media-user-token (no store session)"
+        # This shelf fills in only when the identity is accepted; name up front
+        # what is being sent so an empty shelf is diagnosable.
+        kodiutils.log("Android caller: %s, X-Dsid=%s"
+                      % (auth, "yes" if headers.get("X-Dsid") else "NO"))
         try:
             resp = self.session.get(UTS_STORE_BASE + path, params=params,
                                     headers=headers, timeout=20)
