@@ -12,7 +12,6 @@ from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA
 from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
                      MLB_ROOM, PLAYBACK_REPORT_CACHE)
-from lib.itunes import ItunesStore
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
@@ -679,70 +678,24 @@ def do_itunes_show(api, show_id, member_id=None, season=None):
     show_items(episodes, content="episodes")
 
 
-def _with_resume(store, items):
-    """Attach where each purchase was left, where the store knows."""
-    resume = store.resume_points()
-    for entry in items:
-        position = resume.get(entry.get("adam_id"))
-        if position and entry.get("duration"):
-            entry["resume"] = {"position": position,
-                               "total": float(entry["duration"])}
-    return items
-
-
 def do_itunes_movies(api, auth):
-    """Films the account owns.
-
-    The MediaAPI /v1/me/purchases route (the Apple TV app's own Library call)
-    is tried first: it lists from the ordinary Apple TV+ bearer + media-user-
-    token, so it needs no store or Android session. The Windows store locker is
-    kept as a fallback for a pasted store session.
-    """
+    """Films the account owns, from the MediaAPI /v1/me/purchases route (the
+    Apple TV app's own Library call) -- the ordinary Apple TV+ bearer +
+    media-user-token, no store session."""
     items = _library_purchases(api, "movie")
-    if items:
-        show_items(items)
-        return
-    store = ItunesStore(auth.session)
-    items = store.owned_movies(api.resolve_store_id)
-    if not items and store.session_info().get("password_token"):
-        items = store.library()
-    if not items and store.last_error:
-        kodiutils.notify(store.last_error)
-    show_items(_with_resume(store, items))
+    if not items:
+        kodiutils.notify(L("no_results"))
+    show_items(items)
 
 
 def do_itunes_tv(api, auth):
-    """Owned television, as the seasons its episodes belong to.
-
-    Apple's locker lists episodes flat, so the seasons here are grouped from
-    what the episodes say about themselves rather than fetched as rows of
-    their own.
-    """
-    # The MediaAPI route lists owned episodes flat (with season/episode
-    # numbers), from the ordinary Apple TV+ session -- shown as a flat list
-    # when it answers, since it needs no store session. The season-grouped
-    # store locker is the fallback.
+    """Owned television as a flat list of shows, from the MediaAPI route -- the
+    ordinary Apple TV+ session, no store session. An owned show opens to the
+    episodes you own via do_itunes_show."""
     shows = _library_purchases(api, "tv")
-    if shows:
-        show_items(shows, content="tvshows")
-        return
-    store = ItunesStore(auth.session)
-    seasons = store.owned_tv_seasons(api.resolve_store_id)
-    if not seasons:
-        kodiutils.notify(store.last_error or L("no_results"))
-    for season in seasons:
-        add_dir(season["title"], "itunes_season", art=season.get("art"),
-                info=season, media_type="season", season_id=season["id"])
-    xbmcplugin.setContent(HANDLE, "seasons")
-    xbmcplugin.endOfDirectory(HANDLE)
-
-
-def do_itunes_season(api, auth, season_id):
-    store = ItunesStore(auth.session)
-    episodes = store.owned_season(season_id)
-    if not episodes and store.last_error:
-        kodiutils.notify(store.last_error)
-    show_items(_with_resume(store, episodes), content="episodes")
+    if not shows:
+        kodiutils.notify(L("no_results"))
+    show_items(shows, content="tvshows")
 
 
 def do_search(api):
@@ -1225,8 +1178,6 @@ def router(paramstring):
         do_itunes_movies(api, auth)
     elif action == "itunes_tv":
         do_itunes_tv(api, auth)
-    elif action == "itunes_season":
-        do_itunes_season(api, auth, params.get("season_id"))
     elif action == "itunes_family":
         do_itunes_family(api, params.get("member_id"))
     elif action == "itunes_family_movies":

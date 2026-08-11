@@ -1539,9 +1539,6 @@ class AppleTVApi(object):
                 # A live game: the watch-history report must not mark it
                 # finished just because playback sat at the live edge.
                 "live": live,
-                # An iTunes purchase reports its position to the store's own
-                # bookkeeper (keyed by store id), not the now-playing service.
-                "adam_id": assets.get("adam_id") if assets.get("itunes") else None,
             },
         }
 
