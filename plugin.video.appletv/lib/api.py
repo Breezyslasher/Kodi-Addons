@@ -2354,7 +2354,7 @@ class AppleTVApi(object):
         return None
 
     def media_purchases(self, kind="movie", family_member=None, show_id=None,
-                        max_pages=20, sort=None, enrich=True):
+                        max_pages=20, sort=None, enrich=True, genre=None):
         """Owned titles from MediaAPI /v1/me/purchases -- the Apple TV app's
         Library page call, read off its LibraryPage.js.
 
@@ -2399,6 +2399,11 @@ class AppleTVApi(object):
             # inline so each episode keeps its resume point.
             base = {"filter[tvShowId]": show_id,
                     "include[tv-episodes]": "playback-position"}
+        elif kind == "rental":
+            # The app's "rental" library view: active rentals, films only,
+            # newest first (LibraryPage.js filter:"rentals").
+            base = {"filter": "rentals", "sort": sort or "mostRecent",
+                    "types": "movies", "include[movies]": "playback-position"}
         elif kind == "movie":
             # include[movies]=playback-position brings the resume point back
             # inline as a relationship, so no separate positions call is needed.
@@ -2407,10 +2412,15 @@ class AppleTVApi(object):
             # view) -- to order by how lately each title was played.
             base = {"filter": "owned", "sort": sort or "name", "types": "movies",
                     "include[movies]": "playback-position"}
+            # The app filters the library by genre with filter[genres]=<id>.
+            if genre:
+                base["filter[genres]"] = genre
         else:
             base = {"filter": "owned", "sort": sort or "artistName",
                     "types": "tv-shows", "include[tv-shows]": "episodes",
                     "limit[episodes]": 1}
+            if genre:
+                base["filter[genres]"] = genre
         if family_member:
             base["with"] = "sharedPurchases"
             base["filter[owner]"] = family_member
@@ -2524,9 +2534,13 @@ class AppleTVApi(object):
         # The account's own entry appears in this list (you share with the
         # family too); drop it, since your own purchases are the Films/TV Shows
         # sections already. The API marks no self member, so identify yourself
-        # by the Apple ID email captured at sign-in, which matches your entry's
-        # accountName.
-        own_email = (kodiutils.get_setting("account_email") or "").strip().lower()
+        # by the account's own dsid/email from /v1/me/account when it answers,
+        # and otherwise by the Apple ID email captured at sign-in -- both match
+        # your entry (dsid == member id, email == accountName).
+        account = self.media_account()
+        own_dsid = account.get("dsid") or ""
+        own_email = ((kodiutils.get_setting("account_email") or "").strip()
+                     or account.get("email") or "").lower()
         out = []
         for row in rows:
             if not isinstance(row, dict):
@@ -2542,7 +2556,8 @@ class AppleTVApi(object):
                     or account_name or attrs.get("name")
                     or attrs.get("appleId") or member_id)
             sharing = attrs.get("sharingPurchases")
-            is_self = bool(own_email) and own_email == account_name.lower()
+            is_self = (bool(own_dsid) and member_id == own_dsid) or (
+                bool(own_email) and own_email == account_name.lower())
             kodiutils.log("MediaAPI family: member id=%s name=%r sharing=%r%s"
                           % (member_id or "?", name, sharing,
                              " (self)" if is_self else ""))
@@ -2554,6 +2569,72 @@ class AppleTVApi(object):
                 out.append({"id": member_id, "name": name or member_id})
         kodiutils.log("MediaAPI family: %d member(s) sharing purchases" % len(out))
         return out
+
+    def _media_headers(self):
+        """The bearer + media-user-token headers the MediaAPI calls share."""
+        boot = self._bootstrap()
+        return {
+            "Authorization": "Bearer " + (boot.get("developer_token") or ""),
+            "media-user-token": self._media_user_token() or "",
+            "Origin": WEB_HOME,
+            "Content-Type": "application/json",
+            "Accept": "*/*",
+            "User-Agent": self.session.headers.get("User-Agent", ""),
+            "X-Apple-Store-Front": "%s-1,42" % self._storefront(),
+        }
+
+    def media_genres(self, family_member=None):
+        """The genres present in the owned library, from the app's
+        /v1/me/purchases/genres call. Each opens a genre-filtered film list via
+        media_purchases(genre=<id>). Needs only the Apple TV+ sign-in."""
+        boot = self._bootstrap()
+        if not boot.get("developer_token") or not self._media_user_token():
+            return []
+        params = {"filter": "owned"}
+        if family_member:
+            params["with"] = "sharedPurchases"
+            params["filter[owner]"] = family_member
+        data = self._media_get(MEDIA_API_HOST, "/v1/me/purchases/genres",
+                               params, self._media_headers())
+        rows = self._as_list((data or {}).get("data"))
+        if not rows and isinstance(data, dict):
+            kodiutils.log("MediaAPI genres: top-level keys=%s" % list(data.keys()))
+        out = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            attrs = row.get("attributes") or row
+            gid = str(row.get("id") or attrs.get("id") or "")
+            name = attrs.get("name") or attrs.get("title") or gid
+            if gid:
+                out.append({"id": gid, "name": name})
+        kodiutils.log("MediaAPI genres: %d genre(s)" % len(out))
+        return out
+
+    def media_account(self):
+        """The signed-in account's own info (name, dsid) from the MediaAPI
+        /v1/me/account call -- returns {} when it does not answer on the bearer
+        session (some accounts need the store commerce path for this)."""
+        boot = self._bootstrap()
+        if not boot.get("developer_token") or not self._media_user_token():
+            return {}
+        data = self._media_get(MEDIA_API_HOST, "/v1/me/account", {},
+                               self._media_headers())
+        if not isinstance(data, dict):
+            return {}
+        node = data.get("data")
+        if isinstance(node, list):
+            node = node[0] if node else {}
+        if not isinstance(node, dict):
+            node = data
+        attrs = node.get("attributes") or node
+        return {
+            "dsid": str(attrs.get("dsPersonId") or attrs.get("dsid") or ""),
+            "name": (" ".join(x for x in (attrs.get("firstName"),
+                                          attrs.get("lastName")) if x).strip()
+                     or attrs.get("appleId") or ""),
+            "email": attrs.get("appleId") or attrs.get("accountName") or "",
+        }
 
     def _media_get(self, host, path, params, headers):
         """GET a MediaAPI (amp-api) endpoint, returning parsed JSON or None."""
@@ -2638,7 +2719,8 @@ class AppleTVApi(object):
         adam_id = str(row.get("id") or attrs.get("id") or "")
         if not title or not adam_id:
             return None
-        item_type = {"movie": "Movie", "tv": "Show"}.get(kind, "Episode")
+        item_type = {"movie": "Movie", "rental": "Movie",
+                     "tv": "Show"}.get(kind, "Episode")
         # MediaAPI descriptions are objects ({standard, short}), not strings.
         desc = attrs.get("description")
         if isinstance(desc, dict):

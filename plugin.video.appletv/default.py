@@ -85,6 +85,8 @@ S = {
     "tv_shows": 32078,
     "your_films": 32107,
     "your_tv_shows": 32108,
+    "genres": 32113,
+    "rentals": 32114,
     "shared_by": 32104,
     "season_n": 32105,
 }
@@ -625,6 +627,12 @@ def do_itunes_library(api, auth):
         add_dir(L("films") if combined else L("your_films"), "itunes_movies")
     if _library_has(api, "tv", members):
         add_dir(L("tv_shows") if combined else L("your_tv_shows"), "itunes_tv")
+    # Browse your films by genre, and active rentals -- each only when there is
+    # something behind it (the app's genre and rental library views).
+    if _has_purchases(api, "movie"):
+        add_dir(L("genres"), "itunes_genres")
+    if _has_purchases(api, "rental"):
+        add_dir(L("rentals"), "itunes_rentals")
     if not combined:
         for member in members:
             # Skip a member who shares nothing you can see, so their folder does
@@ -633,6 +641,29 @@ def do_itunes_library(api, auth):
                 add_dir(L("shared_by") % member["name"], "itunes_family",
                         member_id=member["id"])
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_genres(api):
+    """The genres in your film library; each opens its films."""
+    genres = api.media_genres()
+    if not genres:
+        kodiutils.notify(L("no_results"))
+    for genre in genres:
+        add_dir(genre["name"], "itunes_genre", genre_id=genre["id"])
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_genre(api, genre_id):
+    """Owned films of one genre."""
+    show_items(api.media_purchases("movie", genre=genre_id))
+
+
+def do_itunes_rentals(api):
+    """Your active iTunes rentals (films)."""
+    items = api.media_purchases("rental")
+    if not items:
+        kodiutils.notify(L("no_results"))
+    show_items(items)
 
 
 def do_itunes_family(api, member_id):
@@ -1181,6 +1212,12 @@ def router(paramstring):
         do_itunes_movies(api, auth)
     elif action == "itunes_tv":
         do_itunes_tv(api, auth)
+    elif action == "itunes_genres":
+        do_itunes_genres(api)
+    elif action == "itunes_genre":
+        do_itunes_genre(api, params.get("genre_id"))
+    elif action == "itunes_rentals":
+        do_itunes_rentals(api)
     elif action == "itunes_family":
         do_itunes_family(api, params.get("member_id"))
     elif action == "itunes_family_movies":

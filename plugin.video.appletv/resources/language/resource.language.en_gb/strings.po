@@ -178,6 +178,14 @@ msgctxt "#32112"
 msgid "Library"
 msgstr ""
 
+msgctxt "#32113"
+msgid "Genres"
+msgstr ""
+
+msgctxt "#32114"
+msgid "Rentals"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""
