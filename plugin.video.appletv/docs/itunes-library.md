@@ -1019,5 +1019,47 @@ Trap that reintroduces the bug: spreading Apple's `fpsKeyServerQueryParameters`
 For a purchase, take only `adamId` -- never spread the whole dict.
 
 **State.** iTunes purchase/rental playback licenses through Kodi's own Widevine
-CDM with a valid store session; TV+, sports, and the catalogue/library (browse,
-ownership, resume, metadata, trailers/extras) remain fully functional.
+CDM off the ordinary Apple TV+ sign-in (bearer + media-user-token); TV+,
+sports, and the catalogue/library (browse, ownership, resume, metadata,
+trailers/extras) remain fully functional.
+
+## Current architecture (one Apple TV+ sign-in)
+
+Everything runs off the single Apple TV+ / Apple ID sign-in -- there is no
+separate iTunes Store login, and no pasted store session. The store-locker
+subsystem (`lib/itunes.py`, `ItunesStore`) and the pasted-session settings were
+removed once every path was proven to work on the bearer + media-user-token
+pair. Verified on device:
+
+- **Library listing** -- MediaAPI `GET /v1/me/purchases` (`types=movies` /
+  `tv-shows`, `filter=owned`, `include[movies]=playback-position`), and
+  `/v1/me/purchases/tv-episodes` (`filter[tvShowId]`) for an owned show's
+  episodes.
+- **Family Sharing** -- `GET /v1/me/purchases/shared/members`; a member's
+  library uses `with=sharedPurchases&filter[owner]=<id>`. Your own entry is
+  hidden by matching the Apple ID email captured at sign-in (`account_email`)
+  against its `accountName` -- the API marks no self member, and
+  `GET /v1/me/account` is **404 in the amp-videos realm**, so there is no dsid
+  to match on.
+- **Genres** -- `GET /v1/me/purchases/genres` with
+  `types=movies,tv-episodes&filter=owned&sort=name` (omitting `types` 500s the
+  Purchase Lockers service); a genre filters the film list with
+  `filter[genres]=<id>`.
+- **Rentals** -- `GET /v1/me/purchases` with `filter=rentals`; a rental carries
+  the `rental-id` the licence proxy adds beside `adamId`.
+- **Redownload offer** -- fetched over the dev token (wlk caller) or the
+  Android (vz) caller, both bearer-authenticated; no store cookies.
+- **Continue Watching** -- the Android (vz) shelf, asked with bearer +
+  media-user-token (Apple gates the iTunes merge on the caller, not a store
+  session). A film tile's poster is fetched from the title's own page
+  (`content.images.posterArt`) because that shelf carries only 16:9 art.
+- **Resume reporting** -- an iTunes purchase saves its position the way the app
+  does: `PUT /v1/me/playback/positions/{movies|tv-episodes}/{adamId}` with
+  `{type:"playback-positions", attributes:{positionInMilliseconds,
+  recordedAtTimestamp}}`. The old FairPlay/bookkeeper report
+  (`MZBookkeeper.woa`) is gone -- it required a device keybag/store session and
+  never worked here.
+
+The library layout is a setting: off, your **Your Films**/**Your TV Shows** plus
+a **Shared by X** folder per sharing member (empty ones hidden); on, everyone's
+shared purchases merge into single **Films**/**TV Shows** folders.
