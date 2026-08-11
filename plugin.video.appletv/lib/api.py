@@ -2396,6 +2396,20 @@ class AppleTVApi(object):
             saw_shelf = True
             raw = self._as_list(shelf.get("items"))
             raw_total += len(raw)
+            for node in raw:
+                if not isinstance(node, dict):
+                    continue
+                pe = self._resume_playable(node)
+                event = pe.get("playEvent") if isinstance(pe, dict) else {}
+                event = event if isinstance(event, dict) else {}
+                kodiutils.log(
+                    "CW raw item: %r type=%s isWatched=%r playEvent.isDone=%r "
+                    "cursor=%r len=%r"
+                    % (node.get("title") or node.get("name"),
+                       node.get("type"), node.get("isWatched"),
+                       event.get("isDone"),
+                       event.get("playCursorInSeconds"),
+                       event.get("mediaLengthInSeconds")))
             for item in self._extract_items(raw):
                 if item.get("id") not in seen:
                     seen.add(item.get("id"))
