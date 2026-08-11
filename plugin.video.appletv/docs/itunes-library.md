@@ -1064,6 +1064,40 @@ The library layout is a setting: off, your **Your Films**/**Your TV Shows** plus
 a **Shared by X** folder per sharing member (empty ones hidden); on, everyone's
 shared purchases merge into single **Films**/**TV Shows** folders.
 
+### Delisted purchases now play (the MediaAPI offer, as the app does)
+
+Earlier sections leave a delisted owned title -- a whole delisted TV season, in
+the case that surfaced it -- as unplayable: it lists (reverse-lookup resolves
+every episode to a canonical id), but its UTS `/episodes/{id}` (and `/movies/{id}`)
+detail page returns **404 "Content Not Available"** on *every* caller (web,
+Android `vz`, Windows `wlk`), so the normal detail+assets path never reaches a
+redownload offer. That is now resolved, by copying what the Android app itself
+does.
+
+The Apple TV app's Library never loads that detail page to play an owned title.
+Each `/v1/me/purchases` row carries its redownload stream inline, on
+`attributes.personalizedOffers[0].hlsUrl`, and the app plays that url directly
+(its "play" vs "navigate" choice on a library tile turns on the url existing).
+That list still includes a delisted purchase, so the stream is reachable where
+the catalogue page is gone. Verified on device against a delisted,
+family-shared season -- the episode licenses (`status 0`) and plays:
+
+```
+Detail 404 for owned iTunes Episode umc.cmc.…; asking the store caller …
+MediaAPI purchases (episodes): 0 owned title(s)     ← your own library
+MediaAPI purchases (episodes): 15 owned title(s)    ← the sharing member
+Delisted play: redownload hlsUrl via MediaAPI purchases row
+License OK … Creating video codec: h264
+```
+
+So when the detail page 404s and the store id is in hand, the addon reads the
+redownload `hlsUrl` off the purchases row instead: a film from the flat owned
+list, an episode via its show (found through the reverse-lookup's `show_id`,
+since episodes have no flat route). Because the play link carries no family
+member, it searches owners in turn -- your own library first, then each sharing
+member -- so a family-shared delisted title resolves too. Matched by store id,
+so it only ever fetches for a title the account (or its family) already owns.
+
 ## Brand tabs and channels (discovered, not hardcoded)
 
 The top-level brand tabs used to be a hardcoded tuple (Apple TV+, MLS, Formula
