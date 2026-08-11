@@ -1059,6 +1059,23 @@ pair. Verified on device:
   recordedAtTimestamp}}`. The old FairPlay/bookkeeper report
   (`MZBookkeeper.woa`) is gone -- it required a device keybag/store session and
   never worked here.
+- **Mark watched** -- an iTunes purchase marks watched exactly the way the app's
+  `MarkAsWatched` (app.js) does, and **not** via a playback-position at the end.
+  The app makes two calls: (1) `POST /play-history {"id": <canonicalId>}` (its
+  `markItemAsWatched` route) -- the record that actually flips the title to
+  watched across devices, and it takes the title's *canonical umc id*, which an
+  owned title already has from the reverse-lookup enrichment, so it is the same
+  call the Apple TV+ side uses; (2) for a title with a store id it also
+  `PUT`s the playback-position to **0** (not the end), keyed by the adam id, so
+  the title leaves Continue Watching. Writing the position to the *end* -- an
+  earlier attempt -- registered as watched nowhere (Apple's watched state comes
+  from play-history, not from a large position). The earlier belief that "iTunes
+  is not in the play-history graph (it 400s)" was a **misdiagnosis**: that 400
+  (`unable to fetch last episode id for episode's show`) came from marking a
+  *fully delisted* show (Treasure Quest, removed from the catalogue), whose show
+  no longer resolves -- not from any iTunes/play-history incompatibility. A
+  delisted title still 400s on play-history (its show is gone), but the position
+  clear still drops it from Continue Watching.
 
 The library layout is a setting: off, your **Your Films**/**Your TV Shows** plus
 a **Shared by X** folder per sharing member (empty ones hidden); on, everyone's
