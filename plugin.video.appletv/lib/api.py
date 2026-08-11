@@ -1941,6 +1941,7 @@ class AppleTVApi(object):
             "premiered": self._release_date(content.get("releaseDate")),
             "title": content.get("title"),
             "show_title": content.get("showTitle"),
+            "art": self._item_art(content.get("images") or {}, item_type),
             "cast": [],
         }
         for raw in self._extra_shelf_items(data, "uts.col.CastAndCrew"):
@@ -2691,9 +2692,47 @@ class AppleTVApi(object):
         # adamId -> canonical reverse-lookup the full listing does.
         if items and enrich:
             self._enrich_purchases(items)
+            # A show's purchase row carries neither a synopsis nor (often) a
+            # poster; its own title page does, and survives even when its
+            # episodes are delisted, so fill those in from it.
+            if kind == "tv":
+                self._enrich_show_details(items)
         kodiutils.log("MediaAPI purchases (%s): %d owned title(s)"
                       % (kind, len(items)))
         return items
+
+    def _enrich_show_details(self, items):
+        """Give an owned show its poster, plot, genres and cast from its own
+        title page -- the /shows/{id} document, which the purchases row lacks.
+        The reverse-lookup has already put the canonical id on each entry.
+        Best-effort and capped, so opening the TV library stays responsive.
+        """
+        budget = 20
+        for e in items:
+            if budget <= 0:
+                break
+            if str(e.get("type")) != "Show":
+                continue
+            cid = str(e.get("id") or "")
+            if not cid.startswith("umc."):
+                continue
+            budget -= 1
+            try:
+                info = self.get_title_info(cid, "Show")
+            except Exception as exc:
+                kodiutils.log_error("Show info %s failed: %s" % (cid, exc))
+                continue
+            if not info:
+                continue
+            for key in ("plot", "genres", "mpaa", "premiered", "tagline",
+                        "studio", "year", "cast"):
+                if info.get(key) and not e.get(key):
+                    e[key] = info[key]
+            art = info.get("art")
+            if isinstance(art, dict) and art:
+                merged = dict(e.get("art") or {})
+                merged.update({k: v for k, v in art.items() if v})
+                e["art"] = merged
 
     def _enrich_purchases(self, items):
         """Route each owned title by its canonical id, as the app does.
@@ -2962,6 +3001,21 @@ class AppleTVApi(object):
             "duration": duration,
             "itunes": True,
         }
+        # Genre and release year ride the purchase row even when a synopsis does
+        # not (TV purchases carry no description at all), so read them straight
+        # off it -- a show with no plot still shows its genre and year.
+        genre_names = attrs.get("genreNames")
+        if isinstance(genre_names, list):
+            names = [g for g in genre_names if isinstance(g, str) and g]
+            if names:
+                entry["genres"] = names
+        released = self._release_date(attrs.get("releaseDate"))
+        if released:
+            entry["premiered"] = released
+            try:
+                entry["year"] = int(str(released)[:4])
+            except (TypeError, ValueError):
+                pass
         if item_type == "Episode":
             # Season/episode numbers so Kodi sorts and labels them, and the show
             # they belong to for the info screen.
