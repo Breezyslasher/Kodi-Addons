@@ -2103,15 +2103,56 @@ class AppleTVApi(object):
             (self._store_json, "store", CONTINUE_WATCHING_SHELF,
              {"ctx_brand": APPLE_TV_PLUS_CHANNEL}),
         ]
+        items = []
         for getter, label, path, ctx in attempts:
-            items = self._page_continue_watching(getter, label, path, ctx,
+            found = self._page_continue_watching(getter, label, path, ctx,
                                                   max_pages)
-            if items:
+            if found:
                 kodiutils.log("Continue Watching: %d item(s) via %s %s"
-                              % (len(items), label, path))
-                return items
-        kodiutils.log("Continue Watching: 0 item(s)")
-        return []
+                              % (len(found), label, path))
+                items = found
+                break
+        # Apple only serves the iTunes part of this shelf to the Android (vz)
+        # caller, which needs a pasted mz_at_ssl session -- so the web and store
+        # callers come back with an empty shell. The same resume data rides
+        # inline on the owned-films list (include[movies]=playback-position),
+        # which the plain Apple TV+ sign-in already reads, so derive the iTunes
+        # part from there and merge it in. That makes purchases in progress show
+        # in Continue Watching with no store session pasted at all.
+        seen = {it.get("id") for it in items}
+        for entry in self._itunes_continue_watching(max_pages):
+            if entry.get("id") not in seen:
+                seen.add(entry.get("id"))
+                items.append(entry)
+        if not items:
+            kodiutils.log("Continue Watching: 0 item(s)")
+        return items
+
+    def _itunes_continue_watching(self, max_pages=10):
+        """Owned iTunes films in progress, from the MediaAPI playback-position.
+
+        A title is in progress when its inline resume point is past the very
+        start and short of essentially finished. This uses the same owned-movies
+        call the library does, so it needs only the Apple TV+ sign-in -- no
+        store session -- and each entry plays and resumes through the ordinary
+        purchase path. TV episodes are not included: their resume points are not
+        carried on a single flat call the way films' are.
+        """
+        try:
+            owned = self.media_purchases("movie", max_pages=max_pages)
+        except Exception as exc:
+            kodiutils.log_error("iTunes Continue Watching lookup failed: %s" % exc)
+            return []
+        in_progress = []
+        for entry in owned:
+            resume = entry.get("resume") or {}
+            pos = resume.get("position") or 0
+            total = resume.get("total") or 0
+            if pos > 30 and total and pos < total * 0.95:
+                in_progress.append(entry)
+        kodiutils.log("iTunes Continue Watching: %d in-progress of %d owned "
+                      "film(s)" % (len(in_progress), len(owned)))
+        return in_progress
 
     def get_featured(self):
         """Apple's featured hero shelf -- the "Apple Original Shows and Movies"
