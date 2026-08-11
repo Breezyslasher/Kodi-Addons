@@ -845,7 +845,7 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
         return
 
     kodiutils.notify(L("sd_notice"))
-    write_report_context(playback, content_id=item_id)
+    write_report_context(playback, content_id=item_id, item_type=item_type)
     play_item = build_isa_listitem(playback)
     if is_live:
         # A live game starts where the menu said (live edge, from start, catch
@@ -903,7 +903,8 @@ def apply_title_info(item, info):
             pass
 
 
-def write_report_context(playback, duration=None, content_id=None):
+def write_report_context(playback, duration=None, content_id=None,
+                         item_type=None):
     """Leave the service what it needs to report this stream to Apple.
 
     Playback runs in a different process from this one, so the ids that mint
@@ -917,9 +918,11 @@ def write_report_context(playback, duration=None, content_id=None):
         # Also what Continue Watching sends as its playerContentId.
         report["content_id"] = content_id
     if playback.get("adam_id"):
-        # A purchase reports to the store's key-value bookkeeper instead of
-        # the now-playing service, and is keyed by its store id.
+        # A purchase reports its resume point to the MediaAPI playback-positions
+        # endpoint (not the now-playing service), keyed by its store id; the
+        # item type chooses the movies vs tv-episodes path.
         report["adam_id"] = playback["adam_id"]
+        report["item_type"] = item_type or "Movie"
     kodiutils.write_json(PLAYBACK_REPORT_CACHE, report)
 
 

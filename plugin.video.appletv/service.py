@@ -33,6 +33,8 @@ class WatchHistory(object):
     def __init__(self):
         self._api = None
         self._token = None
+        self._adam_id = None
+        self._item_type = None
         self._active = False
         self._last_report = 0
         self._last_position = 0
@@ -55,6 +57,18 @@ class WatchHistory(object):
             duration = 0
         if not duration:
             duration = context.get("duration") or 0
+        # An iTunes purchase reports its resume point to the MediaAPI
+        # playback-positions endpoint (bearer + media-user-token), keyed by its
+        # store id -- not the now-playing service, which it is not part of.
+        if context.get("adam_id"):
+            self._adam_id = context["adam_id"]
+            self._item_type = context.get("item_type") or "Movie"
+            self._duration = duration
+            self._live = bool(context.get("live"))
+            self._active = True
+            self._last_report = time.monotonic()
+            kodiutils.log("Watch history: reporting this purchase's position")
+            return
         if not context.get("playable_passthrough"):
             return
         try:
@@ -103,6 +117,14 @@ class WatchHistory(object):
         self.reset()
 
     def _send(self, position, finished):
+        # A purchase saves its position to the MediaAPI, keyed by its store id.
+        if self._adam_id:
+            try:
+                self._lazy_api().report_playback_position(
+                    self._adam_id, self._item_type, position, finished)
+            except Exception as exc:
+                kodiutils.log_error("iTunes position report failed: %s" % exc)
+            return
         try:
             self._lazy_api().report_now_playing(
                 self._token, position, self._duration, finished)
@@ -111,6 +133,8 @@ class WatchHistory(object):
 
     def reset(self):
         self._token = None
+        self._adam_id = None
+        self._item_type = None
         self._active = False
         self._live = False
         self._last_report = 0

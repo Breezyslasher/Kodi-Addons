@@ -1532,6 +1532,9 @@ class AppleTVApi(object):
             # InputStream Adaptive for a Widevine session on an unencrypted
             # stream leaves it waiting for a licence that can never arrive.
             "encrypted": encrypted,
+            # An iTunes purchase reports its resume point to the MediaAPI
+            # playback-positions endpoint, keyed by its store (adam) id.
+            "adam_id": assets.get("adam_id") if assets.get("itunes") else None,
             "report": {
                 "playable_passthrough": assets.get("playable_passthrough"),
                 "external_id": assets.get("external_id"),
@@ -2569,6 +2572,57 @@ class AppleTVApi(object):
         except ValueError:
             kodiutils.log_error("MediaAPI %s response was not JSON" % path)
             return None
+
+    def report_playback_position(self, adam_id, item_type, position,
+                                 finished=False):
+        """Save an iTunes purchase's resume point, the way the Android app does.
+
+        The app PUTs to /v1/me/playback/positions/{movies|tv-episodes}/{id},
+        keyed by the title's external (adam) id, over bearer + media-user-token
+        -- the session already held. Body is the lean playback-positions object
+        the app sends (positionInMilliseconds + recordedAtTimestamp). Best
+        effort: a failed report must never break playback.
+        """
+        boot = self._bootstrap()
+        bearer = boot.get("developer_token")
+        mut = self._media_user_token()
+        if not bearer or not mut or not adam_id:
+            return False
+        kind = "movies" if str(item_type) == "Movie" else "tv-episodes"
+        import datetime
+        stamp = datetime.datetime.now(datetime.timezone.utc).isoformat(
+            timespec="milliseconds").replace("+00:00", "Z")
+        body = {"type": "playback-positions",
+                "attributes": {
+                    "positionInMilliseconds": int(max(0.0, position) * 1000),
+                    "recordedAtTimestamp": stamp,
+                }}
+        headers = {
+            "Authorization": "Bearer " + bearer,
+            "media-user-token": mut,
+            "Origin": WEB_HOME,
+            "Content-Type": "application/json",
+            "Accept": "*/*",
+            "User-Agent": self.session.headers.get("User-Agent", ""),
+            "X-Apple-Store-Front": "%s-1,42" % self._storefront(),
+        }
+        url = "https://%s/v1/me/playback/positions/%s/%s" % (
+            MEDIA_API_HOST, kind, adam_id)
+        try:
+            resp = self.session.put(url, data=json.dumps(body),
+                                    headers=headers, timeout=15)
+            if resp.status_code not in (200, 201, 202, 204):
+                kodiutils.log_error("iTunes position PUT %s -> %s %s"
+                                    % (adam_id, resp.status_code,
+                                       resp.text[:150]))
+                return False
+            kodiutils.log("iTunes position saved: %s -> %dms%s"
+                          % (adam_id, int(max(0.0, position) * 1000),
+                             " (finished)" if finished else ""))
+            return True
+        except Exception as exc:
+            kodiutils.log_error("iTunes position report failed: %s" % exc)
+            return False
 
     def _purchase_entry(self, row, kind, included=None):
         """One MediaAPI purchase row -> the addon's list entry.
