@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # KodiAddon (tubitv)
 #
+import json
 import os
 import sys
 import urllib.parse
@@ -13,12 +14,17 @@ import xbmcvfs
 
 from t1mlib import t1mAddon
 
-from resources.lib.tubi_api import TubiApi, TubiApiError, pickResource
+from resources.lib.tubi_api import CONTINUE_WATCHING, TubiApi, TubiApiError, pickResource
+from resources.lib.tubi_api import MOVIE as HISTORY_MOVIE
 
 uqp = urllib.parse.unquote_plus
 qp = urllib.parse.quote_plus
 
+# Tubi's own letter for a series in a content payload. Its watch history calls
+# the same thing "series", hence the aliased import above for the other one.
 SERIES = 's'
+# The window property the service reads to know what is playing
+PLAYING = 'tubitv.playing'
 
 WIDEVINE_KEYSYSTEM = 'com.widevine.alpha'
 # Tubi's licence server takes the raw challenge and answers with the raw
@@ -174,16 +180,34 @@ class myAddon(t1mAddon):
             infoList['mediatype'] = 'tvshow'
             contextMenu = [(self.localLang(30024),
                             'RunPlugin(%s?mode=AS&url=%s)' % (sys.argv[0], qp(contentId)))]
+            contextMenu.extend(self.extrasFor(contentId, content))
             return self.addMenuItem(name, 'GE', ilist, contentId, img, fanart, infoList,
                                     isFolder=True, cm=contextMenu)
 
         infoList['mediatype'] = 'movie'
         contextMenu = [(self.localLang(30025),
                         'RunPlugin(%s?mode=AM&url=%s)' % (sys.argv[0], qp(contentId)))]
+        contextMenu.extend(self.extrasFor(contentId, content))
         return self.addMenuItem(content.get('title'), 'GV', ilist, contentId, img, fanart,
                                 infoList, isFolder=False, cm=contextMenu)
 
+    def extrasFor(self, contentId, content):
+        """The context menu entries every title carries."""
+        extras = [(self.localLang(30034),
+                   'Container.Update(%s?mode=SE&url=%s)' % (sys.argv[0], qp('|'.join(['related', contentId]))))]
+        if content.get('has_trailer') or content.get('trailers'):
+            extras.append((self.localLang(30035),
+                           'PlayMedia(%s?mode=GV&url=%s)' % (sys.argv[0], qp('|'.join(['trailer', contentId])))))
+        return extras
+
     def getAddonMenu(self, url, ilist):
+        # The viewer's own rows first, then Tubi's categories
+        for label, mode, target in ((30036, 'SE', 'home'),
+                                    (30037, 'GS', CONTINUE_WATCHING),
+                                    (30038, 'SE', 'mylist')):
+            infoList = {'Title': self.localLang(label)}
+            ilist = self.addMenuItem(self.localLang(label), mode, ilist, target,
+                                     self.addonIcon, self.addonFanart, infoList, isFolder=True)
         try:
             containers = self.api.browseList()
         except TubiApiError as err:
@@ -266,6 +290,37 @@ class myAddon(t1mAddon):
             ilist = self.addMenuItem(self.localLang(30026), 'GS', ilist,
                                      '|'.join([containerId, str(nextCursor)]),
                                      self.addonIcon, self.addonFanart, infoList, isFolder=True)
+        return(ilist)
+
+    def getAddonSearch(self, url, ilist):
+        """The listings that are not a plain category: home, list, related."""
+        parts = url.split('|')
+        try:
+            if parts[0] == 'home':
+                return self.homeRows(ilist)
+            if parts[0] == 'mylist':
+                contents = self.api.contents([i for i, _ in self.api.queue()])
+            elif parts[0] == 'related' and len(parts) > 1:
+                contents = self.api.related(parts[1])
+            else:
+                return ilist
+        except TubiApiError as err:
+            self.report(err)
+            return ilist
+        for content in contents:
+            ilist = self.addContent(content, ilist)
+        return(ilist)
+
+    def homeRows(self, ilist):
+        """Tubi's own home screen, its rows as folders."""
+        rows, _ = self.api.homescreen()
+        for row in rows:
+            infoList = {'Title': row.get('title'),
+                        'Plot': row.get('description')}
+            thumb = row.get('thumbnail') or self.addonIcon
+            ilist = self.addMenuItem(row.get('title'), 'GS', ilist,
+                                     row.get('id') or row.get('slug'),
+                                     thumb, self.addonFanart, infoList, isFolder=True)
         return(ilist)
 
     def getAddonMovies(self, url, ilist):
@@ -383,9 +438,16 @@ class myAddon(t1mAddon):
 
         A film is fetched by its own id. An episode arrives as
         `episodeId|seriesId|season` and is picked out of its season, because
-        that is where Tubi publishes episode streams.
+        that is where Tubi publishes episode streams. `trailer|id` asks for a
+        title's trailer rather than the title itself.
         """
         parts = uqp(url).split('|')
+        if parts[0] == 'trailer' and len(parts) > 1:
+            trailers = self.api.content(parts[1]).get('trailers') or []
+            # A trailer is a plain manifest, never encrypted
+            return {'title': self.localLang(30035),
+                    'video_resources': [],
+                    'url': trailers[0].get('url') if trailers else None}
         if len(parts) < 3:
             return self.api.content(parts[0])
         episodeId, seriesId, season = parts[:3]
@@ -393,6 +455,26 @@ class myAddon(t1mAddon):
             if str(episode.get('id')) == episodeId:
                 return episode
         return {}
+
+    def rememberPlaying(self, url, content):
+        """Leave the service what it needs to report progress on stop.
+
+        Only films are recorded. Tubi's history takes a content id and a type,
+        and the only write ever captured was for a film; what it wants for an
+        episode has not been observed, so those are left alone rather than
+        guessed at.
+        """
+        window = xbmcgui.Window(10000)
+        window.clearProperty(PLAYING)
+        parts = uqp(url).split('|')
+        if len(parts) != 1 or not self.addon.getSetting('report_progress') == 'true':
+            return
+        contentId = asInt(content.get('id'))
+        if contentId is None:
+            return
+        window.setProperty(PLAYING, json.dumps({'content_id': contentId,
+                                                'content_type': HISTORY_MOVIE,
+                                                'duration': content.get('duration')}))
 
     def getAddonVideo(self, url):
         try:
@@ -412,6 +494,7 @@ class myAddon(t1mAddon):
             xbmcplugin.setResolvedUrl(int(sys.argv[1]), False, xbmcgui.ListItem(offscreen=True))
             return
 
+        self.rememberPlaying(url, content)
         liz = xbmcgui.ListItem(path=manifest, offscreen=True)
         liz.setSubtitles([sub['url'] for sub in content.get('subtitles') or [] if sub.get('url')])
         if licenseUrl is not None:
