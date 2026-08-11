@@ -2102,10 +2102,14 @@ class AppleTVApi(object):
         The per-channel Up Next the home page shows is scoped to Apple TV+, so
         it never lists an iTunes purchase. This asks Apple's account-wide shelf
         instead, the one the TV apps show, which mixes Apple TV+ episodes with
-        iTunes films the account is part-way through. The Android caller with the
-        slug is the shape a capture of the app shows returning the full
-        cross-service row; the web and Windows-store callers, which a capture
-        shows getting only an empty shell, follow as fallbacks. The first that
+        iTunes films the account is part-way through.
+
+        The Android (vz) caller is the one Apple merges iTunes into -- and the
+        merge is gated on the caller, not on a store session: the vz caller with
+        the ordinary Apple TV+ tokens (bearer + media-user-token) returns the
+        full cross-service row with no mz_at_ssl paste (confirmed: shelf=yes,
+        raw=12 on a bearer-only request). The web and store callers get only an
+        empty iTunes shell, so they follow as fallbacks. The first caller that
         returns rows is listed; an iTunes film resumes through the same purchase
         path as the library.
         """
@@ -2125,18 +2129,14 @@ class AppleTVApi(object):
                               % (len(found), label, path))
                 items = found
                 break
-        # Apple only serves the iTunes part of this shelf to the Android (vz)
-        # caller, which needs a pasted mz_at_ssl session -- so the web and store
-        # callers come back with an empty shell. The same resume data rides
-        # inline on the owned-films list (include[movies]=playback-position),
-        # which the plain Apple TV+ sign-in already reads, so derive the iTunes
-        # part from there and merge it in. That makes purchases in progress show
-        # in Continue Watching with no store session pasted at all.
-        seen = {it.get("id") for it in items}
-        for entry in self._itunes_continue_watching(max_pages):
-            if entry.get("id") not in seen:
-                seen.add(entry.get("id"))
-                items.append(entry)
+        # The vz shelf already includes iTunes films in progress, so the
+        # library-derived fallback only runs when no caller returned a shelf at
+        # all (e.g. an account/region where the vz merge stays empty). It reads
+        # the resume point inline off the owned-films list, needing only the
+        # Apple TV+ sign-in, so Continue Watching still shows purchases in that
+        # case without any store session pasted.
+        if not items:
+            items = self._itunes_continue_watching(max_pages)
         if not items:
             kodiutils.log("Continue Watching: 0 item(s)")
         return items
