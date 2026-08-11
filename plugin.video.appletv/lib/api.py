@@ -2139,6 +2139,49 @@ class AppleTVApi(object):
             items = self._itunes_continue_watching(max_pages)
         if not items:
             kodiutils.log("Continue Watching: 0 item(s)")
+        self._enrich_cw_posters(items)
+        return items
+
+    def _enrich_cw_posters(self, items):
+        """Give each film in the account-wide Continue Watching row a real
+        poster. That shelf (the Android vz one) carries only 16:9 art for a
+        film, unlike everywhere else in the addon where the MediaAPI hands a
+        portrait poster -- which is why this one row looked wrong. Each item
+        already names its canonical umc id, so fetch the film's own title page
+        and take content.images.posterArt (a 2000x3000 portrait), the same
+        poster the rest of the app shows. Only the poster slot is set, so the
+        16:9 art stays as thumb/fanart; episodes keep their still. Best-effort
+        and capped so opening the row stays responsive."""
+        budget = 15
+        for it in items:
+            if budget <= 0:
+                break
+            if str(it.get("type")) != "Movie":
+                continue
+            cid = str(it.get("id") or "")
+            if not cid.startswith("umc."):
+                continue
+            budget -= 1
+            try:
+                data = self._get_json(
+                    "/movies/%s" % cid, {"ctx_brand": APPLE_TV_PLUS_CHANNEL})
+            except Exception as exc:
+                kodiutils.log_error("CW poster fetch %s failed: %s" % (cid, exc))
+                continue
+            images = (((data or {}).get("data") or {}).get("content")
+                      or {}).get("images") or {}
+            entry = images.get("posterArt") or images.get("coverArt")
+            if not (isinstance(entry, dict) and entry.get("url")):
+                continue
+            w, h = entry.get("width"), entry.get("height")
+            try:
+                if not (w and h and float(h) > float(w)):
+                    continue  # portrait posters only
+            except (TypeError, ValueError):
+                continue
+            art = dict(it.get("art") or {})
+            art["poster"] = self._sized_url(entry, height=POSTER_HEIGHT)
+            it["art"] = art
         return items
 
     def _itunes_continue_watching(self, max_pages=10):
