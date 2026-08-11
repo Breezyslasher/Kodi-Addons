@@ -2405,7 +2405,7 @@ class AppleTVApi(object):
         return None
 
     def media_purchases(self, kind="movie", family_member=None, show_id=None,
-                        max_pages=20, sort=None):
+                        max_pages=20, sort=None, enrich=True):
         """Owned titles from MediaAPI /v1/me/purchases -- the Apple TV app's
         Library page call, read off its LibraryPage.js.
 
@@ -2495,7 +2495,9 @@ class AppleTVApi(object):
         if family_member:
             for e in items:
                 e["member_id"] = family_member
-        if items:
+        # A one-page existence probe (folder visibility) does not need the
+        # adamId -> canonical reverse-lookup the full listing does.
+        if items and enrich:
             self._enrich_purchases(items)
         kodiutils.log("MediaAPI purchases (%s): %d owned title(s)"
                       % (kind, len(items)))
@@ -2578,8 +2580,11 @@ class AppleTVApi(object):
                           % json.dumps(data)[:800])
         # The account's own entry appears in this list (you share with the
         # family too); drop it, since your own purchases are the Films/TV Shows
-        # sections already. Identify self by the dsid on the session.
+        # sections already. The API marks no self member, so identify yourself
+        # by the store dsid when a session is pasted, and otherwise by the Apple
+        # ID email captured at sign-in, which matches your entry's accountName.
         own_dsid = self._store_dsid()
+        own_email = (kodiutils.get_setting("account_email") or "").strip().lower()
         out = []
         for row in rows:
             if not isinstance(row, dict):
@@ -2589,12 +2594,14 @@ class AppleTVApi(object):
             attrs = row.get("attributes") or row
             member_id = str(row.get("id") or attrs.get("id")
                             or attrs.get("dsid") or attrs.get("altDsid") or "")
+            account_name = str(attrs.get("accountName") or "")
             name = (" ".join(x for x in (attrs.get("firstName"),
                                          attrs.get("lastName")) if x).strip()
-                    or attrs.get("accountName") or attrs.get("name")
+                    or account_name or attrs.get("name")
                     or attrs.get("appleId") or member_id)
             sharing = attrs.get("sharingPurchases")
-            is_self = bool(own_dsid) and member_id == own_dsid
+            is_self = (bool(own_dsid) and member_id == own_dsid) or (
+                bool(own_email) and own_email == account_name.lower())
             kodiutils.log("MediaAPI family: member id=%s name=%r sharing=%r%s"
                           % (member_id or "?", name, sharing,
                              " (self)" if is_self else ""))
