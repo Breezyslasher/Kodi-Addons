@@ -68,6 +68,12 @@ APPLE_TV_PLUS_CHANNEL = "tvs.sbd.4000"
 # this addon reaches through the Windows-store/Android callers. See
 # docs/itunes-library.md.
 ITUNES_CHANNEL = "tvs.sbd.9001"
+# The purchase key server for an iTunes-catalogue title ("iTunes US Catalog",
+# seen stated as serviceId on a purchase playable). Only ever context here --
+# the lean licence body for a purchase sends adamId alone -- but kept named so
+# a MediaAPI-sourced offer, which carries no serviceId of its own, still labels
+# its key params the way a UTS-sourced one does.
+ITUNES_CATALOG_SVC_ID = "tvs.vds.9023"
 # The MediaAPI host the Apple TV app's Library page reads owned titles from --
 # GET /v1/me/purchases (movies) and /v1/me/purchases/tv-episodes -- read off the
 # app's own LibraryPage.js (MediaAPIPurchaseLoader). Authenticated by the same
@@ -1733,6 +1739,12 @@ class AppleTVApi(object):
                               % (kind, content_id))
                 owned = self._itunes_offer({"canonicalId": content_id,
                                             "contentType": kind})
+                if not owned:
+                    # The UTS detail 404s on every caller for a delisted title;
+                    # the MediaAPI purchases list still carries its redownload
+                    # hlsUrl, which is the route the Android Library itself uses.
+                    owned = self._itunes_offer_from_purchases(external_id,
+                                                              item_type)
                 if owned:
                     return self._prepared_from_assets(owned, mut)
             return None
@@ -2518,6 +2530,46 @@ class AppleTVApi(object):
                       "may not be enough without a store session")
         return None
 
+    def _itunes_offer_from_purchases(self, adam_id, item_type):
+        """The redownload stream straight from the MediaAPI purchases list.
+
+        The Android Library plays an owned title from the personalizedOffers
+        hlsUrl carried on its own /v1/me/purchases row -- never the UTS
+        /movies|/episodes detail page -- which is why it plays a delisted
+        purchase whose catalogue page 404s on every caller. This walks the same
+        owned list (films flat; an episode's show found via the reverse-lookup's
+        showId, since episodes have no flat route) and returns the matching
+        row's captured offer. Ownership already lists the title, so this only
+        ever fetches for a purchase the account holds.
+        """
+        adam_id = str(adam_id)
+        if str(item_type) == "Episode":
+            info = (self._reverse_lookup([adam_id]) or {}).get(adam_id) or {}
+            show_id = info.get("showId")
+            if not show_id:
+                kodiutils.log("Delisted play: no showId for %s" % adam_id)
+                return None
+            entries = self.media_purchases("episodes", show_id=show_id,
+                                           enrich=False)
+        else:
+            entries = self.media_purchases("movie", enrich=False)
+        for e in entries:
+            if str(e.get("adam_id")) == adam_id and e.get("itunes_hls"):
+                kodiutils.log("Delisted play: redownload hlsUrl via MediaAPI "
+                              "purchases row")
+                qp = {"svcId": ITUNES_CATALOG_SVC_ID, "adamId": adam_id,
+                      "isExternal": True}
+                if e.get("rental_id"):
+                    qp["rental-id"] = e["rental_id"]
+                return {"hlsUrl": e["itunes_hls"], "adamId": adam_id,
+                        "fpsKeyServerQueryParameters": qp,
+                        "wideVineKeyServerUrl": None,
+                        "wideVineCertificateUrl": None,
+                        "fpsKeyServerUrl": None, "isItunes": True}
+        kodiutils.log("Delisted play: no MediaAPI personalizedOffers hlsUrl for "
+                      "%s" % adam_id)
+        return None
+
     def media_purchases(self, kind="movie", family_member=None, show_id=None,
                         max_pages=20, sort=None, enrich=True, genre=None):
         """Owned titles from MediaAPI /v1/me/purchases -- the Apple TV app's
@@ -2900,6 +2952,17 @@ class AppleTVApi(object):
                 entry["episode"] = attrs.get("episodeNumber")
             if attrs.get("artistName"):
                 entry["show_title"] = attrs.get("artistName")
+        # The redownload stream Apple hands the Library page inline: each owned
+        # row carries attributes.personalizedOffers, whose hlsUrl the app plays
+        # directly (its "play" vs "navigate" choice turns on this url existing).
+        # It answers for a delisted purchase the UTS /movies|/episodes page
+        # 404s, so capture it for the delisted-playback fallback.
+        for off in (attrs.get("personalizedOffers") or []):
+            if isinstance(off, dict) and off.get("hlsUrl"):
+                entry["itunes_hls"] = off["hlsUrl"]
+                if off.get("rentalId"):
+                    entry["rental_id"] = off["rentalId"]
+                break
         # Resume comes inline as the playback-position relationship
         # (include[movies]=playback-position): positionInMilliseconds on its
         # first data entry. Kodi wants seconds and a total to draw the bar.
