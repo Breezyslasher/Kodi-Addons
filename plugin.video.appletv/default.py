@@ -121,11 +121,11 @@ def mark_watched_menu_item(item_id, entry=None):
     the title counts as watched on your other devices and leaves Continue
     Watching. Marking unwatched is not offered -- it was not captured.
 
-    Apple TV+ titles record this with POST /play-history. An iTunes purchase is
-    not in that graph (play-history 400s "unable to fetch last episode id"), so
-    a purchased film or episode records watched the way it records resume: a
-    MediaAPI playback-position PUT at the end, keyed by its store id. So carry
-    the store id, kind and duration for an iTunes movie/episode.
+    Every title records this with POST /play-history, keyed by its canonical id
+    (the app's markItemAsWatched) -- an iTunes purchase included, since it
+    resolves to a canonical umc id like everything else. An iTunes purchase also
+    carries its store id, so the action can clear its resume point to zero (the
+    app's second call) and drop it out of Continue Watching.
     """
     params = {"item_id": item_id}
     if entry and entry.get("itunes") and entry.get("adam_id") \
@@ -133,8 +133,6 @@ def mark_watched_menu_item(item_id, entry=None):
         params["itunes"] = "1"
         params["adam_id"] = str(entry["adam_id"])
         params["item_type"] = str(entry.get("type") or "Movie")
-        if entry.get("duration"):
-            params["duration"] = str(int(entry["duration"]))
     return (L("mark_watched"), "RunPlugin(%s)" % url(
         action="mark_watched", **params))
 
@@ -1097,27 +1095,30 @@ def do_watchlist(api, item_id, add):
 def do_mark_watched(api, params):
     """Context-menu action: mark a title watched on the Apple account.
 
-    An iTunes purchase (carrying its store id) records watched by putting its
-    playback-position at the end -- Apple counts a title past ~95% as watched,
-    so it leaves Continue Watching; the play-history route 400s for a purchase.
-    Everything else uses play-history.
+    Mirrors what the Apple TV app does (app.js MarkAsWatched): it POSTs the
+    title's canonical id to play-history (markItemAsWatched) -- the record that
+    actually marks it watched across devices -- and, for a title that also
+    carries a store/external id (an iTunes purchase), clears its resume point to
+    zero so it leaves Continue Watching. An iTunes purchase resolves to a
+    canonical umc id like everything else, so the same play-history POST works
+    for it; the earlier per-purchase position-at-the-end write did not register
+    as watched anywhere (it wrote a position, never the watched record).
     """
-    if params.get("itunes") == "1" and params.get("adam_id"):
-        try:
-            position = float(params.get("duration") or 0)
-        except (TypeError, ValueError):
-            position = 0.0
-        # No duration to hand: a large position still reads as finished.
-        if position <= 0:
-            position = 36000.0
-        ok = api.report_playback_position(
-            params["adam_id"], params.get("item_type") or "Movie",
-            position, finished=True)
-    else:
-        item_id = params.get("item_id")
-        if not item_id:
-            return
+    item_id = params.get("item_id")
+    ok = False
+    # The watched record: canonical id -> play-history, for iTunes purchases too.
+    if item_id:
         ok = api.set_watched(item_id)
+    # An iTunes purchase additionally clears its resume to 0 (keyed by the store
+    # id), the app's second call, so it drops out of Continue Watching.
+    if params.get("itunes") == "1" and params.get("adam_id"):
+        cleared = api.report_playback_position(
+            params["adam_id"], params.get("item_type") or "Movie", 0.0,
+            finished=True)
+        ok = ok or cleared
+    if not item_id and not (params.get("itunes") == "1"
+                            and params.get("adam_id")):
+        return
     if ok:
         kodiutils.notify(L("watched_marked"))
         # Marking watched removes the title from Apple's Continue Watching, so
