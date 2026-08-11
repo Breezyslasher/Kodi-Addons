@@ -12,6 +12,7 @@ from lib import kodiutils
 from lib.auth import AppleAuth, STATUS_OK, STATUS_NEEDS_2FA
 from lib.api import (AppleTVApi, CHANNELS, APPLE_TV_PLUS_CHANNEL, F1_CHANNEL,
                      MLB_ROOM, PLAYBACK_REPORT_CACHE)
+from lib.itunes import ItunesStore
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
@@ -78,6 +79,17 @@ S = {
     "spotlight": 32067,
     "race_weekend": 32068,
     "cast": 32069,
+    "featured": 32082,
+    "continue_watching": 32060,
+    "itunes_library": 32012,
+    "itunes_sign_in": 32070,
+    "itunes_sign_out": 32071,
+    "itunes_sign_in_ok": 32072,
+    "itunes_sign_in_failed": 32073,
+    "films": 32077,
+    "tv_shows": 32078,
+    "shared_by": 32104,
+    "season_n": 32105,
 }
 
 
@@ -144,7 +156,10 @@ def apply_entry_info(tag, entry):
         except (TypeError, ValueError, AttributeError, KeyError):
             pass
     if entry.get("plot"):
-        tag.setPlot(entry["plot"])
+        try:
+            tag.setPlot(entry["plot"])
+        except (TypeError, ValueError, AttributeError):
+            pass
     if entry.get("year"):
         try:
             tag.setYear(int(entry["year"]))
@@ -270,24 +285,34 @@ def add_playable(entry, cast=None):
     if kind in ("Movie", "Show", "Vod", "MovieBundle"):
         extras_context_menu(item, entry["id"], kind)
     elif kind == "SportingEvent":
-        # A match links to the other games in its league and to its clubs.
+        # A match links to the other games in its league, and to its two clubs.
+        sport = entry.get("sport")
         item.addContextMenuItems([
             (L("related"), "Container.Update(%s)" % url(
                 action="related", item_id=entry["id"],
                 league=entry.get("league_id") or "")),
-            (L("clubs"), "Container.Update(%s)" % url(
-                action="clubs", item_id=entry["id"])),
-            (L("key_plays"), "Container.Update(%s)" % url(
-                action="key_plays", item_id=entry["id"])),
+        ]
+            # Clubs are the two sides of a match -- a Soccer idea (MLS, Leagues
+            # Cup). A Motorsports race and a Baseball game are not club-vs-club,
+            # so the entry is offered for Soccer only rather than on every sport.
+          + ([(L("clubs"), "Container.Update(%s)" % url(
+                action="clubs", item_id=entry["id"]))]
+             if sport == "Soccer" else [])
+            # Key Plays are a live game's moments so far, to catch up on the
+            # broadcast while it airs. A finished game has Highlights instead,
+            # so Key Plays is offered only while the game is live.
+          + ([(L("key_plays"), "Container.Update(%s)" % url(
+                action="key_plays", item_id=entry["id"]))]
+             if entry.get("live") else [])
+          + [
             (L("highlights"), "Container.Update(%s)" % url(
                 action="event_extras", kind="highlights", item_id=entry["id"])),
             (L("spotlight"), "Container.Update(%s)" % url(
                 action="event_extras", kind="spotlight", item_id=entry["id"])),
         ] + ([(L("race_weekend"), "Container.Update(%s)" % url(
                 action="event_extras", kind="weekend", item_id=entry["id"]))]
-             # Only Motorsports fixtures have a weekend of sessions; a match
-             # in any other sport carries clubs and no weekend at all.
-             if entry.get("sport") == "Motorsports" else [])
+             # Only Motorsports fixtures have a weekend of sessions.
+             if sport == "Motorsports" else [])
           + watchlist_menu_items(entry["id"])
           + [mark_watched_menu_item(entry["id"])])
     elif kind == "Episode":
@@ -320,6 +345,8 @@ def add_playable(entry, cast=None):
 # -- menus ---------------------------------------------------------------
 
 def main_menu(auth):
+    # The featured Apple Originals hero shelf, as the TV app leads with it.
+    add_dir(L("featured"), "featured")
     # One entry per brand tab along the top of tv.apple.com's home page.
     for channel_id, name in CHANNELS:
         label = L("originals") if channel_id == APPLE_TV_PLUS_CHANNEL else name
@@ -327,6 +354,13 @@ def main_menu(auth):
     # MLB rides on Apple TV+ as an editorial room rather than a brand channel,
     # so it is listed here as a room instead of a CHANNELS entry.
     add_dir("MLB", "room", room_id=MLB_ROOM, channel_id=APPLE_TV_PLUS_CHANNEL)
+    store = ItunesStore(auth.session)
+    # The account-wide resume row: personalised, so only when signed in to Apple
+    # TV+. Unlike the per-tab Up Next, it mixes in iTunes films in progress.
+    if auth.is_authenticated():
+        add_dir(L("continue_watching"), "continue_watching")
+    if store.is_signed_in() or store.pasted_cookies() or auth.is_authenticated():
+        add_dir(L("itunes_library"), "itunes")
     add_dir(L("search"), "search")
     if kodiutils.get_setting("manifest_url_override"):
         # Not a folder. do_play answers with setResolvedUrl, which Kodi only
@@ -340,6 +374,10 @@ def main_menu(auth):
         add_dir(L("sign_out"), "sign_out")
     else:
         add_dir(L("sign_in"), "sign_in")
+    # The store is a separate service with its own login, so signing in to
+    # Apple TV+ does not sign in to it.
+    add_dir(L("itunes_sign_out") if store.is_signed_in() else L("itunes_sign_in"),
+            "itunes_sign_out" if store.is_signed_in() else "itunes_sign_in")
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -368,7 +406,14 @@ def show_shelves(api, shelves, cache_key=APPLE_TV_PLUS_CHANNEL,
 def add_item(entry, channel_id=APPLE_TV_PLUS_CHANNEL, cast=None):
     """Add a catalogue entry: shows and rooms are folders, the rest play."""
     kind = str(entry.get("type"))
-    if kind == "Show":
+    if kind == "Show" and entry.get("itunes"):
+        # An owned show opens to the episodes you own (via the MediaAPI
+        # tv-episodes filter), not the whole catalogue show.
+        add_dir(entry["title"], "itunes_show", art=entry.get("art"),
+                info=entry, media_type="tvshow",
+                show_id=entry.get("adam_id") or entry["id"],
+                member_id=entry.get("member_id") or "")
+    elif kind == "Show":
         add_dir(entry["title"], "show", art=entry.get("art"),
                 extras_for=(entry["id"], "Show"), info=entry,
                 media_type="tvshow", show_id=entry["id"])
@@ -513,6 +558,144 @@ def do_show(api, show_id):
                 media_type="season", show_id=show_id, season=season["number"])
     xbmcplugin.setContent(HANDLE, "seasons")
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_sign_in(auth):
+    """Sign in to the store, which is not the Apple TV+ sign-in.
+
+    Apple takes the password directly here rather than through the SRP flow
+    the website uses, so this asks for it again rather than reusing anything.
+    """
+    apple_id = kodiutils.input_text(L("enter_apple_id"))
+    if not apple_id:
+        return
+    password = kodiutils.input_text(L("enter_password"), hidden=True)
+    if not password:
+        return
+    store = ItunesStore(auth.session)
+    if store.sign_in(apple_id, password):
+        kodiutils.notify(L("itunes_sign_in_ok"))
+    else:
+        kodiutils.ok_dialog("%s\n%s" % (L("itunes_sign_in_failed"),
+                                        store.last_error or ""))
+
+
+def do_itunes_library(api, auth):
+    """The library's sections: your films and TV, plus each family member who
+    shares purchases (the app's Family Sharing view)."""
+    add_dir(L("films"), "itunes_movies")
+    add_dir(L("tv_shows"), "itunes_tv")
+    for member in api.media_family_members():
+        add_dir(L("shared_by") % member["name"], "itunes_family",
+                member_id=member["id"])
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_family(api, member_id):
+    """A family member's shared library: Films and TV Shows, kept apart like
+    your own library."""
+    add_dir(L("films"), "itunes_family_movies", member_id=member_id)
+    add_dir(L("tv_shows"), "itunes_family_tv", member_id=member_id)
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_family_movies(api, member_id):
+    show_items(api.media_purchases("movie", family_member=member_id))
+
+
+def do_itunes_family_tv(api, member_id):
+    show_items(api.media_purchases("tv", family_member=member_id),
+               content="tvshows")
+
+
+def do_itunes_show(api, show_id, member_id=None, season=None):
+    """The episodes of an owned show that the account (or a family member)
+    actually owns, via the MediaAPI tv-episodes filter.
+
+    A show with more than one owned season opens to a folder per season; a
+    single-season show (or a chosen season) lists its episodes directly.
+    """
+    episodes = api.media_purchases("episodes", show_id=show_id,
+                                   family_member=member_id)
+    seasons = sorted({e.get("season") for e in episodes
+                      if e.get("season") is not None})
+    if season is None and len(seasons) > 1:
+        for s in seasons:
+            count = sum(1 for e in episodes if e.get("season") == s)
+            add_dir(L("season_n") % s, "itunes_show", media_type="season",
+                    show_id=show_id, member_id=member_id or "", season=str(s))
+        xbmcplugin.setContent(HANDLE, "seasons")
+        xbmcplugin.endOfDirectory(HANDLE)
+        return
+    if season is not None:
+        episodes = [e for e in episodes if str(e.get("season")) == str(season)]
+    show_items(episodes, content="episodes")
+
+
+def _with_resume(store, items):
+    """Attach where each purchase was left, where the store knows."""
+    resume = store.resume_points()
+    for entry in items:
+        position = resume.get(entry.get("adam_id"))
+        if position and entry.get("duration"):
+            entry["resume"] = {"position": position,
+                               "total": float(entry["duration"])}
+    return items
+
+
+def do_itunes_movies(api, auth):
+    """Films the account owns.
+
+    The MediaAPI /v1/me/purchases route (the Apple TV app's own Library call)
+    is tried first: it lists from the ordinary Apple TV+ bearer + media-user-
+    token, so it needs no store or Android session. The Windows store locker is
+    kept as a fallback for a pasted store session.
+    """
+    items = api.media_purchases("movie")
+    if items:
+        show_items(items)
+        return
+    store = ItunesStore(auth.session)
+    items = store.owned_movies(api.resolve_store_id)
+    if not items and store.session_info().get("password_token"):
+        items = store.library()
+    if not items and store.last_error:
+        kodiutils.notify(store.last_error)
+    show_items(_with_resume(store, items))
+
+
+def do_itunes_tv(api, auth):
+    """Owned television, as the seasons its episodes belong to.
+
+    Apple's locker lists episodes flat, so the seasons here are grouped from
+    what the episodes say about themselves rather than fetched as rows of
+    their own.
+    """
+    # The MediaAPI route lists owned episodes flat (with season/episode
+    # numbers), from the ordinary Apple TV+ session -- shown as a flat list
+    # when it answers, since it needs no store session. The season-grouped
+    # store locker is the fallback.
+    shows = api.media_purchases("tv")
+    if shows:
+        show_items(shows, content="tvshows")
+        return
+    store = ItunesStore(auth.session)
+    seasons = store.owned_tv_seasons(api.resolve_store_id)
+    if not seasons:
+        kodiutils.notify(store.last_error or L("no_results"))
+    for season in seasons:
+        add_dir(season["title"], "itunes_season", art=season.get("art"),
+                info=season, media_type="season", season_id=season["id"])
+    xbmcplugin.setContent(HANDLE, "seasons")
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_itunes_season(api, auth, season_id):
+    store = ItunesStore(auth.session)
+    episodes = store.owned_season(season_id)
+    if not episodes and store.last_error:
+        kodiutils.notify(store.last_error)
+    show_items(_with_resume(store, episodes), content="episodes")
 
 
 def do_search(api):
@@ -859,6 +1042,16 @@ def build_isa_listitem(playback):
     item.setMimeType("application/vnd.apple.mpegurl")
     item.setContentLookup(False)
 
+    # Apple's WebVTT subtitles, fetched to files because ISA lists but does not
+    # render them. Given to Kodi as external subtitles so its own renderer shows
+    # them. Empty for a live event (its captions are CEA-608 inside the video).
+    subs = playback.get("subtitles")
+    if subs:
+        try:
+            item.setSubtitles(subs)
+        except Exception as exc:
+            kodiutils.log_error("Could not attach subtitles: %s" % exc)
+
     headers = playback.get("stream_headers") or {}
     if headers:
         header_str = "&".join("%s=%s" % (k, quote(str(v), safe="")) for k, v in headers.items())
@@ -975,6 +1168,33 @@ def router(paramstring):
         show_items(api.get_show_episodes(show_id, season=params.get("season")),
                    content="episodes",
                    cast=api.get_cast(show_id, "Show"))
+    elif action == "featured":
+        show_items(api.get_featured())
+    elif action == "continue_watching":
+        show_items(api.get_continue_watching())
+    elif action == "itunes_sign_in":
+        do_itunes_sign_in(auth)
+        main_menu(auth)
+    elif action == "itunes_sign_out":
+        ItunesStore(auth.session).sign_out()
+        main_menu(auth)
+    elif action == "itunes":
+        do_itunes_library(api, auth)
+    elif action == "itunes_movies":
+        do_itunes_movies(api, auth)
+    elif action == "itunes_tv":
+        do_itunes_tv(api, auth)
+    elif action == "itunes_season":
+        do_itunes_season(api, auth, params.get("season_id"))
+    elif action == "itunes_family":
+        do_itunes_family(api, params.get("member_id"))
+    elif action == "itunes_family_movies":
+        do_itunes_family_movies(api, params.get("member_id"))
+    elif action == "itunes_family_tv":
+        do_itunes_family_tv(api, params.get("member_id"))
+    elif action == "itunes_show":
+        do_itunes_show(api, params.get("show_id"), params.get("member_id"),
+                       params.get("season"))
     elif action == "search":
         do_search(api)
     elif action == "play":

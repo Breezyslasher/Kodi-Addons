@@ -15,10 +15,20 @@
         <setting id="max_height" type="number" label="32041" default="360" />
         <setting id="live_max_height" type="number" label="32085" default="1080" />
         <setting id="hide_watchlist_in_continue" type="bool" label="32086" default="true" />
+        <setting id="external_subs" type="bool" label="32100" default="true" />
+        <setting id="all_subs" type="bool" label="32101" default="true" />
+        <setting id="subtitle_delay" type="text" label="32102" default="" />
         <setting id="sdr_only" type="bool" label="32043" default="true" />
         <setting id="avc_only" type="bool" label="32044" default="true" />
         <setting id="media_user_token" type="text" label="32008" option="hidden" default="" />
         <setting id="developer_token" type="text" label="32083" option="hidden" default="" />
         <setting id="manifest_url_override" type="text" label="32009" default="" />
+        <setting label="32074" type="lsep" />
+        <setting id="itunes_cookies" type="text" label="32075" option="hidden" default="" />
+        <setting id="itunes_sp_dsid" type="text" label="32076" default="" />
+        <setting id="itunes_token" type="text" label="32079" option="hidden" default="" />
+        <setting id="itunes_uts_cookies" type="text" label="32081" option="hidden" default="" />
+        <setting id="search_appletv_only" type="bool" label="32080" default="true" />
+        <setting id="diag_force_store_license" type="bool" label="32084" option="hidden" default="false" />
     </category>
 </settings>

@@ -41,6 +41,13 @@ def get_setting(setting_id, default=""):
         return default
 
 
+def set_setting(setting_id, value):
+    try:
+        addon().setSetting(setting_id, str(value))
+    except Exception:
+        pass
+
+
 def get_setting_bool(setting_id, default=False):
     value = get_setting(setting_id, "true" if default else "false")
     return str(value).lower() == "true"
@@ -82,6 +89,22 @@ def profile_dir():
     if not os.path.exists(path):
         os.makedirs(path)
     return path
+
+
+def subtitle_languages():
+    """Two-letter codes of the subtitles to fetch: Kodi's language, then
+    English as a fallback. Kept short so a play does not fetch dozens of
+    tracks it will never show."""
+    langs = []
+    try:
+        code = (xbmc.getLanguage(xbmc.ISO_639_1) or "").strip().lower()
+        if code:
+            langs.append(code)
+    except Exception:
+        pass
+    if "en" not in langs:
+        langs.append("en")
+    return langs
 
 
 def read_json(filename, default=None):

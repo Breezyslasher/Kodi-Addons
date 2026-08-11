@@ -303,6 +303,29 @@ looking at the wrong field on the wrong caller.
 The addon now falls back to that endpoint whenever an iTunes playable comes
 back with no assets, and plays the redownload offer if Apple names one.
 
+### Surfacing purchases in Continue Watching
+
+The home page's resume row is `uts.col.ChannelUpNext.tvs.sbd.4000` — scoped
+to the Apple TV+ channel, so an in-progress iTunes film never shows in it (a
+capture of it came back with `isItunes:true` count zero, only
+`channelId tvs.sbd.4000`). Apple keeps a **second, account-wide** resume shelf
+that does mix the two, and its own `configurations` document names the
+endpoint rather than leaving it to be guessed:
+
+```
+getContinueWatchingShelf  →  /uts/v3/shelves/continue-watching
+```
+
+A capture of that shelf (from the TV app) carried The Greatest Showman — an
+iTunes purchase — beside Apple TV+ episodes, each item the ordinary UTS shape
+the shelf parser already reads. The addon adds a **Continue Watching** entry
+to its top menu that asks this shelf as the signed-in account and lists what
+comes back; an iTunes film there opens through the same redownload path as
+opening it from the library. Whether Apple serves *this* identity the iTunes
+rows or only the Apple TV+ ones is left to the response to answer rather than
+assumed — the shelf exists and mixes services, which the capture proves; that
+the web bearer is shown the same mix is what a run confirms.
+
 ### Where this stands, tested
 
 Everything up to the licence works, with **no store session at all** — the
@@ -331,11 +354,143 @@ own responses now matches what its granted requests carry: the key id out of
 its PSSH, the adam id, and an svcId taken from the title's own document
 rather than assumed. It is still refused.
 
+The svcId source was later pinned down exactly. A capture of The Greatest
+Showman in the **Continue Watching** shelf carries the purchase playable with
+`serviceId: tvs.vds.9023` ("iTunes US Catalog") stated outright, while a
+studio title beside it in the same shelf carries `tvs.vds.4105`. A purchase
+has no assets of its own, so `fpsKeyServerQueryParameters` for it do not
+exist; walking the detail document for *some* svcId can therefore pick up a
+neighbouring playable's — a trailer, the background loop — on a different
+service. The addon now prefers the purchase playable's own `serviceId` and
+only walks the document as a last resort. For this title both paths yield
+`tvs.vds.9023`, so it changes no outcome here; it stops a wrong svcId being
+sent for a title whose page mixes services. The licence is still `-1020` with
+the correct svcId, under both the account's identities — so svcId was never
+what it turned on.
+
 **A pasted store session was then tried, and refused identically.** With
 `X-Dsid`, `X-Token` and the store cookies on the licence request — the exact
 credentials Apple's own client uses — the answer is still `-1020`. So the
 refusal is not about who is asking. Both identities the account has were
 offered and both were declined.
+
+### The Android session narrows it to the device, not the credentials
+
+Continue Watching later gave a way to prove the store session was genuinely
+valid, not stale: it populates (7 items, `auth-token-valid=true`) only for the
+Android caller with a fresh `mz_at_ssl` cookie. Taking that same proven-good
+session to the licence request settled what `-1020` is not:
+
+| licence request | result |
+|---|---|
+| web bearer + media-user-token | `-1020` |
+| Android `mz_at_ssl` cookie **+ Windows `X-Token`** | empty `403` |
+| Android `mz_at_ssl` + `X-Dsid`, ATVE agent, no `X-Token` | `-1020` |
+
+Two things fall out. The `mz_at_ssl` dsid was being dropped by a cookie regex
+that matched `amia-`/`mt-tkn-`/`mz_at0-` but not `mz_at_ssl-`, so a licence
+request under that session went out with no `X-Dsid` at all; that is fixed. And
+mixing the Android cookie with a Windows `X-Token` earns an **empty 403** — the
+same shape Apple's store sign-in returns to a request missing device
+attestation — whereas the **coherent** Android identity (cookie + `X-Dsid`, its
+own agent, no foreign token) is *accepted and processed*, and declined at the
+licence decision with `-1020`.
+
+So with a fresh, proven-valid session, the correct `X-Dsid`, the right svcId,
+adam id and key id, and no credential mismatch, Apple still returns `-1020`. It
+is not auth, not the caller, not the request shape — every one of those is now
+correct. What remains is what the request cannot carry: `kbsync`, the device
+keybag, and the per-request signing Apple's native clients (the Android app's
+Luna SDK among them) attach. `-1020` is a licence-decision refusal for not
+being a provisioned device, the same class of wall as the store sign-in's
+attestation — and the end of the road for a pure-Python client on purchase
+playback.
+
+Final confirmation, two back-to-back runs on one owned film, same build, the
+only variable the session:
+
+| `mz_at_ssl` session | licence result |
+|---|---|
+| expired (`auth-token-valid=false`) | HTTP **403**, empty body — rejected at auth |
+| freshly captured, valid | HTTP **200**, `streaming-keys:[{status:-1020}]` — accepted, key refused |
+
+This separates the two walls cleanly and for good. The `403` was only ever the
+stale cookie: a fresh session is *accepted and processed* (200), the licence
+pipeline runs end to end — redownload offer, three Widevine keys, manifest,
+DRM init — and Apple declines at the last step with `-1020` for the missing
+device keybag. Refreshing the session is necessary and it is not sufficient;
+nothing a non-Apple client can send changes the `-1020`. Purchase *naming* is
+complete (films and delisted TV alike); purchase *playback* stops here, at the
+device attestation, by design.
+
+The full licence response was then captured (valid session, `auth-token-valid=
+true`) to read Apple's own reason rather than infer it. Verbatim:
+
+```
+HTTP 200
+apple-tk: false
+x-apple-jingle-correlation-key: YMVKPMNLNRG7ERIENCAEHG2WQA
+X-Apple-Jingle-Responding-Instance: MZPlayLocal-mzplay-main-…
+{"streaming-response":{"streaming-keys":[{"id":1,"status":-1020}],"version":1}}
+```
+
+Fact, not read into: the request reached Apple's play/licence backend
+(`MZPlay…`) and was answered with the bare `-1020` and no explanatory field —
+no dialog, customerMessage, failureType, or auth challenge. The response
+carries a header `apple-tk: false`; its meaning is not documented here and is
+not guessed. This run also used a *delisted* film (adam 387548805), which still
+resolved a redownload HD offer and keys, so delisted content reaches the same
+`-1020`, not an earlier block.
+
+The last cell — does the Android session itself license anything, or is it the
+wrong credential — was then filled directly. A TV+ Original was played with the
+Android `mz_at_ssl` session forced onto its licence request (its own key server
+and `svcId tvs.vds.4105` kept, only the identity swapped):
+
+| content | identity on the licence request | key server | result |
+|---|---|---|---|
+| TV+ Original | web bearer + media-user-token | `tvs.vds.4105` | `status 0`, plays |
+| TV+ Original | **Android `mz_at_ssl`** | `tvs.vds.4105` | **`status 0`, plays** |
+| iTunes purchase | web bearer + media-user-token | `tvs.vds.9023` | `-1020` |
+| iTunes purchase | Android `mz_at_ssl` | `tvs.vds.9023` | `-1020` |
+
+So the Android session is a fully valid *licensing* credential — it issued a
+real licence (both keys, `status 0`) for TV+ content and the stream played. The
+credential, the caller, the request shape are all fine. The only thing that
+changes the answer is the **key server**: `tvs.vds.4105` (TV+/studio) issues
+without a keybag; `tvs.vds.9023` (iTunes catalogue) refuses without one. The
+`-1020` is entirely the purchase key server's keybag requirement, on either
+session — nothing about the token or the path. A purchase's keys exist only on
+`9023`, and `9023` wants the device keybag, full stop.
+
+### The last variable: fetch the offer as Android too (still -1020)
+
+One thing the runs above had not isolated: the redownload offer (and its
+`hlsUrl`) was fetched via the Windows caller (`caller=wlk`, `pfm=windows`) while
+only the *licence* identity was swapped to Android. So the stream being licensed
+was a Windows-minted one. The offer fetch was then moved to the Android caller
+(`caller=vz`, `pfm=vz`, `mfr=AndroidTV`) so the whole chain — acquire and
+licence — is the Android TV app, the client that actually plays purchases over
+Widevine. Tested on a valid session (`auth-token-valid=true`) against an owned
+film (adam 1324419603, `svcId tvs.vds.9023`):
+
+```
+iTunes offer fetched via android(vz) caller
+iTunes redownload offer found: redownload SD
+Collected 3 Widevine key(s)
+License identity: android session (dsid=yes, token=NO)
+License diagnostic: HTTP 200
+{"streaming-response":{"streaming-keys":[{"id":1,"status":-1020}],"version":1}}
+sent key params={... 'adamId':'1324419603','isExternal':True,'svcId':'tvs.vds.9023','guid':''}
+```
+
+Identical `-1020`. The sent request carries `guid: ''` and no `kbsync`; the
+Android app's real request carries both. So the offer caller was never the
+variable either: with the fully coherent Android chain — Android-fetched
+Widevine stream, Android identity, valid session, correct key params — the
+purchase key server still refuses for the missing device keybag. Every variable
+short of `kbsync` (and the device guid / per-request signing that accompany it)
+is now eliminated. This is the wall, confirmed rather than inferred.
 
 What the captures say instead is that the key system splits cleanly by
 playlist, without a single exception:
@@ -357,9 +512,19 @@ Two things keep it from being flatly impossible, both worth recording:
   the licence decision is being made per request, not per title.
 - Apple TV on **Android** plays purchases, and Android has no FairPlay. Either
   Apple issues Widevine to that client where it refuses this one, or that app
-  is given a different playlist entirely. A capture from it would say which.
-  That capture does not exist here: the Android TV app's native layer rejects
-  any substitute CA, which is where that route ended.
+  is given a different playlist entirely. The Android TV app was then run on a
+  rooted LineageOS build (Raspberry Pi 4) with a substitute CA injected into
+  the conscrypt trust store, and its traffic did decrypt — but only the browse
+  calls. Its own `WVCdm` logcat confirms it licenses through a **Widevine L3
+  software CDM** (`form_factor: L3`, `soc_model: Software`, `AddKey` succeeds),
+  so a generic CDM is enough for that client. What never crossed the proxy is
+  the licence HTTP POST itself: it rides Apple's native, certificate-pinned
+  (and partly QUIC) path, so the endpoint, headers and body that turn a
+  Widevine challenge into a granted purchase key were not captured. The one
+  `AddKey` that was visible carried a placeholder PSSH
+  (`0123456789012345ABCDEFGHIJKLMNOP`) — the app's start-up DRM self-check,
+  not a title. So the Android route confirmed *that* a generic Widevine CDM is
+  licensed, without revealing *how* the request is signed.
 
 Everything short of the licence works, and is worth keeping: store search
 finds purchases, `personalizedOffers` says whether the account owns one,
@@ -534,6 +699,43 @@ those ids into titles is where it stops, and all three routes were tried:
 | `itunes.apple.com/lookup` (public) | **works, but not for everything** |
 | `uts/v3/contents/play-metadata/vod` | **460**, content does not match condition |
 
+#### What the token actually is
+
+The storefront bundle is in the captures — `di6-storefront-bootstrap_modern.js`,
+2.2 MB — and it contains the whole construction:
+
+```js
+_setSignedRequestQueryParams: function (url) {
+  var n = Math.round(new Date().getTime() / 1e3)
+  var whitelist = its.serverData.properties["SF6.StorePlatform.whitelistParams"]
+  var o = ""                                  // sort the query, concatenate
+  ...  u = url.split("?")[1].split("&").sort() //   the VALUES of whitelisted keys
+       if (whitelist[key]) o += value
+  var f = [n, iTunes.storefront, decodeURIComponent(o)].join("")
+  return url + "&X-JS-SP-TOKEN=" + encodeURIComponent(
+                 iTunes.signStorePlatformRequestData(f))
+             + "&X-JS-TIMESTAMP=" + n
+}
+```
+
+The whitelist is served alongside it: `["caller", "dsid", "id", "p"]`. So the
+signed string is fully known — timestamp, storefront, then the values of those
+four parameters in sorted-key order.
+
+**What is not known is the signing.** `signStorePlatformRequestData` appears
+exactly once in 2.2 MB, as a call on the native `iTunes` bridge, and is never
+defined in JavaScript. It is in the client binary.
+
+Its output is 16 bytes, which is MD5-shaped, so that was worth testing: 720
+combinations of MD5, SHA-1, SHA-256, SHA-512 and BLAKE2s over six storefront
+spellings, four separators, three field orders and two encodings. None
+reproduce a captured token. It is keyed or proprietary, not a bare hash of a
+string anyone can assemble.
+
+That is as far as captures go. Recovering it would mean reversing the native
+function or running a real client, which is a different kind of work from
+anything else here.
+
 The first is refused. `X-JS-SP-TOKEN` is the obvious suspect — 142 captured
 lookups carry 142 distinct tokens across only 26 timestamps, so it signs each
 request rather than the session — but that is a suspicion, not a finding. The
@@ -569,17 +771,45 @@ handful no lookup will name, and its entries open: a title picked from it
 resolves its redownload offer and reaches the licence exactly as one picked
 from search does.
 
-Two ids in a hundred cannot be listed at all, and the reason is not a bug to
-fix. The public index misses some -- five films and eleven episodes here --
-and the catalogue names every missing film but none of the episodes, with a
-404 reading `Content Not Available`. The eleven are one thing: Treasure Quest
-Season 1, complete. So a title an account owns can outlive Apple's listing of
-it, and nothing reachable will name one that has. The addon says which ids
-those are rather than quietly returning a shorter list.
+Sixteen ids across the two lockers resolve through neither public route --
+five films and one complete season of eleven episodes. That is **not**
+because Apple has dropped them. Its own lookup names every one of them:
 
-Worth knowing for anything built on these endpoints: `/movies/<store id>`
-works, and `/episodes/<store id>` answers **400**, a malformed request rather
-than a missing title. Only the film endpoint takes a numeric id.
+```
+387548805   Despicable Me            302596216  The Merchant Royal
+1538303219  Greenland                303292916  Pirates!
+1140582200  Kubo and the Two Strings 303885799  The Legend
+779516213   Last Vegas               …           Treasure Quest, Season 1
+826848074   Mr. Peabody & Sherman       (all eleven episodes)
+```
+
+That endpoint is the one refused with a 403, and its profile name says what
+it is for: `redownload-image-tracklist-item`. It is the **library** service,
+and it describes what an account owns whether or not the title is still
+published. The public lookup and the catalogue describe what is currently on
+sale, which is a different question and a smaller set.
+
+So this is one blocker wearing two faces, not two problems. An iPhone lists
+these titles because Apple's client can call that service; this cannot,
+because each call is signed per request.
+
+Which is why the five films could be rescued and the eleven episodes could
+not, and the difference is about **ids, not availability**:
+
+| | asked with a store id | answer |
+|---|---|---|
+| `/movies/<id>` | accepted | the five films, in full |
+| `/episodes/<id>` | **400, malformed** | never gets as far as looking |
+
+So `/movies/<episode id>` answering 404 says only *"that id is not a movie"*,
+which is true and useless. It is not evidence the episode is unpublished, and
+reading it that way was a mistake. Whether those episodes are in the current
+catalogue is simply **not known** -- no endpoint here accepts an episode's
+store id to ask with.
+
+A season would be the way in, since an episode's lookup names its
+`collectionId`. That id comes from the lookup that is refused, so it is out of
+reach for exactly the titles that need it.
 
 **A locker holds one person's purchases**, which is easy to miss and was
 missed here for a while: asking only for the signed-in account returned a
@@ -707,3 +937,87 @@ into the repository: sessions live only in Kodi's settings at runtime, and
 are pasted by hand rather than minted or stored by this addon. Run
 `tools/sanitize_har.py` over anything before sharing it, and treat an
 unsanitised capture as the account itself.
+
+## What the keybag actually is (from the app's own code)
+
+A capture of the Apple TV app's JavaScript (`atvjs`) settled two things the
+`-1020` runs could only infer.
+
+**Listing.** The Library page lists owned titles from the MediaAPI, not the
+Windows store locker and not a UTS shelf: `GET /v1/me/purchases` with
+`types=movies` (and `types=tv-shows`), `filter=owned`, on
+`amp-api.videos.apple.com`, authenticated by the ordinary web bearer +
+media-user-token. The addon uses this now, so the library lists from the plain
+Apple TV+ sign-in -- no store or Android session. The website simply has no
+Library tab; the endpoint exists regardless.
+
+**The keybag is not Apple-hardware-only.** Purchases play on Windows iTunes,
+the PlayStation app and Android TV, none of them Apple silicon -- so `kbsync`
+is not a Secure Enclave secret. The app's error enums name where it comes from:
+`anisetteProvisioningStart`, `anisetteGetGUID`, `anisetteProvisioning`,
+`failedImportKeyBag`, `failedKeyBagSyncData`, `failedKeyBagInit`. So the keybag
+is *imported and synced* off an **anisette device provisioning** step -- the
+same machine-identity provisioning those non-Apple clients all perform -- not
+computed in the app's JavaScript. `-1020` is the purchase key server refusing a
+licence request that carries no provisioned keybag. Replicating it means
+standing up the anisette provisioning + keybag sync those clients do, which is
+a separate (and DRM-provisioning) undertaking this addon does not attempt. The
+library, ownership and naming are done; purchase playback stops at the
+unprovisioned keybag, on any client that has not provisioned -- Apple hardware
+or not.
+
+## iTunes purchase playback — the `-1020` fix (resolved)
+
+The earlier sections above chase `-1020` through a series of wrong inferences --
+a device keybag (`kbsync`), anisette provisioning, then Widevine
+`application_name` identity. All three are **disproven**; they are kept above as
+the record of the investigation, but this section is the actual resolution.
+
+**Root cause: extra fields in the licence-key body.** The addon's request was
+sending three fields in the `streaming-keys` object that Apple's own client does
+**not** send for a purchase: `svcId`, `isExternal`, and `guid`. The purchase key
+server (`tvs.vds.9023`) refuses with `-1020` when the request carries fields it
+does not expect -- even though the session, ownership, challenge and KID are all
+valid.
+
+This was confirmed by reading the Apple TV Android app's *actual* licence
+request body during a successful purchase play. Its key object is exactly:
+
+```json
+{
+  "id": 1,
+  "uri": "data:text/plain;base64,<PSSH>",
+  "lease-action": "start",
+  "key-system": "com.widevine.alpha",
+  "adamId": "<adamId>",
+  "challenge": "<base64 widevine challenge>"
+}
+```
+
+No `svcId`, no `isExternal`, no `guid`. Only `adamId` (plus `rental-id` for a
+rental).
+
+**Why `application_name` was a red herring.** Kodi's Widevine challenge is
+byte-identical to the app's except `application_name` (`org.xbmc.kodi` vs
+`com.apple.atve.androidtv.appletv`). Forcing a request to `9023` proved the
+server does **not** reject on that field: a non-owned title came back `-1002`
+unknown-asset, i.e. `9023` evaluated identity and asset *first* and only then
+looked at the body. The gate was the extra fields, not the CDM identity.
+
+**The fix (in `lib/license_proxy.py`).** When the context is an iTunes purchase
+(`ctx["itunes"]`), build the lean key object -- add only `adamId` (and
+`rental-id` for a rental) and nothing else. Do not add `svcId`, `isExternal`,
+`guid`, `dsid`, or a `nonce` to the purchase `streaming-keys` object. Store
+auth (`X-Dsid`, `X-Token`, `Cookie`) still rides the HTTP *headers*; only the
+JSON body must be lean. Live/linear titles keep their hyphenated
+`service-id`/`reference-id` params (a separate branch), and TV+/sports are
+unchanged.
+
+Trap that reintroduces the bug: spreading Apple's `fpsKeyServerQueryParameters`
+(`fps_params` = `{svcId, adamId, isExternal}`) into the key with
+`key.update(fps_params)` re-adds `svcId`/`isExternal` and brings `-1020` back.
+For a purchase, take only `adamId` -- never spread the whole dict.
+
+**State.** iTunes purchase/rental playback licenses through Kodi's own Widevine
+CDM with a valid store session; TV+, sports, and the catalogue/library (browse,
+ownership, resume, metadata, trailers/extras) remain fully functional.

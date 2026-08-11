@@ -177,6 +177,12 @@ class ItunesStore(object):
     def __init__(self, session):
         self.session = session
         self.last_error = None
+        # Each locker row files an owned title under a collection (its
+        # "playlist" -- a TV season's store id). The catalogue drops a
+        # purchased episode, but the public store still lists the season and
+        # its episodes, so this store-id -> collection-id map is kept as the
+        # locker is read and used to name what nothing else will.
+        self._collection_ids = {}
 
     # -- account ---------------------------------------------------------
 
@@ -276,8 +282,15 @@ class ItunesStore(object):
         sign-in above is refused. Borrowing a session that a genuine client
         already established is the way round that: it needs no attestation
         because the hard part has already happened elsewhere.
+
+        The store-page session goes in itunes_cookies; the Android TV app's
+        mz_at_ssl session lives in itunes_uts_cookies (its main job is the UTS
+        Continue Watching caller). Both are store sessions, so when only the
+        latter is pasted it is tried against the locker too rather than
+        forcing the user to paste the same thing twice.
         """
-        return (kodiutils.get_setting("itunes_cookies") or "").strip()
+        return ((kodiutils.get_setting("itunes_cookies") or "").strip()
+                or (kodiutils.get_setting("itunes_uts_cookies") or "").strip())
 
     def account_dsid(self):
         """The signed-in account's own dsid.
@@ -292,7 +305,7 @@ class ItunesStore(object):
         if info.get("dsid"):
             return str(info["dsid"])
         cookies = self.pasted_cookies()
-        found = re.search(r"(?:amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
+        found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
             or re.search(r"X-Dsid=(\d+)", cookies)
         return found.group(1) if found else ""
 
@@ -413,6 +426,27 @@ class ItunesStore(object):
         kodiutils.log("iTunes locker: %d owned title(s) for mt=%s%s"
                       % (len(ids), media_type,
                          " (dsid %s)" % dsid if dsid else " (own)"))
+        # Each numeric row files its title under a collection: the row's
+        # "playlist" is the store id of the season (or film bundle) it belongs
+        # to. The catalogue drops a purchased episode, but the public store
+        # still lists that collection and every episode in it, so the id is
+        # recorded here and used later to name what nothing else would.
+        sampled = False
+        for key, value in content.items():
+            if not (str(key).isdigit() and isinstance(value, dict)):
+                continue
+            collection = value.get("playlist")
+            if collection:
+                self._collection_ids[str(key)] = str(collection)
+            if not sampled:
+                # Reveal one row's fields and body once: a video locker was
+                # never captured here, so the shape is shown rather than
+                # assumed, and the collection id above is read off it.
+                kodiutils.log("iTunes locker row %s fields: %s"
+                              % (key, ", ".join(sorted(value.keys()))))
+                kodiutils.log("iTunes locker row %s sample: %s"
+                              % (key, json.dumps(value)[:600]))
+                sampled = True
         return ids
 
     def lookup(self, ids):
@@ -500,6 +534,75 @@ class ItunesStore(object):
             self._public_batch(missing, country, found, entity)
         kodiutils.log("Public lookup: %d of %d id(s) resolved"
                       % (len(found), len(ids)))
+        return found
+
+    def public_collection_lookup(self, collection_ids):
+        """Episodes of a purchased season, from the public store by collection.
+
+        A delisted purchase is the hard case: the catalogue answers 404 for
+        its episode canonical and 404 for its season, the store's own lookup
+        wants a signed token, and the public lookup by episode id finds
+        nothing. But the public lookup expands a *collection*: asked for a
+        season's store id with entity=tvEpisode, it returns the season row and
+        every episode under it, each with its trackId -- which is the store id
+        the locker owns them by. So this names owned episodes by looking up the
+        one season they share rather than each episode on its own.
+
+        Returns a map of episode store id -> a row in the store lookup's shape,
+        the same shape _from_lookup already reads.
+        """
+        found = {}
+        country = (kodiutils.get_setting("locale") or "en-US").split("-")[-1].lower()
+        for collection in sorted(set(str(c) for c in collection_ids if c)):
+            attempts = [
+                {"id": collection, "entity": "tvEpisode", "country": country},
+                {"id": collection, "entity": "tvEpisode"},
+            ]
+            results = None
+            for params in attempts:
+                try:
+                    resp = requests.get(PUBLIC_LOOKUP_URL, timeout=30,
+                                        params=params,
+                                        headers={"User-Agent": STORE_UA,
+                                                 "Accept": "*/*"})
+                except Exception as exc:
+                    kodiutils.log_error("Collection lookup failed: %s" % exc)
+                    resp = None
+                    break
+                if resp.status_code == 200:
+                    try:
+                        results = (resp.json() or {}).get("results") or []
+                    except Exception:
+                        results = None
+                    if results:
+                        break
+                else:
+                    kodiutils.log_error(
+                        "Collection lookup %s -> %s %s"
+                        % (collection, resp.status_code,
+                           resp.text[:160].strip().replace("\n", " ")))
+            if not results:
+                # A 200 with nothing means this collection is not in the public
+                # index either -- the honest end of the road for this season,
+                # said plainly rather than passed over.
+                kodiutils.log("Collection lookup %s: no episodes returned"
+                              % collection)
+                continue
+            episodes = 0
+            for row in results:
+                if not isinstance(row, dict):
+                    continue
+                # The collection carries its season row too (wrapperType
+                # collection); only the episode tracks name owned ids.
+                if row.get("wrapperType") != "track" and row.get("kind") != "tv-episode":
+                    continue
+                track_id = str(row.get("trackId") or "")
+                if not track_id:
+                    continue
+                found[track_id] = self._store_shape(row)
+                episodes += 1
+            kodiutils.log("Collection lookup %s: named %d episode(s)"
+                          % (collection, episodes))
         return found
 
     def _public_batch(self, ids, country, found, entity):
@@ -630,20 +733,6 @@ class ItunesStore(object):
         if not ids:
             return []
         rows = self.lookup(ids)
-        if not rows and resolver:
-            # Neither lookup would name these ids. The catalogue can: it maps
-            # a store id to its canonical one, which is also the id this addon
-            # opens titles by, so entries resolved that way are usable rather
-            # than merely listed.
-            kodiutils.log("Falling back to the catalogue to name %d id(s)"
-                          % len(ids))
-            named = [e for e in (resolver(i) for i in ids) if e]
-            if not named:
-                self.last_error = (
-                    "Apple named %d purchase(s) but would not say what they "
-                    "are: its lookup needs a signed token, and the public one "
-                    "does not carry them." % len(ids))
-            return named
         items = []
         for store_id, row in rows.items():
             if not isinstance(row, dict) or not row.get("name"):
@@ -662,25 +751,76 @@ class ItunesStore(object):
                           "name" % len(missing))
             named = 0
             for store_id in missing:
-                entry = resolver(store_id)
+                entry = resolver(store_id, media_type)
                 if entry:
                     items.append(entry)
                     named += 1
             if named < len(missing):
-                # Both services answering nothing means the title is gone from
-                # Apple's catalogue, not that the request was wrong: the store
-                # detail says 404 Content Not Available for these, and the
-                # public index has no record either. The account still owns
-                # them; there is simply nothing left to name them with.
-                kodiutils.log(
-                    "%d owned title(s) are in no catalogue Apple still "
-                    "publishes, so they cannot be listed: %s"
-                    % (len(missing) - named, ", ".join(missing[:10])))
+                kodiutils.log("Catalogue named %d of %d; %d left for the "
+                              "collection lookup"
+                              % (named, len(missing), len(missing) - named))
             else:
                 kodiutils.log("Catalogue named %d of %d" % (named, len(missing)))
         elif missing:
             kodiutils.log("%d owned id(s) no lookup would name: %s"
                           % (len(missing), ", ".join(missing[:10])))
+        # Last tier: whatever nothing above named. The store's own lookup wants
+        # a signed token and the catalogue has dropped these titles, but the
+        # public store still lists the season each one belongs to, so they are
+        # named by looking up that shared collection. Only the leftovers are
+        # asked about, and only when a collection id was recorded for them.
+        have = set(str(e.get("adam_id") or e.get("id")) for e in items)
+        unnamed = [i for i in ids if i not in have]
+        by_collection = [self._collection_ids.get(i) for i in unnamed]
+        if unnamed and any(by_collection):
+            kodiutils.log("Collection lookup for %d unnamed id(s) across %d "
+                          "collection(s)"
+                          % (len(unnamed),
+                             len(set(c for c in by_collection if c))))
+            rows = self.public_collection_lookup(by_collection)
+            gained = 0
+            for store_id in unnamed:
+                row = rows.get(store_id)
+                if not row:
+                    continue
+                entry = self._from_lookup(store_id, row)
+                if entry:
+                    items.append(entry)
+                    have.add(store_id)
+                    gained += 1
+            kodiutils.log("Collection lookup named %d of %d unnamed"
+                          % (gained, len(unnamed)))
+        # A delisted episode carries its real title (named from its url slug)
+        # but no episode number -- no content endpoint serves one. The locker's
+        # order is the only episode order there is, so number by it within each
+        # season for a stable sort, keeping the real title. Only when a title
+        # is genuinely missing is a positional "Episode N" put in its place.
+        order = {sid: i for i, sid in enumerate(ids)}
+        by_season = {}
+        for entry in items:
+            if entry.get("delisted") and not entry.get("episode"):
+                by_season.setdefault(entry.get("season_id") or "", []).append(entry)
+        for group in by_season.values():
+            group.sort(key=lambda e: order.get(str(e.get("adam_id")), 0))
+            for number, entry in enumerate(group, 1):
+                entry["episode"] = number
+                if not entry.get("title"):
+                    base = entry.get("show_title") or entry.get("season_title")
+                    entry["title"] = ("%s – Episode %d" % (base, number)
+                                      if base else "Episode %d" % number)
+                    entry["sort_title"] = entry["title"]
+        still = [i for i in ids if i not in have]
+        if still:
+            # These are genuinely unnamed: dropped from the catalogue, absent
+            # from the public store, and behind a signed token in Apple's own
+            # library lookup. Said plainly, with the ids, rather than hidden.
+            kodiutils.log("%d owned title(s) could not be named by any public "
+                          "source: %s" % (len(still), ", ".join(still[:10])))
+            if not items:
+                self.last_error = (
+                    "Apple owns these to this account but no longer publishes "
+                    "them, and its signed library lookup is refused here, so "
+                    "there is nothing left to name them by.")
         return items
 
     def owned_movies(self, resolver=None):
