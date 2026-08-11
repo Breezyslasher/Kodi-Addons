@@ -69,7 +69,11 @@ class TubiMonitor(xbmc.Player):
         item, position = self.item, self.position
         self.item = None
         xbmcgui.Window(10000).clearProperty(PLAYING)
-        if item is None or position < MIN_POSITION:
+        if item is None:
+            return
+        if position < MIN_POSITION:
+            xbmc.log(msg='%s : only %ss watched, not reporting' % (ADDON_ID, position),
+                     level=xbmc.LOGINFO)
             return
         try:
             addon = xbmcaddon.Addon(ADDON_ID)
@@ -79,14 +83,16 @@ class TubiMonitor(xbmc.Player):
             api = TubiApi(headers, auth.deviceId, userId=auth.userId)
             api.reportProgress(item['content_id'], item['content_type'], position,
                                parentId=item.get('parent_id'))
-            xbmc.log(msg='%s : reported %ss of %s' % (ADDON_ID, position, item['content_id']),
-                     level=xbmc.LOGDEBUG)
+            xbmc.log(msg='%s : reported %ss of %s %s' % (ADDON_ID, position,
+                                                         item['content_type'], item['content_id']),
+                     level=xbmc.LOGINFO)
         except (TubiApiError, TubiAuthError, KeyError) as err:
             xbmc.log(msg='%s : could not report progress : %s' % (ADDON_ID, err),
-                     level=xbmc.LOGDEBUG)
+                     level=xbmc.LOGWARNING)
 
 
 def run():
+    xbmc.log(msg='%s : service started' % ADDON_ID, level=xbmc.LOGINFO)
     monitor = xbmc.Monitor()
     player = TubiMonitor()
     pseudotv = regPseudoTV()
