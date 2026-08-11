@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.tubitv" name="TubiTV" version="2026.8.11.5" provider-name="Lunatixz, Breezyslasher">
+<addon id="plugin.video.tubitv" name="TubiTV" version="2026.8.11.6" provider-name="Lunatixz, Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.t1mlib" version="4.0.9"/>
@@ -29,6 +29,11 @@
 		<website>http://www.tubitv.com/</website>
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
 		<news>
+2026.8.11.6 - Continue Watching, both ways
+- NEW: "Remove from Continue Watching" on any title Tubi is tracking.
+- NEW: Films and episodes carry the position Tubi has for them, so Kodi
+  offers to resume where you stopped - on any device, not just this one.
+
 2026.8.11.5 - The service says what it did
 - CHANGED: Progress reporting logged only at debug level, so with normal
   logging there was no way to tell whether it had run. It now reports at

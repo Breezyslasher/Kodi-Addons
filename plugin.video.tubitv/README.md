@@ -41,6 +41,7 @@ device token otherwise:
 | Related titles | `autopilot-cdn…/api/v3/related` |
 | Resume reporting | `lishi…/api/v2/view_history` |
 | Saving and unsaving a title | `user-queue…/api/v2/queues` |
+| Part-watched titles, and forgetting one | `lishi…/api/v2/view_history` |
 | Liking and disliking | `account…/user/preferences/rate` |
 
 ## Playback and DRM
@@ -104,6 +105,12 @@ leaves what is playing in a window property for the service to pick up.
 A film reports as itself. An episode reports as itself too, with its series
 named alongside as a `parent_id` — a string, where the content id is a number.
 Trailers report nothing.
+
+The same history is read back to place resume points, so a film or episode
+started on another device carries on where it left off here. Removing a title
+from Continue Watching keys on the history entry's own id rather than the
+title's, so the history is read first — the same shape as unsaving from My
+List.
 
 ## Language
 

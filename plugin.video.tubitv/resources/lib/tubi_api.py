@@ -273,6 +273,24 @@ class TubiApi(object):
                            'action': action,
                            'data': [self.ratingId(contentId, isSeries)]})
 
+    def history(self):
+        """What the account has part-watched.
+
+        One entry per film or series. A series carries its part-watched
+        episodes nested inside it, and the entry's own id - not the title's -
+        is what removing it from Continue Watching needs.
+        """
+        params = [('page_enabled', 'false'),
+                  ('expand', 'false'),
+                  ('platform', PLATFORM),
+                  ('deviceId', self.deviceId)]
+        data = self.get(''.join([HISTORY_API, '/api/v2/view_history']), params)
+        return data.get('items') or []
+
+    def removeFromHistory(self, historyId):
+        """Drop a title from Continue Watching."""
+        return self.delete(''.join([HISTORY_API, '/api/v2/view_history/', str(historyId)]), [])
+
     def reportProgress(self, contentId, contentType, position, parentId=None):
         """Tell Tubi how far into a title the viewer got.
 
