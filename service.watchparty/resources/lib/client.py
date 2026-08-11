@@ -90,6 +90,23 @@ class RelayClient:
 
     # -- API ---------------------------------------------------------------
 
+    def upload_art(self, content_type, data):
+        """Hand cover art bytes to the relay; returns its path or ''."""
+        req = urllib.request.Request(
+            self.base + '/art', data=data, method='POST',
+            headers={'Content-Type': content_type,
+                     'User-Agent': USER_AGENT,
+                     'X-Room': self.room,
+                     'X-Member': self.member_id or ''})
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                payload = json.loads(resp.read().decode('utf-8'))
+        except Exception as e:
+            raise RelayError(str(e))
+        if not payload.get('ok'):
+            raise RelayError(payload.get('error') or 'art rejected')
+        return payload.get('art') or ''
+
     def ping(self):
         req = urllib.request.Request(self.base + '/ping',
                                      headers={'User-Agent': USER_AGENT})

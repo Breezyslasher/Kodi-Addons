@@ -1,0 +1,73 @@
+name: Apple TV endpoint check
+
+# Apple documents none of the endpoints this addon uses and changes them
+# without notice. This exercises the chain the addon depends on against the
+# live site and fails when a link breaks, so a rename is known within a day
+# rather than whenever someone reports the addon broken.
+#
+# It deliberately does not try to repair anything: a renamed key needs a
+# person to find the new name, and a token committed to the repo would be a
+# 70-day snapshot shared by every user, which is worse than the fresh one
+# each install fetches for itself.
+
+on:
+  schedule:
+    # Daily, at a quiet minute rather than on the hour.
+    - cron: '37 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Check the endpoints the addon relies on
+        id: check
+        run: |
+          set +e
+          python3 plugin.video.appletv/tools/check_endpoints.py | tee result.txt
+          echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Open an issue when something has changed
+        if: steps.check.outputs.status != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('result.txt', 'utf8');
+            const title = 'Apple TV addon: an Apple endpoint has changed';
+            // Reuse one open issue rather than filing a new one every day.
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', labels: 'appletv-endpoint',
+            });
+            const text = [
+              'The daily endpoint check failed. The addon is likely broken for',
+              'everyone until this is corrected.', '',
+              '```', body.trim(), '```', '',
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            ].join('\n');
+            if (open.data.length) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: open.data[0].number, body: text,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title, body: text, labels: ['appletv-endpoint'],
+              });
+            }
+
+      - name: Fail the run so the badge goes red
+        if: steps.check.outputs.status != '0'
+        run: exit 1
