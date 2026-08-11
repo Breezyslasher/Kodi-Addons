@@ -138,7 +138,7 @@ msgid "Subtitle delay in seconds (blank = 10; adjust if subtitles run early or l
 msgstr ""
 
 msgctxt "#32103"
-msgid "This iTunes purchase could not be licensed (Apple returned -1020). Make sure a valid store session is pasted in Settings and that you own this title on this Apple ID."
+msgid "This iTunes purchase could not be played. Make sure you are signed in with the Apple ID that owns it."
 msgstr ""
 
 msgctxt "#32104"
@@ -163,6 +163,27 @@ msgstr ""
 
 msgctxt "#32109"
 msgid "Signed-in Apple ID email (internal)"
+msgstr ""
+
+# --- Settings: categories (added) ---
+msgctxt "#32110"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#32111"
+msgid "Subtitles"
+msgstr ""
+
+msgctxt "#32112"
+msgid "Library"
+msgstr ""
+
+msgctxt "#32113"
+msgid "Genres"
+msgstr ""
+
+msgctxt "#32114"
+msgid "Rentals"
 msgstr ""
 
 msgctxt "#32050"
@@ -424,17 +445,17 @@ msgstr ""
 
 
 msgctxt "#32079"
-msgid "Store X-Token (for licensing purchases)"
+msgid "Store X-Token (advanced; optional legacy fallback)"
 msgstr ""
 
 
 msgctxt "#32080"
-msgid "Search Apple TV+ only (store purchases cannot be played)"
+msgid "Search Apple TV+ only (off: also search the iTunes Store catalogue)"
 msgstr ""
 
 
 msgctxt "#32081"
-msgid "Continue Watching session (paste an Android TV app mz_at_ssl session)"
+msgid "iTunes store session (advanced; optional, no longer required)"
 msgstr ""
 
 

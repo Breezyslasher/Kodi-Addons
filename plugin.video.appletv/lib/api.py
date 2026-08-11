@@ -1532,6 +1532,9 @@ class AppleTVApi(object):
             # InputStream Adaptive for a Widevine session on an unencrypted
             # stream leaves it waiting for a licence that can never arrive.
             "encrypted": encrypted,
+            # An iTunes purchase reports its resume point to the MediaAPI
+            # playback-positions endpoint, keyed by its store (adam) id.
+            "adam_id": assets.get("adam_id") if assets.get("itunes") else None,
             "report": {
                 "playable_passthrough": assets.get("playable_passthrough"),
                 "external_id": assets.get("external_id"),
@@ -1539,9 +1542,6 @@ class AppleTVApi(object):
                 # A live game: the watch-history report must not mark it
                 # finished just because playback sat at the live edge.
                 "live": live,
-                # An iTunes purchase reports its position to the store's own
-                # bookkeeper (keyed by store id), not the now-playing service.
-                "adam_id": assets.get("adam_id") if assets.get("itunes") else None,
             },
         }
 
@@ -1990,43 +1990,22 @@ class AppleTVApi(object):
         return assets
 
 
-    @staticmethod
-    def _header_safe(value):
-        """A cookie value HTTP can actually send, or '' if it cannot.
-
-        HTTP headers are latin-1, so a value pasted with a stray character an
-        editor introduced -- an ellipsis from a truncated copy, a smart quote
-        -- makes requests raise rather than send, and the whole shelf fails
-        with an opaque codec error. Catch it here and say what it is, so a bad
-        paste reads as a clear instruction rather than a traceback.
-        """
-        try:
-            value.encode("latin-1")
-            return value
-        except (UnicodeEncodeError, AttributeError):
-            kodiutils.log_error("Store cookie contains a character HTTP cannot "
-                                "send -- a truncated paste with an ellipsis? "
-                                "Re-paste the full cookie value.")
-            return ""
-
     def _vz_json(self, path, extra=None, quiet=False):
         """Ask the UTS API as the Android TV app (caller=vz).
 
         The account-wide Continue Watching shelf is served to this caller and
-        not to the web or Windows-store ones. A capture of the app's request
-        shows caller=vz with vz=true, pfm=vz and mfr=AndroidTV, on the store
-        host, authenticated by the mz_at_ssl store cookie and X-Dsid rather
-        than a bearer. So this sends the pasted store session under that shape;
-        with no session it cannot ask, and says so by returning nothing.
+        not to the web or Windows-store ones. Apple merges iTunes into that
+        shelf on the strength of the caller, not a store session, so it is asked
+        with the ordinary Apple TV+ tokens (bearer + media-user-token) -- the
+        same pair that licenses purchases -- and the shelf populates with no
+        store paste (verified: shelf=yes with a bearer-only request).
         """
-        # The UTS/Android service (Continue Watching) authenticates with an
-        # mz_at_ssl cookie, while the MZStoreElements locker wants the store
-        # cookies -- two different sessions. Keep them apart: prefer a session
-        # pasted specifically for this caller, and fall back to the store one
-        # only so a single combined paste still works.
-        cookies = self._header_safe(
-            (kodiutils.get_setting("itunes_uts_cookies") or "").strip()
-            or (kodiutils.get_setting("itunes_cookies") or "").strip())
+        boot = self._bootstrap()
+        bearer = boot.get("developer_token")
+        mut = self._media_user_token()
+        if not bearer or not mut:
+            kodiutils.log("Android caller: no Apple TV+ tokens; cannot ask")
+            return None
         params = {
             "caller": UTS_ANDROID_CALLER,
             "vz": "true",
@@ -2041,39 +2020,9 @@ class AppleTVApi(object):
         headers = {
             "User-Agent": UTS_ANDROID_UA,
             "Content-Type": "application/json",
+            "Authorization": "Bearer " + bearer,
+            "media-user-token": mut,
         }
-        if cookies:
-            # The app's own path: the Android store session (mz_at_ssl), which
-            # names the dsid inside itself.
-            headers["Cookie"] = cookies
-            found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
-                or re.search(r"X-Dsid=(\d+)", cookies)
-            if found:
-                headers["X-Dsid"] = found.group(1)
-            auth = "mz_at_ssl cookie=%s" % ("yes" if "mz_at_ssl" in cookies else "NO")
-        else:
-            # No Android session pasted: try the vz caller with the ordinary
-            # Apple TV+ tokens (bearer + media-user-token) that already license
-            # purchases. This tests whether Apple merges iTunes into the Continue
-            # Watching shelf on the strength of the caller rather than the
-            # mz_at_ssl cookie -- if so, the shelf populates with no store paste.
-            boot = self._bootstrap()
-            bearer = boot.get("developer_token")
-            mut = self._media_user_token()
-            if not bearer or not mut:
-                kodiutils.log("Android caller: no mz_at_ssl session and no Apple "
-                              "TV+ tokens; cannot ask")
-                return None
-            headers["Authorization"] = "Bearer " + bearer
-            headers["media-user-token"] = mut
-            dsid = self._store_dsid()
-            if dsid:
-                headers["X-Dsid"] = dsid
-            auth = "bearer+media-user-token (no store session)"
-        # This shelf fills in only when the identity is accepted; name up front
-        # what is being sent so an empty shelf is diagnosable.
-        kodiutils.log("Android caller: %s, X-Dsid=%s"
-                      % (auth, "yes" if headers.get("X-Dsid") else "NO"))
         try:
             resp = self.session.get(UTS_STORE_BASE + path, params=params,
                                     headers=headers, timeout=20)
@@ -2405,7 +2354,7 @@ class AppleTVApi(object):
         return None
 
     def media_purchases(self, kind="movie", family_member=None, show_id=None,
-                        max_pages=20, sort=None, enrich=True):
+                        max_pages=20, sort=None, enrich=True, genre=None):
         """Owned titles from MediaAPI /v1/me/purchases -- the Apple TV app's
         Library page call, read off its LibraryPage.js.
 
@@ -2442,9 +2391,6 @@ class AppleTVApi(object):
             "User-Agent": self.session.headers.get("User-Agent", ""),
             "X-Apple-Store-Front": "%s-1,42" % self._storefront(),
         }
-        dsid = self._store_dsid()
-        if dsid:
-            headers["X-Dsid"] = dsid
         # Params exactly as the app's LibraryPage builds them (types values from
         # app.js: movies / tv-shows). Owned, paged in 100s; sharedPurchases
         # pulls a family member's copies when one is asked.
@@ -2453,6 +2399,11 @@ class AppleTVApi(object):
             # inline so each episode keeps its resume point.
             base = {"filter[tvShowId]": show_id,
                     "include[tv-episodes]": "playback-position"}
+        elif kind == "rental":
+            # The app's "rental" library view: active rentals, films only,
+            # newest first (LibraryPage.js filter:"rentals").
+            base = {"filter": "rentals", "sort": sort or "mostRecent",
+                    "types": "movies", "include[movies]": "playback-position"}
         elif kind == "movie":
             # include[movies]=playback-position brings the resume point back
             # inline as a relationship, so no separate positions call is needed.
@@ -2461,10 +2412,15 @@ class AppleTVApi(object):
             # view) -- to order by how lately each title was played.
             base = {"filter": "owned", "sort": sort or "name", "types": "movies",
                     "include[movies]": "playback-position"}
+            # The app filters the library by genre with filter[genres]=<id>.
+            if genre:
+                base["filter[genres]"] = genre
         else:
             base = {"filter": "owned", "sort": sort or "artistName",
                     "types": "tv-shows", "include[tv-shows]": "episodes",
                     "limit[episodes]": 1}
+            if genre:
+                base["filter[genres]"] = genre
         if family_member:
             base["with"] = "sharedPurchases"
             base["filter[owner]"] = family_member
@@ -2543,9 +2499,6 @@ class AppleTVApi(object):
             "User-Agent": self.session.headers.get("User-Agent", ""),
             "X-Apple-Store-Front": "%s-1,42" % self._storefront(),
         }
-        dsid = self._store_dsid()
-        if dsid:
-            headers["X-Dsid"] = dsid
         data = self._media_get(MEDIA_API_HOST, "/v1/me/purchases/shared/members",
                                {}, headers)
         # Debug: the response shape here was read off the app's schema, not a
@@ -2581,9 +2534,9 @@ class AppleTVApi(object):
         # The account's own entry appears in this list (you share with the
         # family too); drop it, since your own purchases are the Films/TV Shows
         # sections already. The API marks no self member, so identify yourself
-        # by the store dsid when a session is pasted, and otherwise by the Apple
-        # ID email captured at sign-in, which matches your entry's accountName.
-        own_dsid = self._store_dsid()
+        # by the Apple ID email captured at sign-in, which matches your entry's
+        # accountName. (The MediaAPI has no account endpoint -- /v1/me/account
+        # 404s in the amp-videos realm -- so there is no dsid to match on here.)
         own_email = (kodiutils.get_setting("account_email") or "").strip().lower()
         out = []
         for row in rows:
@@ -2600,8 +2553,7 @@ class AppleTVApi(object):
                     or account_name or attrs.get("name")
                     or attrs.get("appleId") or member_id)
             sharing = attrs.get("sharingPurchases")
-            is_self = (bool(own_dsid) and member_id == own_dsid) or (
-                bool(own_email) and own_email == account_name.lower())
+            is_self = bool(own_email) and own_email == account_name.lower()
             kodiutils.log("MediaAPI family: member id=%s name=%r sharing=%r%s"
                           % (member_id or "?", name, sharing,
                              " (self)" if is_self else ""))
@@ -2612,6 +2564,50 @@ class AppleTVApi(object):
             if member_id:
                 out.append({"id": member_id, "name": name or member_id})
         kodiutils.log("MediaAPI family: %d member(s) sharing purchases" % len(out))
+        return out
+
+    def _media_headers(self):
+        """The bearer + media-user-token headers the MediaAPI calls share."""
+        boot = self._bootstrap()
+        return {
+            "Authorization": "Bearer " + (boot.get("developer_token") or ""),
+            "media-user-token": self._media_user_token() or "",
+            "Origin": WEB_HOME,
+            "Content-Type": "application/json",
+            "Accept": "*/*",
+            "User-Agent": self.session.headers.get("User-Agent", ""),
+            "X-Apple-Store-Front": "%s-1,42" % self._storefront(),
+        }
+
+    def media_genres(self, family_member=None):
+        """The genres present in the owned library, from the app's
+        /v1/me/purchases/genres call. Each opens a genre-filtered film list via
+        media_purchases(genre=<id>). Needs only the Apple TV+ sign-in."""
+        boot = self._bootstrap()
+        if not boot.get("developer_token") or not self._media_user_token():
+            return []
+        # Params as the app's MediaAPIGenreLoader builds them: both media kinds,
+        # owned, name-sorted. Omitting types is what made the locker 500.
+        params = {"types": "movies,tv-episodes", "filter": "owned",
+                  "sort": "name"}
+        if family_member:
+            params["with"] = "sharedPurchases"
+            params["filter[owner]"] = family_member
+        data = self._media_get(MEDIA_API_HOST, "/v1/me/purchases/genres",
+                               params, self._media_headers())
+        rows = self._as_list((data or {}).get("data"))
+        if not rows and isinstance(data, dict):
+            kodiutils.log("MediaAPI genres: top-level keys=%s" % list(data.keys()))
+        out = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            attrs = row.get("attributes") or row
+            gid = str(row.get("id") or attrs.get("id") or "")
+            name = attrs.get("name") or attrs.get("title") or gid
+            if gid:
+                out.append({"id": gid, "name": name})
+        kodiutils.log("MediaAPI genres: %d genre(s)" % len(out))
         return out
 
     def _media_get(self, host, path, params, headers):
@@ -2632,6 +2628,57 @@ class AppleTVApi(object):
             kodiutils.log_error("MediaAPI %s response was not JSON" % path)
             return None
 
+    def report_playback_position(self, adam_id, item_type, position,
+                                 finished=False):
+        """Save an iTunes purchase's resume point, the way the Android app does.
+
+        The app PUTs to /v1/me/playback/positions/{movies|tv-episodes}/{id},
+        keyed by the title's external (adam) id, over bearer + media-user-token
+        -- the session already held. Body is the lean playback-positions object
+        the app sends (positionInMilliseconds + recordedAtTimestamp). Best
+        effort: a failed report must never break playback.
+        """
+        boot = self._bootstrap()
+        bearer = boot.get("developer_token")
+        mut = self._media_user_token()
+        if not bearer or not mut or not adam_id:
+            return False
+        kind = "movies" if str(item_type) == "Movie" else "tv-episodes"
+        import datetime
+        stamp = datetime.datetime.now(datetime.timezone.utc).isoformat(
+            timespec="milliseconds").replace("+00:00", "Z")
+        body = {"type": "playback-positions",
+                "attributes": {
+                    "positionInMilliseconds": int(max(0.0, position) * 1000),
+                    "recordedAtTimestamp": stamp,
+                }}
+        headers = {
+            "Authorization": "Bearer " + bearer,
+            "media-user-token": mut,
+            "Origin": WEB_HOME,
+            "Content-Type": "application/json",
+            "Accept": "*/*",
+            "User-Agent": self.session.headers.get("User-Agent", ""),
+            "X-Apple-Store-Front": "%s-1,42" % self._storefront(),
+        }
+        url = "https://%s/v1/me/playback/positions/%s/%s" % (
+            MEDIA_API_HOST, kind, adam_id)
+        try:
+            resp = self.session.put(url, data=json.dumps(body),
+                                    headers=headers, timeout=15)
+            if resp.status_code not in (200, 201, 202, 204):
+                kodiutils.log_error("iTunes position PUT %s -> %s %s"
+                                    % (adam_id, resp.status_code,
+                                       resp.text[:150]))
+                return False
+            kodiutils.log("iTunes position saved: %s -> %dms%s"
+                          % (adam_id, int(max(0.0, position) * 1000),
+                             " (finished)" if finished else ""))
+            return True
+        except Exception as exc:
+            kodiutils.log_error("iTunes position report failed: %s" % exc)
+            return False
+
     def _purchase_entry(self, row, kind, included=None):
         """One MediaAPI purchase row -> the addon's list entry.
 
@@ -2646,7 +2693,8 @@ class AppleTVApi(object):
         adam_id = str(row.get("id") or attrs.get("id") or "")
         if not title or not adam_id:
             return None
-        item_type = {"movie": "Movie", "tv": "Show"}.get(kind, "Episode")
+        item_type = {"movie": "Movie", "rental": "Movie",
+                     "tv": "Show"}.get(kind, "Episode")
         # MediaAPI descriptions are objects ({standard, short}), not strings.
         desc = attrs.get("description")
         if isinstance(desc, dict):
@@ -2712,18 +2760,6 @@ class AppleTVApi(object):
             if pattrs.get("recordedAtTimestamp") is not None:
                 entry["recorded_at"] = pattrs.get("recordedAtTimestamp")
         return entry
-
-    def _store_dsid(self):
-        """The account dsid, from a pasted store/mz_at_ssl cookie if there is
-        one. MediaAPI accepts the media-user-token alone, but the app also
-        sends X-Dsid, so it is included when known."""
-        for key in ("itunes_uts_cookies", "itunes_cookies", "itunes_sp_dsid"):
-            val = (kodiutils.get_setting(key) or "").strip()
-            m = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", val) \
-                or re.search(r"^(\d+)$", val) or re.search(r"X-Dsid=(\d+)", val)
-            if m:
-                return m.group(1)
-        return ""
 
     def _reverse_lookup(self, external_ids):
         """Map iTunes store (external) ids to their canonical umc ids.
@@ -3131,18 +3167,10 @@ class AppleTVApi(object):
         }
         if extra:
             params.update(extra)
+        # The Windows-store caller authenticates with the developer token in the
+        # UTS headers -- the redownload offer comes back on that alone, no store
+        # session (verified: "offer fetched via windows(wlk)").
         headers = dict(self._uts_headers())
-        # The capture identifies itself to this endpoint with the store dsid
-        # and its cookies rather than a bearer. Send those too when a session
-        # has been pasted in; the dsid names itself inside the cookie.
-        cookies = self._header_safe(
-            (kodiutils.get_setting("itunes_cookies") or "").strip())
-        if cookies:
-            headers["Cookie"] = cookies
-            found = re.search(r"(?:mz_at_ssl-|amia-|mt-tkn-|mz_at0-)(\d+)=", cookies) \
-                or re.search(r"X-Dsid=(\d+)", cookies)
-            if found:
-                headers["X-DSID"] = found.group(1)
         try:
             resp = self.session.get(UTS_STORE_BASE + path, params=params,
                                     headers=headers, timeout=20)

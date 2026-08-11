@@ -17,7 +17,6 @@ import xbmc
 from lib import kodiutils
 from lib.api import AppleTVApi, PLAYBACK_REPORT_CACHE, SEEK_CONTEXT
 from lib.auth import AppleAuth
-from lib.itunes import ItunesStore
 from lib.license_proxy import LicenseProxy, release_leases
 
 # How often to tell Apple where playback has reached. The web client posts
@@ -33,8 +32,9 @@ class WatchHistory(object):
 
     def __init__(self):
         self._api = None
-        self._adam_id = None
         self._token = None
+        self._adam_id = None
+        self._item_type = None
         self._active = False
         self._last_report = 0
         self._last_position = 0
@@ -57,15 +57,17 @@ class WatchHistory(object):
             duration = 0
         if not duration:
             duration = context.get("duration") or 0
-        # A purchase reports to the store instead, and needs no token: the store
-        # is keyed by the title's own id rather than by a play session.
+        # An iTunes purchase reports its resume point to the MediaAPI
+        # playback-positions endpoint (bearer + media-user-token), keyed by its
+        # store id -- not the now-playing service, which it is not part of.
         if context.get("adam_id"):
             self._adam_id = context["adam_id"]
+            self._item_type = context.get("item_type") or "Movie"
             self._duration = duration
             self._live = bool(context.get("live"))
             self._active = True
             self._last_report = time.monotonic()
-            kodiutils.log("Watch history: reporting this purchase to the store")
+            kodiutils.log("Watch history: reporting this purchase's position")
             return
         if not context.get("playable_passthrough"):
             return
@@ -115,12 +117,11 @@ class WatchHistory(object):
         self.reset()
 
     def _send(self, position, finished):
-        # A purchase is not in the now-playing service at all; its position
-        # lives in the store's key-value bookkeeper, keyed by store id.
+        # A purchase saves its position to the MediaAPI, keyed by its store id.
         if self._adam_id:
             try:
-                ItunesStore(self._lazy_api().session).report_position(
-                    self._adam_id, position, finished)
+                self._lazy_api().report_playback_position(
+                    self._adam_id, self._item_type, position, finished)
             except Exception as exc:
                 kodiutils.log_error("iTunes position report failed: %s" % exc)
             return
@@ -131,8 +132,9 @@ class WatchHistory(object):
             kodiutils.log_error("Watch history report failed: %s" % exc)
 
     def reset(self):
-        self._adam_id = None
         self._token = None
+        self._adam_id = None
+        self._item_type = None
         self._active = False
         self._live = False
         self._last_report = 0
