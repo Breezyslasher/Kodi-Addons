@@ -149,6 +149,10 @@ msgctxt "#32105"
 msgid "Season %s"
 msgstr ""
 
+msgctxt "#32106"
+msgid "Combine family-shared purchases into one library (off: a folder per family member)"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""
