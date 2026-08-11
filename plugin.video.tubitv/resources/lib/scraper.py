@@ -16,6 +16,9 @@ from t1mlib import t1mAddon
 
 from resources.lib.tubi_api import CONTINUE_WATCHING, TubiApi, TubiApiError, pickResource
 from resources.lib.tubi_api import MOVIE as HISTORY_MOVIE
+from resources.lib.tubi_api import SERIES as QUEUE_SERIES
+from resources.lib.tubi_api import (DISLIKE, LIKE, RATING_DISLIKED, RATING_LIKED,
+                                    UNDISLIKE, UNLIKE)
 
 uqp = urllib.parse.unquote_plus
 qp = urllib.parse.quote_plus
@@ -167,7 +170,7 @@ class myAddon(t1mAddon):
             infoList['MPAA'] = ratings[0].get('value')
         return infoList
 
-    def addContent(self, content, ilist):
+    def addContent(self, content, ilist, inList=False):
         """Add one film or series from the API to a directory listing."""
         contentId = str(content.get('id'))
         infoList = self.infoOf(content)
@@ -180,24 +183,33 @@ class myAddon(t1mAddon):
             infoList['mediatype'] = 'tvshow'
             contextMenu = [(self.localLang(30024),
                             'RunPlugin(%s?mode=AS&url=%s)' % (sys.argv[0], qp(contentId)))]
-            contextMenu.extend(self.extrasFor(contentId, content))
+            contextMenu.extend(self.extrasFor(contentId, content, inList))
             return self.addMenuItem(name, 'GE', ilist, contentId, img, fanart, infoList,
                                     isFolder=True, cm=contextMenu)
 
         infoList['mediatype'] = 'movie'
         contextMenu = [(self.localLang(30025),
                         'RunPlugin(%s?mode=AM&url=%s)' % (sys.argv[0], qp(contentId)))]
-        contextMenu.extend(self.extrasFor(contentId, content))
+        contextMenu.extend(self.extrasFor(contentId, content, inList))
         return self.addMenuItem(content.get('title'), 'GV', ilist, contentId, img, fanart,
                                 infoList, isFolder=False, cm=contextMenu)
 
-    def extrasFor(self, contentId, content):
+    def extrasFor(self, contentId, content, inList=False):
         """The context menu entries every title carries."""
-        extras = [(self.localLang(30034),
+        kind = QUEUE_SERIES if content.get('type') == SERIES else HISTORY_MOVIE
+        listing = ['queue', 'remove' if inList else 'add', contentId, kind]
+        extras = [(self.localLang(30042 if inList else 30041),
+                   'RunPlugin(%s?mode=DF&url=%s)' % (sys.argv[0], qp('|'.join(listing)))),
+                  (self.localLang(30034),
                    'Container.Update(%s?mode=SE&url=%s)' % (sys.argv[0], qp('|'.join(['related', contentId]))))]
         if content.get('has_trailer') or content.get('trailers'):
             extras.append((self.localLang(30035),
                            'PlayMedia(%s?mode=GV&url=%s)' % (sys.argv[0], qp('|'.join(['trailer', contentId])))))
+        series = '1' if content.get('type') == SERIES else '0'
+        for label, action in ((30045, LIKE), (30046, DISLIKE)):
+            extras.append((self.localLang(label),
+                           'RunPlugin(%s?mode=DF&url=%s)' % (
+                               sys.argv[0], qp('|'.join(['rate', action, contentId, series])))))
         return extras
 
     def getAddonMenu(self, url, ilist):
@@ -295,11 +307,13 @@ class myAddon(t1mAddon):
     def getAddonSearch(self, url, ilist):
         """The listings that are not a plain category: home, list, related."""
         parts = url.split('|')
+        inList = False
         try:
             if parts[0] == 'home':
                 return self.homeRows(ilist)
             if parts[0] == 'mylist':
-                contents = self.api.contents([i for i, _ in self.api.queue()])
+                contents = self.api.contents([str(e['content_id']) for e in self.api.queue()])
+                inList = True
             elif parts[0] == 'related' and len(parts) > 1:
                 contents = self.api.related(parts[1])
             else:
@@ -308,7 +322,7 @@ class myAddon(t1mAddon):
             self.report(err)
             return ilist
         for content in contents:
-            ilist = self.addContent(content, ilist)
+            ilist = self.addContent(content, ilist, inList=inList)
         return(ilist)
 
     def homeRows(self, ilist):
@@ -432,6 +446,49 @@ class myAddon(t1mAddon):
         if url == 'logout' and self.auth is not None:
             self.auth.clear()
             xbmcgui.Dialog().notification(self.addonName, self.localLang(30023))
+            return
+        parts = uqp(url).split('|')
+        if parts[0] == 'queue' and len(parts) > 2:
+            self.toggleQueue(parts[1], parts[2], parts[3] if len(parts) > 3 else HISTORY_MOVIE)
+        elif parts[0] == 'rate' and len(parts) > 3:
+            self.toggleRating(parts[1], parts[2], parts[3] == '1')
+
+    def toggleQueue(self, action, contentId, kind):
+        """Put a title on the saved list, or take it off.
+
+        Removing needs the list entry's own id rather than the title's, so
+        the list is looked up first either way - which also keeps a second
+        Add from stacking a duplicate entry.
+        """
+        try:
+            entry = self.api.queueEntry(contentId)
+            if action == 'remove':
+                if entry is not None:
+                    self.api.removeFromQueue(entry['id'])
+                message = 30044
+            else:
+                if entry is None:
+                    self.api.addToQueue(contentId, kind)
+                message = 30043
+        except TubiApiError as err:
+            self.report(err)
+            return
+        xbmcgui.Dialog().notification(self.addonName, self.localLang(message))
+        xbmc.executebuiltin('Container.Refresh')
+
+    def toggleRating(self, wanted, contentId, isSeries):
+        """Like or dislike a title, or take back the one already given."""
+        try:
+            current = self.api.rating(contentId, isSeries)
+            if wanted == LIKE:
+                action, message = (UNLIKE, 30049) if current == RATING_LIKED else (LIKE, 30047)
+            else:
+                action, message = (UNDISLIKE, 30049) if current == RATING_DISLIKED else (DISLIKE, 30048)
+            self.api.rate(contentId, isSeries, action)
+        except TubiApiError as err:
+            self.report(err)
+            return
+        xbmcgui.Dialog().notification(self.addonName, self.localLang(message))
 
     def resolve(self, url):
         """Look up a playable title.

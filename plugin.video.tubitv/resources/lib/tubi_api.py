@@ -28,12 +28,21 @@ EPG_API = 'https://epg-cdn.production-public.tubi.io'
 RELATED_API = 'https://autopilot-cdn.production-public.tubi.io'
 QUEUE_API = 'https://user-queue.production-public.tubi.io'
 HISTORY_API = 'https://lishi.production-public.tubi.io'
+ACCOUNT_API = 'https://account.production-public.tubi.io'
 
 # The container Tubi files a viewer's part-watched titles under
 CONTINUE_WATCHING = 'continue_watching'
 # Tubi describes a title as one or the other in its queue and its history
 MOVIE = 'movie'
 SERIES = 'series'
+# The only kind of saved list Tubi keeps
+WATCH_LATER = 'watch_later'
+# What a title's rating can be, and the four ways to change it
+RATING_NONE = 'none'
+RATING_LIKED = 'liked'
+RATING_DISLIKED = 'disliked'
+LIKE, DISLIKE = 'like', 'dislike'
+UNLIKE, UNDISLIKE = 'remove-like', 'remove-dislike'
 
 # Tubi's linear channel line-up
 EPG_MODE = 'tubitv_us_linear'
@@ -100,6 +109,22 @@ class TubiApi(object):
     def post(self, url, payload):
         try:
             response = requests.post(url, json=payload, headers=self.headers, timeout=TIMEOUT)
+            response.raise_for_status()
+            return response.json() if response.content else True
+        except Exception as err:
+            raise TubiApiError(str(err))
+
+    def patch(self, url, payload):
+        try:
+            response = requests.patch(url, json=payload, headers=self.headers, timeout=TIMEOUT)
+            response.raise_for_status()
+            return True
+        except Exception as err:
+            raise TubiApiError(str(err))
+
+    def delete(self, url, params):
+        try:
+            response = requests.delete(url, params=params, headers=self.headers, timeout=TIMEOUT)
             response.raise_for_status()
             return True
         except Exception as err:
@@ -181,14 +206,31 @@ class TubiApi(object):
         return self.inOrder(self.get(''.join([RELATED_API, '/api/v3/related']), params))
 
     def queue(self):
-        """The viewer's saved list, as (content id, movie or series) pairs.
+        """The viewer's saved list.
 
-        Tubi only stores the ids here, so the titles themselves have to be
-        fetched separately.
+        Each entry carries its own id - which is what removing one needs,
+        not the content id - plus the content id and whether it is a film or
+        a series. The titles themselves have to be fetched separately.
         """
         data = self.get(''.join([QUEUE_API, '/api/v2/queues']), [])
-        return [(str(q.get('content_id')), q.get('content_type'))
-                for q in data.get('queues') or [] if q.get('content_id')]
+        return [q for q in data.get('queues') or [] if q.get('content_id')]
+
+    def queueEntry(self, contentId):
+        """The saved list entry for a title, if it is on the list at all."""
+        for entry in self.queue():
+            if str(entry.get('content_id')) == str(contentId):
+                return entry
+        return None
+
+    def addToQueue(self, contentId, contentType):
+        return self.post(''.join([QUEUE_API, '/api/v2/queues']),
+                         {'type': WATCH_LATER,
+                          'content_id': int(contentId),
+                          'content_type': contentType})
+
+    def removeFromQueue(self, queueId):
+        return self.delete(''.join([QUEUE_API, '/api/v2/queues']),
+                           [('queue_id', queueId)])
 
     def contents(self, contentIds):
         """Fetch several titles at once - there is no bulk endpoint."""
@@ -204,6 +246,29 @@ class TubiApi(object):
             return self.content(contentId)
         except TubiApiError:
             return None
+
+    @staticmethod
+    def ratingId(contentId, isSeries):
+        """Tubi prefixes a series id with a zero everywhere ratings are concerned.
+
+        The same convention shows up in the related endpoint and as the keys
+        of a search's contents map.
+        """
+        contentId = str(contentId)
+        return ''.join(['0', contentId]) if isSeries and not contentId.startswith('0') else contentId
+
+    def rating(self, contentId, isSeries=False):
+        """Whether a title is liked, disliked, or neither."""
+        url = ''.join([ACCOUNT_API, '/user/preferences/rate/title/',
+                       self.ratingId(contentId, isSeries)])
+        return (self.get(url, []) or {}).get('status', RATING_NONE)
+
+    def rate(self, contentId, isSeries, action):
+        """like, dislike, remove-like or remove-dislike a title."""
+        return self.patch(''.join([ACCOUNT_API, '/user/preferences/rate']),
+                          {'target': 'title',
+                           'action': action,
+                           'data': [self.ratingId(contentId, isSeries)]})
 
     def reportProgress(self, contentId, contentType, position):
         """Tell Tubi how far into a title the viewer got.

@@ -16,6 +16,8 @@ from resources.lib.tubi_auth import TubiAuth, TubiAuthError
 
 ADDON_ID = 'plugin.video.tubitv'
 LIVE_PATH = ''.join(['plugin://', ADDON_ID, '/?mode=LV&url=%s'])
+# The three Tubi has been seen serving. Order matches the setting's values.
+LANGUAGES = ['en-US', 'es-MX', 'fr-CA']
 
 __settings__ = xbmcaddon.Addon(ADDON_ID)
 
@@ -35,6 +37,10 @@ except TubiAuthError as err:
         xbmcgui.Dialog().notification(__settings__.getAddonInfo('name'),
                                       __settings__.getLocalizedString(30021) % err,
                                       xbmcgui.NOTIFICATION_WARNING)
+
+# Tubi localises its categories and descriptions off the Accept-Language it
+# is asked with - nothing else about a request changes.
+ma.defaultHeaders['Accept-Language'] = LANGUAGES[int(__settings__.getSetting('language') or 0)]
 
 ma.api = TubiApi(ma.defaultHeaders, ma.auth.deviceId, userId=ma.auth.userId,
                  kids=__settings__.getSetting('kids_mode') == 'true')

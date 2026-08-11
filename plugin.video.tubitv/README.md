@@ -11,7 +11,8 @@ kept here so the sign-in can be maintained as Tubi changes its API.
 - Browse the Tubi categories, with paging through long ones
 - Home, My List and Continue Watching, taken from your account
 - Related titles and trailers on every film and series
-- Kids mode
+- Add to and remove from My List, and like or dislike a title
+- Kids mode, and Tubi's own English, Spanish or French metadata
 - Tubi's linear channels as Live TV, optionally in the Kodi TV guide
 - Search the Tubi catalogue
 - Series listed by season, with episode numbers, cast, plot and artwork
@@ -39,6 +40,8 @@ device token otherwise:
 | My List | `user-queue…/api/v2/queues` |
 | Related titles | `autopilot-cdn…/api/v3/related` |
 | Resume reporting | `lishi…/api/v2/view_history` |
+| Saving and unsaving a title | `user-queue…/api/v2/queues` |
+| Liking and disliking | `account…/user/preferences/rate` |
 
 ## Playback and DRM
 
@@ -101,6 +104,18 @@ leaves what is playing in a window property for the service to pick up.
 Films only. Tubi's history takes a content id and a type, and the only write
 ever captured was for a film — what it expects for an episode has not been
 observed, and is left alone rather than guessed at.
+
+## Language
+
+Tubi localises its category names and descriptions from the `Accept-Language`
+it is asked with; nothing else about a request changes. The **Language** setting
+picks between the three it has been seen serving — `en-US`, `es-MX` and `fr-CA`.
+
+## A note on ids
+
+A series is identified by its content id with a zero in front of it — `03321`
+for series `3321` — wherever ratings, related titles or a search's contents map
+are concerned. Films use their id unchanged.
 
 ## Installation
 

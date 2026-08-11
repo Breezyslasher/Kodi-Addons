@@ -9,6 +9,7 @@
     <category label="30029">
         <setting id="allow_hdcp" type="bool" label="30030" default="false" />
         <setting id="kids_mode" type="bool" label="30039" default="false" />
+        <setting id="language" type="select" label="30050" default="0" lvalues="30051|30052|30053" />
         <setting id="report_progress" type="bool" label="30040" default="true" />
     </category>
     <category label="30032">

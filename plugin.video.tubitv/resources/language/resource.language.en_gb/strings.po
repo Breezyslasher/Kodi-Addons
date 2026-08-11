@@ -48,6 +48,58 @@ msgctxt "#30035"
 msgid "Play trailer"
 msgstr ""
 
+msgctxt "#30041"
+msgid "Add to My List"
+msgstr ""
+
+msgctxt "#30042"
+msgid "Remove from My List"
+msgstr ""
+
+msgctxt "#30043"
+msgid "Added to My List"
+msgstr ""
+
+msgctxt "#30044"
+msgid "Removed from My List"
+msgstr ""
+
+msgctxt "#30045"
+msgid "Like"
+msgstr ""
+
+msgctxt "#30046"
+msgid "Dislike"
+msgstr ""
+
+msgctxt "#30047"
+msgid "Liked"
+msgstr ""
+
+msgctxt "#30048"
+msgid "Disliked"
+msgstr ""
+
+msgctxt "#30049"
+msgid "Rating cleared"
+msgstr ""
+
+msgctxt "#30050"
+msgid "Language"
+msgstr ""
+
+msgctxt "#30051"
+msgid "English"
+msgstr ""
+
+msgctxt "#30052"
+msgid "Espanol"
+msgstr ""
+
+msgctxt "#30053"
+msgid "Francais"
+msgstr ""
+
 msgctxt "#30036"
 msgid "Home"
 msgstr ""
