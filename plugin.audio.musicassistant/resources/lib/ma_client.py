@@ -445,23 +445,33 @@ class MusicController:
             provider_instance_id_or_domain=provider_instance_id_or_domain
         )
     
-    def get_artist_albums(self, item_id, provider_instance_id_or_domain='library', in_library_only=False):
-        """Get albums for an artist."""
-        return self.client.send_command(
-            'music/artists/artist_albums',
-            item_id=str(item_id),
-            provider_instance_id_or_domain=provider_instance_id_or_domain,
-            in_library_only=in_library_only
-        )
-    
-    def get_artist_tracks(self, item_id, provider_instance_id_or_domain='library', in_library_only=False):
-        """Get tracks for an artist."""
-        return self.client.send_command(
-            'music/artists/artist_tracks',
-            item_id=str(item_id),
-            provider_instance_id_or_domain=provider_instance_id_or_domain,
-            in_library_only=in_library_only
-        )
+    def get_artist_albums(self, item_id, provider_instance_id_or_domain='library', provider_filter=None):
+        """Get albums for an artist.
+
+        music/artists/artist_albums takes an optional provider_filter (not the
+        old in_library_only flag); it is only sent when provided.
+        """
+        args = {
+            'item_id': str(item_id),
+            'provider_instance_id_or_domain': provider_instance_id_or_domain,
+        }
+        if provider_filter is not None:
+            args['provider_filter'] = provider_filter
+        return self.client.send_command('music/artists/artist_albums', **args)
+
+    def get_artist_tracks(self, item_id, provider_instance_id_or_domain='library', provider_filter=None):
+        """Get tracks for an artist.
+
+        music/artists/artist_tracks takes an optional provider_filter (not the
+        old in_library_only flag); it is only sent when provided.
+        """
+        args = {
+            'item_id': str(item_id),
+            'provider_instance_id_or_domain': provider_instance_id_or_domain,
+        }
+        if provider_filter is not None:
+            args['provider_filter'] = provider_filter
+        return self.client.send_command('music/artists/artist_tracks', **args)
     
     # Albums
     def get_library_albums(self, favorite=None, search=None, limit=500, offset=0, order_by='sort_name'):
@@ -631,22 +641,50 @@ class MusicController:
         )
     
     # Search
-    def search(self, search_query, media_types=None, limit=25):
+    def search(self, search_query, media_types=None, limit=25, library_only=False):
         """
         Search across all media types.
-        
+
         Args:
             search_query: Search string
             media_types: List of media types to search (None for all)
             limit: Maximum results per type
+            library_only: Restrict results to items already in the library
         """
         args = {'search_query': search_query}
         if media_types:
             args['media_types'] = media_types
         if limit:
             args['limit'] = limit
-        
+        if library_only:
+            args['library_only'] = library_only
+
         return self.client.send_command('music/search', **args)
+
+    def get_item_by_uri(self, uri, allow_update_metadata=False):
+        """Resolve a media item from its URI (e.g. 'library://track/123').
+
+        Works uniformly for every media type, avoiding per-type 'get'
+        commands and manual URI construction.
+        """
+        args = {'uri': uri}
+        if allow_update_metadata:
+            args['allow_update_metadata'] = allow_update_metadata
+        return self.client.send_command('music/item_by_uri', **args)
+
+    def get_library_count(self, media_type, favorite_only=False):
+        """Get the total number of library items for a media type.
+
+        Args:
+            media_type: Singular media type, e.g. 'artist', 'album', 'track'.
+            favorite_only: Only count favorited items.
+        Returns:
+            Integer count.
+        """
+        args = {}
+        if favorite_only:
+            args['favorite_only'] = favorite_only
+        return self.client.send_command(f'music/{media_type}s/count', **args)
     
     # Recently played and favorites
     def get_recently_played(self, limit=25, media_types=None):
