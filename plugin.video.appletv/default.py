@@ -555,14 +555,37 @@ def do_show(api, show_id):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
+def _combined_library():
+    """Setting: fold every family member's shared purchases into one Films/TV
+    Shows library, rather than a folder per member."""
+    return kodiutils.get_setting_bool("itunes_library_combined", False)
+
+
+def _library_purchases(api, kind):
+    """Owned titles of one kind, plus -- when the combined-library setting is on
+    -- every sharing family member's, merged and de-duplicated by id."""
+    items = api.media_purchases(kind)
+    if _combined_library():
+        seen = {it.get("id") for it in items}
+        for member in api.media_family_members():
+            for it in api.media_purchases(kind, family_member=member["id"]):
+                if it.get("id") not in seen:
+                    seen.add(it.get("id"))
+                    items.append(it)
+    return items
+
+
 def do_itunes_library(api, auth):
-    """The library's sections: your films and TV, plus each family member who
-    shares purchases (the app's Family Sharing view)."""
+    """The library's sections: your films and TV, plus (unless the combined
+    setting is on) each family member who shares purchases -- the app's Family
+    Sharing view. Combined, Films and TV Shows list everyone's shared titles
+    together and the per-member folders are dropped."""
     add_dir(L("films"), "itunes_movies")
     add_dir(L("tv_shows"), "itunes_tv")
-    for member in api.media_family_members():
-        add_dir(L("shared_by") % member["name"], "itunes_family",
-                member_id=member["id"])
+    if not _combined_library():
+        for member in api.media_family_members():
+            add_dir(L("shared_by") % member["name"], "itunes_family",
+                    member_id=member["id"])
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -626,7 +649,7 @@ def do_itunes_movies(api, auth):
     token, so it needs no store or Android session. The Windows store locker is
     kept as a fallback for a pasted store session.
     """
-    items = api.media_purchases("movie")
+    items = _library_purchases(api, "movie")
     if items:
         show_items(items)
         return
@@ -650,7 +673,7 @@ def do_itunes_tv(api, auth):
     # numbers), from the ordinary Apple TV+ session -- shown as a flat list
     # when it answers, since it needs no store session. The season-grouped
     # store locker is the fallback.
-    shows = api.media_purchases("tv")
+    shows = _library_purchases(api, "tv")
     if shows:
         show_items(shows, content="tvshows")
         return

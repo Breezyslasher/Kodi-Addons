@@ -29,6 +29,7 @@
         <setting id="itunes_token" type="text" label="32079" option="hidden" default="" />
         <setting id="itunes_uts_cookies" type="text" label="32081" option="hidden" default="" />
         <setting id="search_appletv_only" type="bool" label="32080" default="true" />
+        <setting id="itunes_library_combined" type="bool" label="32106" default="false" />
         <setting id="diag_force_store_license" type="bool" label="32084" option="hidden" default="false" />
     </category>
 </settings>
