@@ -2132,14 +2132,20 @@ class AppleTVApi(object):
         """Owned iTunes films in progress, from the MediaAPI playback-position.
 
         A title is in progress when its inline resume point is past the very
-        start and short of essentially finished. This uses the same owned-movies
-        call the library does, so it needs only the Apple TV+ sign-in -- no
-        store session -- and each entry plays and resumes through the ordinary
-        purchase path. TV episodes are not included: their resume points are not
-        carried on a single flat call the way films' are.
+        start and short of essentially finished. This is the same owned-films
+        call the app's LibraryPage makes (there is no separate iTunes
+        continue-watching endpoint -- the app builds it from /v1/me/purchases
+        too), sorted mostRecent as its "recent" view does, so it needs only the
+        Apple TV+ sign-in -- no store session -- and each entry plays and
+        resumes through the ordinary purchase path. Results are ordered by
+        recordedAtTimestamp (most-recently-watched first), the field the app
+        keys recency off. TV episodes are not included: /v1/me/purchases/
+        tv-episodes is a per-show loader, so their resume points do not come
+        back on a single flat call the way films' do.
         """
         try:
-            owned = self.media_purchases("movie", max_pages=max_pages)
+            owned = self.media_purchases("movie", max_pages=max_pages,
+                                         sort="mostRecent")
         except Exception as exc:
             kodiutils.log_error("iTunes Continue Watching lookup failed: %s" % exc)
             return []
@@ -2150,6 +2156,10 @@ class AppleTVApi(object):
             total = resume.get("total") or 0
             if pos > 30 and total and pos < total * 0.95:
                 in_progress.append(entry)
+        # Order by when the position was last saved, newest first. mostRecent
+        # already sorts the fetch, but sorting here as well keeps the order right
+        # even if the server sort covers owned-date rather than watched-date.
+        in_progress.sort(key=lambda e: e.get("recorded_at") or "", reverse=True)
         kodiutils.log("iTunes Continue Watching: %d in-progress of %d owned "
                       "film(s)" % (len(in_progress), len(owned)))
         return in_progress
@@ -2336,7 +2346,7 @@ class AppleTVApi(object):
         return None
 
     def media_purchases(self, kind="movie", family_member=None, show_id=None,
-                        max_pages=20):
+                        max_pages=20, sort=None):
         """Owned titles from MediaAPI /v1/me/purchases -- the Apple TV app's
         Library page call, read off its LibraryPage.js.
 
@@ -2387,11 +2397,15 @@ class AppleTVApi(object):
         elif kind == "movie":
             # include[movies]=playback-position brings the resume point back
             # inline as a relationship, so no separate positions call is needed.
-            base = {"filter": "owned", "sort": "name", "types": "movies",
+            # sort defaults to name (the library's A-Z view); a caller can ask
+            # for "mostRecent" -- the app's recency sort (LibraryPage.js "recent"
+            # view) -- to order by how lately each title was played.
+            base = {"filter": "owned", "sort": sort or "name", "types": "movies",
                     "include[movies]": "playback-position"}
         else:
-            base = {"filter": "owned", "sort": "artistName", "types": "tv-shows",
-                    "include[tv-shows]": "episodes", "limit[episodes]": 1}
+            base = {"filter": "owned", "sort": sort or "artistName",
+                    "types": "tv-shows", "include[tv-shows]": "episodes",
+                    "limit[episodes]": 1}
         if family_member:
             base["with"] = "sharedPurchases"
             base["filter[owner]"] = family_member
@@ -2602,10 +2616,16 @@ class AppleTVApi(object):
         rel = (row.get("relationships") or {}).get("playback-position") or {}
         pdata = self._as_list(rel.get("data"))
         if pdata and duration:
-            pms = (pdata[0].get("attributes") or {}).get("positionInMilliseconds")
+            pattrs = pdata[0].get("attributes") or {}
+            pms = pattrs.get("positionInMilliseconds")
             if pms:
                 entry["resume"] = {"position": pms / 1000.0,
                                    "total": float(duration)}
+            # recordedAtTimestamp is when the position was last saved -- the
+            # field LibraryPage.js keys recency off, so Continue Watching can
+            # order by most-recently-watched.
+            if pattrs.get("recordedAtTimestamp") is not None:
+                entry["recorded_at"] = pattrs.get("recordedAtTimestamp")
         return entry
 
     def _store_dsid(self):
