@@ -410,8 +410,7 @@ class myAddon(t1mAddon):
 
     def homeRows(self, ilist):
         """Tubi's own home screen, its rows as folders."""
-        rows, _ = self.api.homescreen()
-        for row in rows:
+        for row in self.api.homescreenAll():
             infoList = {'Title': row.get('title'),
                         'Plot': row.get('description')}
             thumb = row.get('thumbnail') or self.addonIcon

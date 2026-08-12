@@ -10,6 +10,7 @@ kept here so the sign-in can be maintained as Tubi changes its API.
 
 - Browse the Tubi categories, with paging through long ones
 - Home, which is Tubi's own screen, Continue Watching and My List rows included
+  — see [Home and the category list](#home-and-the-category-list)
 - Related titles and trailers on every film and series
 - Add to and remove from My List, and like or dislike a title
 - Kids mode, and Tubi's own English, Spanish or French metadata
@@ -43,6 +44,30 @@ device token otherwise:
 | Saving and unsaving a title | `user-queue…/api/v2/queues` |
 | Part-watched titles, and forgetting one | `lishi…/api/v2/view_history` |
 | Liking and disliking | `account…/user/preferences/rate` |
+
+## Home and the category list
+
+The addon's root is `browse_list`, Tubi's full category list, and Home is
+`homescreen`, the rows Tubi's own home screen shows. They overlap heavily but
+they are not the same list, and neither contains the other. Counting distinct
+row titles per capture, English, kids mode off:
+
+| Capture | Categories | Home rows | Home rows not in the category list |
+|---|---|---|---|
+| session A | 110 | 40 | 6 |
+| session B | 130 | 47 | 4 |
+| session C | 130 | 70 | 17 |
+
+What Home has that the category list does not is the personal and the
+time-sensitive: Continue Watching, My List, Watch Next, Recommended, and rows
+Tubi assembles for the moment. The category list is the whole catalogue, in
+Tubi's own order, and it is the longer of the two.
+
+Home is fetched the way the site fetches it — the first seven rows, then a
+second call from the cursor it hands back asking for every row after them.
+Only the first call was being made, which is why Home used to show six or
+seven rows against the root's hundred and more, and why it looked like a
+short duplicate of the root rather than a different list.
 
 ## Playback and DRM
 
