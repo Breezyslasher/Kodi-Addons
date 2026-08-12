@@ -1,10 +1,10 @@
 # Apple TV for Kodi (experimental)
 
-Sign in with your Apple ID and browse **Apple TV+ Originals** and your
-**iTunes movie library** in Kodi, with playback through **InputStream Adaptive**
-using **Widevine** DRM.
+Sign in with your Apple ID and browse **Apple TV+ Originals**, **live sports**
+and your **iTunes movie and TV library** in Kodi, with playback through
+**InputStream Adaptive** using **Widevine** DRM.
 
-> ⚠️ **Experimental, and requires Kodi 22 with InputStream Adaptive 22.**
+> ⚠️ **Experimental, and requires Kodi 21 or newer with InputStream Adaptive 21+.**
 > Playback works, in standard definition only — see *Current status* for why.
 > Everything here is reconstructed from real `tv.apple.com` browser captures;
 > Apple documents none of it and can change it at any time.
@@ -24,14 +24,20 @@ using **Widevine** DRM.
 | Playback resolve (`/uts/v3/movies/{id}`, `/episodes/{id}`) | ✅ Returns the `hlsUrl` for the entitled feature (not the trailer) |
 | Widevine licence exchange (`fpsRequest`) | ✅ Local proxy wraps the challenge in Apple's JSON envelope; the returned key id always matches the requested one |
 | Key id delivery (`KEYID` + `tenc` patching) | ✅ Apple omits both; the proxy recovers the key id from the PSSH and supplies it |
+| Your **iTunes library** (purchased/rented films and TV), Family Sharing | ✅ Lists via the app's own MediaAPI route on the ordinary Apple TV+ sign-in; mark-watched and resume sync with Apple |
 | **Audio decryption and playback** | ✅ Works |
-| **Video decryption and playback** | ✅ Works on Kodi 22 + ISA 22, standard definition only |
+| **Video decryption and playback** | ✅ Works on Kodi 21+ (ISA 21+), standard definition only |
 
 ### Requirements and limits for playback
 
-The addon requires **Kodi 22 with InputStream Adaptive 22 or newer**. Playback
-relies on the `inputstream.adaptive.drm` property, which the 21.x series does
-not have, so Kodi 21 is not supported.
+The addon requires **Kodi 21 or newer with InputStream Adaptive 21 or newer**.
+DRM is configured to match the installed ISA: the JSON
+`inputstream.adaptive.drm` property on **ISA 22.1.5+ (Kodi 22)**, and the
+**legacy individual DRM properties** on **ISA 21 (Kodi 21)**, which force the
+single DRM session the JSON form asks for. Kodi 20 and earlier are not
+supported — their ISA predates 21, and in practice the Widevine CDMs available
+there are frequently revoked or unstable, so DRM playback fails or crashes even
+when the addon otherwise runs.
 
 Three constraints decide which stream is played, all enforced automatically by
 the manifest proxy:
@@ -59,7 +65,9 @@ possible, but on a typical desktop the CDM will refuse the key.
   the CDM to decrypt with a key that was never licensed.
 - Apple's licence server wants the challenge wrapped in a JSON envelope with
   the matching key's `uri`, `adamId` and `svcId`; a local proxy does that
-  translation, matching each challenge to its key by key id.
+  translation, matching each challenge to its key by key id. The proxy is
+  bound to localhost and authenticated with a per-session secret, so no other
+  local process or web page can drive it or reach the account tokens.
 - Apple leaves the opening chapters unencrypted and starts encryption several
   chapters in, so the DRM session is pre-initialised via `pre_init_data`.
 
@@ -95,11 +103,21 @@ supported hardware.
 ## Features
 
 - Apple ID sign-in with two-factor authentication (SRP-6a web flow)
-- Browse the Apple TV+, MLS and Formula 1 tabs (all of each tab's shelves)
+- Browse the Apple TV+, MLS and Formula 1 tabs (all of each tab's shelves); the
+  brand tabs are read live from Apple's own navigation, and Apple TV Channels
+  the account is subscribed to are listed too
 - Browse categories (Kids & Family, Sci-Fi, ...), MLS club pages and F1 Grand Prix weekends as folders
 - Show → season → episode browsing, with episode counts per season
+- **My iTunes Library** — your purchased/rented films and TV, grouped into Films
+  and TV Shows (television by season), on the ordinary Apple TV+ sign-in (no
+  separate store login needed). Includes **Family Sharing**: each member who
+  shares purchases is listed, with their shared films and TV, browsable by genre
 - Search with Apple's suggestions, or browse when nothing is typed
-- The tab's own shelves, including your **Continue Watching** and **Watchlist**, when signed in (Apple serves these on the tab, as on the website)
+- The tab's own shelves, including your **Continue Watching** (which mixes in
+  iTunes films in progress) and **Watchlist**, when signed in
+- **Mark watched** on a title, episode or iTunes purchase — recorded on your
+  Apple account (via play-history, the way the Apple TV app does), so it leaves
+  Continue Watching and shows as watched on your other devices
 - **Play trailer** and **Bonus content** context-menu entries on movies and shows
 - **Follow club** / **Unfollow club** on clubs, with a **Following** folder listing them
 - **Add to / Remove from Watchlist** on any title, episode or event
@@ -109,14 +127,18 @@ supported hardware.
 
 ## Requirements
 
-- **Kodi 22 or later with InputStream Adaptive 22 or later.** This is enforced
-  in `addon.xml`. Playback depends on the `inputstream.adaptive.drm` property,
-  which does not exist in the 21.x series (only `drm_legacy` was added there,
-  in 21.5.0), and on Kodi 21 the video never decrypts.
+- **Kodi 21 or later with InputStream Adaptive 21 or later.** This is enforced
+  in `addon.xml`. DRM setup adapts to the installed ISA: the JSON
+  `inputstream.adaptive.drm` property on ISA 22.1.5+ (Kodi 22), and the legacy
+  individual DRM properties on ISA 21 (Kodi 21). Kodi 20 and earlier are not
+  supported.
 - **Widevine CDM** — the addon uses *InputStream Helper* to install it
   automatically on supported platforms (x86/ARM Linux, Android, Windows).
   Widevine is **not** available on some platforms (e.g. iOS, and Apple silicon
-  without the Android runtime).
+  without the Android runtime). A **revoked or unstable** CDM causes licence
+  refusals (`status -1021`) or crashes on decrypt regardless of the addon; if
+  that happens, install a fresh, known-good CDM (e.g. via *InputStream Helper*'s
+  version picker) before assuming the addon is at fault.
 - An **Apple ID** with an active Apple TV+ subscription and/or iTunes purchases
 
 ## Installation
@@ -173,8 +195,12 @@ Common cases:
   for `status 3` (the CDM refusing an output-restricted key: lower *Maximum
   video height*) or `Unknown video codec 5` (an HEVC variant: enable *H.264
   only*).
-- **Nothing plays and the log has no `drm property` line** — you are on ISA 21
-  or older, which lacks the DRM property this addon needs.
+- **Nothing plays** — check the log for `DRM property set (json drm ...)` or
+  `DRM property set (legacy properties ...)`; the addon logs which form it used
+  for your ISA. A licence refusal with `status -1021`, or a crash right after
+  `License OK`, points at a revoked/unstable Widevine CDM rather than the addon
+  — reinstall a known-good CDM. On Kodi 20 or older (ISA < 21) the addon does
+  not install at all.
 
 ## Legal
 

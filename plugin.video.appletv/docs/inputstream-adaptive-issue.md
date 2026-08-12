@@ -1,9 +1,14 @@
-# Notes: HLS + Widevine findings (resolved on ISA 22)
+# Notes: HLS + Widevine findings (resolved)
 
-> **Resolved.** Playback works on Kodi 22 with InputStream Adaptive 22 using the
-> `inputstream.adaptive.drm` property (`secure_decoder`, `pre_init_data`),
-> a 360-pixel height cap and H.264-only variants. The report below documents the
-> ISA 21 behaviour and is kept for reference; there is nothing to file.
+> **Resolved on Kodi 21 and 22.** The original `kNoKey` failure is fixed by
+> recovering the key id from the PSSH (`KEYID` + `tenc` patching), a 360-pixel
+> height cap and H.264-only variants. DRM is then configured to match the
+> installed InputStream Adaptive: the JSON `inputstream.adaptive.drm` property
+> (`secure_decoder`, `pre_init_data`) on **ISA 22.1.5+ (Kodi 22)**, and the
+> legacy individual DRM properties (`license_type` / `license_key` /
+> `server_certificate` / `pre_init_data`) on **ISA 21 (Kodi 21)**, which already
+> force a single DRM session. The report below documents the original ISA 21
+> `kNoKey` behaviour and is kept for reference; there is nothing to file.
 
 # Original draft report for InputStream Adaptive
 
