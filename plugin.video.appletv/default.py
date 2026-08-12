@@ -1222,10 +1222,17 @@ def build_isa_listitem(playback):
     license_url = playback.get("license_url")
     cert = playback.get("certificate_b64")
     pre_init = playback.get("pre_init_data")
+    # On Android the device's own (often L1) Widevine decrypts into *secure*
+    # buffers, which only a secure MediaCodec + secure surface can render -- a
+    # non-secure decoder gives "ReleaseOutputBuffer error"/black. Requesting the
+    # secure decoder there is what lets an L1 Android device actually play
+    # (verified: HD/HEVC Apple TV+ renders on Android once secure is on). On
+    # desktop the CDM is software L3 with no secure decoder, so it stays off.
+    android = xbmc.getCondVisibility("System.Platform.Android")
     if _isa_has_json_drm():
         # Kodi 22+ (ISA >= 22.1.5): the JSON drm object, which can express
         # secure_decoder and pre_init_data per stream.
-        config = {"priority": 1, "secure_decoder": False,
+        config = {"priority": 1, "secure_decoder": bool(android),
                   "force_single_session": True}
         if license_url:
             config["license"] = {
@@ -1247,6 +1254,8 @@ def build_isa_listitem(playback):
         # body, and the empty response field takes the raw licence back.
         item.setProperty("inputstream.adaptive.manifest_type", "hls")
         item.setProperty("inputstream.adaptive.license_type", "com.widevine.alpha")
+        if android:
+            item.setProperty("inputstream.adaptive.secure_decoder", "true")
         if license_url:
             item.setProperty(
                 "inputstream.adaptive.license_key",

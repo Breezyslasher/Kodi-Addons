@@ -551,7 +551,13 @@ class _Handler(BaseHTTPRequestHandler):
                 if drop_subs and "TYPE=SUBTITLES" in s:
                     continue  # replaced by the external subtitle file
                 m = re.search(r'GROUP-ID="([^"]+)"', s)
-                if max_h and m and groups and m.group(1) not in groups:
+                # Drop a rendition whose group no surviving variant uses -- not
+                # only when a height cap dropped variants, but also when avc_only
+                # / sdr_only did. Apple's ac3/atmos audio groups belong to the
+                # HEVC/Dolby Vision variants, so with H.264-only on (or those
+                # variants otherwise removed) keeping their renditions makes ISA
+                # log "Cannot find variant for AUDIO GROUP-ID" for each one.
+                if m and groups and m.group(1) not in groups:
                     continue  # rendition only used by variants we removed
 
             if s.startswith("#") and 'URI="' in s:
