@@ -5,6 +5,7 @@ import sys
 from urllib.parse import urlencode, parse_qsl, quote
 
 import xbmc
+import xbmcaddon
 import xbmcgui
 import xbmcplugin
 
@@ -1218,25 +1219,71 @@ def build_isa_listitem(playback):
             kodiutils.log_error("Widevine CDM not confirmed present")
         return item
 
-    config = {"priority": 1, "secure_decoder": False, "force_single_session": True}
     license_url = playback.get("license_url")
-    if license_url:
-        config["license"] = {
-            "server_url": license_url,
-            "req_headers": "Content-Type=application%2Foctet-stream",
-        }
-        cert = playback.get("certificate_b64")
+    cert = playback.get("certificate_b64")
+    pre_init = playback.get("pre_init_data")
+    if _isa_has_json_drm():
+        # Kodi 22+ (ISA >= 22.1.5): the JSON drm object, which can express
+        # secure_decoder and pre_init_data per stream.
+        config = {"priority": 1, "secure_decoder": False,
+                  "force_single_session": True}
+        if license_url:
+            config["license"] = {
+                "server_url": license_url,
+                "req_headers": "Content-Type=application%2Foctet-stream",
+            }
+            if cert:
+                config["license"]["server_certificate"] = cert
+        if pre_init:
+            config["pre_init_data"] = pre_init
+        item.setProperty("inputstream.adaptive.drm",
+                         json.dumps({"com.widevine.alpha": config}))
+        kodiutils.log("DRM property set (json drm, pre_init=%s)" % bool(pre_init))
+    else:
+        # Kodi 21 (and earlier ISA): the individual legacy properties, which on
+        # Kodi <=21 already force a single DRM session (what the JSON config asks
+        # for above). The licence key routes to the same local proxy; R{SSM} is
+        # the raw Widevine challenge, matching what the proxy expects as the POST
+        # body, and the empty response field takes the raw licence back.
+        item.setProperty("inputstream.adaptive.manifest_type", "hls")
+        item.setProperty("inputstream.adaptive.license_type", "com.widevine.alpha")
+        if license_url:
+            item.setProperty(
+                "inputstream.adaptive.license_key",
+                "%s|Content-Type=application%%2Foctet-stream|R{SSM}|" % license_url)
         if cert:
-            config["license"]["server_certificate"] = cert
-    if playback.get("pre_init_data"):
-        config["pre_init_data"] = playback["pre_init_data"]
-    item.setProperty("inputstream.adaptive.drm",
-                     json.dumps({"com.widevine.alpha": config}))
-    kodiutils.log("DRM property set (pre_init=%s)" % bool(playback.get("pre_init_data")))
+            item.setProperty("inputstream.adaptive.server_certificate", cert)
+        if pre_init:
+            item.setProperty("inputstream.adaptive.pre_init_data", pre_init)
+        kodiutils.log("DRM property set (legacy properties, pre_init=%s)"
+                      % bool(pre_init))
 
     if not is_helper_ok:
         kodiutils.log_error("Widevine CDM not confirmed present; playback may fail")
     return item
+
+
+def _isa_has_json_drm():
+    """Whether InputStream Adaptive here supports the JSON `drm` property.
+
+    That property is ISA v22.1.5+ (Kodi 22) -- verified against ISA's own DRM
+    integration docs. Older ISA (Kodi 21) has only the legacy individual
+    properties / drm_legacy, so the DRM is configured the old way there. Keyed
+    off the actual installed ISA version rather than the Kodi version, so a
+    build that ships a different ISA is judged on what it really has. Fails
+    closed to the legacy path if the version cannot be read.
+    """
+    try:
+        raw = xbmcaddon.Addon("inputstream.adaptive").getAddonInfo("version")
+    except Exception:
+        return False
+    parts = []
+    for token in str(raw).split("."):
+        num = "".join(ch for ch in token if ch.isdigit())
+        parts.append(int(num) if num else 0)
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts[:3]) >= (22, 1, 5)
 
 
 def ensure_widevine():
