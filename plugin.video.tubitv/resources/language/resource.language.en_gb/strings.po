@@ -134,7 +134,7 @@ msgid "User Password"
 msgstr ""
 
 msgctxt "#30023"
-msgid "Clear saved session"
+msgid "Sign out"
 msgstr ""
 
 msgctxt "#30029"
