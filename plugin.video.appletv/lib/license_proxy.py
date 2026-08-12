@@ -586,17 +586,20 @@ class _Handler(BaseHTTPRequestHandler):
             elif s.startswith("#EXT-X-MEDIA"):
                 if drop_subs and "TYPE=SUBTITLES" in s:
                     continue  # replaced by the external subtitle file
-                # Drop the audio-description ("described video") narration. For
-                # each language Apple ships the main mix and a describes-video
-                # narration in the same audio group and marks BOTH renditions
-                # DEFAULT=YES,AUTOSELECT=YES (captured manifests confirm the
-                # accessibility characteristic is the only discriminator), so
-                # the player can land on the narration instead of the main
-                # audio -- observed happening on Android.
+                # Demote the audio-description ("described video") narration.
+                # For each language Apple ships the main mix and a
+                # describes-video narration in the same audio group and marks
+                # BOTH renditions DEFAULT=YES,AUTOSELECT=YES (captured
+                # manifests confirm the accessibility characteristic is the
+                # only discriminator), so the player can land on the narration
+                # instead of the main audio -- observed happening on Android.
+                # Clearing the narration's flags leaves the main mix as the
+                # only default while the track stays selectable by hand.
                 if ("TYPE=AUDIO" in s
                         and "public.accessibility.describes-video" in s):
-                    dropped += 1
-                    continue
+                    line = (line.replace("DEFAULT=YES", "DEFAULT=NO")
+                            .replace("AUTOSELECT=YES", "AUTOSELECT=NO"))
+                    s = line.strip()
                 m = re.search(r'GROUP-ID="([^"]+)"', s)
                 # Drop a rendition whose group no surviving variant uses -- not
                 # only when a height cap dropped variants, but also when avc_only
