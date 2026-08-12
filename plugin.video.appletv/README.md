@@ -4,8 +4,9 @@ Sign in with your Apple ID and browse **Apple TV+ Originals**, **live sports**
 and your **iTunes movie and TV library** in Kodi, with playback through
 **InputStream Adaptive** using **Widevine** DRM.
 
-> ⚠️ **Experimental, and requires Kodi 21 or newer with InputStream Adaptive 21+.**
-> Playback works, in standard definition only — see *Current status* for why.
+> ⚠️ **Experimental. Desktop needs Kodi 21+; Android needs Kodi 22+** (with the
+> matching InputStream Adaptive). Desktop plays in standard definition; a
+> Widevine-L1 Android device on Kodi 22 plays HD — see *Current status* for why.
 > Everything here is reconstructed from real `tv.apple.com` browser captures;
 > Apple documents none of it and can change it at any time.
 
@@ -25,19 +26,19 @@ and your **iTunes movie and TV library** in Kodi, with playback through
 | Widevine licence exchange (`fpsRequest`) | ✅ Local proxy wraps the challenge in Apple's JSON envelope; the returned key id always matches the requested one |
 | Key id delivery (`KEYID` + `tenc` patching) | ✅ Apple omits both; the proxy recovers the key id from the PSSH and supplies it |
 | Your **iTunes library** (purchased/rented films and TV), Family Sharing | ✅ Lists via the app's own MediaAPI route on the ordinary Apple TV+ sign-in; mark-watched and resume sync with Apple |
-| **Audio decryption and playback** | ✅ Works |
-| **Video decryption and playback** | ✅ Works on Kodi 21+ (ISA 21+), standard definition only |
+| **Audio decryption and playback** | ✅ Works (desktop Kodi 21+; Android needs Kodi 22 — see *HD/4K on Android*) |
+| **Video decryption and playback** | ✅ Works on Kodi 21+ (ISA 21+); SD on desktop, HD on L1 Android (Kodi 22) |
 
 ### Requirements and limits for playback
 
-The addon requires **Kodi 21 or newer with InputStream Adaptive 21 or newer**.
-DRM is configured to match the installed ISA: the JSON
-`inputstream.adaptive.drm` property on **ISA 22.1.5+ (Kodi 22)**, and the
-**legacy individual DRM properties** on **ISA 21 (Kodi 21)**, which force the
-single DRM session the JSON form asks for. Kodi 20 and earlier are not
-supported — their ISA predates 21, and in practice the Widevine CDMs available
-there are frequently revoked or unstable, so DRM playback fails or crashes even
-when the addon otherwise runs.
+The addon requires **Kodi 21 or newer** on desktop and **Kodi 22 or newer on
+Android** (see *HD/4K on Android* for the ISA 21 Android audio-licensing bug
+behind that). DRM is configured to match the installed InputStream Adaptive:
+the JSON `inputstream.adaptive.drm` property on **ISA 22.1.5+ (Kodi 22)**, and
+the **legacy individual DRM properties** on **ISA 21 (Kodi 21)**. Kodi 20 and
+earlier are not supported — their ISA predates 21, and in practice the
+Widevine CDMs available there are frequently revoked or unstable, so DRM
+playback fails or crashes even when the addon otherwise runs.
 
 Three constraints decide which stream is played, all enforced automatically by
 the manifest proxy:
@@ -58,19 +59,32 @@ the manifest proxy:
 Raising the height cap on hardware with stronger output protection is
 possible, but on a typical desktop the CDM will refuse the key.
 
-### HD/4K on Android (hardware Widevine L1)
+### HD/4K on Android (hardware Widevine L1) — needs Kodi 22
 
 The SD limit above is a property of the **software Widevine L3** CDM on
 desktop, not of the addon. On a **Widevine-L1-certified Android device** (most
 phones, an Nvidia Shield, a certified Android TV box), Kodi's InputStream
 Adaptive uses the device's own **hardware Widevine (L1)** via MediaCodec, and
 Apple's licence server grants it the **HD and 4K tiers** — the same as the
-official app. Verified on an L1 Android device: raising **Maximum video height**
-(and turning off **H.264 only** for HEVC/4K) plays **1080p and higher**, licensed
-and rendered, no bypass. The addon requests a **secure MediaCodec** on Android so
-those L1-protected frames actually display (a non-secure decoder shows black).
-This is real hardware DRM on certified hardware, not a workaround — desktop
-Kodi (L3) stays SD.
+official app. Verified on an L1 Android device: **1080p H.264 and HEVC tiers
+licence and render**, with **Dolby Digital 5.1 audio**, no bypass. The addon
+probes the Widevine level at playback and, on L1, lifts the default SD height
+cap to **1080 automatically** (a cap the user changed themselves is left
+alone; HEVC/4K stays opt-in via the settings). It also requests a **secure
+MediaCodec** on Android so those L1-protected frames actually display (a
+non-secure decoder shows black).
+
+**Android requires Kodi 22.** On Kodi 21, InputStream Adaptive's Android
+decrypter hardcodes `HasLicenseKey() { return true; }`
+(`src/decrypters/widevineandroid/WVCencSingleSampleDecrypter.cpp:178` in ISA
+21.5.x): the first DRM session claims to hold *every* key, so ISA shares it
+with all streams and **never requests a licence for the audio key**. Apple
+keys audio separately from video, so on Kodi 21 Android the video plays but
+audio can never decrypt (`CDVDAudioCodecAndroidMediaCodec::Decode
+ExceptionCheck` on every sample, playback buffers endlessly). ISA 22 replaced
+the stub with a real per-key check (`HasKeyId`), and both licences are then
+requested and granted — verified in the same device's logs, Kodi 21 vs Kodi
+22. Desktop Kodi 21 is unaffected (its decrypter checks keys properly).
 
 ### What the addon has to do that Apple does not
 
@@ -105,8 +119,9 @@ Two hard limits remain and neither can be coded away:
    CDM, and Apple only issues a usable key for its lowest tier at that level —
    its own web player selects roughly 360p for the same reason. HD/4K needs the
    hardware **Widevine L1** DRM, which desktop Kodi does not have. **A
-   Widevine-L1-certified Android device is the exception** — there Kodi uses the
-   device's hardware L1 and Apple grants HD/4K (see *HD/4K on Android* above).
+   Widevine-L1-certified Android device running Kodi 22 is the exception** —
+   there Kodi uses the device's hardware L1 and Apple grants HD/4K (see *HD/4K
+   on Android* above; Kodi 21 Android cannot license the audio track).
 2. **Apple gives no public API.** Sign-in, two-factor auth, the catalogue and
    the playback/licence endpoints are all reverse-engineered from Apple's web
    app. Apple changes these deliberately to break unofficial clients, so parts

@@ -10,19 +10,47 @@
 > force a single DRM session. The report below documents the original ISA 21
 > `kNoKey` behaviour and is kept for reference; there is nothing to file.
 
-> **Android (hardware Widevine L1) — HD/4K.** On Android, ISA uses the device's
-> own MediaCodec + system Widevine, which on a certified device is **L1**, so
-> Apple's licence server grants the HD and 4K tiers (verified: 1080p H.264 and a
-> ~3K HEVC tier both licence and render). Two things are needed there and are
-> set only on Android: the **secure decoder** (`secure_decoder: true` in the
-> JSON drm / `inputstream.adaptive.secure_decoder=true` legacy) — L1 decrypts
-> into secure buffers that a non-secure MediaCodec cannot render
-> (`ReleaseOutputBuffer error`, black picture) — and dropping the orphaned
-> ac3/atmos audio renditions whose HEVC/DV variants were filtered (else ISA logs
-> "Cannot find variant for AUDIO GROUP-ID" per rendition). The height cap stays a
-> user setting; on L1 Android raise it (and turn off H.264-only for HEVC/4K).
-> Desktop stays software L3 / SD. A couple of transient `InstanceGuard locked`
-> at bitrate switches remain but recover.
+> **Android (hardware Widevine L1) — HD/4K, Kodi 22 only.** On Android, ISA
+> uses the device's own MediaCodec + system Widevine, which on a certified
+> device is **L1**, so Apple's licence server grants the HD and 4K tiers
+> (verified: 1080p H.264 and a ~3K HEVC tier both licence and render, with
+> eac3 5.1 audio). Two things are needed there and are set only on Android:
+> the **secure decoder** (`secure_decoder: true` in the JSON drm /
+> `inputstream.adaptive.secure_decoder=true` legacy) — L1 decrypts into secure
+> buffers that a non-secure MediaCodec cannot render (`ReleaseOutputBuffer
+> error`, black picture) — and dropping the orphaned ac3/atmos audio renditions
+> whose HEVC/DV variants were filtered (else ISA logs "Cannot find variant for
+> AUDIO GROUP-ID" per rendition). The addon probes the level via
+> `xbmcdrm.CryptoSession(...).GetPropertyString("securityLevel")` and lifts the
+> default 360 cap to 1080 automatically on L1. A couple of transient
+> `InstanceGuard locked` at bitrate switches remain but recover.
+>
+> **Why Kodi 21 on Android cannot work (ISA 21.5.x, verified in source and on
+> device):** Apple keys audio separately from video, so playing needs one DRM
+> session (licence) per key. ISA decides whether a new stream needs its own
+> session by asking the decrypter `HasLicenseKey(session, keyId)`
+> (`src/Session.cpp`, `InitializeDRM`). The **Android** decrypter in ISA 21
+> hardcodes that answer:
+>
+> ```cpp
+> // src/decrypters/widevineandroid/WVCencSingleSampleDecrypter.cpp:178 (21.5.22)
+> bool CWVCencSingleSampleDecrypterA::HasLicenseKey(const std::vector<uint8_t>& keyId)
+> {
+>   // true = one session for all streams, false = one sessions per stream
+>   return true;
+> }
+> ```
+>
+> so the video session claims to hold every key, the audio licence is never
+> requested (device logs show exactly one licence request on Kodi 21 vs one per
+> key on Kodi 22), and encrypted audio fails on every sample
+> (`CDVDAudioCodecAndroidMediaCodec::Decode ExceptionCheck`) — the player then
+> stalls/buffers indefinitely. Manifest-side workarounds don't exist: with
+> `KEYID` omitted, ISA 21 re-extracts the key id from the PSSH
+> (`HLSTree.cpp` "If there is no KID, try to get it from pssh data"). ISA 22
+> replaced the stub with a real per-key check (`HasKeyId`, checks key status
+> USABLE), which is why the same device on Kodi 22.0-BETA1 / ISA 22.3.19 plays
+> HD with 5.1 audio. Desktop ISA 21 checks keys properly and is unaffected.
 
 # Original draft report for InputStream Adaptive
 
