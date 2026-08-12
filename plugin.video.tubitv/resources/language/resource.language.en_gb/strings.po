@@ -158,7 +158,7 @@ msgid "Kids mode"
 msgstr ""
 
 msgctxt "#30040"
-msgid "Tell Tubi where you stopped watching (films, needs sign-in)"
+msgid "Tell Tubi where you stopped watching (needs sign-in)"
 msgstr ""
 
 # --- Messages ---
