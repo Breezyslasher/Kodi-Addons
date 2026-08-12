@@ -89,8 +89,9 @@ class TubiAuth(object):
         except Exception as err:
             self.log('unable to store the session cache : %s' % err)
 
-    def log(self, txt):
-        xbmc.log(msg='%s : %s' % (self.addonName, txt), level=xbmc.LOGDEBUG)
+    def log(self, txt, level=None):
+        xbmc.log(msg='%s : %s' % (self.addonName, txt),
+                 level=xbmc.LOGDEBUG if level is None else level)
 
     def clear(self):
         """Forget every cached token, keeping the device id."""
@@ -109,26 +110,34 @@ class TubiAuth(object):
         token = session.get('access_token')
         cookies = '; '.join(['deviceId=%s' % self.deviceId,
                              'connect.sid=%s' % session.get('connect_sid', '')])
+        told = 0
         if token:
-            self._quietly(self._post, ''.join([ACCOUNT_API, '/user_device/logout']),
-                          json.dumps({'platform': PLATFORM, 'device_id': self.deviceId},
-                                     separators=(',', ':')),
-                          headers={'Authorization': ''.join(['Bearer ', token])})
+            told += self._quietly('device', self._post,
+                                  ''.join([ACCOUNT_API, '/user_device/logout']),
+                                  json.dumps({'platform': PLATFORM, 'device_id': self.deviceId},
+                                             separators=(',', ':')),
+                                  headers={'Authorization': ''.join(['Bearer ', token])})
         if session.get('tubi_id'):
-            self._quietly(requests.delete,
-                          ''.join([WEB_API, '/oz/user/list/', session['tubi_id']]),
-                          headers={'Cookie': cookies}, timeout=TIMEOUT)
+            told += self._quietly('profile', requests.delete,
+                                  ''.join([WEB_API, '/oz/user/list/', session['tubi_id']]),
+                                  headers={'Cookie': cookies}, timeout=TIMEOUT)
         if session.get('connect_sid'):
-            self._quietly(self._post, ''.join([WEB_API, '/oz/user/logout']),
-                          json.dumps({'intentional': True}, separators=(',', ':')),
-                          headers={'Cookie': cookies})
+            told += self._quietly('session', self._post,
+                                  ''.join([WEB_API, '/oz/user/logout']),
+                                  json.dumps({'intentional': True}, separators=(',', ':')),
+                                  headers={'Cookie': cookies})
         self.clear()
+        self.log('signed out, %d of 3 told to Tubi' % told, level=xbmc.LOGINFO)
 
-    def _quietly(self, call, *args, **kwargs):
+    def _quietly(self, step, call, *args, **kwargs):
+        """Run one sign-out step. Returns 1 when Tubi heard it, 0 otherwise."""
         try:
             call(*args, **kwargs)
+            return 1
         except Exception as err:
-            self.log(''.join(['sign-out step failed, carrying on : ', str(err)]))
+            self.log('sign-out step "%s" failed, carrying on : %s' % (step, err),
+                     level=xbmc.LOGWARNING)
+            return 0
 
     # ----------------------------------------------------------------- device
 
@@ -293,7 +302,7 @@ class TubiAuth(object):
         self.cache['user'] = session
         self.cache.pop('failure', None)
         self._writeCache()
-        self.log('signed in as %s' % session.get('name'))
+        self.log('signed in as %s' % session.get('name'), level=xbmc.LOGINFO)
         return session
 
     @staticmethod

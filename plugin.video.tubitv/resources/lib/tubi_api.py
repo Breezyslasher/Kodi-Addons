@@ -156,29 +156,6 @@ class TubiApi(object):
                         [('is_kids_mode', self.kidsMode)])
         return data.get('containers') or []
 
-    def menu(self, personal=True):
-        """Everything the root menu needs, fetched together.
-
-        The categories to list, and the saved list so the menu knows whether
-        it is worth offering. The saved list runs alongside the categories
-        rather than after them - this is the screen opened most often, and it
-        should not get slower for asking.
-
-        Returns (categories, saved list). The saved list comes back empty
-        rather than failing the menu.
-        """
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-            pending = pool.submit(self.queue) if personal else None
-            # Raises: a menu without its categories is not worth showing
-            categories = self.browseList()
-            saved = []
-            if pending is not None:
-                try:
-                    saved = pending.result()
-                except TubiApiError:
-                    saved = []
-        return categories, saved
-
     def container(self, containerId, cursor=0):
         """One page of a category.
 

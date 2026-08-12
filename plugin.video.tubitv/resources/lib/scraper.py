@@ -144,9 +144,19 @@ class myAddon(t1mAddon):
         tag.addSubtitleStream(xbmc.SubtitleStreamDetail(
             language=self.defaultSubStream['language']))
 
+    def note(self, txt, level=None):
+        """Log at a level a normal Kodi log will actually show.
+
+        t1mlib's log() is fixed at debug, which is fine for the routine
+        chatter but hides anything worth knowing about from anyone not
+        already running a debug log.
+        """
+        xbmc.log(msg=''.join([self.addonName, ' : ', str(txt)]),
+                 level=xbmc.LOGINFO if level is None else level)
+
     def report(self, err):
         """Surface an API failure without taking the whole directory down."""
-        self.log(''.join(['api call failed : ', str(err)]))
+        self.note(''.join(['api call failed : ', str(err)]), level=xbmc.LOGWARNING)
         xbmcgui.Dialog().notification(self.addonName, self.localLang(30022),
                                       xbmcgui.NOTIFICATION_ERROR)
 
@@ -287,24 +297,17 @@ class myAddon(t1mAddon):
         return extras
 
     def getAddonMenu(self, url, ilist):
-        signedIn = self.auth is not None and self.auth.signedIn
         try:
-            containers, queue = self.api.menu(personal=signedIn)
+            containers = self.api.browseList()
         except TubiApiError as err:
             self.report(err)
             return ilist
-        self._saved = set(str(e['content_id']) for e in queue)
 
-        # Home is Tubi's own screen and already carries a Continue Watching
-        # row, so there is no separate entry for it here. My List is offered
-        # only when it holds something, and never when signed out.
-        rows = [(30036, 'SE', 'home')]
-        if queue:
-            rows.append((30038, 'SE', 'mylist'))
-        for label, mode, target in rows:
-            infoList = {'Title': self.localLang(label)}
-            ilist = self.addMenuItem(self.localLang(label), mode, ilist, target,
-                                     self.addonIcon, self.addonFanart, infoList, isFolder=True)
+        # Home is Tubi's own screen and carries its Continue Watching and My
+        # List rows already, so neither gets a second entry here.
+        infoList = {'Title': self.localLang(30036)}
+        ilist = self.addMenuItem(self.localLang(30036), 'SE', ilist, 'home',
+                                 self.addonIcon, self.addonFanart, infoList, isFolder=True)
         for container in containers:
             infoList = {'Title': container.get('title'),
                         'Plot': container.get('description')}
@@ -544,6 +547,7 @@ class myAddon(t1mAddon):
             self.report(err)
             return
         self._watching = None
+        self.note('forgot %s from continue watching' % historyId)
         xbmcgui.Dialog().notification(self.addonName, self.localLang(30055))
         xbmc.executebuiltin('Container.Refresh')
 
@@ -568,6 +572,7 @@ class myAddon(t1mAddon):
             self.report(err)
             return
         self._saved = None
+        self.note('%s my list : %s' % (action, contentId))
         xbmcgui.Dialog().notification(self.addonName, self.localLang(message))
         xbmc.executebuiltin('Container.Refresh')
 
@@ -583,6 +588,7 @@ class myAddon(t1mAddon):
         except TubiApiError as err:
             self.report(err)
             return
+        self.note('%s : %s' % (action, contentId))
         xbmcgui.Dialog().notification(self.addonName, self.localLang(message))
 
     def resolve(self, url):
@@ -643,6 +649,8 @@ class myAddon(t1mAddon):
         if manifest is None:
             # Either the title needs an account or it is not playable here
             message = 30018 if content.get('needs_login') else 30028
+            self.note('no playable stream for %s (needs_login=%s)' % (
+                content.get('id'), content.get('needs_login')), level=xbmc.LOGWARNING)
             xbmcgui.Dialog().notification(self.addonName, self.localLang(message),
                                           xbmcgui.NOTIFICATION_WARNING)
             xbmcplugin.setResolvedUrl(int(sys.argv[1]), False, xbmcgui.ListItem(offscreen=True))
