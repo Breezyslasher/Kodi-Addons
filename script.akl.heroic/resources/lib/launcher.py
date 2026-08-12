@@ -36,6 +36,7 @@ FLATPAK_APP_ID = 'com.heroicgameslauncher.hgl'
 MODE_FLATPAK = 'FLATPAK'
 MODE_NATIVE = 'NATIVE'
 MODE_WINDOWS = 'WINDOWS'
+MODE_MACOS = 'MACOS'
 MODE_CUSTOM = 'CUSTOM'
 
 
@@ -84,6 +85,8 @@ class HeroicLauncher(LauncherABC):
         options = collections.OrderedDict()
         if io.is_windows():
             options[MODE_WINDOWS] = 'Standard Windows installation'
+        elif io.is_osx():
+            options[MODE_MACOS] = 'Standard macOS installation (Heroic.app)'
         else:
             options[MODE_FLATPAK] = 'Flatpak installation'
             options[MODE_NATIVE] = 'Native installation (heroic in PATH)'
@@ -97,7 +100,12 @@ class HeroicLauncher(LauncherABC):
         return properties.get('mode') == MODE_CUSTOM
 
     def _build_post_wizard_hook(self):
-        default_mode = MODE_WINDOWS if io.is_windows() else MODE_FLATPAK
+        if io.is_windows():
+            default_mode = MODE_WINDOWS
+        elif io.is_osx():
+            default_mode = MODE_MACOS
+        else:
+            default_mode = MODE_FLATPAK
         mode = self.launcher_settings.get('mode', default_mode)
         if mode == MODE_FLATPAK:
             self.launcher_settings['application'] = 'flatpak'
@@ -108,6 +116,9 @@ class HeroicLauncher(LauncherABC):
             self.launcher_settings['args'] = '--no-gui --no-splash "{}"'.format(LAUNCH_URI_ARG)
         elif mode == MODE_WINDOWS:
             self.launcher_settings['application'] = heroic.detect_windows_executable()
+            self.launcher_settings['args'] = '--no-gui --no-splash "{}"'.format(LAUNCH_URI_ARG)
+        elif mode == MODE_MACOS:
+            self.launcher_settings['application'] = heroic.detect_macos_executable()
             self.launcher_settings['args'] = '--no-gui --no-splash "{}"'.format(LAUNCH_URI_ARG)
         else:
             # Custom executable selected through the file browser.
