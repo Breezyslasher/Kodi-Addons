@@ -121,7 +121,7 @@
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
-		<import addon="inputstream.adaptive" version="22.0.0"/>
+		<import addon="inputstream.adaptive" version="20.0.0"/>
 		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
 	</requires>
 	<extension point="xbmc.python.pluginsource" library="default.py">
