@@ -40,6 +40,13 @@ WINDOWS_EXE_CANDIDATES = [
     '%PROGRAMFILES%\\Heroic\\Heroic.exe',
 ]
 
+# Default locations of the Heroic app bundle binary on macOS, in detection
+# order (system-wide and per-user Applications folders).
+MACOS_EXE_CANDIDATES = [
+    '/Applications/Heroic.app/Contents/MacOS/Heroic',
+    '~/Applications/Heroic.app/Contents/MacOS/Heroic',
+]
+
 # Runner ids used by Heroic in its library files.
 RUNNER_NAMES = {
     'legendary': 'Epic Games Store',
@@ -92,6 +99,16 @@ def detect_windows_executable() -> str:
         if os.path.isfile(expanded):
             return expanded
     return _expand(WINDOWS_EXE_CANDIDATES[0])
+
+
+def detect_macos_executable() -> str:
+    """Returns the Heroic app bundle binary on macOS: the first candidate
+    that exists, or the default /Applications path when none is found yet."""
+    for candidate in MACOS_EXE_CANDIDATES:
+        expanded = _expand(candidate)
+        if os.path.isfile(expanded):
+            return expanded
+    return _expand(MACOS_EXE_CANDIDATES[0])
 
 
 def get_library_files(config_dir: str) -> list:
