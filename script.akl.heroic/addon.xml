@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.akl.heroic" name="Heroic Games Launcher plugin for AKL" version="2026.8.12" provider-name="Breezyslasher">
+<addon id="script.akl.heroic" name="Heroic Games Launcher plugin for AKL" version="2026.8.12.2" provider-name="Breezyslasher">
   <requires>
       <import addon="xbmc.python" version="3.0.0"/>
       <import addon="script.module.akl" version="1.2.0"/>
@@ -10,12 +10,13 @@
   <extension point="xbmc.addon.metadata">
     <summary lang="en_GB">Heroic Games Launcher scanner, scraper and launcher plugin for AKL.</summary>
     <description lang="en_GB">
-    Advanced Kodi Launcher (AKL) plugin for the Heroic Games Launcher on Linux. It scans your Heroic
-library (Epic Games, GOG, Amazon Prime Gaming and sideloaded games) directly from Heroic's local
-store cache, launches games through Heroic (Flatpak or native install) and scrapes titles, plots,
-developers and artwork from the data Heroic already keeps on disk. No credentials or API keys needed.
+    Advanced Kodi Launcher (AKL) plugin for the Heroic Games Launcher on Linux and Windows. It scans
+your Heroic library (Epic Games, GOG, Amazon Prime Gaming and sideloaded games) directly from Heroic's
+local store cache, launches games through Heroic (Flatpak, native Linux or Windows install) and scrapes
+titles, plots, developers and artwork from the data Heroic already keeps on disk. No credentials or
+API keys needed.
     </description>
-    <platform>linux</platform>
+    <platform>all</platform>
     <license>GNU General Public License version 2</license>
     <website>https://github.com/Breezyslasher/heroic_akl</website>
     <source>https://github.com/Breezyslasher/heroic_akl</source>
@@ -23,6 +24,6 @@ developers and artwork from the data Heroic already keeps on disk. No credential
       <icon>media/icon.png</icon>
       <fanart>media/fanart.jpg</fanart>
     </assets>
-    <news>Initial release: scan, launch and scrape Heroic games from AKL.</news>
+    <news>Added Windows support: scans %APPDATA%\heroic and launches through Heroic.exe.</news>
   </extension>
 </addon>
