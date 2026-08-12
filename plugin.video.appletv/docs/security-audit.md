@@ -92,13 +92,16 @@ keys), but the names were not robustly sanitized.
 rejects `..`/separators/NUL, applied in all three helpers; the subtitle code is
 reduced to `[a-z]` letters before it can form a filename.
 
-### 5. Account PII (Apple ID emails, DSIDs) in the debug log — NOTED (low)
+### 5. Account PII (Apple ID emails, DSIDs) in the debug log — FIXED (low)
 
-The Family-Sharing members response is dumped to `kodi.log` (member
-`accountName` emails, `dsid`/`altDsid`). Not credentials, but PII in a log that
-users routinely paste when asking for help. Consider trimming to counts if the
-diagnostic value is not needed. Left as-is for now (it has been load-bearing for
-diagnosing family-sharing issues), flagged for awareness.
+The Family-Sharing members response was dumped to `kodi.log` (member
+`accountName` emails, `dsid`/`altDsid`, names). Not credentials, but PII in a
+log users routinely paste when asking for help.
+
+**Fix:** the raw-row/raw-response dumps now log only the shape (which keys the
+row carries), and the per-member line logs only the row index and its
+`sharingPurchases` flag -- no name, email, or dsid. The remaining family/genre
+logs already logged key-shape only.
 
 ## Summary
 
