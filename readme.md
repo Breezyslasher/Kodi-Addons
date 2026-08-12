@@ -32,17 +32,17 @@ Sign in with your Apple ID and browse Apple TV+ Originals, the MLS and Formula 1
 ---
 
 ### [Heroic Games Launcher for AKL](script.akl.heroic/)
-Bring your Heroic Games Launcher library (Epic Games Store, GOG, Amazon Games and sideloaded games) into Kodi on Linux through [Advanced Kodi Launcher](https://github.com/chrisism/plugin.program.akl).
+Bring your Heroic Games Launcher library (Epic Games Store, GOG, Amazon Games and sideloaded games) into Kodi on Linux and Windows through [Advanced Kodi Launcher](https://github.com/chrisism/plugin.program.akl).
 
 **Highlights:**
 - Scans Heroic's local library cache directly — no accounts, credentials or API keys needed
 - Launches games through Heroic itself (`heroic://launch/...`), so Proton/Wine settings, cloud saves and playtime tracking keep working
-- Works with both Flatpak and native Heroic installs, with auto-detection
+- Works with Flatpak and native Heroic installs on Linux and the standard Windows install, with auto-detection
 - Scrapes titles, descriptions, developers and artwork from the data Heroic already keeps on disk
 
 See the [addon README](script.akl.heroic/README.md) for details.
 
-**Requirements:** Kodi 19+ on Linux, Advanced Kodi Launcher (`script.module.akl` 1.2.0+), Heroic Games Launcher
+**Requirements:** Kodi 19+ on Linux or Windows, Advanced Kodi Launcher (`script.module.akl` 1.2.0+), Heroic Games Launcher
 
 ---
 

@@ -112,8 +112,13 @@ class HeroicScanner(RomScannerStrategy):
     def _get_config_dir_options(self, item_key, properties):
         options = collections.OrderedDict()
         options['AUTO'] = 'Auto-detect Heroic configuration'
-        options[heroic.flatpak_config_dir()] = 'Flatpak installation'
-        options[heroic.native_config_dir()] = 'Native installation (deb/rpm/AppImage)'
+        if io.is_windows():
+            options[heroic.windows_config_dir()] = 'Windows installation'
+        elif io.is_osx():
+            options[heroic.macos_config_dir()] = 'macOS installation'
+        else:
+            options[heroic.flatpak_config_dir()] = 'Flatpak installation'
+            options[heroic.native_config_dir()] = 'Native installation (deb/rpm/AppImage)'
         options['BROWSE'] = 'Browse for the Heroic config directory ...'
         return options
 

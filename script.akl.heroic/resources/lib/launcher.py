@@ -19,8 +19,11 @@ import logging
 import collections
 
 # --- AKL packages ---
-from akl.utils import kodi
+from akl.utils import kodi, io
 from akl.launchers import LauncherABC, ExecutorFactoryABC, ExecutionSettings
+
+# Local modules
+from resources.lib import heroic
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +35,7 @@ FLATPAK_APP_ID = 'com.heroicgameslauncher.hgl'
 
 MODE_FLATPAK = 'FLATPAK'
 MODE_NATIVE = 'NATIVE'
+MODE_WINDOWS = 'WINDOWS'
 MODE_CUSTOM = 'CUSTOM'
 
 
@@ -69,26 +73,41 @@ class HeroicLauncher(LauncherABC):
     #
     def _builder_get_wizard(self, wizard):
         wizard = kodi.WizardDialog_DictionarySelection(
-            wizard, 'mode', 'How is Heroic installed?', {
-                MODE_FLATPAK: 'Flatpak installation',
-                MODE_NATIVE: 'Native installation (heroic in PATH)',
-                MODE_CUSTOM: 'Browse for the Heroic executable'})
+            wizard, 'mode', 'How is Heroic installed?', self._get_mode_options)
         wizard = kodi.WizardDialog_FileBrowse(
-            wizard, 'application', 'Select the Heroic executable', 1, '', shares='programs',
+            wizard, 'application', 'Select the Heroic executable', 1,
+            self._get_appbrowser_filter, shares='programs',
             conditionalFunction=self._builder_wants_custom_app)
         return wizard
+
+    def _get_mode_options(self, item_key, properties):
+        options = collections.OrderedDict()
+        if io.is_windows():
+            options[MODE_WINDOWS] = 'Standard Windows installation'
+        else:
+            options[MODE_FLATPAK] = 'Flatpak installation'
+            options[MODE_NATIVE] = 'Native installation (heroic in PATH)'
+        options[MODE_CUSTOM] = 'Browse for the Heroic executable'
+        return options
+
+    def _get_appbrowser_filter(self, item_key, properties):
+        return '.exe|.bat|.cmd|.lnk' if io.is_windows() else ''
 
     def _builder_wants_custom_app(self, item_key, properties) -> bool:
         return properties.get('mode') == MODE_CUSTOM
 
     def _build_post_wizard_hook(self):
-        mode = self.launcher_settings.get('mode', MODE_FLATPAK)
+        default_mode = MODE_WINDOWS if io.is_windows() else MODE_FLATPAK
+        mode = self.launcher_settings.get('mode', default_mode)
         if mode == MODE_FLATPAK:
             self.launcher_settings['application'] = 'flatpak'
             self.launcher_settings['args'] = 'run {} --no-gui --no-splash "{}"'.format(
                 FLATPAK_APP_ID, LAUNCH_URI_ARG)
         elif mode == MODE_NATIVE:
             self.launcher_settings['application'] = 'heroic'
+            self.launcher_settings['args'] = '--no-gui --no-splash "{}"'.format(LAUNCH_URI_ARG)
+        elif mode == MODE_WINDOWS:
+            self.launcher_settings['application'] = heroic.detect_windows_executable()
             self.launcher_settings['args'] = '--no-gui --no-splash "{}"'.format(LAUNCH_URI_ARG)
         else:
             # Custom executable selected through the file browser.

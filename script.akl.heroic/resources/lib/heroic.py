@@ -23,9 +23,22 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Heroic config directories on Linux, in detection order.
+# Heroic config directories, in detection order.
+# Linux
 FLATPAK_CONFIG_DIR = '~/.var/app/com.heroicgameslauncher.hgl/config/heroic'
 NATIVE_CONFIG_DIR = '~/.config/heroic'
+# Windows (Heroic keeps its config in the roaming AppData folder)
+WINDOWS_CONFIG_DIR = '%APPDATA%\\heroic'
+# macOS
+MACOS_CONFIG_DIR = '~/Library/Application Support/heroic'
+
+# Default locations of the Heroic executable on Windows, in detection order.
+# The NSIS installer defaults to a per-user install under local AppData;
+# a per-machine install lands in Program Files.
+WINDOWS_EXE_CANDIDATES = [
+    '%LOCALAPPDATA%\\Programs\\heroic\\Heroic.exe',
+    '%PROGRAMFILES%\\Heroic\\Heroic.exe',
+]
 
 # Runner ids used by Heroic in its library files.
 RUNNER_NAMES = {
@@ -36,20 +49,49 @@ RUNNER_NAMES = {
 }
 
 
+def _expand(path: str) -> str:
+    return os.path.expandvars(os.path.expanduser(path))
+
+
 def flatpak_config_dir() -> str:
-    return os.path.expanduser(FLATPAK_CONFIG_DIR)
+    return _expand(FLATPAK_CONFIG_DIR)
 
 
 def native_config_dir() -> str:
-    return os.path.expanduser(NATIVE_CONFIG_DIR)
+    return _expand(NATIVE_CONFIG_DIR)
+
+
+def windows_config_dir() -> str:
+    return _expand(WINDOWS_CONFIG_DIR)
+
+
+def macos_config_dir() -> str:
+    return _expand(MACOS_CONFIG_DIR)
+
+
+def config_dir_candidates() -> list:
+    """Possible Heroic config directories for every supported platform."""
+    if os.name == 'nt':
+        return [windows_config_dir()]
+    return [flatpak_config_dir(), native_config_dir(), macos_config_dir()]
 
 
 def detect_config_dir() -> str:
     """Returns the first existing Heroic config directory or None."""
-    for path in (flatpak_config_dir(), native_config_dir()):
+    for path in config_dir_candidates():
         if os.path.isdir(path):
             return path
     return None
+
+
+def detect_windows_executable() -> str:
+    """Returns the Heroic executable on Windows: the first candidate that
+    exists, or the default per-user install path when none is found yet."""
+    for candidate in WINDOWS_EXE_CANDIDATES:
+        expanded = _expand(candidate)
+        if os.path.isfile(expanded):
+            return expanded
+    return _expand(WINDOWS_EXE_CANDIDATES[0])
 
 
 def get_library_files(config_dir: str) -> list:
