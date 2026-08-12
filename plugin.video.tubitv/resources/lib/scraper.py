@@ -227,24 +227,30 @@ class myAddon(t1mAddon):
         episodes nested, so both are indexed.
         """
         if self._watching is None:
-            self._watching = {}
+            entries = []
             if self.auth is not None and self.auth.signedIn:
                 try:
                     entries = self.api.history()
                 except TubiApiError as err:
                     self.log(''.join(['could not read the watch history : ', str(err)]))
-                    entries = []
-                for entry in entries:
-                    self._watching[str(entry.get('content_id'))] = {
-                        'history_id': entry.get('id'),
-                        'position': entry.get('position'),
-                        'length': entry.get('content_length')}
-                    for episode in entry.get('episodes') or []:
-                        self._watching[str(episode.get('content_id'))] = {
-                            'history_id': None,
-                            'position': episode.get('position'),
-                            'length': episode.get('content_length')}
+            self._watching = self.watchMap(entries)
         return self._watching
+
+    @staticmethod
+    def watchMap(entries):
+        """Index a watch history by content id, episodes included."""
+        watching = {}
+        for entry in entries:
+            watching[str(entry.get('content_id'))] = {
+                'history_id': entry.get('id'),
+                'position': entry.get('position'),
+                'length': entry.get('content_length')}
+            for episode in entry.get('episodes') or []:
+                watching[str(episode.get('content_id'))] = {
+                    'history_id': None,
+                    'position': episode.get('position'),
+                    'length': episode.get('content_length')}
+        return watching
 
     def applyResume(self, ilist, contentId):
         """Let Kodi offer to resume where Tubi says the viewer stopped."""
@@ -281,18 +287,29 @@ class myAddon(t1mAddon):
         return extras
 
     def getAddonMenu(self, url, ilist):
-        # The viewer's own rows first, then Tubi's categories
-        for label, mode, target in ((30036, 'SE', 'home'),
-                                    (30037, 'GS', CONTINUE_WATCHING),
-                                    (30038, 'SE', 'mylist')):
-            infoList = {'Title': self.localLang(label)}
-            ilist = self.addMenuItem(self.localLang(label), mode, ilist, target,
-                                     self.addonIcon, self.addonFanart, infoList, isFolder=True)
+        signedIn = self.auth is not None and self.auth.signedIn
         try:
-            containers = self.api.browseList()
+            containers, history, queue = self.api.menu(personal=signedIn)
         except TubiApiError as err:
             self.report(err)
             return ilist
+        # Both lists came back with the categories, so the per-item lookups
+        # further down have them already
+        self._watching = self.watchMap(history)
+        self._saved = set(str(e['content_id']) for e in queue)
+
+        # The viewer's own rows first, and only the ones with anything in
+        # them - an empty Continue Watching is a dead end, and signed out
+        # neither list can have anything at all
+        rows = [(30036, 'SE', 'home')]
+        if history:
+            rows.append((30037, 'GS', CONTINUE_WATCHING))
+        if queue:
+            rows.append((30038, 'SE', 'mylist'))
+        for label, mode, target in rows:
+            infoList = {'Title': self.localLang(label)}
+            ilist = self.addMenuItem(self.localLang(label), mode, ilist, target,
+                                     self.addonIcon, self.addonFanart, infoList, isFolder=True)
         for container in containers:
             infoList = {'Title': container.get('title'),
                         'Plot': container.get('description')}
