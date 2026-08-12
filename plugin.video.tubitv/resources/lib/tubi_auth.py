@@ -97,6 +97,39 @@ class TubiAuth(object):
         self.cache = {'device_id': self.deviceId}
         self._writeCache()
 
+    def signOut(self):
+        """Tell Tubi the device is signing out, then forget it locally.
+
+        Best effort on Tubi's side: a sign-out the server never hears about
+        still has to leave the addon signed out, so the local tokens go
+        whatever happens. Mirrors what the site does - the account service
+        first, then the web session and its profile entry.
+        """
+        session = self.cache.get('user') or {}
+        token = session.get('access_token')
+        cookies = '; '.join(['deviceId=%s' % self.deviceId,
+                             'connect.sid=%s' % session.get('connect_sid', '')])
+        if token:
+            self._quietly(self._post, ''.join([ACCOUNT_API, '/user_device/logout']),
+                          json.dumps({'platform': PLATFORM, 'device_id': self.deviceId},
+                                     separators=(',', ':')),
+                          headers={'Authorization': ''.join(['Bearer ', token])})
+        if session.get('tubi_id'):
+            self._quietly(requests.delete,
+                          ''.join([WEB_API, '/oz/user/list/', session['tubi_id']]),
+                          headers={'Cookie': cookies}, timeout=TIMEOUT)
+        if session.get('connect_sid'):
+            self._quietly(self._post, ''.join([WEB_API, '/oz/user/logout']),
+                          json.dumps({'intentional': True}, separators=(',', ':')),
+                          headers={'Cookie': cookies})
+        self.clear()
+
+    def _quietly(self, call, *args, **kwargs):
+        try:
+            call(*args, **kwargs)
+        except Exception as err:
+            self.log(''.join(['sign-out step failed, carrying on : ', str(err)]))
+
     # ----------------------------------------------------------------- device
 
     @property
@@ -251,6 +284,7 @@ class TubiAuth(object):
         user = self._login(username, password)
         session = {'user_id': user.get('user_id'),
                    'name': user.get('name'),
+                   'tubi_id': user.get('tubi_id'),
                    'access_token': user.get('access_token'),
                    'refresh_token': user.get('refresh_token'),
                    'expires_at': time.time() + int(user.get('expires_in', 0)),

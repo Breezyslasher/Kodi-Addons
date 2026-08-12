@@ -134,12 +134,15 @@ from the official Kodi add-on repository, so Kodi pulls it in by itself.
 
 ## Configuration
 
-Signing in is **optional** — Tubi is free to browse without an account. An
-account is only needed for titles Tubi gates behind a sign-in.
+Signing in is **optional** — Tubi is free to browse without an account, and the
+anonymous device token is accepted for browsing and playback alike. An account
+is only needed for the personal features, and for titles Tubi gates behind a
+sign-in.
 
 - **User Email** / **User Password**: your Tubi account credentials
-- **Clear saved session**: throws away the cached tokens and forces a fresh
-  sign-in on the next browse
+- **Sign out**: tells Tubi the device is signing out, the same three calls the
+  website makes, then forgets the tokens. If Tubi cannot be reached it still
+  clears them, since a sign-out has to leave the addon signed out either way.
 
 ## How signing in works
 

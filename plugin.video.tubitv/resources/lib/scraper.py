@@ -513,7 +513,7 @@ class myAddon(t1mAddon):
 
     def doFunction(self, url):
         if url == 'logout' and self.auth is not None:
-            self.auth.clear()
+            self.auth.signOut()
             xbmcgui.Dialog().notification(self.addonName, self.localLang(30023))
             return
         parts = uqp(url).split('|')
