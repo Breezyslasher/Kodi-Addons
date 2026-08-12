@@ -30,8 +30,6 @@ QUEUE_API = 'https://user-queue.production-public.tubi.io'
 HISTORY_API = 'https://lishi.production-public.tubi.io'
 ACCOUNT_API = 'https://account.production-public.tubi.io'
 
-# The container Tubi files a viewer's part-watched titles under
-CONTINUE_WATCHING = 'continue_watching'
 # Tubi describes a title as one of these. Its saved list only ever uses the
 # first two; its watch history uses the first and the third, an episode
 # carrying its series as a parent_id alongside.
@@ -161,26 +159,25 @@ class TubiApi(object):
     def menu(self, personal=True):
         """Everything the root menu needs, fetched together.
 
-        The categories to list, and the viewer's two personal lists so the
-        menu knows whether they are worth offering at all. The personal ones
-        run alongside the categories rather than after them - this is the
-        screen opened most often, and it should not get slower for asking.
+        The categories to list, and the saved list so the menu knows whether
+        it is worth offering. The saved list runs alongside the categories
+        rather than after them - this is the screen opened most often, and it
+        should not get slower for asking.
 
-        Returns (categories, history, saved list). The personal lists come
-        back empty rather than failing the menu.
+        Returns (categories, saved list). The saved list comes back empty
+        rather than failing the menu.
         """
-        jobs = [('history', self.history), ('queue', self.queue)] if personal else []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(jobs) + 1) as pool:
-            pending = [(name, pool.submit(call)) for name, call in jobs]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+            pending = pool.submit(self.queue) if personal else None
             # Raises: a menu without its categories is not worth showing
             categories = self.browseList()
-            personalLists = {}
-            for name, future in pending:
+            saved = []
+            if pending is not None:
                 try:
-                    personalLists[name] = future.result()
+                    saved = pending.result()
                 except TubiApiError:
-                    personalLists[name] = []
-        return categories, personalLists.get('history', []), personalLists.get('queue', [])
+                    saved = []
+        return categories, saved
 
     def container(self, containerId, cursor=0):
         """One page of a category.
