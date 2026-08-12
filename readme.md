@@ -23,9 +23,11 @@ Sign in with your Apple ID and browse Apple TV+ Originals, the MLS and Formula 1
 
 **How it works:** Apple TV+ uses FairPlay DRM on Apple devices (which Kodi can't decrypt) but Widevine on its web client (which Kodi can). This addon mimics the Apple TV web client to receive Widevine streams.
 
-**Known limits:** On-demand playback is standard-definition only (Kodi's Widevine L3 CDM); live events (Formula 1, MLS) play in HD, since Apple licenses only that tier for them. Apple's private, undocumented endpoints may need updates whenever Apple changes them. See the [addon README](plugin.video.appletv/README.md) for the full reality check.
+**Resolution:** On a **Widevine-L1 Android device running Kodi 22** (most phones, Nvidia Shield, certified Android TV boxes) Apple's licence server grants the **HD and 4K tiers**: the addon detects hardware (L1) Widevine and plays **1080p automatically**, with HEVC tiers beyond that available by raising *Maximum video height* and turning off *H.264 only* (verified up to ~3K rendering on device). On desktop, playback is standard definition — Kodi ships the software Widevine **L3** CDM and Apple only licenses its lowest tier to L3, same as Apple's own web player. Live events (Formula 1, MLS) play in HD everywhere, since Apple licenses only that tier for them.
 
-**Requirements:** Kodi 22+ with InputStream Adaptive 22 and a Widevine CDM (the encrypted-playback path uses the newer `inputstream.adaptive.drm` property), plus an Apple ID
+**Known limits:** Apple's private, undocumented endpoints may need updates whenever Apple changes them. See the [addon README](plugin.video.appletv/README.md) for the full reality check.
+
+**Requirements:** an Apple ID, a Widevine CDM, and **Kodi 21+ on desktop** or **Kodi 22+ on Android** — Kodi 21's Android InputStream Adaptive can never license Apple's separately-keyed audio track (hardcoded single DRM session, fixed in ISA 22), so Android needs Kodi 22
 
 ---
 
