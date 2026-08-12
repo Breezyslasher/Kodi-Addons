@@ -1403,7 +1403,13 @@ class AppleTVApi(object):
             uri = (re.search(r'URI="([^"]+)"', ln) or (None, ""))[1]
             if not lang or not uri:
                 continue
-            code = lang.split("-")[0].lower()
+            # Keep only the letters of the primary subtag: the code becomes a
+            # "<code>.vtt" filename, and LANGUAGE comes from the (TLS-fetched,
+            # but still external) manifest, so a value like "../../x" must not be
+            # able to steer the write out of the subtitles dir.
+            code = re.sub(r'[^a-z]', '', lang.split("-")[0].lower())
+            if not code:
+                continue
             renditions.setdefault(code, urljoin(base, uri))
         if not renditions:
             return []

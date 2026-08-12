@@ -18,8 +18,10 @@ skd uri, adamId) is read from a file written by the plugin just before playback.
 """
 
 import base64
+import hmac
 import json
 import re
+import secrets
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -33,6 +35,17 @@ FPS_URL = "https://play-edge.itunes.apple.com/WebObjects/MZPlayLocal.woa/wa/fpsR
 CONTEXT_FILE = "playback_context.json"
 BIND_HOST = "127.0.0.1"
 DEFAULT_PORT = 57812
+
+# A per-session secret every proxy request must carry (query parameter "k").
+# The proxy is bound to localhost, but "localhost" still includes every other
+# process on the box AND any web page open in a browser there: a page can issue
+# a cross-origin GET to http://127.0.0.1:<port>/manifest?m=1&u=<attacker-url>
+# and the proxy would fetch that url with the account's Apple bearer +
+# media-user-token attached, leaking them. The secret is minted by the service
+# (start()) and published in license_proxy.json, which only same-user local code
+# can read -- a remote web page cannot -- so a forged request cannot guess it
+# and is rejected. Set in the service process; read from the file in the plugin.
+_SECRET = None
 
 
 def _context():
@@ -253,6 +266,22 @@ class _Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass  # silence default stderr logging
 
+    def _authorized(self, query):
+        """Reject any request that does not carry this session's secret.
+
+        Closes the localhost boundary: only code that can read
+        license_proxy.json (same-user local processes -- the plugin) knows the
+        secret, so a forged request from a web page or another app is refused
+        before any Apple credential is attached or any url is fetched.
+        """
+        want = _SECRET
+        if not want:
+            # Secret not yet minted (should not happen once start() ran): fail
+            # closed rather than serve an unauthenticated request.
+            return False
+        got = query.get("k", [""])[0]
+        return hmac.compare_digest(str(got), str(want))
+
     # -- manifest proxy: add the KEYID that Apple omits -------------------
 
     def do_GET(self):
@@ -262,6 +291,10 @@ class _Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         query = parse_qs(parsed.query)
+        if not self._authorized(query):
+            self.send_response(403)
+            self.end_headers()
+            return
         try:
             target = _decode_url(query.get("u", [""])[0])
         except Exception:
@@ -539,8 +572,9 @@ class _Handler(BaseHTTPRequestHandler):
         return "\n".join(out) + "\n"
 
     def _init_proxied(self, url, base_url, kid):
-        return "http://%s:%d/init?kid=%s&u=%s" % (
-            BIND_HOST, _port(), kid, _encode_url(urljoin(base_url, url)))
+        return "http://%s:%d/init?kid=%s&k=%s&u=%s" % (
+            BIND_HOST, _port(), kid, _secret(),
+            _encode_url(urljoin(base_url, url)))
 
     def _add_keyid(self, line):
         if "KEYID=" in line:
@@ -555,9 +589,14 @@ class _Handler(BaseHTTPRequestHandler):
         return line + ',KEYID="0x%s"' % kid
 
     def _proxied(self, url, base_url):
-        return "%s?u=%s" % (manifest_endpoint(), _encode_url(urljoin(base_url, url)))
+        return "%s?k=%s&u=%s" % (manifest_endpoint(), _secret(),
+                                 _encode_url(urljoin(base_url, url)))
 
     def do_POST(self):
+        if not self._authorized(parse_qs(urlparse(self.path).query)):
+            self.send_response(403)
+            self.end_headers()
+            return
         try:
             length = int(self.headers.get("Content-Length", 0))
             challenge = self.rfile.read(length)
@@ -759,6 +798,7 @@ class LicenseProxy(object):
         self._thread = None
 
     def start(self):
+        global _SECRET
         try:
             self._server = ThreadingHTTPServer((BIND_HOST, self.port), _Handler)
         except OSError:
@@ -767,8 +807,12 @@ class LicenseProxy(object):
             self.port = self._server.server_address[1]
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
-        # Publish the chosen port so the plugin can build the licence URL.
-        kodiutils.write_json("license_proxy.json", {"port": self.port})
+        # Mint this session's proxy secret and publish it with the port, so the
+        # plugin (same-user, can read the file) can build authorized URLs while a
+        # web page or other app that cannot read the file is refused (403).
+        _SECRET = secrets.token_hex(16)
+        kodiutils.write_json("license_proxy.json",
+                             {"port": self.port, "secret": _SECRET})
         kodiutils.log("License proxy listening on %s:%d" % (BIND_HOST, self.port))
         return self.port
 
@@ -783,9 +827,18 @@ def _port():
     return info.get("port", DEFAULT_PORT)
 
 
+def _secret():
+    """This session's proxy secret. The service process holds it in memory; the
+    plugin process reads it from the file the service published."""
+    if _SECRET:
+        return _SECRET
+    info = kodiutils.read_json("license_proxy.json", default={}) or {}
+    return info.get("secret", "")
+
+
 def license_url():
     """URL the plugin points ISA at, using the port the service published."""
-    return "http://%s:%d/widevine" % (BIND_HOST, _port())
+    return "http://%s:%d/widevine?k=%s" % (BIND_HOST, _port(), _secret())
 
 
 def manifest_endpoint():
@@ -798,5 +851,6 @@ def manifest_url(real_url, clear=False):
     clear=1 says the stream carries no Widevine keys, so the quality filter
     -- which exists only to satisfy the CDM -- does not apply to it.
     """
-    return "%s?m=1&c=%d&u=%s" % (manifest_endpoint(), 1 if clear else 0,
+    return "%s?m=1&c=%d&k=%s&u=%s" % (manifest_endpoint(), 1 if clear else 0,
+                                      _secret(),
                                  _encode_url(real_url))
