@@ -527,16 +527,24 @@ class _Handler(BaseHTTPRequestHandler):
             if _is_live(_context()):
                 max_h = kodiutils.get_setting_int("live_max_height", 1080)
             else:
-                max_h = kodiutils.get_setting_int("max_height", 360)
+                max_h = kodiutils.get_setting_int("max_height", 540)
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
             avc_only = kodiutils.get_setting_bool("avc_only", True)
-            # Hardware (L1) Widevine is granted the HD tiers by Apple's licence
-            # server (verified on an L1 Android device), so lift the default SD
-            # cap to 1080 automatically there. Only the untouched default is
-            # lifted -- a cap the user set themselves is respected -- and only
-            # to the H.264/SDR 1080 tier, the combination verified to licence,
-            # decode and render. HEVC/4K stays opt-in via the settings.
-            if max_h == 360 and widevine_level() == "L1":
+            # 540 is the on-demand default because that is the ceiling the
+            # software (L3) CDM can actually use: Apple grants the licence for
+            # the higher tiers too, but flags their keys output-restricted
+            # (OnSessionKeysChange status 3) so an L3 CDM refuses them and the
+            # DRM session fails; the 540 tier's key comes back usable (status
+            # 1) and plays. Verified on desktop L3 -- 540 plays, 720 is
+            # output-restricted -- matching the usual "no HDCP required at or
+            # below 540p" policy (the same ceiling the Netflix add-on hits).
+            #
+            # Hardware (L1) Widevine is granted the HD tiers, so on L1 lift any
+            # SD-range cap (the 540 default or a 360 saved by an older build)
+            # to the H.264/SDR 1080 tier verified to licence, decode and
+            # render. A deliberately higher cap is respected; HEVC/4K stays
+            # opt-in via the settings.
+            if max_h and max_h <= 540 and widevine_level() == "L1":
                 max_h = 1080
                 kodiutils.log("Widevine L1: auto HD, height cap -> 1080")
         # On-demand WebVTT subtitles are fetched to external files, because ISA

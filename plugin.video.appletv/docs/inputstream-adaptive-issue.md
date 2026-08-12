@@ -1,7 +1,17 @@
 # Notes: HLS + Widevine findings (resolved)
 
+> **Desktop L3 tops out at 540p, not 360.** Apple issues the licence for every
+> tier, but flags the keys for tiers above ~540p as output-restricted
+> (`OnSessionKeysChange` status 3, error system code 49), which a software (L3)
+> CDM cannot use -- the DRM session then fails and the video stream is
+> disabled. The 540p tier's key comes back usable (status 1) and plays with
+> its eac3 audio. Verified on desktop L3: `height cap=720` -> status 3, session
+> fails; `height cap=540` -> status 1, plays. So the on-demand default cap is
+> 540 (matching the ~540p HDCP-free ceiling the Netflix add-on also hits on
+> L3). On an L1 device the cap is lifted to 1080 automatically instead.
+
 > **Resolved on Kodi 21 and 22.** The original `kNoKey` failure is fixed by
-> recovering the key id from the PSSH (`KEYID` + `tenc` patching), a 360-pixel
+> recovering the key id from the PSSH (`KEYID` + `tenc` patching), the 540-pixel
 > height cap and H.264-only variants. DRM is then configured to match the
 > installed InputStream Adaptive: the JSON `inputstream.adaptive.drm` property
 > (`secure_decoder`, `pre_init_data`) on **ISA 22.1.5+ (Kodi 22)**, and the

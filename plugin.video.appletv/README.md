@@ -5,8 +5,9 @@ and your **iTunes movie and TV library** in Kodi, with playback through
 **InputStream Adaptive** using **Widevine** DRM.
 
 > ⚠️ **Experimental. Desktop needs Kodi 21+; Android needs Kodi 22+** (with the
-> matching InputStream Adaptive). Desktop plays in standard definition; a
-> Widevine-L1 Android device on Kodi 22 plays HD — see *Current status* for why.
+> matching InputStream Adaptive). Desktop plays in standard definition (up to
+> 540p); a Widevine-L1 Android device on Kodi 22 plays HD — see *Current
+> status* for why.
 > Everything here is reconstructed from real `tv.apple.com` browser captures;
 > Apple documents none of it and can change it at any time.
 
@@ -43,12 +44,14 @@ playback fails or crashes even when the addon otherwise runs.
 Three constraints decide which stream is played, all enforced automatically by
 the manifest proxy:
 
-1. **Standard definition only.** Apple keys every quality tier separately and
-   the higher tiers demand output protection a software (L3) Widevine CDM
-   cannot provide: the CDM reports those keys as output restricted and the DRM
-   session fails. Only the lowest tier's key is usable, hence the default
-   360-pixel height cap. Apple's own web player picks the same tier for the
-   same reason.
+1. **Standard definition (up to 540p on desktop).** Apple keys every quality
+   tier separately, and the tiers above ~540p demand output protection a
+   software (L3) Widevine CDM cannot provide: Apple still issues the licence,
+   but flags those keys output-restricted (`OnSessionKeysChange` status 3), so
+   the L3 CDM refuses them and the DRM session fails. The **540p tier's key
+   comes back usable** (status 1) and plays, so that is the default height cap
+   — verified on desktop L3 (540p plays with 5.1 audio, 720p is
+   output-restricted), the same ~540p ceiling the Netflix add-on hits on L3.
 2. **H.264 only.** Encrypted video is decoded inside the CDM, whose decoder
    does not handle HEVC (`ToCdmVideoCodec: Unknown video codec 5`). Apple
    publishes H.264 at every tier, so non-H.264 variants are skipped.
@@ -115,13 +118,14 @@ Netflix and Disney+ Kodi addons use.
 
 Two hard limits remain and neither can be coded away:
 
-1. **Standard definition on desktop.** Kodi ships the **software Widevine L3**
-   CDM, and Apple only issues a usable key for its lowest tier at that level —
-   its own web player selects roughly 360p for the same reason. HD/4K needs the
-   hardware **Widevine L1** DRM, which desktop Kodi does not have. **A
-   Widevine-L1-certified Android device running Kodi 22 is the exception** —
-   there Kodi uses the device's hardware L1 and Apple grants HD/4K (see *HD/4K
-   on Android* above; Kodi 21 Android cannot license the audio track).
+1. **Standard definition on desktop (max ~540p).** Kodi ships the **software
+   Widevine L3** CDM, and Apple flags the keys for tiers above ~540p as
+   output-restricted, which an L3 CDM cannot use — so desktop tops out at the
+   540p tier (verified: 540p plays, 720p comes back output-restricted). HD/4K
+   needs the hardware **Widevine L1** DRM, which desktop Kodi does not have.
+   **A Widevine-L1-certified Android device running Kodi 22 is the exception**
+   — there Kodi uses the device's hardware L1 and Apple grants HD/4K (see
+   *HD/4K on Android* above; Kodi 21 Android cannot license the audio track).
 2. **Apple gives no public API.** Sign-in, two-factor auth, the catalogue and
    the playback/licence endpoints are all reverse-engineered from Apple's web
    app. Apple changes these deliberately to break unofficial clients, so parts
@@ -194,9 +198,10 @@ Install from the Breezyslasher repository, or from zip:
   web client to Apple's sign-in service. Leave blank to use the built-in
   default; set it only if sign-in stops working and you have captured a current
   key from a browser session at `https://tv.apple.com`.
-- **Maximum video height** — advanced, `360` by default. Higher tiers use keys
-  the CDM reports as output restricted, so raising this generally stops
-  playback; `0` removes the limit.
+- **Maximum video height** — advanced, `540` by default (the highest tier a
+  desktop L3 CDM can use; on an L1 device it is lifted to 1080 automatically).
+  Tiers above ~540p use keys Apple flags output-restricted, so raising this on
+  desktop generally stops playback; `0` removes the limit.
 - **Standard dynamic range only** — advanced, on by default. Skips Dolby Vision
   and HDR variants, which Kodi renders with shifted colours.
 - **H.264 only** — advanced, on by default. The CDM's decoder cannot decode
