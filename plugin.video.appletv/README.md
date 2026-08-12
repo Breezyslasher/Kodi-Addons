@@ -58,6 +58,20 @@ the manifest proxy:
 Raising the height cap on hardware with stronger output protection is
 possible, but on a typical desktop the CDM will refuse the key.
 
+### HD/4K on Android (hardware Widevine L1)
+
+The SD limit above is a property of the **software Widevine L3** CDM on
+desktop, not of the addon. On a **Widevine-L1-certified Android device** (most
+phones, an Nvidia Shield, a certified Android TV box), Kodi's InputStream
+Adaptive uses the device's own **hardware Widevine (L1)** via MediaCodec, and
+Apple's licence server grants it the **HD and 4K tiers** — the same as the
+official app. Verified on an L1 Android device: raising **Maximum video height**
+(and turning off **H.264 only** for HEVC/4K) plays **1080p and higher**, licensed
+and rendered, no bypass. The addon requests a **secure MediaCodec** on Android so
+those L1-protected frames actually display (a non-secure decoder shows black).
+This is real hardware DRM on certified hardware, not a workaround — desktop
+Kodi (L3) stays SD.
+
 ### What the addon has to do that Apple does not
 
 - Apple sends no `KEYID` on `#EXT-X-KEY` and an all-zero `tenc` default_KID.
@@ -87,10 +101,12 @@ Netflix and Disney+ Kodi addons use.
 
 Two hard limits remain and neither can be coded away:
 
-1. **Standard definition only.** Kodi ships the **software Widevine L3** CDM,
-   and Apple only issues a usable key for its lowest tier at that level — its
-   own web player selects roughly 360p for the same reason. HD/4K needs the
-   hardware **Widevine L1** DRM found on Apple's devices and certified TVs.
+1. **Standard definition on desktop.** Kodi ships the **software Widevine L3**
+   CDM, and Apple only issues a usable key for its lowest tier at that level —
+   its own web player selects roughly 360p for the same reason. HD/4K needs the
+   hardware **Widevine L1** DRM, which desktop Kodi does not have. **A
+   Widevine-L1-certified Android device is the exception** — there Kodi uses the
+   device's hardware L1 and Apple grants HD/4K (see *HD/4K on Android* above).
 2. **Apple gives no public API.** Sign-in, two-factor auth, the catalogue and
    the playback/licence endpoints are all reverse-engineered from Apple's web
    app. Apple changes these deliberately to break unofficial clients, so parts

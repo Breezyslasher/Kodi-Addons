@@ -10,6 +10,20 @@
 > force a single DRM session. The report below documents the original ISA 21
 > `kNoKey` behaviour and is kept for reference; there is nothing to file.
 
+> **Android (hardware Widevine L1) — HD/4K.** On Android, ISA uses the device's
+> own MediaCodec + system Widevine, which on a certified device is **L1**, so
+> Apple's licence server grants the HD and 4K tiers (verified: 1080p H.264 and a
+> ~3K HEVC tier both licence and render). Two things are needed there and are
+> set only on Android: the **secure decoder** (`secure_decoder: true` in the
+> JSON drm / `inputstream.adaptive.secure_decoder=true` legacy) — L1 decrypts
+> into secure buffers that a non-secure MediaCodec cannot render
+> (`ReleaseOutputBuffer error`, black picture) — and dropping the orphaned
+> ac3/atmos audio renditions whose HEVC/DV variants were filtered (else ISA logs
+> "Cannot find variant for AUDIO GROUP-ID" per rendition). The height cap stays a
+> user setting; on L1 Android raise it (and turn off H.264-only for HEVC/4K).
+> Desktop stays software L3 / SD. A couple of transient `InstanceGuard locked`
+> at bitrate switches remain but recover.
+
 # Original draft report for InputStream Adaptive
 
 Written up for <https://github.com/xbmc/inputstream.adaptive/issues>. Everything
