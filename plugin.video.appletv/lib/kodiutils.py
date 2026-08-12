@@ -107,8 +107,22 @@ def subtitle_languages():
     return langs
 
 
+def _safe_name(filename):
+    """A profile-dir filename with any path component stripped.
+
+    read_json/write_json/delete_file join their argument onto the addon profile
+    dir. Some callers build the name from ids that ultimately come from Kodi
+    routing or an Apple response, so collapse it to a bare basename and reject a
+    traversal name -- a value like "../../x" can never escape the profile dir.
+    """
+    name = os.path.basename(str(filename))
+    if name in ("", ".", "..") or "/" in name or "\\" in name or "\x00" in name:
+        raise ValueError("unsafe filename: %r" % filename)
+    return name
+
+
 def read_json(filename, default=None):
-    path = os.path.join(profile_dir(), filename)
+    path = os.path.join(profile_dir(), _safe_name(filename))
     try:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as handle:
@@ -119,7 +133,7 @@ def read_json(filename, default=None):
 
 
 def write_json(filename, data):
-    path = os.path.join(profile_dir(), filename)
+    path = os.path.join(profile_dir(), _safe_name(filename))
     try:
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
@@ -130,7 +144,7 @@ def write_json(filename, data):
 
 
 def delete_file(filename):
-    path = os.path.join(profile_dir(), filename)
+    path = os.path.join(profile_dir(), _safe_name(filename))
     try:
         if os.path.exists(path):
             os.remove(path)

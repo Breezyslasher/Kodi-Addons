@@ -1403,7 +1403,13 @@ class AppleTVApi(object):
             uri = (re.search(r'URI="([^"]+)"', ln) or (None, ""))[1]
             if not lang or not uri:
                 continue
-            code = lang.split("-")[0].lower()
+            # Keep only the letters of the primary subtag: the code becomes a
+            # "<code>.vtt" filename, and LANGUAGE comes from the (TLS-fetched,
+            # but still external) manifest, so a value like "../../x" must not be
+            # able to steer the write out of the subtitles dir.
+            code = re.sub(r'[^a-z]', '', lang.split("-")[0].lower())
+            if not code:
+                continue
             renditions.setdefault(code, urljoin(base, uri))
         if not renditions:
             return []
@@ -2801,11 +2807,18 @@ class AppleTVApi(object):
         rows = self._as_list(container)
         kodiutils.log("MediaAPI family: %d raw row(s)" % len(rows))
         if rows:
-            kodiutils.log("MediaAPI family: first raw row=%s"
-                          % json.dumps(rows[0])[:500])
+            # Log the shape (which keys the row carries), never the values:
+            # these rows hold the Apple ID email and dsid of each family member,
+            # which must not land in a log users routinely paste for support.
+            first = rows[0] if isinstance(rows[0], dict) else {}
+            attrs = first.get("attributes") if isinstance(
+                first.get("attributes"), dict) else first
+            kodiutils.log("MediaAPI family: first row keys=%s"
+                          % sorted(attrs.keys()))
         else:
-            kodiutils.log("MediaAPI family: raw response=%s"
-                          % json.dumps(data)[:800])
+            kodiutils.log("MediaAPI family: no rows; top-level keys=%s"
+                          % (sorted(data.keys())
+                             if isinstance(data, dict) else type(data).__name__))
         # The account's own entry appears in this list (you share with the
         # family too); drop it, since your own purchases are the Films/TV Shows
         # sections already. The API marks no self member, so identify yourself
@@ -2814,7 +2827,7 @@ class AppleTVApi(object):
         # 404s in the amp-videos realm -- so there is no dsid to match on here.)
         own_email = (kodiutils.get_setting("account_email") or "").strip().lower()
         out = []
-        for row in rows:
+        for idx, row in enumerate(rows, 1):
             if not isinstance(row, dict):
                 continue
             # Members can be flat ({id, firstName, ...}) or MediaAPI-wrapped
@@ -2829,8 +2842,10 @@ class AppleTVApi(object):
                     or attrs.get("appleId") or member_id)
             sharing = attrs.get("sharingPurchases")
             is_self = bool(own_email) and own_email == account_name.lower()
-            kodiutils.log("MediaAPI family: member id=%s name=%r sharing=%r%s"
-                          % (member_id or "?", name, sharing,
+            # No member name/email/dsid in the log -- those identify real people
+            # in the user's family. Log only the position and sharing state.
+            kodiutils.log("MediaAPI family: member #%d sharing=%r%s"
+                          % (idx, sharing,
                              " (self)" if is_self else ""))
             # Keep unless it explicitly says not sharing, and skip the account
             # itself.
