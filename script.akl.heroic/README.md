@@ -7,6 +7,9 @@ that brings your [Heroic Games Launcher](https://heroicgameslauncher.com/) libra
 Everything is read straight from the files Heroic already keeps on disk — no
 accounts, credentials or API keys are needed.
 
+> **Note:** this addon originally lived in [Breezyslasher/heroic_akl](https://github.com/Breezyslasher/heroic_akl).
+> Its full history was migrated here and development continues in this repository.
+
 ## Features
 
 - **Scanner**: scans Heroic's local store cache (`store_cache/*_library.json` and

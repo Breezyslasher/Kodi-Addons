@@ -18,8 +18,8 @@ No credentials or API keys needed.
     </description>
     <platform>all</platform>
     <license>GNU General Public License version 2</license>
-    <website>https://github.com/Breezyslasher/heroic_akl</website>
-    <source>https://github.com/Breezyslasher/heroic_akl</source>
+    <website>https://github.com/Breezyslasher/Kodi-Addons</website>
+    <source>https://github.com/Breezyslasher/Kodi-Addons/tree/main/script.akl.heroic</source>
     <assets>
       <icon>media/icon.png</icon>
       <fanart>media/fanart.jpg</fanart>
