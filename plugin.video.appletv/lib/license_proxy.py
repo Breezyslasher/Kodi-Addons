@@ -66,6 +66,33 @@ def _is_live(ctx):
     return bool(fp.get("service-id") or fp.get("reference-id"))
 
 
+# The device's Widevine security level, probed once per service run. "L1" means
+# hardware-backed Widevine (decrypt + decode inside the TEE): Apple's licence
+# server grants the HD tiers there, so the height cap can be lifted
+# automatically. Software Widevine reports "L3" and stays on the SD tier the
+# web player uses. Probed via Kodi's own xbmcdrm (MediaDrm on Android); on
+# systems without a DRM stack the probe fails harmlessly and reports unknown.
+_WV_LEVEL = None
+WIDEVINE_UUID = "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
+
+
+def widevine_level():
+    global _WV_LEVEL
+    if _WV_LEVEL is not None:
+        return _WV_LEVEL
+    level = ""
+    try:
+        import xbmcdrm
+        session = xbmcdrm.CryptoSession(
+            WIDEVINE_UUID, "AES/CBC/NoPadding", "HmacSHA256")
+        level = (session.GetPropertyString("securityLevel") or "").strip()
+    except Exception as exc:
+        kodiutils.log("Widevine level probe unavailable: %s" % exc)
+    _WV_LEVEL = level or "unknown"
+    kodiutils.log("Widevine security level: %s" % _WV_LEVEL)
+    return _WV_LEVEL
+
+
 # Widevine keys discovered while serving variant playlists, keyed by key id.
 # A title has a separate key per variant/rendition and the master playlist can
 # list hundreds of them, so the set collected up front is not complete: record
@@ -503,6 +530,15 @@ class _Handler(BaseHTTPRequestHandler):
                 max_h = kodiutils.get_setting_int("max_height", 360)
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
             avc_only = kodiutils.get_setting_bool("avc_only", True)
+            # Hardware (L1) Widevine is granted the HD tiers by Apple's licence
+            # server (verified on an L1 Android device), so lift the default SD
+            # cap to 1080 automatically there. Only the untouched default is
+            # lifted -- a cap the user set themselves is respected -- and only
+            # to the H.264/SDR 1080 tier, the combination verified to licence,
+            # decode and render. HEVC/4K stays opt-in via the settings.
+            if max_h == 360 and widevine_level() == "L1":
+                max_h = 1080
+                kodiutils.log("Widevine L1: auto HD, height cap -> 1080")
         # On-demand WebVTT subtitles are fetched to external files, because ISA
         # lists but never renders Apple's. Drop the renditions here so only the
         # working external copy is offered, not a broken duplicate beside it. A
@@ -550,6 +586,17 @@ class _Handler(BaseHTTPRequestHandler):
             elif s.startswith("#EXT-X-MEDIA"):
                 if drop_subs and "TYPE=SUBTITLES" in s:
                     continue  # replaced by the external subtitle file
+                # Drop the audio-description ("described video") narration. For
+                # each language Apple ships the main mix and a describes-video
+                # narration in the same audio group and marks BOTH renditions
+                # DEFAULT=YES,AUTOSELECT=YES (captured manifests confirm the
+                # accessibility characteristic is the only discriminator), so
+                # the player can land on the narration instead of the main
+                # audio -- observed happening on Android.
+                if ("TYPE=AUDIO" in s
+                        and "public.accessibility.describes-video" in s):
+                    dropped += 1
+                    continue
                 m = re.search(r'GROUP-ID="([^"]+)"', s)
                 # Drop a rendition whose group no surviving variant uses -- not
                 # only when a height cap dropped variants, but also when avc_only
