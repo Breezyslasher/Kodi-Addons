@@ -62,6 +62,10 @@ TIMEOUT = 30
 PAGE_SIZE = 50
 # Tubi pages a series one season at a time, in blocks of this many episodes.
 SEASON_PAGE_SIZE = 20
+# The home screen comes in two calls: the first seven rows, then every row
+# after them, which is what a group size of -1 asks for.
+HOME_GROUP_SIZE = 7
+HOME_GROUP_ALL = -1
 
 # Artwork comes back pre-sized, these are the sizes the web client asks for.
 IMAGES = [('images[posterarts]', 'w408h583_poster'),
@@ -179,7 +183,7 @@ class TubiApi(object):
             nextCursor = None
         return items, nextCursor
 
-    def homescreen(self, cursor=0):
+    def homescreen(self, cursor=0, size=HOME_GROUP_SIZE):
         """The personalised rows Tubi puts on its own home screen.
 
         Returns (rows, next group cursor). Each row is a container in the
@@ -193,11 +197,26 @@ class TubiApi(object):
                   ('include_sponsorships', 'true'),
                   ('include_ui_customization', 'true'),
                   ('group_start', cursor),
-                  ('group_size', 7),
+                  ('group_size', size),
                   ('is_kids_mode', self.kidsMode)] + IMAGES
         data = self.get(''.join([BROWSE_API, '/api/v8/homescreen']), params)
         rows = [c for c in data.get('containers') or [] if c.get('children')]
         return rows, data.get('group_cursor')
+
+    def homescreenAll(self):
+        """Every home row, the two calls the Tubi site makes for its own home.
+
+        The site asks for the first seven rows, then asks again from the
+        cursor it was handed with a group_size of -1, which answers with all
+        the rest. Asking only for the first group - which is what this did -
+        gives a home screen a seventh the length of Tubi's own.
+        """
+        rows, cursor = self.homescreen()
+        if cursor:
+            more, _ = self.homescreen(cursor, HOME_GROUP_ALL)
+            seen = set(filter(None, (r.get('id') for r in rows)))
+            rows.extend(r for r in more if r.get('id') not in seen)
+        return rows
 
     def related(self, contentId):
         """The "You May Also Like" titles for one title."""
