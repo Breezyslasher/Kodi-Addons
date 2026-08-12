@@ -158,6 +158,30 @@ class TubiApi(object):
                         [('is_kids_mode', self.kidsMode)])
         return data.get('containers') or []
 
+    def menu(self, personal=True):
+        """Everything the root menu needs, fetched together.
+
+        The categories to list, and the viewer's two personal lists so the
+        menu knows whether they are worth offering at all. The personal ones
+        run alongside the categories rather than after them - this is the
+        screen opened most often, and it should not get slower for asking.
+
+        Returns (categories, history, saved list). The personal lists come
+        back empty rather than failing the menu.
+        """
+        jobs = [('history', self.history), ('queue', self.queue)] if personal else []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(jobs) + 1) as pool:
+            pending = [(name, pool.submit(call)) for name, call in jobs]
+            # Raises: a menu without its categories is not worth showing
+            categories = self.browseList()
+            personalLists = {}
+            for name, future in pending:
+                try:
+                    personalLists[name] = future.result()
+                except TubiApiError:
+                    personalLists[name] = []
+        return categories, personalLists.get('history', []), personalLists.get('queue', [])
+
     def container(self, containerId, cursor=0):
         """One page of a category.
 
