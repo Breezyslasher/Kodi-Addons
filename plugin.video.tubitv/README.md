@@ -9,8 +9,8 @@ kept here so the sign-in can be maintained as Tubi changes its API.
 ## Features
 
 - Browse the Tubi categories, with paging through long ones
-- Home, My List and Continue Watching, taken from your account - the last two
-  shown only when they have something in them
+- Home, which is Tubi's own screen - its Continue Watching and My List rows
+  included - plus My List on its own when it holds something
 - Related titles and trailers on every film and series
 - Add to and remove from My List, and like or dislike a title
 - Kids mode, and Tubi's own English, Spanish or French metadata

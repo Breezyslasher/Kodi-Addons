@@ -14,7 +14,7 @@ import xbmcvfs
 
 from t1mlib import t1mAddon
 
-from resources.lib.tubi_api import CONTINUE_WATCHING, TubiApi, TubiApiError, pickResource
+from resources.lib.tubi_api import TubiApi, TubiApiError, pickResource
 from resources.lib.tubi_api import EPISODE as HISTORY_EPISODE
 from resources.lib.tubi_api import MOVIE as HISTORY_MOVIE
 from resources.lib.tubi_api import SERIES as QUEUE_SERIES
@@ -289,21 +289,16 @@ class myAddon(t1mAddon):
     def getAddonMenu(self, url, ilist):
         signedIn = self.auth is not None and self.auth.signedIn
         try:
-            containers, history, queue = self.api.menu(personal=signedIn)
+            containers, queue = self.api.menu(personal=signedIn)
         except TubiApiError as err:
             self.report(err)
             return ilist
-        # Both lists came back with the categories, so the per-item lookups
-        # further down have them already
-        self._watching = self.watchMap(history)
         self._saved = set(str(e['content_id']) for e in queue)
 
-        # The viewer's own rows first, and only the ones with anything in
-        # them - an empty Continue Watching is a dead end, and signed out
-        # neither list can have anything at all
+        # Home is Tubi's own screen and already carries a Continue Watching
+        # row, so there is no separate entry for it here. My List is offered
+        # only when it holds something, and never when signed out.
         rows = [(30036, 'SE', 'home')]
-        if history:
-            rows.append((30037, 'GS', CONTINUE_WATCHING))
         if queue:
             rows.append((30038, 'SE', 'mylist'))
         for label, mode, target in rows:
