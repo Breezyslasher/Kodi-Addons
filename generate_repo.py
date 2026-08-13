@@ -16,6 +16,7 @@ ADDON_FOLDERS = [
     "context.plexkodiconnect.download",
     "plugin.audio.audiobookshelf",
     "plugin.video.appletv",
+    "script.akl.heroic",
     "script.webhook.runner",
     "service.watchparty"
 ]
