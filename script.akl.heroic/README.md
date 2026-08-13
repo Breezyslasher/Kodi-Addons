@@ -23,9 +23,14 @@ accounts, credentials or API keys are needed.
   URL protocol, via `flatpak run com.heroicgameslauncher.hgl`, a native `heroic`
   binary, `Heroic.exe` on Windows (auto-detected in `%LOCALAPPDATA%\Programs\heroic`
   or Program Files), `Heroic.app` on macOS, or a custom executable you pick.
-- **Scraper**: fills in title, developer, plot and artwork (poster/boxfront,
-  fanart, icon, clearlogo) from the metadata and art URLs in Heroic's own
-  library cache.
+- **Scraper**: fills in title, developer, plot, release year, genres, review
+  rating and store tags (epic/gog/amazon/sideload), plus artwork — boxfront,
+  poster, fanart, banner, clearlogo, icon and screenshots. Data comes from
+  Heroic's library cache and is enriched from the other caches on disk:
+  legendary's Epic metadata (long descriptions, key art, screenshots), nile's
+  Amazon product details (genres, release dates, screenshots) and Heroic's
+  PCGamingWiki cache (Metacritic/OpenCritic scores, for games whose page you
+  have opened in Heroic).
 
 ## Requirements
 

@@ -287,6 +287,7 @@ def get_art(game: dict) -> dict:
     art = {}
     if game.get('art_square'):
         art['boxfront'] = game['art_square']
+        art['poster'] = game['art_square']
     if game.get('art_cover'):
         art['fanart'] = game['art_cover']
     if game.get('art_icon'):
@@ -294,3 +295,163 @@ def get_art(game: dict) -> dict:
     if game.get('art_logo'):
         art['clearlogo'] = game['art_logo']
     return art
+
+
+# ------------------------------------------------------------------------------------------------
+# Extra game data enrichment.
+# Beyond the library files, Heroic and the store clients it embeds keep richer
+# caches on disk: legendary's per-game Epic metadata (descriptions, key art),
+# nile's raw Amazon library (details, genres, screenshots) and the PCGamingWiki
+# cache (review scores). All reads are best-effort and fully offline.
+# ------------------------------------------------------------------------------------------------
+STORE_TAGS = {
+    'legendary': 'epic',
+    'gog': 'gog',
+    'nile': 'amazon',
+    'sideload': 'sideload'
+}
+
+
+def _load_json(filepath: str):
+    text = _read_text(filepath)
+    if text is None:
+        return None
+    try:
+        return json.loads(text)
+    except Exception as ex:
+        logger.debug('Failed to parse %s: %s', filepath, ex)
+        return None
+
+
+def _legendary_metadata_dirs(config_dir: str) -> list:
+    """Locations of legendary's Epic metadata cache, newest layout first:
+    Heroic's own legendary config dir, then the legacy shared one."""
+    config_dir = os.path.expanduser(config_dir)
+    return [
+        os.path.join(config_dir, 'legendaryConfig', 'legendary', 'metadata'),
+        os.path.join(os.path.dirname(config_dir), 'legendary', 'metadata'),
+    ]
+
+
+def _get_epic_metadata(config_dir: str, app_name: str) -> dict:
+    for metadata_dir in _legendary_metadata_dirs(config_dir):
+        data = _load_json(os.path.join(metadata_dir, app_name + '.json'))
+        if isinstance(data, dict):
+            return data.get('metadata') or {}
+    return {}
+
+
+def _get_amazon_details(config_dir: str, app_name: str) -> dict:
+    library = _load_json(os.path.join(os.path.expanduser(config_dir),
+                                      'nile_config', 'nile', 'library.json'))
+    if not isinstance(library, list):
+        return {}
+    for item in library:
+        if not isinstance(item, dict):
+            continue
+        product = item.get('product') or {}
+        if item.get('id') == app_name or product.get('id') == app_name:
+            detail = product.get('productDetail') or {}
+            return detail.get('details') or detail or {}
+    return {}
+
+
+def _get_wiki_scores(config_dir: str, title: str) -> dict:
+    wiki = _load_json(os.path.join(os.path.expanduser(config_dir),
+                                   'store_cache', 'wikigameinfo.json'))
+    if not isinstance(wiki, dict):
+        return {}
+    entry = wiki.get(title)
+    return entry if isinstance(entry, dict) else {}
+
+
+def _year_from(date_str) -> str:
+    if isinstance(date_str, str) and len(date_str) >= 4 and date_str[:4].isdigit():
+        return date_str[:4]
+    return ''
+
+
+def get_extra_game_data(config_dir: str, game: dict) -> dict:
+    """Best-effort enrichment for a single game from the other caches Heroic
+    keeps on disk. Returns plot/developer/year/genres/rating plus additional
+    art URLs and screenshots; every field may be empty."""
+    extra = {'plot': '', 'developer': '', 'year': '',
+             'genres': [], 'rating': None, 'art': {}, 'screenshots': []}
+    if not config_dir:
+        return extra
+
+    runner = get_runner(game)
+    app_name = game.get('app_name')
+
+    if runner == 'legendary' and app_name:
+        md = _get_epic_metadata(config_dir, app_name)
+        extra['plot'] = md.get('description') or ''
+        custom = md.get('customAttributes') or {}
+        dev = md.get('developer')
+        if not dev:
+            dev_attr = custom.get('DeveloperName') or {}
+            dev = dev_attr.get('value') if isinstance(dev_attr, dict) else None
+        extra['developer'] = dev or ''
+        release_attr = custom.get('ReleaseDate') or {}
+        if isinstance(release_attr, dict):
+            extra['year'] = _year_from(release_attr.get('value'))
+        for image in md.get('keyImages') or []:
+            if not isinstance(image, dict):
+                continue
+            image_type = image.get('type')
+            url = image.get('url')
+            if not url:
+                continue
+            if image_type in ('DieselGameBoxTall', 'OfferImageTall'):
+                extra['art'].setdefault('poster', url)
+                extra['art'].setdefault('boxfront', url)
+            elif image_type in ('DieselGameBoxWide', 'OfferImageWide', 'DieselStoreFrontWide'):
+                extra['art'].setdefault('banner', url)
+                extra['art'].setdefault('fanart', url)
+            elif image_type == 'DieselGameBoxLogo':
+                extra['art'].setdefault('clearlogo', url)
+            elif image_type == 'Screenshot':
+                extra['screenshots'].append(url)
+
+    elif runner == 'nile' and app_name:
+        details = _get_amazon_details(config_dir, app_name)
+        extra['plot'] = details.get('description') or details.get('shortDescription') or ''
+        extra['developer'] = details.get('developer') or details.get('publisher') or ''
+        extra['year'] = _year_from(details.get('releaseDate'))
+        genres = details.get('genres')
+        if isinstance(genres, list):
+            extra['genres'] = [str(g) for g in genres if g]
+        screenshots = details.get('screenshots')
+        if isinstance(screenshots, list):
+            extra['screenshots'] = [s for s in screenshots if isinstance(s, str)]
+        if details.get('backgroundUrl2') or details.get('backgroundUrl1'):
+            extra['art'].setdefault('fanart', details.get('backgroundUrl2') or details.get('backgroundUrl1'))
+        if details.get('logoUrl'):
+            extra['art'].setdefault('clearlogo', details['logoUrl'])
+        if details.get('iconUrl'):
+            extra['art'].setdefault('icon', details['iconUrl'])
+
+    # GOG (and any runner): the library entry's own 'extra' block may carry
+    # genres and a release date once Heroic has cached the game's store page.
+    game_extra = game.get('extra') or {}
+    if not extra['genres'] and isinstance(game_extra.get('genres'), list):
+        extra['genres'] = [str(g) for g in game_extra['genres'] if g]
+    if not extra['year']:
+        extra['year'] = _year_from(game_extra.get('releaseDate'))
+
+    # Review score from Heroic's PCGamingWiki cache (0-10 scale for Kodi).
+    scores = _get_wiki_scores(config_dir, get_title(game))
+    for source_key in ('metacritic', 'opencritic', 'igdb'):
+        source = scores.get(source_key)
+        if isinstance(source, dict) and source.get('score'):
+            try:
+                extra['rating'] = round(float(source['score']) / 10, 1)
+                break
+            except (TypeError, ValueError):
+                pass
+
+    return extra
+
+
+def get_store_tag(game: dict) -> str:
+    return STORE_TAGS.get(get_runner(game), get_runner(game))

@@ -103,11 +103,11 @@
                 </setting>
                 <setting id="akl.scraper.supported_metadata" type="string" label="Metadata supported by this scraper" help="">
                     <level>4</level>
-                    <default>title|developer|plot</default>
+                    <default>title|year|genre|developer|rating|plot|tags</default>
                 </setting>
                 <setting id="akl.scraper.supported_assets" type="string" label="Assets supported by this scraper" help="">
                     <level>4</level>
-                    <default>boxfront|fanart|icon|clearlogo</default>
+                    <default>boxfront|poster|fanart|banner|snap|icon|clearlogo</default>
                 </setting>
                 <setting id="akl.scraper.friendlyname" type="string" label="Scraper friendlyname" help="">
                     <level>4</level>
