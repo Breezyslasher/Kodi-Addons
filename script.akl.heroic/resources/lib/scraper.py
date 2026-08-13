@@ -143,6 +143,11 @@ class HeroicScraper(Scraper):
         url = art.get(asset_info_id)
         if not url:
             return []
+        if not url.startswith(('http://', 'https://')):
+            # Sideloaded games may reference local file:// art that AKL's
+            # downloader cannot fetch. Skip those instead of erroring.
+            self.logger.debug('Skipping non-downloadable art URL: {}'.format(url))
+            return []
 
         asset_data = self._new_assetdata_dic()
         asset_data['asset_ID'] = asset_info_id
