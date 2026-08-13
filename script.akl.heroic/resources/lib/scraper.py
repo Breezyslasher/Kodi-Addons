@@ -39,12 +39,19 @@ class HeroicScraper(Scraper):
     # --- Class variables ------------------------------------------------------------------------
     supported_metadata_list = [
         constants.META_TITLE_ID,
+        constants.META_YEAR_ID,
+        constants.META_GENRE_ID,
         constants.META_DEVELOPER_ID,
-        constants.META_PLOT_ID
+        constants.META_RATING_ID,
+        constants.META_PLOT_ID,
+        constants.META_TAGS_ID
     ]
     supported_asset_list = [
         constants.ASSET_BOXFRONT_ID,
+        constants.ASSET_POSTER_ID,
         constants.ASSET_FANART_ID,
+        constants.ASSET_BANNER_ID,
+        constants.ASSET_SNAP_ID,
         constants.ASSET_ICON_ID,
         constants.ASSET_CLEARLOGO_ID
     ]
@@ -54,6 +61,7 @@ class HeroicScraper(Scraper):
         self.logger = logging.getLogger(__name__)
         self.games_by_app_name = {}
         self.config_dir = None
+        self.extra_cache = {}
 
         cache_dir = settings.getSettingAsFilePath('scraper_cache_dir')
         super(HeroicScraper, self).__init__(cache_dir)
@@ -125,9 +133,20 @@ class HeroicScraper(Scraper):
         if game is None:
             return gamedata
 
+        extra = self._get_extra(game)
+
+        library_plot = self._clean_HTML_from_text(heroic.get_plot(game))
+        extra_plot = self._clean_HTML_from_text(extra['plot'])
+
         gamedata['title'] = heroic.get_title(game)
-        gamedata['developer'] = heroic.get_developer(game)
-        gamedata['plot'] = self._clean_HTML_from_text(heroic.get_plot(game))
+        gamedata['developer'] = heroic.get_developer(game) or extra['developer']
+        # Prefer the longer of the two descriptions.
+        gamedata['plot'] = extra_plot if len(extra_plot) > len(library_plot) else library_plot
+        gamedata['year'] = extra['year']
+        gamedata['genre'] = ', '.join(extra['genres'])
+        if extra['rating'] is not None:
+            gamedata['rating'] = extra['rating']
+        gamedata['tags'] = [heroic.get_store_tag(game)]
         return gamedata
 
     def get_assets(self, asset_info_id: str, status_dic):
@@ -139,11 +158,29 @@ class HeroicScraper(Scraper):
         if game is None:
             return []
 
-        art = heroic.get_art(game)
+        extra = self._get_extra(game)
+        title = heroic.get_title(game)
+
+        if asset_info_id == constants.ASSET_SNAP_ID:
+            assets_list = []
+            for index, url in enumerate(extra['screenshots']):
+                if not self._is_downloadable(url):
+                    continue
+                asset_data = self._new_assetdata_dic()
+                asset_data['asset_ID'] = asset_info_id
+                asset_data['display_name'] = '{} screenshot #{}'.format(title, index + 1)
+                asset_data['url_thumb'] = url
+                asset_data['url'] = url
+                assets_list.append(asset_data)
+            return assets_list
+
+        # Library art first, enrichment art (Epic key images, Amazon urls) as fallback.
+        art = dict(extra['art'])
+        art.update(heroic.get_art(game))
         url = art.get(asset_info_id)
         if not url:
             return []
-        if not url.startswith(('http://', 'https://')):
+        if not self._is_downloadable(url):
             # Sideloaded games may reference local file:// art that AKL's
             # downloader cannot fetch. Skip those instead of erroring.
             self.logger.debug('Skipping non-downloadable art URL: {}'.format(url))
@@ -151,10 +188,19 @@ class HeroicScraper(Scraper):
 
         asset_data = self._new_assetdata_dic()
         asset_data['asset_ID'] = asset_info_id
-        asset_data['display_name'] = '{} ({})'.format(heroic.get_title(game), asset_info_id)
+        asset_data['display_name'] = '{} ({})'.format(title, asset_info_id)
         asset_data['url_thumb'] = url
         asset_data['url'] = url
         return [asset_data]
+
+    def _is_downloadable(self, url: str) -> bool:
+        return isinstance(url, str) and url.startswith(('http://', 'https://'))
+
+    def _get_extra(self, game: dict) -> dict:
+        app_name = game.get('app_name')
+        if app_name not in self.extra_cache:
+            self.extra_cache[app_name] = heroic.get_extra_game_data(self.config_dir, game)
+        return self.extra_cache[app_name]
 
     def resolve_asset_URL(self, selected_asset, status_dic):
         url = selected_asset['url']
@@ -179,6 +225,7 @@ class HeroicScraper(Scraper):
 
         self.config_dir = config_dir
         self.games_by_app_name = {}
+        self.extra_cache = {}
         for game in heroic.load_games(config_dir):
             app_name = game.get('app_name')
             if app_name:
