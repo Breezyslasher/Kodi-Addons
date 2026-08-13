@@ -20,6 +20,7 @@ from __future__ import division
 import os
 import json
 import logging
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,74 @@ def _expand(path: str) -> str:
     return os.path.expandvars(os.path.expanduser(path))
 
 
+# ------------------------------------------------------------------------------------------------
+# Flatpak sandbox support.
+# When Kodi itself runs as a Flatpak (tv.kodi.Kodi) its sandbox blocks access to
+# other applications' data (~/.var/app/...) and usually to ~/.config as well, so
+# Heroic's files must be reached on the host through the flatpak-spawn portal.
+# ------------------------------------------------------------------------------------------------
+_HOST_CMD_TIMEOUT = 15
+
+
+def kodi_in_flatpak() -> bool:
+    """True when Kodi itself is running inside a Flatpak sandbox."""
+    return os.path.exists('/.flatpak-info')
+
+
+def _host_output(args: list):
+    """Runs a command on the host through flatpak-spawn. Returns its stdout as
+    text, or None when the command failed or the portal is unavailable."""
+    try:
+        result = subprocess.run(['flatpak-spawn', '--host'] + args,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                timeout=_HOST_CMD_TIMEOUT)
+    except Exception as ex:
+        logger.debug('flatpak-spawn --host %s failed: %s', args, ex)
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.decode('utf-8', errors='replace')
+
+
+def _isdir(path: str) -> bool:
+    if os.path.isdir(path):
+        return True
+    if kodi_in_flatpak():
+        return _host_output(['test', '-d', path]) is not None
+    return False
+
+
+def _isfile(path: str) -> bool:
+    if os.path.isfile(path):
+        return True
+    if kodi_in_flatpak():
+        return _host_output(['test', '-f', path]) is not None
+    return False
+
+
+def _listdir(path: str) -> list:
+    try:
+        return os.listdir(path)
+    except OSError:
+        pass
+    if kodi_in_flatpak():
+        output = _host_output(['ls', '-1', path])
+        if output is not None:
+            return [line for line in output.splitlines() if line]
+    return []
+
+
+def _read_text(filepath: str):
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return f.read()
+    except OSError:
+        pass
+    if kodi_in_flatpak():
+        return _host_output(['cat', filepath])
+    return None
+
+
 def flatpak_config_dir() -> str:
     return _expand(FLATPAK_CONFIG_DIR)
 
@@ -86,7 +155,7 @@ def config_dir_candidates() -> list:
 def detect_config_dir() -> str:
     """Returns the first existing Heroic config directory or None."""
     for path in config_dir_candidates():
-        if os.path.isdir(path):
+        if _isdir(path):
             return path
     return None
 
@@ -118,22 +187,24 @@ def get_library_files(config_dir: str) -> list:
     config_dir = os.path.expanduser(config_dir)
     files = []
     store_cache = os.path.join(config_dir, 'store_cache')
-    if os.path.isdir(store_cache):
-        for fname in sorted(os.listdir(store_cache)):
-            if fname.endswith('_library.json'):
-                files.append(os.path.join(store_cache, fname))
+    for fname in sorted(_listdir(store_cache)):
+        if fname.endswith('_library.json'):
+            files.append(os.path.join(store_cache, fname))
     sideload = os.path.join(config_dir, 'sideload_apps', 'library.json')
-    if os.path.isfile(sideload):
+    if _isfile(sideload):
         files.append(sideload)
     return files
 
 
 def _read_games_from_file(filepath: str) -> list:
+    text = _read_text(filepath)
+    if text is None:
+        logger.warning('Failed to read Heroic library file %s', filepath)
+        return []
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        data = json.loads(text)
     except Exception as ex:
-        logger.warning('Failed to read Heroic library file %s: %s', filepath, ex)
+        logger.warning('Failed to parse Heroic library file %s: %s', filepath, ex)
         return []
     if not isinstance(data, dict):
         return []

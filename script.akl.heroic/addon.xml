@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.akl.heroic" name="Heroic Games Launcher plugin for AKL" version="2026.8.12.3" provider-name="Breezyslasher">
+<addon id="script.akl.heroic" name="Heroic Games Launcher plugin for AKL" version="2026.8.12.4" provider-name="Breezyslasher">
   <requires>
       <import addon="xbmc.python" version="3.0.0"/>
       <import addon="script.module.akl" version="1.2.0"/>
@@ -24,6 +24,6 @@ No credentials or API keys needed.
       <icon>media/icon.png</icon>
       <fanart>media/fanart.jpg</fanart>
     </assets>
-    <news>Added Windows and macOS support alongside Linux.</news>
+    <news>Flatpak Kodi support (reads Heroic files and launches via flatpak-spawn), fixed delay_tempo setting definition and AKL update-settings handling.</news>
   </extension>
 </addon>

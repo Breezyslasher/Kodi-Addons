@@ -39,7 +39,7 @@
                     </constraints>
                     <control type="spinner" format="string"/>
                 </setting>
-                <setting id="delay_tempo" type="slider" label="30122" help="">
+                <setting id="delay_tempo" type="integer" label="30122" help="">
                     <level>0</level>
                     <default>500</default>
                     <constraints>

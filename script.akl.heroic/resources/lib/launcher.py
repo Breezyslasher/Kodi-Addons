@@ -124,6 +124,15 @@ class HeroicLauncher(LauncherABC):
             # Custom executable selected through the file browser.
             self.launcher_settings['args'] = '--no-gui --no-splash "{}"'.format(LAUNCH_URI_ARG)
 
+        # When Kodi itself runs inside a Flatpak sandbox (tv.kodi.Kodi) the
+        # command must be executed on the host through the flatpak-spawn portal:
+        # neither the flatpak binary nor a host Heroic install exist in-sandbox.
+        if heroic.kodi_in_flatpak():
+            host_app = self.launcher_settings['application']
+            self.launcher_settings['args'] = '--host {} {}'.format(
+                host_app, self.launcher_settings['args'])
+            self.launcher_settings['application'] = 'flatpak-spawn'
+
         self.launcher_settings['secname'] = 'Heroic'
         self.non_blocking = True
         return True

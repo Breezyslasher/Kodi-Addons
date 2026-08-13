@@ -167,8 +167,17 @@ class HeroicScanner(RomScannerStrategy):
 
         if not config_dir:
             self.logger.warning('No Heroic configuration directory found')
-            kodi.notify_warn('Heroic installation not found')
             self.progress_dialog.endProgress()
+            if heroic.kodi_in_flatpak():
+                kodi.dialog_OK(
+                    'Heroic installation not found. Kodi is running inside a Flatpak '
+                    'sandbox, which blocks access to Heroic\'s files. Run this on the '
+                    'host and restart Kodi:\n'
+                    'flatpak override --user --filesystem='
+                    '~/.var/app/com.heroicgameslauncher.hgl/config/heroic:ro tv.kodi.Kodi\n'
+                    '(for a native Heroic install use --filesystem=xdg-config/heroic:ro)')
+            else:
+                kodi.notify_warn('Heroic installation not found')
             return []
 
         self.progress_dialog.updateProgress(30)

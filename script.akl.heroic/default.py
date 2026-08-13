@@ -48,6 +48,13 @@ def run_plugin():
     for i in range(len(sys.argv)):
         logger.info('sys.argv[{}] "{}"'.format(i, sys.argv[i]))
 
+    # AKL calls plugins with "--cmd update-settings" after install/update, but
+    # AklAddonArguments rejects that value before we can dispatch it. Handle it
+    # before regular argument parsing.
+    if 'update-settings' in sys.argv:
+        update_plugin_settings()
+        return
+
     addon_args = addons.AklAddonArguments('script.akl.heroic')
     try:
         addon_args.parse()
@@ -66,8 +73,6 @@ def run_plugin():
         configure_scanner(addon_args)
     elif addon_args.get_command() == addons.AklAddonArguments.SCRAPE:
         run_scraper(addon_args)
-    elif addon_args.args.cmd == "update-settings":
-        update_plugin_settings()
     else:
         kodi.dialog_OK(text=addon_args.get_help())
 

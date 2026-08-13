@@ -44,6 +44,22 @@ accounts, credentials or API keys are needed.
    (Flatpak / native / Windows / macOS / custom executable).
 4. Optionally run the **Heroic Library Data** scraper to pull in artwork and descriptions.
 
+## Kodi installed as a Flatpak (tv.kodi.Kodi)
+
+When Kodi itself runs as a Flatpak, its sandbox blocks access to other
+applications' files, including Heroic's config. The addon works around this
+automatically through the `flatpak-spawn --host` portal (both for reading the
+library and for launching games). If scanning still reports "Heroic
+installation not found", grant Kodi read access to Heroic's config and restart
+Kodi:
+
+```sh
+# Heroic installed as Flatpak:
+flatpak override --user --filesystem=~/.var/app/com.heroicgameslauncher.hgl/config/heroic:ro tv.kodi.Kodi
+# Heroic installed natively (deb/rpm/AppImage):
+flatpak override --user --filesystem=xdg-config/heroic:ro tv.kodi.Kodi
+```
+
 ## Notes
 
 - Games launch through Heroic itself, so Proton/Wine settings, cloud saves and
