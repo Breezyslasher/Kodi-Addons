@@ -591,7 +591,7 @@ Features:
 		</news>
 	</extension>
 </addon>
-<addon id="script.akl.heroic" name="Heroic Games Launcher plugin for AKL" version="2026.8.12.6" provider-name="Breezyslasher">
+<addon id="script.akl.heroic" name="Heroic Games Launcher plugin for AKL" version="2026.8.12.7" provider-name="Breezyslasher">
   <requires>
       <import addon="xbmc.python" version="3.0.0"/>
       <import addon="script.module.akl" version="1.2.0"/>
@@ -616,7 +616,7 @@ No credentials or API keys needed.
       <icon>media/icon.png</icon>
       <fanart>media/fanart.jpg</fanart>
     </assets>
-    <news>Launcher created from a source/collection/ROM menu is now linked to it automatically.</news>
+    <news>Scraper now pulls year, genre, rating, store tags, poster/banner art and screenshots from Heroic-side caches (Epic metadata, Amazon details, PCGamingWiki scores).</news>
   </extension>
 </addon>
 <addon id="script.webhook.runner" version="2026.7.13" name="Webhook Runner" provider-name="Breezyslasher">
