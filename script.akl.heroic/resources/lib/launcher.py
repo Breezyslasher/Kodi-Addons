@@ -19,6 +19,7 @@ import logging
 import collections
 
 # --- AKL packages ---
+from akl import api
 from akl.utils import kodi, io
 from akl.launchers import LauncherABC, ExecutorFactoryABC, ExecutionSettings
 
@@ -53,8 +54,36 @@ class HeroicLauncher(LauncherABC):
                  executorFactory: ExecutorFactoryABC = None,
                  execution_settings: ExecutionSettings = None):
         self.logger = logging.getLogger(__name__)
+        self.entity_type = None
+        self.entity_id = None
         super(HeroicLauncher, self).__init__(launcher_id, rom_id, webservice_host, webservice_port,
                                              executorFactory, execution_settings)
+
+    def set_association(self, entity_type, entity_id):
+        """Remembers which AKL entity (source/collection/ROM) this launcher is
+        being configured for, so store_settings() can link them."""
+        self.entity_type = entity_type
+        self.entity_id = entity_id
+
+    def store_settings(self):
+        # The base class posts only launcher_id/addon_id/settings, dropping the
+        # entity the launcher was configured for. AKL's cmd_set_launcher_args
+        # reads entity_type/entity_id from the post body to associate the new
+        # launcher with the source/collection/ROM, so forward them here.
+        launcher_settings = self.get_launcher_settings()
+        post_data = {
+            'launcher_id': self.launcher_id,
+            'addon_id': self.get_launcher_addon_id(),
+            'settings': launcher_settings
+        }
+        if self.entity_type is not None and self.entity_id:
+            post_data['entity_type'] = self.entity_type
+            post_data['entity_id'] = self.entity_id
+        is_stored = api.client_post_launcher_settings(self.webservice_host,
+                                                      self.webservice_port,
+                                                      post_data)
+        if not is_stored:
+            kodi.notify_error('Failed to store launcher settings')
 
     # --------------------------------------------------------------------------------------------
     # Core methods

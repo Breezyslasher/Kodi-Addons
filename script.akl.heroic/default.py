@@ -126,9 +126,16 @@ def configure_launcher(args: addons.AklAddonArguments):
         args.get_entity_id(),
         args.get_webserver_host(),
         args.get_webserver_port())
+    launcher.set_association(args.get_entity_type(), args.get_entity_id())
 
     if launcher.build():
         launcher.store_settings()
+        if not args.get_entity_id():
+            # Created from a generic menu: the launcher is stored but not tied
+            # to anything yet. Tell the user how to put it to work.
+            kodi.dialog_OK('Launcher created, but not yet assigned. To use it, '
+                           'open your Heroic source, choose "Edit source" > '
+                           '"Add new launcher" and select it from the list.')
         return
 
     kodi.notify_warn('Cancelled creating launcher')
