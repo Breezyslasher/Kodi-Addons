@@ -59,9 +59,12 @@ retired, is in [docs/youtube-tv-protocol.md](../docs/youtube-tv-protocol.md).
   `addon.xml` was run on Kodi 21.3 with ISA 21.5.22, and the audio track turned
   to invalid AAC 9.46 seconds in -- one audio subsegment -- while the addon
   itself was clean, licence and all. 22.3.20 plays the same media with zero
-  audio errors. Whether any other rendition behaves differently on 21 is
-  untested -- YouTube TV offers four audio tracks and only itag 150 has ever
-  been played; see the `audio_itag` setting. ISA 22 is a binary addon
+  audio errors. All three AAC renditions were then tried one at a time, and
+  all three fail at the same instant -- the audio is never decrypted at all,
+  and the ~9.5 seconds you hear is the clear first fragment. The two tracks
+  differ in exactly the way that would explain it: video is subsample
+  encrypted, audio is fully encrypted with no subsamples. ISA 22 is a binary
+  addon
   built against Kodi 22, which is why the Kodi requirement moves with it;
   `addon.xml` requires 22.3.20, so on Kodi 21 the addon will not resolve its
   dependencies rather than half-playing
