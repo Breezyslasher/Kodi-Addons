@@ -1147,7 +1147,11 @@ the fragment went out as it arrived, and ISA 21 turned it to noise -- which is
 the original bug, reappearing on the one shape the rewrite did not cover.
 
 `_tfhd_default_sample_size` reads it, and a fragment whose `trun` names no
-sizes uses the tfhd default for every sample.
+sizes uses the tfhd default for every sample. Confirmed on the same box and
+channel: zero fragments declined, zero decoder errors, one audio stream at six
+channels, zero stalls, audio and video in step at 2861509/2861510.
+
+That closes the matrix -- Kodi 21 and 22, on demand and live, all measured.
 
 Kodi 22 on the same channel at the same time: one audio stream, `ac3, channels:
 6`, zero decoder errors, zero stalls, audio and video in step at sequence

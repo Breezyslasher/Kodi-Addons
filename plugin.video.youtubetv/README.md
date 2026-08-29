@@ -65,6 +65,15 @@ seconds clean with it on.
 The rewrite is `mp4.explicit_subsamples`, applied to the audio track as the
 bridge serves it. It never touches the encrypted bytes.
 
+Live needed one thing more. Its AC-3 samples are all the same length, so the
+packager states it once in `tfhd` as `default_sample_size` and `trun` carries
+none -- the rewrite needs a length per sample and was declining, silently,
+on every live fragment. Confirmed on Kodi 21.3 with ISA 21.5.22: one audio
+stream, `channels: 6`, zero decoder errors, zero stalls, audio and video in
+step at sequence 2861509/2861510.
+
+So all four combinations are measured: Kodi 21 and 22, on demand and live.
+
 What is not done: 4K. No format above 1920x1080 has ever been offered to this
 addon or to a browser on the same account, and no format has ever carried
 `DRM_TRACK_TYPE_UHD1` -- the licence grants a UHD1 key, but there is no UHD1
