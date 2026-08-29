@@ -271,9 +271,21 @@ def player_js(session, cookies):
     # id as player_ias as well -- the ES5 build, and the one every published
     # pattern was written against -- so ask for that first and keep the page's
     # own url as the fallback.
+    #
+    # The variant survey found the one that matters. Of the ten builds Google
+    # publishes for a player id, only the two "tce" ones carry .set("n", --
+    # the landmark every other build, including the two the page points at,
+    # lacks entirely. So ask for those first: same player, same release,
+    # compiled without the opcode dispatcher hiding the transform.
     candidates = []
-    if "player_es6.vflset" in url:
-        candidates.append(url.replace("player_es6.vflset", "player_ias.vflset"))
+    for variant in ("player_ias_tce.vflset", "player_es6_tce.vflset",
+                    "player_ias.vflset"):
+        for original in ("player_es6.vflset", "player_ias.vflset"):
+            if original in url and variant != original:
+                candidate = url.replace(original, variant)
+                if candidate not in candidates:
+                    candidates.append(candidate)
+                break
     candidates.append(url)
 
     last = None
@@ -425,6 +437,16 @@ def context(location=True, client_name=None):
     # Session and rollout state, read off the page. The web player sends all
     # three in every context; we sent visitorData only as a header and the
     # other two not at all.
+    #
+    # Only for the web client, though. These describe the running web player --
+    # its rollout, its install data, its visitor session -- and handing them to
+    # an Android or iOS identity describes a client that is not the one making
+    # the request. Sent to all six, the mobile and TV clients answered HTTP 400
+    # INVALID_ARGUMENT, which reads like a refusal and is actually a complaint
+    # about the request.
+    if name != CLIENT_NAME:
+        return {"client": client}
+
     boot = _bootstrap()
     visitor = (kodiutils.get_setting("visitor_id", "")
                or boot.get("visitor_data") or _baked_visitor_id())
@@ -493,15 +515,24 @@ class Api(object):
                 status = error.get("status") or ""
                 if status and status not in detail:
                     detail = ("%s: %s" % (status, detail)).strip(": ")
+                # "Request contains an invalid argument" does not say which
+                # argument, and guessing at it is how an evening gets spent.
+                # InnerTube names the field in error.details when it knows it,
+                # and taking message alone threw that away.
+                details = error.get("details")
+                if details:
+                    detail = "%s | details=%s" % (detail, json.dumps(details)[:600])
             except ValueError:
                 detail = (response.text or "")[:400]
             # The jar's size belongs in this line: a 413 here is Google
             # refusing the request for bulk, and the Cookie header is the only
             # part of it that grows without bound.
             jar = auth.cookie_header(self.cookies)
+            asked = client_name or CLIENT_NAME
+            shown = (_client_version() if asked == CLIENT_NAME
+                     else client_spec(asked)["version"])
             kodiutils.log("%s -> HTTP %d as %s v%s, %d cookies / %d bytes%s"
-                          % (endpoint, response.status_code,
-                             client_name or CLIENT_NAME, _client_version(),
+                          % (endpoint, response.status_code, asked, shown,
                              len(self.cookies), len(jar),
                              ": %s" % detail[:300] if detail else ""))
 

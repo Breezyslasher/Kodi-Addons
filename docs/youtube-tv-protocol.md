@@ -587,3 +587,82 @@ this problem concluding the interpreter cannot keep up with the obfuscation.
 Our case is narrower (one player, one function), so it is worth trying, and
 `nsig.solve` falls back to a runtime on PATH if the interpreter fails. The log
 says which route worked.
+
+### Why `n` cannot be extracted from this player
+
+The player source settles it. `tv.youtube.com/s/player/06ab6907/player_ias.vflset/en_US/base.js`
+is 2,936,988 bytes and contains **none** of the landmarks every published
+extraction pattern relies on:
+
+| landmark | occurrences |
+|---|---|
+| `enhanced_except` | 0 |
+| `String.prototype.split.call` | 0 |
+| `String.fromCharCode(110)` | 0 |
+| `.set("n",` | 0 |
+| `.get("n")` | 1 — an HLS helper that rewrites `/n/` path segments |
+
+Not because the transform is absent, but because the player no longer contains
+identifiable functions. The URL-parameter class is declared like this:
+
+```js
+g.TW = function(R, m){ return rv[Rt[15]](this, 56, 3413, R, m) };
+```
+
+`Rt` is a string table:
+
+```
+Rt = "indexOf;fromCharCode;length;K;set;push;;X;/videoplayback;=;Untrusted URL;
+      V;r;://;reverse;call;scheme;slice;...;split;..."
+```
+
+and `rv` is an opcode-dispatched virtual machine with XOR-computed control flow
+(`var f = m ^ R; ... switch(L){ case f^4435: ...`). Every method name is reached
+by index into `Rt`, so `String.fromCharCode` is `String[Rt[1]]` and `.split` is
+`[Rt[24]]`; every function is an opcode rather than a name. The primitives the
+signature transform is built from -- `reverse`, `slice`, `split` -- are sitting
+in that table.
+
+This is what defeated the four pattern shapes, and it is not fixable by writing
+a fifth. It is also why yt-dlp stopped using its own Python interpreter for
+YouTube: its current solver parses the player into an AST with `meriyah`,
+rewrites it with `astring`, and evaluates the result in deno, node, bun or
+quickjs. Solving `n` for this player needs a real JavaScript engine plus a
+JavaScript parser -- not a regex and not a small interpreter.
+
+The vendored `jsinterp.py` stays because it is sound and cheap, but on this
+player it has nothing to find.
+
+### The client survey
+
+If some other client identity were handed URLs that need no `n`, none of the
+above would matter. Asked with a correct per-client context -- own version, and
+none of the web player's `rolloutToken`, `configInfo` or `visitorData`:
+
+| client | version | result |
+|---|---|---|
+| `ANDROID_UNPLUGGED` | 6.36 | 400 INVALID_ARGUMENT |
+| `IOS_UNPLUGGED` | 6.36 | 400 INVALID_ARGUMENT |
+| `TVHTML5_UNPLUGGED` | 6.36 | 400 INVALID_ARGUMENT |
+| `TV_UNPLUGGED_ANDROID` | 1.37 | 403 PERMISSION_DENIED |
+| `TV_UNPLUGGED_CAST` | 0.1 | 404 NOT_FOUND |
+| `WEB_UNPLUGGED` | 1.20260826.04.00 | 200 -- 35 formats, **all** ciphered |
+
+The 403 is a real refusal: the session probe confirms the same cookies are
+served a signed-in page, so that identity is simply not granted this surface.
+The three 400s are InnerTube rejecting the request rather than the client, and
+it declines to say which argument it dislikes -- `error.details` is absent, not
+merely unread. Sending the web player's session state to them was one cause and
+is fixed; whatever remains is unnamed.
+
+What that leaves, in order of honesty:
+
+1. **A JavaScript runtime.** Install deno, node, bun or quickjs on the Kodi
+   host and drive yt-dlp's solver (`yt.solver.core.js`, which needs `meriyah`
+   and `astring`). This is the only route with evidence that it works.
+2. **Keep pulling on the three 400s**, with a captured mobile-client request to
+   compare against -- the same method that solved the SABR URL. It needs a HAR
+   from the YouTube TV Android or iOS app, which is a different capture setup.
+
+What is *not* worth another attempt: a fifth extraction pattern, a sixth cookie
+theory, or any change to the DASH URLs. Those are all settled above.

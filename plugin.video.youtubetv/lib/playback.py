@@ -217,6 +217,40 @@ def build_item(player_response, label=None, art=None):
     return item
 
 
+SURVEY_FILE = "client_survey.json"
+# Bumped when the survey changes, so a corrected request is retried
+# rather than skipped because an older, broken one already ran.
+SURVEY_REVISION = 3
+
+
+def survey_clients_once(client, video_id):
+    """Run the client survey the first time, without being asked.
+
+    The question it answers is not a debugging curiosity any more: n is the
+    gate, the player that computes n is behind an opcode VM we cannot read, and
+    the only cheap way out is a client identity whose urls do not carry n. That
+    is worth one automatic survey rather than a setting the user has to find.
+
+    Recorded per player release, so it runs once and then stays quiet -- and
+    runs again by itself when Google ships a new player, which is exactly when
+    the answer could change.
+    """
+    boot = api._bootstrap()
+    player_id = "%s@%d" % (boot.get("js_url") or boot.get("version")
+                           or "unknown", SURVEY_REVISION)
+    done = kodiutils.read_json(SURVEY_FILE, default={}) or {}
+    if done.get("player") == player_id:
+        return
+    kodiutils.log("client survey: n cannot be computed from this player, so "
+                  "asking every identity whether its urls need one. This runs "
+                  "once per player release.")
+    try:
+        probe_clients(client, video_id)
+    except Exception as exc:
+        kodiutils.log_error("client survey failed: %s" % exc)
+    kodiutils.write_json(SURVEY_FILE, {"player": player_id})
+
+
 def probe_clients(client, video_id):
     """Ask every YouTube TV client identity for the same video and compare.
 
@@ -249,6 +283,32 @@ def probe_clients(client, video_id):
                bool(streaming.get("dashManifestUrl")),
                bool(streaming.get("serverAbrStreamingUrl")),
                bool(streaming.get("licenseInfos"))))
+
+        # Counting formats is not the question any more. n is now known to be
+        # the gate, and the player that computes it is behind an opcode VM we
+        # cannot read, so what matters about a client is whether the urls it
+        # hands out need n at all -- and whether googlevideo actually serves
+        # one. A client answering with a url that needs no n, and being served,
+        # ends this whole line of work.
+        plain_url = next((f["url"] for f in formats if f.get("url")), None)
+        if not plain_url:
+            continue
+        from urllib.parse import parse_qs, urlparse
+        query = parse_qs(urlparse(plain_url).query)
+        try:
+            import requests
+            reply = requests.get(plain_url, timeout=20, headers={
+                "User-Agent": api.client_spec(name)["context"].get(
+                    "userAgent", api.UA),
+                "Range": "bytes=0-2047",
+            })
+            served = "HTTP %d, %d bytes" % (reply.status_code,
+                                            len(reply.content))
+        except Exception as exc:
+            served = "fetch failed: %s" % exc
+        kodiutils.log("client %-22s   first url: n=%s  sig=%s  -> %s"
+                      % (name, (query.get("n") or ["absent"])[0],
+                         "present" if query.get("sig") else "absent", served))
 
 
 def probe_cipher(client, video_id, response):
@@ -498,6 +558,8 @@ def prepare(client, video_id, label=None, art=None):
     cpn = api.new_cpn()
     if kodiutils.get_setting_bool("probe_clients", False):
         probe_clients(client, video_id)
+    else:
+        survey_clients_once(client, video_id)
     response = client.player(video_id, cpn)
     if kodiutils.get_setting_bool("probe_sabr", False):
         # The replay and the cross have delivered their answer -- our body is
