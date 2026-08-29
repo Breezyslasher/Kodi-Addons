@@ -4,6 +4,7 @@ SP = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SP + "/stubs")
 sys.argv = ["plugin://plugin.video.youtubetv/", "1", ""]
 sys.path.insert(0, os.path.join(SP, "..", "..", "plugin.video.youtubetv"))
+import xbmc
 import xbmcaddon
 from lib import oauth, kodiutils
 
@@ -17,7 +18,9 @@ def setup(mine=None, youtube=None, baked=None):
     if mine:
         xbmcaddon._S["oauth_client_id"], xbmcaddon._S["oauth_client_secret"] = mine
     xbmcaddon.OTHERS.clear()
+    xbmc.CONDITIONS.clear()
     if youtube:
+        xbmc.CONDITIONS["System.HasAddon(plugin.video.youtube)"] = True
         xbmcaddon.OTHERS["plugin.video.youtube"] = {
             "youtube.api.id": youtube[0], "youtube.api.secret": youtube[1]}
     oauth._baked = (lambda: baked) if baked else (lambda: ("", ""))
@@ -52,6 +55,7 @@ check("half a borrowed pair is skipped too", oauth.credentials(), ("", ""))
 # plugin.video.youtube absent must not raise.
 setup(mine=("mine", "msec"))
 xbmcaddon.OTHERS.clear()
+xbmc.CONDITIONS.clear()
 check("no YouTube addon installed", oauth.credentials(), ("mine", "msec"))
 
 # Google's own TV client is last, and only when it is filled in at all.

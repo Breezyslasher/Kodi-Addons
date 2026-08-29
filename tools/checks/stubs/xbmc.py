@@ -4,3 +4,7 @@ def translatePath(p): return p
 class Monitor(object):
     def waitForAbort(self, t=0): return False
     def abortRequested(self): return False
+
+CONDITIONS = {}
+def getCondVisibility(cond):
+    return CONDITIONS.get(cond, False)
