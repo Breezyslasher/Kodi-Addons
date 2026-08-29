@@ -1130,6 +1130,39 @@ so the mechanism covers it.
 Nothing in this addon reaches this: the key ids are right, the codecs are
 right, and YouTube decides how it encrypts.
 
+### Live on Kodi 21 died inside our own diagnostic
+
+The subsample rewrite works on live too -- the endpoint served AC-3 (itag 381)
+and the bridge re-signalled it -- but playback never started on Kodi 21, with
+zero segment fetches. The log says why, and it is nothing to do with DRM:
+
+    18:10:51.018  opened session s1788041450 as TVHTML5_UNPLUGGED
+    18:10:51.824  itag 381 fragment 2861150 (241912 bytes) ENCRYPTED
+    18:11:11.609  CCurlFile::Open ... CURLOpen failed
+                  inputstream.adaptive: Download failed, internal error
+    18:11:21.928  could not read itag 381 as a file: ... Read timed out.
+    18:11:21.929  client hung up before the response was sent
+
+Media was in hand within a second. Then `compare_against_file` -- a diagnostic
+that fetches the same rendition as a progressive file and compares it with what
+SABR served -- ran **inside the manifest request** on a 30-second timeout. ISA
+waits 20 seconds for a manifest. It gave up at 18:11:11 and the bridge finished
+its perfectly good manifest ten seconds later, for a client that had gone.
+
+A live rendition is not a file: its player response carries no `initRange`, no
+`indexRange` and no `contentLength`, so that fetch was never going to return
+anything useful. It is now skipped on live, and no diagnostic gets the full
+timeout inside a request ISA is waiting on -- five seconds.
+
+On Kodi 22 the same call failed too, but instantly, so the manifest was served
+in time and playback continued. Its error names a second problem: `Could not
+find a suitable TLS CA certificate bundle, invalid path:
+.../script.module.certifi/lib/certifi/cacert.pem`. Kodi's requests takes its
+CA bundle from that addon, and on a box where it is mid-update every HTTPS call
+fails. The addon now points requests at the system bundle when certifi's file
+is genuinely missing -- never disabling verification, never overriding a
+`REQUESTS_CA_BUNDLE` someone set deliberately.
+
 ### Resolved: it was the subsample spelling, and the addon can fix it
 
 Everything below stands as measurement and is wrong as a conclusion. "Nothing
