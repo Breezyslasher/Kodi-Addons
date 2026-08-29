@@ -391,6 +391,32 @@ def _solve_with_runtime(js, value):
     return runtime, name, result.stdout.decode("utf-8", "replace").strip()
 
 
+_KEPT = set()
+
+
+def _keep(js, player_id):
+    """Save the player and the program built from it, once per release."""
+    if not player_id or player_id in _KEPT:
+        return
+    _KEPT.add(player_id)
+    try:
+        import os
+        where = kodiutils.profile_dir()
+        player = os.path.join(where, "player-%s.js" % player_id)
+        if not os.path.exists(player):
+            with open(player, "w", encoding="utf-8") as handle:
+                handle.write(js)
+        name, program = build_program(js, "0123456789abcdefghij")
+        built = os.path.join(where, "nsig-%s.js" % player_id)
+        with open(built, "w", encoding="utf-8") as handle:
+            handle.write(program)
+        kodiutils.log("nsig: kept %s (%d bytes) and %s (%s(), %d bytes)"
+                      % (player, len(js), built, name, len(program)))
+    except Exception as exc:
+        kodiutils.log("nsig: could not keep the player for %s: %s"
+                      % (player_id, exc))
+
+
 def solve(js, value, player_id=""):
     """Transform one ``n``.
 
@@ -406,6 +432,13 @@ def solve(js, value, player_id=""):
         _MEMO[key] = stored[key]
         return stored[key]
 
+    # A wrong extraction is indistinguishable from a right one here: the
+    # program runs, returns a plausible string, and the server answers the
+    # url with an empty-bodied 403. Player e937390a did exactly that, on
+    # both the SABR endpoint and the plain file url. So keep the evidence:
+    # the player and the program built from it, once per release, named by
+    # release, where they can be read afterwards.
+    _keep(js, player_id)
     runtime, name, result = _solve_with_runtime(js, value)
     if not result:
         raise NsigError("%s produced nothing for %s" % (runtime, name))

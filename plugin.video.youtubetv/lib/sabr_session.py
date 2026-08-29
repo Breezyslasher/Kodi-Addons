@@ -113,7 +113,7 @@ class Session(object):
     """One playback session against one serverAbrStreamingUrl."""
 
     def __init__(self, url, config, audio, video, client_name, client_id,
-                 client_version, post, live=True):
+                 client_version, post, live=True, po_token=b""):
         self.url = url
         self.config = config
         # Lists of (itag, lastModified, xtags), not one each. Fields 16 and
@@ -129,6 +129,12 @@ class Session(object):
         self.post = post
         self.info = sabr.client_info(client_id, client_version)
         self.client_name = client_name
+        # The browser sends one in every request: streamerContext subfield 2
+        # of a captured body holds 85 bytes that base64url back to the same
+        # shape as the addon's po_token setting. Ours has always sent none,
+        # which the endpoint tolerated until it did not -- twelve exchanges
+        # in a row answered with an empty-bodied 403.
+        self.po_token = po_token or b""
 
         self.echo = b""
         # MAX_SAFE_INTEGER means "the live edge", which is past the end of a
@@ -204,7 +210,9 @@ class Session(object):
             self.config, audio=audio, video=video,
             player_time_ms=self.position,
             buffered=self._buffered(),
-            context=sabr.streamer_context(info=self.info, echo=self.echo),
+            context=sabr.streamer_context(info=self.info,
+                                          po_token=self.po_token,
+                                          echo=self.echo),
             elapsed_ms=int((time.time() - self.started) * 1000))
         data = self.post(self.url, body)
         if not data:
@@ -370,13 +378,18 @@ class Session(object):
     # -- what the bridge asks for ----------------------------------------
 
     def initialisation_for(self, itag):
-        """The init segment, fetching until one has been seen."""
+        """The init segment, fetching until one has been seen.
+
+        Trimmed to ftyp and moov: what SABR calls the initialisation also
+        carries the sidx, which the file counts as its index and the DASH
+        path never puts in front of the media.
+        """
         for _ in range(PUMP_LIMIT):
             if itag in self.initialisation:
-                return self.initialisation[itag]
+                return mp4.movie_header(self.initialisation[itag])
             if not self.fetch():
                 time.sleep(1)
-        return self.initialisation.get(itag, b"")
+        return mp4.movie_header(self.initialisation.get(itag, b""))
 
     def segment(self, itag, sequence):
         """Segment `sequence` of `itag`, pumping the session until it lands.

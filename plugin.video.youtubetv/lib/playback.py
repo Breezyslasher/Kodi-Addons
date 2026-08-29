@@ -214,6 +214,15 @@ def build_item(player_response, label=None, art=None):
     details = player_response.get("videoDetails") or {}
 
     manifest = streaming.get("dashManifestUrl")
+    if manifest and kodiutils.get_setting_bool("force_bridge"):
+        # The credential and the delivery have always changed together --
+        # cookies play DASH, the token plays SABR -- so nothing has ever
+        # separated "the bridge is wrong" from "the token's licence is
+        # wrong". This does: the same recording, on cookies, through the
+        # bridge.
+        kodiutils.log("ignoring the DASH manifest: the setting asks for the "
+                      "bridge")
+        manifest = ""
     path = ""
     if manifest:
         if not _ensure_widevine():
