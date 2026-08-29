@@ -209,7 +209,7 @@ msgid "Least quality to accept on the bridge"
 msgstr ""
 
 msgctxt "#30068"
-msgid "SABR chooses the rendition server-side, and left to itself it has chosen 854x480 every time -- with the licence granting 2160p, the height cap asking for 2160p and nine renditions offered. It is not reading the cap as a request. What it cannot do is serve a rendition it was never offered, so this takes the short ones off the menu. If the endpoint refuses the smaller menu the whole set is offered again and playback carries on at whatever it picks, and a title with nothing that tall is left alone."
+msgid "Mostly this can do nothing, and it is here to be honest about why. The SABR endpoint serves only the DRM tier the player response authorised, which for a code sign-in reads AUDIO and SD -- and every SD-tier rendition of a title measured so far is 854x480 or shorter. Offer it nothing but taller renditions and it answers sabr.no_video_selected. So the offer is filtered to the authorised tier first and this applies within it, which on that identity leaves nothing to do. Signing in with cookies plays the DASH path instead, where the player chooses and the licence -- which grants HD -- is what decides."
 msgstr ""
 
 msgctxt "#30069"
