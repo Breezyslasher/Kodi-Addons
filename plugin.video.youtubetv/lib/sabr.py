@@ -87,11 +87,17 @@ def format_id(itag, last_modified=0, xtags=""):
     the server cannot resolve, and the answer to a request built that way
     was `sabr.no_audio_selected`.
     """
+    # All three fields, always, even when two of them are empty. The
+    # captured video selections are seven bytes -- 08 e7 02, 10 00, 1a 00 --
+    # a lastModified of zero and an xtags of length zero, both present. Ours
+    # emitted three bytes by leaving them out, and every video rendition
+    # offered was answered sabr.no_video_selected: twelve itags in a row,
+    # which looked like the renditions being refused and was one missing
+    # pair of empty fields. Audio never showed it, because audio xtags are
+    # never empty.
     body = _v(1, int(itag))
-    if last_modified:
-        body += _v(2, int(last_modified))
-    if xtags:
-        body += _b(3, xtags.encode("ascii"))
+    body += _v(2, int(last_modified or 0))
+    body += _b(3, xtags.encode("ascii") if xtags else b"")
     return body
 
 

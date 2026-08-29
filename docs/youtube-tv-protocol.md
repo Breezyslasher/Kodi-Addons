@@ -1456,3 +1456,27 @@ scope nor a client. The token carries `.../auth/youtube` alone while that
 route wants `https://www.google.com/accounts/OAuthLogin`, so the open
 question is whether the client may request that scope at all; the
 device-code endpoint answers it without anyone signing in.
+
+### An initialisation segment has its own header
+
+On demand, the first response carries a MEDIA_HEADER per track with **no
+sequence number** and **field 8 set to 1**:
+
+    {1: 0, 2: 11, 3: 150, 4: 1786514309843222, 6: 0, 8: 1, 10: 32512, ...}
+    {1: 1, 2: 11, 3: 810, 4: 1786828651044300, 6: 0, 8: 1, 10: 424064, ...}
+
+Field 3 is the itag, field 1 the header id the MEDIA parts reference. A
+reader that requires a sequence number drops these silently, and then has
+no initialisation segment to serve.
+
+Live is different again: some renditions arrive with ftyp prepended to
+their first media (148, 161) and some arrive with no initialisation at all
+(317), which is consistent with the DASH path, where live has no init
+segment and ISA parses a moov out of the first media segment.
+
+### On demand starts at zero, not at the live edge
+
+ClientAbrState field 28 is MAX_SAFE_INTEGER for "the live edge". Sent for a
+recording it is past the end, and the server answers with the two
+initialisation headers and no media, indefinitely -- which is the correct
+answer to the question asked. On-demand sessions send 0.

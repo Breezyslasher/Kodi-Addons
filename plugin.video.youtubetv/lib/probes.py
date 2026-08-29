@@ -1045,9 +1045,12 @@ def _session_check(url, config, audio, video, client_name,
         return reply.content
 
     spec = api.client_spec(client_name)
+    # Lists, matching what playback opens a session with -- a probe that
+    # constructs it differently from the real path tests something else.
     session = sabr_session.Session(
-        url, config, _format_entry(audio) if audio else None,
-        _format_entry(video) if video else None,
+        url, config,
+        [_format_entry(audio)] if audio else [],
+        [_format_entry(video)] if video else [],
         client_name, spec["id"], api.effective_version(client_name), post)
 
     try:

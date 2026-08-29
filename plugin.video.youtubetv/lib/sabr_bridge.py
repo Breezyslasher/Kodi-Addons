@@ -23,7 +23,8 @@ import time
 import requests
 
 from . import (api, auth, kodiutils, license_proxy,
-               manifest as manifest_mod, nsig, sabr_session, widevine)
+               manifest as manifest_mod, mp4, nsig, sabr_session,
+               widevine)
 
 # Where the plugin leaves the session for the service to pick up. The two
 # are different processes -- the plugin builds the playback item and exits,
@@ -64,7 +65,8 @@ def forget(key):
 
 
 def set_context(url, config, audio, video, client_name, drm_params="",
-                candidates=None, max_height=1080):
+                candidates=None, max_height=1080, video_id="",
+                is_live=True):
     """Leave everything the service needs to open the session itself.
 
     The url must already have its n solved: the plugin has the player JS and
@@ -91,6 +93,8 @@ def set_context(url, config, audio, video, client_name, drm_params="",
         # ContentProtection with no init data under it. drmParams is
         # where the content id comes from, exactly as on the DASH path.
         "drm_params": drm_params,
+        "video_id": video_id,
+        "live": bool(is_live),
     })
     return key
 
@@ -116,62 +120,6 @@ def _post(url, body):
 
 def _entry(fmt):
     return (fmt["itag"], fmt.get("lastModified") or 0, fmt.get("xtags") or "")
-
-
-def _prime_with_fallback(key, session, formats, tries=4):
-    """Prime the session, replacing renditions the server refuses.
-
-    The refusal names the side that was wrong -- no_video_selected or
-    no_audio_selected -- so the offending track is dropped and the next
-    candidate tried, rather than the whole thing failing on one pick. The
-    first attempt asks for the best quality; each refusal steps down.
-    """
-    candidates = formats.get("candidates") or []
-    height = formats.get("max_height") or 1080
-    for attempt in range(tries):
-        try:
-            session.prime()
-            return session
-        except sabr_session.SabrError as exc:
-            reason = str(exc)
-            kodiutils.log("sabr bridge: the server refused this selection "
-                          "(%s), audio %s video %s"
-                          % (reason.strip(),
-                             (formats.get("audio") or {}).get("itag"),
-                             (formats.get("video") or {}).get("itag")))
-            kind = ("video/" if "no_video_selected" in reason
-                    else "audio/" if "no_audio_selected" in reason else "")
-            if not kind or not candidates:
-                kodiutils.log_error("sabr bridge: nothing to fall back to")
-                return None
-            side = "video" if kind == "video/" else "audio"
-            formats["refused"].append((formats.get(side) or {}).get("itag"))
-            options = alternatives(candidates, kind, height,
-                                   exclude=formats["refused"])
-            if not options:
-                kodiutils.log_error("sabr bridge: every %s rendition was "
-                                    "refused" % side)
-                return None
-            formats[side] = options[0]
-            kodiutils.log("sabr bridge: trying %s itag %s instead"
-                          % (side, options[0].get("itag")))
-            session = _rebuild(key, formats)
-    return None
-
-
-def _rebuild(key, formats):
-    """A fresh session on the same url, with the current selection."""
-    stored = kodiutils.read_json(CONTEXT_FILE, default={}) or {}
-    name = stored.get("client_name") or api.CLIENT_NAME
-    spec = api.client_spec(name)
-    session = sabr_session.Session(
-        stored["url"], stored.get("config") or "",
-        _entry(formats["audio"]) if formats.get("audio") else None,
-        _entry(formats["video"]) if formats.get("video") else None,
-        name, spec["id"], api.effective_version(name), _post)
-    with _lock:
-        _sessions[key] = (session, formats)
-    return session
 
 
 def alternatives(candidates, kind, max_height=1080, exclude=()):
@@ -201,14 +149,20 @@ def lookup(key):
     candidates = stored.get("candidates") or []
     max_height = stored.get("max_height") or 1080
     spec = api.client_spec(name)
+    # Every candidate, in both fields. The server chooses among them and
+    # names its choice in each MEDIA_HEADER; offering a single video format
+    # was answered sabr.no_video_selected for all twelve renditions in
+    # turn, including ones the cookie path plays in HD.
     session = sabr_session.Session(
         stored["url"], stored.get("config") or "",
-        _entry(audio) if audio else None,
-        _entry(video) if video else None,
-        name, spec["id"], api.effective_version(name), _post)
+        [_entry(f) for f in alternatives(candidates, "audio/")],
+        [_entry(f) for f in alternatives(candidates, "video/", max_height)],
+        name, spec["id"], api.effective_version(name), _post,
+        live=bool(stored.get("live", True)))
     formats = {"audio": audio, "video": video,
                "drm_params": stored.get("drm_params", ""),
                "candidates": candidates, "max_height": max_height,
+               "video_id": stored.get("video_id", ""),
                "refused": []}
     with _lock:
         _sessions[key] = (session, formats)
@@ -216,7 +170,8 @@ def lookup(key):
     return session, formats
 
 
-def _representation(fmt, base, key, itag, start_number):
+def _representation(fmt, base, key, itag, start_number,
+                    has_init=False):
     """One Representation, pointing its template at our own routes."""
     mime = (fmt.get("mimeType") or "")
     codecs = ""
@@ -234,13 +189,21 @@ def _representation(fmt, base, key, itag, start_number):
         'bandwidth="%(bandwidth)d"%(extra)s>'
         '<SegmentTemplate timescale="1000" duration="%(duration)d" '
         'startNumber="%(start)d" '
-        'initialization="%(base)s/sabr/init?id=%(key)s&amp;itag=%(itag)d&amp;k=%(secret)s" '
+        '%(init)s'
         'media="%(base)s/sabr/segment?id=%(key)s&amp;itag=%(itag)d&amp;n=$Number$&amp;k=%(secret)s"/>'
         '</Representation>') % {
             "itag": itag, "codecs": codecs, "extra": extra,
             "bandwidth": fmt.get("bitrate") or 500000,
             "duration": SEGMENT_MS, "start": start_number,
-            "base": base["url"], "key": key, "secret": base["secret"]}
+            "base": base["url"], "key": key, "secret": base["secret"],
+            # Only when one exists. Declaring an initialisation url the
+            # bridge cannot fill had ISA fetch it three times, take 503
+            # each time, and give up -- where omitting it lets ISA read the
+            # moov out of the first media segment, which is what it already
+            # does on the live DASH path.
+            "init": ('initialization="%s/sabr/init?id=%s&amp;itag=%d&amp;'
+                     'k=%s" ' % (base["url"], key, itag, base["secret"])
+                     if has_init else "")}
 
 
 def manifest(key, base):
@@ -258,40 +221,114 @@ def manifest(key, base):
     # socket on ISA with no response at all -- which it reported as
     # "CURLOpen failed" and I would have read as a network problem.
     if not session.segments:
-        session = _prime_with_fallback(key, session, formats)
-        if session is None:
+        try:
+            session.prime()
+        except sabr_session.SabrError as exc:
+            # With every candidate offered there is no narrower selection to
+            # retry -- a refusal here is about the request, not the pick.
+            kodiutils.log_error("sabr bridge: the endpoint refused the whole "
+                                "set: %s" % str(exc).strip())
             return ""
 
-    # One PSSH for the stream, built the way the DASH path builds it:
-    # from drmParams' content id, with no manifest url to read a
-    # source out of.
-    pssh = ""
+    # The PSSH, built the way the DASH path builds it: from drmParams'
+    # content id, with no manifest url to read a source out of.
+    #
+    # And with the track's own key id in it. ISA parsed the manifest, took
+    # the licence, and then said "No KID found in PSSH" and refused to open
+    # a session -- a PSSH naming no key is init data ISA cannot act on. The
+    # DASH path solves this by reading each Representation's tenc box; the
+    # bridge already holds every init segment in memory, so it reads the
+    # same box from the same bytes rather than guessing a track tier.
+    content = ""
     drm_params = formats.get("drm_params") or ""
     if drm_params:
         try:
-            pssh = widevine.build_pssh(
-                widevine.content_id(drm_params, ""), is_live=True)
+            content = widevine.content_id(drm_params, "")
         except Exception as exc:
-            kodiutils.log_error("sabr bridge: no pssh: %s" % exc)
+            kodiutils.log_error("sabr bridge: no content id: %s" % exc)
+
+    def protection_for(itag, kind):
+        if not content:
+            return ""
+        # The init first, then the first media segment. Live has no init of
+        # its own -- that is why the DASH path reads a moov out of the first
+        # media segment, and SABR live behaves the same way for some
+        # renditions: 317 arrived with no ftyp at all while 148 and 161
+        # arrived with one.
+        head = session.initialisation.get(itag) or b""
+        if not head:
+            held = session.segments.get(itag) or {}
+            if held:
+                head = held[min(held)]
+        # default_kid answers in hex; build_pssh wants the raw sixteen
+        # bytes, and handing it the hex string would name a key that does
+        # not exist while looking entirely plausible in the manifest.
+        raw = mp4.default_kid(head) if head else ""
+        kid = bytes.fromhex(raw) if len(raw) == 32 else None
+        uuid = ("%s-%s-%s-%s-%s" % (raw[0:8], raw[8:12], raw[12:16],
+                                    raw[16:20], raw[20:32])) if kid else ""
+        if not kid:
+            # Last resort: what the licence granted for this track's tier.
+            # A height-to-tier mapping is a guess the DASH path avoids by
+            # reading tenc, so it is only used when the media carries none.
+            known = license_proxy.key_ids_for(formats.get("video_id") or "")
+            tier = ("DRM_TRACK_TYPE_AUDIO" if kind == "audio"
+                    else "DRM_TRACK_TYPE_HD" if (fmt.get("height") or 0) >= 720
+                    else "DRM_TRACK_TYPE_SD")
+            raw = known.get(tier) or ""
+            kid = bytes.fromhex(raw) if len(raw) == 32 else None
+            uuid = ("%s-%s-%s-%s-%s" % (raw[0:8], raw[8:12], raw[12:16],
+                                        raw[16:20], raw[20:32])) if kid else ""
+            kodiutils.log("sabr bridge: itag %d carries no key id; using the "
+                          "licence's %s key: %s"
+                          % (itag, tier, raw[:8] + ".." if raw else "none"))
+        return manifest_mod._protection(
+            uuid, widevine.build_pssh(content, is_live=True, key_id=kid))
+
+    # What the server actually served, rather than what was asked for.
+    by_itag = {f.get("itag"): f for f in (formats.get("candidates") or [])}
+    served = []
+    for itag in sorted(session.segments):
+        fmt = by_itag.get(itag)
+        if not fmt:
+            kodiutils.log("sabr bridge: served itag %d is not in the player "
+                          "response, so it cannot be described" % itag)
+            continue
+        kind = "audio" if "audio/" in (fmt.get("mimeType") or "") else "video"
+        served.append((kind, fmt))
+    if not served:
+        kodiutils.log("sabr bridge: the session holds nothing to describe")
+        return ""
+    # Each track's own key, printed: on the cookie path a Representation
+    # carrying the wrong key id is not a decode error, it is ISA removing
+    # the audio track outright, and the manifest is where that is visible.
+    kodiutils.log("sabr bridge: key ids %s"
+                  % {fmt.get("itag"): (mp4.default_kid(
+                      session.initialisation.get(fmt["itag"])
+                      or (session.segments.get(fmt["itag"]) or {}).get(
+                          min(session.segments.get(fmt["itag"]) or {0}), b""))
+                      or "none")[:16] for _kind, fmt in served})
+    kodiutils.log("sabr bridge: initialisation held for %s"
+                  % (sorted(session.initialisation) or "nothing -- ISA will "
+                     "read a moov out of the first fragment"))
+    kodiutils.log("sabr bridge: the server chose %s"
+                  % ", ".join("%s %s" % (kind, fmt.get("itag"))
+                              for kind, fmt in served))
 
     sets = []
-    for kind, fmt in (("audio", formats.get("audio")),
-                      ("video", formats.get("video"))):
-        if not fmt:
-            continue
+    for kind, fmt in served:
         itag = fmt["itag"]
         start = session.first_sequence(itag)
         if not start:
-            kodiutils.log("sabr bridge: no segment held for itag %d yet, so "
-                          "the manifest has no number to start from" % itag)
-            return ""
+            continue
         mime = (fmt.get("mimeType") or "").split(";")[0]
         sets.append(
             '<AdaptationSet id="%d" contentType="%s" mimeType="%s" '
             'segmentAlignment="true" startWithSAP="1">%s%s</AdaptationSet>'
             % (len(sets), kind, mime,
-               manifest_mod._protection("", pssh),
-               _representation(fmt, base, key, itag, start)))
+               protection_for(itag, kind),
+               _representation(fmt, base, key, itag, start,
+                               bool(session.initialisation.get(itag)))))
 
     if not sets:
         return ""
@@ -388,7 +425,11 @@ def playable_url(player_response, max_height=1080):
 
     key = set_context(solved, config, audio, video,
                       _client_name(), streaming.get("drmParams", ""),
-                      candidates=formats, max_height=max_height)
+                      candidates=formats, max_height=max_height,
+                      video_id=(player_response.get("videoDetails") or {}
+                                ).get("videoId", ""),
+                      is_live=bool((player_response.get("videoDetails") or {}
+                                    ).get("isLive")))
     kodiutils.log("sabr bridge: session %s, audio itag %s, video itag %s (%sp)"
                   % (key, audio.get("itag"), video.get("itag"),
                      video.get("height")))
