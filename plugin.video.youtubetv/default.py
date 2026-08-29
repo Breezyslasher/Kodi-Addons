@@ -481,6 +481,8 @@ def _expand_sections(client, response, items):
     if not sections:
         return items
 
+    kodiutils.log("the page itself carried %d item(s) and defers %d shelf/ves"
+                  % (len(items), len(sections)))
     seen = {item.video_id or item.browse_id for item in items}
 
     def fetch(pair):
@@ -506,6 +508,7 @@ def _expand_sections(client, response, items):
             added += 1
         kodiutils.log("%s: %d of %d were new"
                       % (label or "shelf", added, len(found)))
+    kodiutils.log("listing %d item(s) in all" % len(items))
     return _in_episode_order(items)
 
 

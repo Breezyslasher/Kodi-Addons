@@ -289,6 +289,31 @@ def _seconds_ms(node, field):
         return 0
 
 
+def _selector_labels(selectors):
+    """The names a page gives its own deferred shelves, in order.
+
+    The web client wraps each in a dropdownItemRenderer; the TV client does
+    not, and asking for that name by itself logged ten shelves called
+    "shelf". Take any renderer under the selector block that carries a label
+    or a title, which is what a selector is, rather than one renderer name.
+    """
+    labels = []
+    def visit(node):
+        if isinstance(node, dict):
+            for name, value in node.items():
+                if (name.endswith("Renderer") and isinstance(value, dict)):
+                    label = text(value.get("label")) or text(value.get("title"))
+                    if label:
+                        labels.append(label)
+                        continue
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+    visit(selectors)
+    return labels
+
+
 def section_continuations(response):
     """(label, token) for every deferred shelf behind a page's own selector.
 
@@ -309,10 +334,7 @@ def section_continuations(response):
     for section in walk(response, "unpluggedSelectableSectionRenderer"):
         if not isinstance(section, dict):
             continue
-        labels = [text(item.get("label"))
-                  for item in walk(section.get("selectors"),
-                                   "dropdownItemRenderer")
-                  if isinstance(item, dict)]
+        labels = _selector_labels(section.get("selectors"))
         for index, contents in enumerate(section.get("contents") or []):
             token = first(contents, "continuation")
             if not isinstance(token, str) or not token:
