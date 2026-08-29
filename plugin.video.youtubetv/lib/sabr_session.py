@@ -22,9 +22,10 @@ What the conversation is, all of it measured rather than assumed:
 * An empty response means "at the live edge, nothing yet" -- not the end.
 """
 
+import threading
 import time
 
-from . import kodiutils, sabr
+from . import kodiutils, mp4, sabr
 
 # One segment's worth, for the duration a BufferedRange claims.
 SEGMENT_MS = 5000
@@ -90,17 +91,31 @@ class Session(object):
     """One playback session against one serverAbrStreamingUrl."""
 
     def __init__(self, url, config, audio, video, client_name, client_id,
-                 client_version, post):
+                 client_version, post, live=True):
         self.url = url
         self.config = config
-        self.audio = audio
-        self.video = video
+        # Lists of (itag, lastModified, xtags), not one each. Fields 16 and
+        # 17 are the formats the client can play and the server chooses
+        # among them: the browser offers two audio and six video in its
+        # first request and the response names the pick. A single video
+        # format was answered sabr.no_video_selected for all twelve
+        # renditions in turn, HD ones the cookie path plays included.
+        self.audio = list(audio or [])
+        self.video = list(video or [])
+        self.entries = {entry[0]: entry
+                        for entry in self.audio + self.video}
         self.post = post
         self.info = sabr.client_info(client_id, client_version)
         self.client_name = client_name
 
         self.echo = b""
-        self.position = sabr.LIVE_EDGE
+        # MAX_SAFE_INTEGER means "the live edge", which is past the end of a
+        # recording. Asked that way, an on-demand title answered with its
+        # two initialisation headers and no media at all, over and over,
+        # until the session gave up holding nothing -- correctly, since
+        # there is nothing after the end.
+        self.live = live
+        self.position = sabr.LIVE_EDGE if live else 0
         self.started = time.time()
         # itag -> {sequence: start time}, everything held, because the
         # server backfills N-1 after answering the edge with N and a claim
@@ -110,28 +125,57 @@ class Session(object):
         self.segments = {}
         # header id -> (itag, sequence, buffer)
         self._open = {}
+        self._announced = set()
+        self._boxed = {}
+        # ISA reads audio and video on separate threads and both drive this
+        # one session. Two fetches at once interleave their MEDIA parts
+        # through the same _open map and the same echo, so a segment can be
+        # assembled from two responses or lost entirely -- which is what
+        # "gave up waiting for 3 of 150" looked like from the outside.
+        self._lock = threading.Lock()
 
     # -- the conversation ------------------------------------------------
 
     def _entries(self):
-        audio = [self.audio] if self.audio else []
-        video = [self.video] if self.video else []
-        return audio, video
+        return self.audio, self.video
 
     def _buffered(self):
+        """What we hold, with the duration measured rather than assumed.
+
+        A BufferedRange says how much time it covers, and the length was a
+        flat five seconds per segment -- a constant taken from live video.
+        Audio segments are not that length, so the claim overstated what we
+        held, the server counted the next one as already delivered, and it
+        never arrived: "gave up waiting for 3 of 150", over and over, while
+        video ran fine.
+
+        The start times of the segments actually held give the real spacing,
+        so the claim is built from those and only falls back to the constant
+        for a track holding a single segment.
+        """
         claims = []
         for itag, seen in sorted(self.held.items()):
-            first, last = min(seen), max(seen)
-            entry = self.audio if self.audio and self.audio[0] == itag else self.video
+            entry = self.entries.get(itag)
             if not entry:
                 continue
+            first, last = min(seen), max(seen)
+            starts = sorted(seen.values())
+            if len(starts) > 1:
+                span = starts[-1] - starts[0]
+                one = span // (len(starts) - 1)
+                covered = span + one
+            else:
+                covered = SEGMENT_MS
             claims.append(sabr.buffered_range(
-                entry, seen[first], (last - first + 1) * SEGMENT_MS,
-                first, last))
+                entry, seen[first], covered, first, last))
         return claims
 
     def fetch(self):
-        """One exchange. Returns the sequences that completed."""
+        """One exchange, one at a time. Returns the sequences that completed."""
+        with self._lock:
+            return self._fetch()
+
+    def _fetch(self):
         audio, video = self._entries()
         body = sabr.build_request(
             self.config, audio=audio, video=video,
@@ -161,19 +205,50 @@ class Session(object):
                 for number, _wire, value in sabr.fields(payload):
                     if number == 7 and isinstance(value, bytes):
                         self.echo = value
-        if self.position == sabr.LIVE_EDGE and self.held:
-            self.position = min(min(seen.values())
-                                for seen in self.held.values())
+        # Where the player has got to. It was set once, from the first
+        # response, and never moved -- so every later request asked the
+        # same question and the server, having already answered it, sent
+        # nothing more. ISA then took 404 after 404 for segment 3 and gave
+        # up nine seconds in. The captured requests move it: field 28 reads
+        # 16239642500, then 16286357588, across one session.
+        newest = [max(seen.values()) for seen in self.held.values() if seen]
+        if newest:
+            self.position = min(newest)
         return done
 
     def _open_header(self, payload):
+        """Open a track's part, which may be a segment or its initialisation.
+
+        A header with no sequence number is not a broken header: it is the
+        initialisation segment, sent on its own. Requiring a sequence
+        dropped it silently, so /sabr/init had nothing to answer with and
+        ISA reported "Download failed, no data" three times before giving
+        up. Where the server prepends the initialisation to the first media
+        instead -- which it also does -- split_initialisation still finds
+        it, so both shapes are handled.
+        """
         got = dict((n, v) for n, _w, v in sabr.fields(payload))
         header_id, itag = got.get(1), got.get(3)
         sequence, start = got.get(9), got.get(11)
-        if itag is None or sequence is None:
+        if itag is None:
             return
+        if sequence is None:
+            # Field 8 is 1 on these and field 9 absent, on both tracks of an
+            # on-demand title:
+            #   {1: 0, 2: 11, 3: 150, 4: ..., 6: 0, 8: 1, 10: 32512, ...}
+            # Logged once per itag rather than per response, since asking
+            # repeatedly used to print it thirty times in one playback.
+            if itag not in self._announced:
+                self._announced.add(itag)
+                kodiutils.log("sabr session: initialisation header for itag "
+                              "%s: %s"
+                              % (itag, {n: (len(v) if isinstance(v, bytes)
+                                            else v)
+                                        for n, _w, v in sabr.fields(payload)}))
+        # Whatever the server chose from the sets we offered -- the
+        # manifest is built from what arrives, not from what we hoped for.
         self._open[header_id] = [itag, sequence, bytearray()]
-        if start is not None:
+        if start is not None and sequence is not None:
             self.held.setdefault(itag, {})[sequence] = start
 
     def _append(self, payload):
@@ -192,7 +267,29 @@ class Session(object):
         head, media = split_initialisation(data)
         if head:
             self.initialisation.setdefault(itag, head)
-        self.segments.setdefault(itag, {})[sequence] = media or data
+        if sequence is None:
+            # An initialisation sent on its own: no moof to split at, so the
+            # whole part is the initialisation.
+            if not head and data:
+                self.initialisation.setdefault(itag, data)
+            return None
+        body = media or data
+        self.segments.setdefault(itag, {})[sequence] = body
+        # The boxes of the first two fragments of each track, once. On the
+        # DASH path fragment 0 of an audio track is a clear lead with no
+        # saiz/saio and fragment 1 carries them; a fragment the bridge has
+        # assembled wrongly would differ here, and "Decrypt Sample returns
+        # failure" is otherwise indistinguishable from a key problem.
+        seen = self._boxed.setdefault(itag, 0)
+        if seen < 2:
+            self._boxed[itag] = seen + 1
+            try:
+                kodiutils.log("sabr session: itag %s fragment %s (%d bytes): %s"
+                              % (itag, sequence, len(body),
+                                 " ".join(mp4.box_tree(body))))
+            except Exception as exc:
+                kodiutils.log("sabr session: could not walk itag %s: %s"
+                              % (itag, exc))
         return (itag, sequence)
 
     # -- what the bridge asks for ----------------------------------------
@@ -207,7 +304,12 @@ class Session(object):
         return self.initialisation.get(itag, b"")
 
     def segment(self, itag, sequence):
-        """Segment `sequence` of `itag`, pumping the session until it lands."""
+        """Segment `sequence` of `itag`, pumping the session until it lands.
+
+        Another thread may be pumping for its own track and land this one on
+        the way, so the cache is checked before every exchange rather than
+        only before the first.
+        """
         for attempt in range(PUMP_LIMIT):
             held = self.segments.get(itag) or {}
             if sequence in held:
@@ -221,8 +323,15 @@ class Session(object):
             if not self.fetch() and attempt:
                 # Nothing came back: the live edge has not produced it yet.
                 time.sleep(1)
-        kodiutils.log("sabr session: gave up waiting for %d of %d"
-                      % (sequence, itag))
+            if sequence in (self.segments.get(itag) or {}):
+                return self.segments[itag][sequence]
+        # What the session actually holds, so a stall says whether the
+        # segment never arrived or was never asked for correctly.
+        held = sorted(self.segments.get(itag) or {})
+        kodiutils.log("sabr session: gave up waiting for %d of %d; holds %s"
+                      % (sequence, itag,
+                         "%s..%s (%d)" % (held[0], held[-1], len(held))
+                         if held else "nothing"))
         return b""
 
     def prime(self):

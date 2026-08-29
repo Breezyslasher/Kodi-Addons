@@ -243,12 +243,17 @@ class _Handler(BaseHTTPRequestHandler):
         itag = int((query.get("itag") or ["0"])[0] or 0)
         try:
             if path == "/sabr/init":
-                self._send(200, session.initialisation_for(itag), "video/mp4")
+                head = session.initialisation_for(itag)
+                # An empty 200 is a valid, empty segment as far as ISA is
+                # concerned. 503 says "not yet" and it retries.
+                self._send(200 if head else 503, head, "video/mp4")
                 return
             if path == "/sabr/segment":
                 number = int((query.get("n") or ["0"])[0] or 0)
                 body = session.segment(itag, number)
-                self._send(200 if body else 404, body, "video/mp4")
+                # 503, not an empty 200 and not 404: ISA retries a 503 and
+                # treats the other two as a segment that is broken or gone.
+                self._send(200 if body else 503, body, "video/mp4")
                 return
         except sabr_session.SabrError as exc:
             kodiutils.log_error("sabr bridge: %s" % exc)
