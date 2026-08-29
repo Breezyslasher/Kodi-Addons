@@ -60,7 +60,8 @@ trun, _ = mp4.find_box(frag, [b"moof", b"traf", b"trun"])
 check("trun carries the sample sizes", mp4._trun_sample_sizes(frag, trun), SAMPLES)
 before_samples = frag[moof + mp4._trun_data_offset(frag, trun)[1]:]
 
-out = mp4.explicit_subsamples(frag)
+out, why = mp4.explicit_subsamples(frag)
+check("it gives no reason to decline", why, "")
 check("it was rewritten", out != frag, True)
 check("saiz is gone", mp4.find_box(out, [b"moof", b"traf", b"saiz"])[0], None)
 check("saio is gone", mp4.find_box(out, [b"moof", b"traf", b"saio"])[0], None)
@@ -99,7 +100,9 @@ def walks(data):
 check("top-level boxes walk cleanly", walks(out), True)
 tr, tr_size = mp4.find_box(out, [b"moof", b"traf"])
 check("traf's children walk cleanly", walks(out[tr + 8:tr + tr_size]), True)
-check("running it twice changes nothing", mp4.explicit_subsamples(out), out)
+again, why2 = mp4.explicit_subsamples(out)
+check("running it twice changes nothing", again, out)
+check("and says why", why2, "it already carries a senc")
 
 print("failures:", fails)
 sys.exit(1 if fails else 0)

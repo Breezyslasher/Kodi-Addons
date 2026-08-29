@@ -465,41 +465,53 @@ def explicit_subsamples(fragment):
     way: one subsample per sample, zero clear bytes, the whole sample
     encrypted. The ciphertext is untouched -- only how it is described.
 
-    Returns the fragment unchanged if there is nothing to do or anything is
-    not as expected, because serving a fragment we have half rewritten is
-    worse than serving the original.
+    Returns ``(data, reason)``. The reason is empty when the fragment was
+    rewritten and says why not otherwise -- a fragment that silently comes
+    back unchanged is indistinguishable from one that was rewritten, and on
+    a stream where the audio is then noise that is the first thing you need
+    to know.
+
+    Anything unexpected returns the original: serving a fragment we have
+    half rewritten is worse than serving the one we were given.
     """
     moof, moof_size = find_box(fragment, [b"moof"])
     if moof is None:
-        return fragment
+        return fragment, "no moof"
     traf, traf_size = find_box(fragment, [b"moof", b"traf"])
     if traf is None:
-        return fragment
+        return fragment, "no traf"
     saiz, saiz_size = find_box(fragment, [b"moof", b"traf", b"saiz"])
     saio, saio_size = find_box(fragment, [b"moof", b"traf", b"saio"])
     senc, _senc_size = find_box(fragment, [b"moof", b"traf", b"senc"])
     trun, _trun_size = find_box(fragment, [b"moof", b"traf", b"trun"])
-    if saiz is None or saio is None or trun is None or senc is not None:
-        return fragment
+    if senc is not None:
+        return fragment, "it already carries a senc"
+    if saiz is None or saio is None:
+        return fragment, "no saiz/saio -- the fragment is not encrypted"
+    if trun is None:
+        return fragment, "no trun"
 
     default, count, sizes = _saiz_sizes(fragment, saiz)
-    if not default or sizes or not count:
+    if not count:
+        return fragment, "saiz counts no samples"
+    if not default or sizes:
         # Per-sample aux sizes mean subsample entries are already there.
-        return fragment
+        return fragment, "the aux data already varies per sample"
     iv_size = default
     if iv_size not in (8, 16):
-        return fragment
+        return fragment, "an aux entry is %d bytes, not an IV" % iv_size
 
     offsets = _saio_offsets(fragment, saio)
     if len(offsets) != 1:
-        return fragment
+        return fragment, "saio names %d offsets, not one" % len(offsets)
     aux = moof + offsets[0]
     if aux + count * iv_size > len(fragment):
-        return fragment
+        return fragment, "the aux data runs past the end of the fragment"
 
     sample_sizes = _trun_sample_sizes(fragment, trun)
     if len(sample_sizes) != count:
-        return fragment
+        return fragment, ("trun gives %d sample sizes for %d encrypted "
+                          "samples" % (len(sample_sizes), count))
 
     # senc: full box, flags bit 1 says subsample data follows each IV.
     body = bytearray()
@@ -527,7 +539,7 @@ def explicit_subsamples(fragment):
     cursor = traf + 8
     for start, size in sorted([(saiz, saiz_size), (saio, saio_size)]):
         if start < cursor:
-            return fragment
+            return fragment, "saiz and saio overlap"
         kept += fragment[cursor:start]
         cursor = start + size
     kept += fragment[cursor:traf + traf_size]
@@ -544,8 +556,8 @@ def explicit_subsamples(fragment):
     # Re-find trun in the rebuilt moof and correct its data offset.
     new_trun, _ = find_box(bytes(rebuilt), [b"moof", b"traf", b"trun"])
     if new_trun is None:
-        return fragment
+        return fragment, "trun went missing in the rebuild"
     field, value = _trun_data_offset(bytes(rebuilt), new_trun)
     if field is not None:
         rebuilt[field:field + 4] = ((value + delta) & 0xFFFFFFFF).to_bytes(4, "big")
-    return bytes(rebuilt)
+    return bytes(rebuilt), ""
