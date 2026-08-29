@@ -16,3 +16,7 @@ Run them all:
     for f in tools/checks/*.py; do python3 "$f" || echo "FAILED: $f"; done
 
 They need no network and no credentials.
+
+`test_credentials.py` covers where the Google API project comes from: this
+addon's settings, then plugin.video.youtube's if that addon is installed, then
+one baked into the build -- and that half a pair is skipped rather than sent.

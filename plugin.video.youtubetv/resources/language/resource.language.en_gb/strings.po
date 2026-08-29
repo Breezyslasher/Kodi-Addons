@@ -153,7 +153,7 @@ msgid "Google API client ID"
 msgstr ""
 
 msgctxt "#30054"
-msgid "Required. The device-code sign-in is the only way in, and it needs your own Google API project -- the same client ID and secret the YouTube add-on asks for; none is shipped with this add-on. Create one at console.cloud.google.com, enable the YouTube Data API v3, and make an OAuth client ID of type \"TVs and Limited Input devices\"."
+msgid "Signing in needs a Google API project. Three places are tried in order: these two settings, then the YouTube add-on's own project if that add-on is set up (it is the same pair, and this add-on spends none of its quota -- the calls go to tv.youtube.com with a token, never to googleapis.com), then one built into the build. Fill these in only if none of that applies: create a project at console.cloud.google.com, enable the YouTube Data API v3, and make an OAuth client ID of type \"TVs and Limited Input devices\"."
 msgstr ""
 
 msgctxt "#30055"
