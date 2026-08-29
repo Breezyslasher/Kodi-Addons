@@ -236,7 +236,7 @@ def _verify_bearer():
     reported together; the TV ones are the ones OAuth would plausibly suit.
     """
     try:
-        client = api.Api()
+        client = api.Api(bearer=True)
     except auth.AuthError as exc:
         return False, str(exc), ""
 
@@ -291,6 +291,14 @@ def route_root():
     add_dir("Guide", plot="What is on across the next few hours.",
             action="guide")
     add_dir("Search", action="search")
+    # Offered while already signed in, not only before. Signing out is the
+    # only other way to reach this menu, and it clears both credentials --
+    # so re-importing a refreshed cookie jar meant throwing away a working
+    # token, and holding a jar and a token at once was impossible.
+    add_dir("Sign in again", plot="Add or replace a credential. A cookie jar "
+                                  "and a code sign-in can be held at once; "
+                                  "the jar is used for playback.",
+            action="signin")
     add_dir("Sign out", action="signout")
     finish()
 

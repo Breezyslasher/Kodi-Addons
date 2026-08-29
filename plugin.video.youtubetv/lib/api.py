@@ -115,7 +115,15 @@ UNPLUGGED_CLIENTS = {
     },
     "TVHTML5_UNPLUGGED": {
         "id": "65",
-        "version": "6.36",
+        # Not 6.36. That value was one version copied across three clients in
+        # this table, and it cost more than tidiness: asked at 6.36 the TV
+        # client is served a serverAbrStreamingUrl and NO ustreamer config,
+        # so SABR answers sabr.malformed_config and the whole token path
+        # reads as closed. Asked at this version, the same token on the same
+        # account is handed a 2332-character config and useServerDrivenAbr.
+        # Read off the TV shell page, and confirmed by sweeping the two
+        # against each other on one run.
+        "version": "7.20260826.15.00",
         "context": {
             "platform": "TV",
             "userAgent": ("Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.master"
@@ -511,7 +519,7 @@ def context(location=True, client_name=None):
 
 
 class Api(object):
-    def __init__(self, cookies=None):
+    def __init__(self, cookies=None, bearer=None):
         # A bearer token stands in for the cookie jar when there is one. The
         # jar is still preferred: it is what every captured request uses, and
         # OAuth here is an experiment that reports its own result rather than
@@ -521,7 +529,18 @@ class Api(object):
         # player's, so it claims to be the web player; a bearer token is not,
         # and measurably cannot be. See below.
         self.client_name = CLIENT_NAME
-        if cookies:
+        if bearer:
+            # Asked for by name, because the jar wins by default and a caller
+            # verifying a token would otherwise verify the cookies instead --
+            # and then store the identity the *cookies* answered as against
+            # the token, which is an identity the token cannot use.
+            from . import oauth
+            self.bearer = bearer if isinstance(bearer, str) else oauth.access_token()
+            if not self.bearer:
+                raise auth.AuthError("no bearer token stored")
+            self.cookies = {}
+            self.client_name = oauth.load().get("client_name") or OAUTH_CLIENT_NAME
+        elif cookies:
             self.cookies = cookies
         else:
             try:

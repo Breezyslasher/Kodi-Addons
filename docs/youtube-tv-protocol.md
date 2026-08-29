@@ -1248,3 +1248,118 @@ What this does not yet establish is whether `player` returns a DASH manifest
 for a `TVHTML5_UNPLUGGED` bearer session, or only a SABR endpoint. Browsing
 is proven; playback is not, and the addon's client survey exists to answer
 exactly that.
+
+## SABR serves media, and the request shape that gets it
+
+The SABR endpoint is not a wall. Asked correctly, on a cookie session, it
+answered **HTTP 200 with 142,062 bytes**, of which 141,369 were media:
+
+    STREAM_PROTECTION_STATUS   2 bytes
+    PLAYBACK_START_POLICY      12 bytes
+    LIVE_METADATA              42 bytes
+    NEXT_REQUEST_POLICY        54 bytes
+    MEDIA_HEADER               91 bytes      <- audio
+    MEDIA_HEADER               147 bytes     <- video
+    MEDIA_END                  1 byte  (x2)
+    MEDIA (total)              141,369 bytes
+
+Getting there took three corrections, each of which had been a guess:
+
+**Fields 16 and 17 are the audio and the video selection.** They were built
+as "the format I want" (16) and "the others I know about" (17). Every
+captured body puts audio in 16 and video in 17, one repeated entry per
+selected track; the browser sends two 16s, primary and secondary.
+
+**An audio FormatId carries xtags, and must.** YouTube TV lists itag 148
+twice and itag 149 twice -- `acont=primary` and `acont=secondary` -- and
+xtags is the only field distinguishing them:
+
+    f16 itag=149 lmt=0 xtags='ChAKBWFjb250EgdwcmltYXJ5'    -> {1:{1:"acont",2:"primary"}}
+    f16 itag=149 lmt=0 xtags='ChIKBWFjb250EglzZWNvbmRhcnk' -> {1:{1:"acont",2:"secondary"}}
+    f17 itag=279 lmt=0 xtags=''
+
+It travels as the base64 string the player response carries, verbatim, not
+decoded. A selection without it names a track the server cannot resolve,
+and the answer is a 76-byte UMP body whose SABR_ERROR reads
+`sabr.no_audio_selected`.
+
+**ClientAbrState field 29 is 2.** It was 3 here, beside a comment of mine
+reading "media type: audio+video". The captured request that was served
+15 MB carries 2.
+
+`lastModified` is absent from every YouTube TV format and the captured
+requests send 0 for it, so the field is omitted.
+
+### What the endpoint says when it is unhappy
+
+Its errors are specific and worth reading rather than guessing at:
+
+| body | meaning |
+| --- | --- |
+| `sabr.malformed_config` (31 bytes) | field 5 missing or unusable -- the config is required |
+| `sabr.no_audio_selected` (76 bytes) | field 16 named no resolvable audio track |
+
+Both arrive as **HTTP 200** with `Content-Type: application/vnd.yt-ump`. A
+200 from this endpoint means "I parsed you", not "here is your media".
+
+### The ustreamer config is per session and cannot be baked in
+
+Field 5 is `playerConfig.mediaCommonConfig.mediaUstreamerRequestConfig
+.videoPlaybackUstreamerConfig`, base64url-decoded. Three captures:
+
+| capture | field 5 | sha1 |
+| --- | --- | --- |
+| 0a16582a | 1852 B | `dc0bdbc4…` |
+| 3443c249 | 1334 B | `02ced566…` |
+| b204e270 | 1762 B | `14a5b7f8…` |
+
+Different every time. It has to come back from a player response.
+
+### Which sessions are given one
+
+| | cookie jar | bearer token |
+| --- | --- | --- |
+| WEB_UNPLUGGED | OK, dash=True, **config ~2340 chars**, abr=True | HTTP 400 |
+| TVHTML5_UNPLUGGED @ 7.20260826.15.00 | HTTP 400 | OK, sabr=True, **config 2332**, abr=True |
+| TVHTML5_UNPLUGGED @ 6.36 | HTTP 400 | OK, sabr=True, **config NONE**, abr=False |
+| ANDROID / IOS_UNPLUGGED | HTTP 400 | HTTP 400 |
+| TV_UNPLUGGED_ANDROID | HTTP 403 | HTTP 403 |
+| TV_UNPLUGGED_CAST | HTTP 404 | HTTP 404 |
+
+**The client version decides whether the config is served.** Five separate
+runs concluded "a token session is never handed a config", and all five
+were measured at 6.36 -- a value copied across three clients in the table
+and never checked. Swept against 7.20260826.15.00 on one run, same token,
+same account, same video: the older version is served no config and
+`useServerDrivenAbr` unset, the newer one a 2332-character config with it
+set. Nothing else differed.
+
+The table still cannot separate identity from credential -- each credential
+reaches exactly one client -- but it no longer needs to. A bearer token
+holds a config, and `bearer-as-web` is closed for other reasons: the web
+identity refuses a token with the full context, without
+visitorData/rolloutToken/configInfo, and with a bare client name and
+version alike. None of the 400s carry `error.details`.
+
+### Cookie-free playback, measured end to end
+
+One run, one video, both credentials, each asked as the identity it is
+accepted as:
+
+| | cookie jar / WEB_UNPLUGGED | bearer token / TVHTML5_UNPLUGGED |
+| --- | --- | --- |
+| player | dash=True sabr=True, 25 formats, config 2340 | dash=False sabr=True, 25 formats, config 2332 |
+| get_drm_license | 400 -- credential accepted | 400 -- credential accepted |
+| SABR, n as minted | 403, 0 bytes | 403, 0 bytes |
+| SABR, n solved | **200, 142,061 bytes** | **200, 142,057 bytes** |
+| of which media | 141,369 | 141,369 |
+
+Both arms return two MEDIA_HEADERs, MEDIA_END twice, LIVE_METADATA and a
+NEXT_REQUEST_POLICY. Nothing in the media path needs a cookie: the token
+session is served the same bytes.
+
+Two things this does not yet prove. The licence exchange has only ever been
+tested with a placeholder challenge -- a 400 means the credential was
+accepted, not that a real Widevine exchange completes on a token. And
+InputStream Adaptive cannot speak SABR, so playing this requires a bridge
+that serves it synthetic DASH.
