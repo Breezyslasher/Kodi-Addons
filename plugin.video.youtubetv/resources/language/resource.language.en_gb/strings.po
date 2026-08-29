@@ -203,3 +203,23 @@ msgstr ""
 msgctxt "#30066"
 msgid "Nothing in this addon needs a JavaScript runtime any more: n is solved by the bundled Python interpreter, and the proof-of-origin token is minted by running BotGuard's own interpreter inside a JavaScript engine written in Python. Turn this on to skip the mint and compute a token arithmetically instead -- it costs nothing and works while YouTube reports StreamProtectionStatus 2, but it is good for thirty minutes rather than twelve hours. It also stops n falling back to a runtime if one happens to be installed, so this is the switch for seeing exactly what a box with Python and nothing else does."
 msgstr ""
+
+msgctxt "#30067"
+msgid "Least quality to accept on the bridge"
+msgstr ""
+
+msgctxt "#30068"
+msgid "SABR chooses the rendition server-side, and left to itself it has chosen 854x480 every time -- with the licence granting 2160p, the height cap asking for 2160p and nine renditions offered. It is not reading the cap as a request. What it cannot do is serve a rendition it was never offered, so this takes the short ones off the menu. If the endpoint refuses the smaller menu the whole set is offered again and playback carries on at whatever it picks, and a title with nothing that tall is left alone."
+msgstr ""
+
+msgctxt "#30069"
+msgid "Whatever the server picks"
+msgstr ""
+
+msgctxt "#30070"
+msgid "720p or better"
+msgstr ""
+
+msgctxt "#30071"
+msgid "1080p or better"
+msgstr ""

@@ -89,6 +89,18 @@
 					<constraints><allowempty>true</allowempty></constraints>
 					<control type="edit" format="string"/>
 				</setting>
+				<setting id="sabr_floor" type="integer" label="30067" help="30068">
+					<level>1</level>
+					<default>0</default>
+					<constraints>
+						<options>
+							<option label="30069">0</option>
+							<option label="30070">720</option>
+							<option label="30071">1080</option>
+						</options>
+					</constraints>
+					<control type="list" format="string"/>
+				</setting>
 				<setting id="no_js_runtime" type="boolean" label="30065" help="30066">
 					<level>2</level>
 					<default>false</default>
