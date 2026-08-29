@@ -275,6 +275,16 @@ def lookup(key):
                          .rstrip('"').split(".")[0],
                          fmt.get("width"), fmt.get("height"),
                          fmt.get("drmTrackType") or "?"))
+    # The audio candidates too. They were left out because the video offer was
+    # the thing being debugged, and then a live channel served AC-3 and there
+    # was no way to tell from the log whether it had anything else.
+    for fmt in alternatives(candidates, "audio/"):
+        kodiutils.log("sabr bridge:   itag %-4s %-9s %-11s %s"
+                      % (fmt.get("itag"),
+                         (fmt.get("mimeType") or "").split('codecs="')[-1]
+                         .rstrip('"').split(".")[0],
+                         fmt.get("audioQuality", "?"),
+                         fmt.get("drmTrackType") or "?"))
     # No filtering by tier. initialAuthorizedDrmTrackTypes reads AUDIO,SD
     # and the browser's own capture is served itags 814, 813 and 553 --
     # 1920x1080, HD tier -- on a session whose player response said exactly

@@ -138,6 +138,7 @@ class Session(object):
         # encryption rewritten as one explicit subsample per sample. The
         # ciphertext is untouched. See mp4.explicit_subsamples.
         self.respell = set()
+        self.respell_said = {}
         self.post = post
         self.info = sabr.client_info(client_id, client_version)
         self.client_name = client_name
@@ -428,9 +429,17 @@ class Session(object):
         the way, so the cache is checked before every exchange rather than
         only before the first.
         """
-        if itag in self.respell:
-            return mp4.explicit_subsamples(self._segment(itag, sequence))
-        return self._segment(itag, sequence)
+        if itag not in self.respell:
+            return self._segment(itag, sequence)
+        data, why = mp4.explicit_subsamples(self._segment(itag, sequence))
+        if why and self.respell_said.get(itag) != why:
+            # Once per reason per track: on live the answer can change part
+            # way through, and a fragment served unrewritten is exactly the
+            # one that will be noise on ISA 21.
+            self.respell_said[itag] = why
+            kodiutils.log("sabr session: itag %s not re-signalled -- %s"
+                          % (itag, why))
+        return data
 
     def _segment(self, itag, sequence):
         for attempt in range(PUMP_LIMIT):
