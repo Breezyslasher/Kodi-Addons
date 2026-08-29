@@ -53,6 +53,18 @@ UA = ("Mozilla/5.0 (X11; Linux x86_64; rv:154.0) "
 PLAYER_PARAMS = "2AEA"
 
 EPG_BROWSE_ID = "FEunplugged_epg"
+
+# The Library is not asked for by browseId. The web client sends it as a
+# continuation token, and a token is what the capture shows going out, so a
+# token is what is sent here. It is a two-field protobuf -- field 80226972
+# wrapping field 2, the browse id -- which is why "FEunplugged_library" is
+# legible inside the base64.
+LIBRARY_CONTINUATION = "4qmFsgIVEhNGRXVucGx1Z2dlZF9saWJyYXJ5"
+
+# Home the same way. The trailing "%3D" is percent-encoded base64 padding and
+# is sent exactly as the capture shows it: the token is opaque to us, and
+# decoding it to re-encode it is a way to break it.
+HOME_CONTINUATION = "4qmFsgIUEhBGRXVucGx1Z2dlZF9ob21lGgA%3D"
 TIMEOUT = 30
 
 # YouTube TV is one surface of InnerTube with several client identities. Only
@@ -801,6 +813,14 @@ class Api(object):
 
     def continuation(self, token):
         return self.call("browse", {"continuation": token})
+
+    def library(self):
+        """Recordings, purchases and what is scheduled to record."""
+        return self.continuation(LIBRARY_CONTINUATION)
+
+    def home(self):
+        """The front page: resume watching, top picks, and the genre rows."""
+        return self.continuation(HOME_CONTINUATION)
 
     def browse(self, browse_id, params=None):
         body = {"browseId": browse_id}

@@ -126,6 +126,126 @@ import cookies from a browser. Scripted Google password login is not viable.
 
 ## Endpoints
 
+### Home and Library — `POST .../browse` with a `continuation`
+
+Neither is asked for by `browseId`. The web client wraps the browse id in a
+continuation token and sends *that*, and a token is what the 2026-08-29
+captures show going out, so a token is what the addon sends. Both are the same
+two-field protobuf — field 80226972 wrapping field 2, the id — which is why the
+id is legible in the base64:
+
+| Page    | Token                                    | Decodes to                          |
+| ------- | ---------------------------------------- | ----------------------------------- |
+| Home    | `4qmFsgIUEhBGRXVucGx1Z2dlZF9ob21lGgA%3D` | `\xe2\xa9\x85\xb2\x02\x14\x12\x10FEunplugged_home\x1a\x00` |
+| Library | `4qmFsgIVEhNGRXVucGx1Z2dlZF9saWJyYXJ5`   | `\xe2\xa9\x85\xb2\x02\x15\x12\x13FEunplugged_library` |
+
+The trailing `%3D` on the Home token is percent-encoded base64 padding, sent
+verbatim. The token is opaque; decoding it to re-encode it is a way to break it.
+
+The **Live** tab is not a third page: it is `FEunplugged_epg`, the same guide
+the addon already fetches. The 19:20 capture shows the tab issuing exactly the
+guide request and then paginating it — `maxAiringsPerStation: 24`,
+`initialEpgFetchDurationMs` about six hours — so nothing new was needed for it.
+Its one extra control is a two-entry dropdown, "Default" and "Custom", which
+selects the account's own channel ordering.
+
+#### Home is a page of rows, four at a time
+
+`FEunplugged_home` answers with a `sectionListContinuation` holding four
+`unpluggedHomeShelfRenderer` rows — "Top picks for you", "Resume watching",
+"Shows", "Add to membership" — and hangs the other twenty behind **one token on
+the section list itself**. Following it gives 22 named rows and 606 items in
+the 19:16 capture.
+
+That token is the trap. The *first* `nextContinuationData` in the response
+belongs to the first shelf, not to the page, so a tree-first search for a
+continuation fetches more of "Top picks for you" while believing it fetched the
+next twenty rows. The page's own token is the `nextContinuationData` inside
+`sectionListContinuation.continuations`, sitting third behind a
+`timedContinuationData` (a refresh timer, `timeoutMs` about 813 s) and a
+`reloadContinuationData` (the page again) — neither of which is a next page.
+`epg.page_continuation` reads only that list; `epg.continuation_token` keeps its
+old tree-first behaviour for the guide.
+
+Home names its rows `unpluggedHomeShelfRenderer` / `primaryText`, where the
+Library says `shelfRenderer` / `title`. Same thing, twice named, so
+`epg.page_shelves` accepts either. Each row carries its own token for more of
+itself; the three that had one in the capture were byte-different from each
+other, so they really are per-row.
+
+#### Library is one collection, sliced six ways
+
+The Library page carries three plain shelves — "New in your library", "Most
+watched", "Scheduled recordings" — and then, inside an
+`unpluggedContentDetailsRenderer`, a single `unpluggedSelectableSectionRenderer`
+that is **not** shaped like a show page's.
+
+A show page pairs `selectors[i]` with `contents[i]`: ten seasons, ten shelves.
+The Library instead carries a *filter* dropdown and one *sort* dropdown per
+filter, and `contents` is the cross product flattened row by row:
+
+| Filter    | Sorts                                                          | Cells |
+| --------- | -------------------------------------------------------------- | ----- |
+| All       | Recent, A to Z, Z to A, Most popular                            | 0–3   |
+| Shows     | Recently recorded, A to Z, Z to A, Trending, Most popular, Top rated | 4–9 |
+| Movies    | A to Z                                                          | 10    |
+| Sports    | Recently recorded, A to Z, Z to A, Most popular                 | 11–14 |
+| Events    | A to Z                                                          | 15    |
+| Purchased | Recently purchased, A to Z, Z to A                              | 16–18 |
+
+4+6+1+4+1+3 = 19, and `contents` holds exactly 19 — which is what makes the
+row-major reading a measurement rather than a guess. `epg.library_filters`
+checks that sum on every response and declines the whole grid, with a log line,
+if the three lists ever disagree; pairing a name with somebody else's row is
+worse than showing nothing.
+
+Only the sort YouTube TV has *selected* arrives with its items inline. Every
+other cell holds a `nextContinuationData` and nothing else. A filter the account
+has nothing under comes back as an `unpluggedEmptyStateRenderer` ("No movies in
+your library") — no items, no token — and is dropped, so an empty tab never
+becomes an empty folder. In the capture, Movies and Events were empty and the
+two purchased films sat under Purchased.
+
+Note that `section_continuations`, which the show pages use, is *wrong* here and
+would pair "Shows" with All's second sort. That is why the Library has a reader
+of its own.
+
+#### A scheduled recording that is on the air has no watchEndpoint
+
+Six of the seven tiles in "Scheduled recordings" carry a plain `browseEndpoint`
+to the show page. The seventh — the one then airing — carries no watch endpoint
+at all:
+
+```json
+"navigationEndpoint": { "unpluggedPopupEndpoint": { "popupRenderer": {
+  "unpluggedSelectionMenuDialogRenderer": { "items": [
+    { "unpluggedMenuItemRenderer": { "primaryText": { "runs": [{ "text": "Join live" }] },
+      "command": { "watchEndpoint": { "videoId": "…", "params": "0gEEEgIwAQ%3D%3D" } } } },
+    { "unpluggedMenuItemRenderer": { "primaryText": { "runs": [{ "text": "Start from beginning" }] },
+      "command": { "watchEndpoint": { "videoId": "…", "params": "0gEKEgIwARjwyM3UBg%3D%3D" } } } } ] } } } }
+```
+
+Both menu items name the *same* videoId and differ only in `params`, which
+`route_play` does not carry, so either will do. The addon dropped this tile
+entirely before: it has a title and a thumbnail and, as far as `_endpoint_id`
+could see, nowhere to go — it was the one row `unplayable_count` reported.
+
+The popup's presence is YouTube TV's own statement that the title is playable
+now; every not-yet-started recording had a `browseEndpoint` instead. So no clock
+arithmetic is needed on this side, and none is done.
+
+#### Two airings of one show are two rows
+
+`parse_items` deduplicated on destination alone, which collapsed the 22:00 and
+22:30 recordings of Phineas and Ferb into one row — both point at the same show
+page — and showed 4 of the 7 scheduled recordings. The key is now
+`(destination, startTimeSeconds)`. Nothing without a start time is affected,
+which is every show page, so the Rick and Morty counts are unchanged.
+
+Because two such rows carry the same title, the listing puts the airing time in
+front of it: `19:30  Family Feud`, `Sun 19:00  Kitchen Nightmares`. Those match
+the badges in the capture's own tiles.
+
 ### Guide — `POST https://tv.youtube.com/youtubei/v1/browse?alt=json`
 
 ```json

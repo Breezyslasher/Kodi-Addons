@@ -10,6 +10,12 @@ not document. See [Status](#status).
 
 * Live channel list, showing what is on now on each channel in your lineup
 * Programme guide, channel by channel, from the same 7-day EPG the web app uses
+* **Home** -- the front page YouTube TV builds for the account: "Resume
+  watching", "Top picks for you", and the twenty genre rows behind them, each
+  row a folder
+* **Library** -- recordings, purchases and scheduled recordings, with the
+  account's own filters (Shows, Movies, Sports, Events, Purchased) as folders
+  and everything listed together at the top
 * Search across live and on-demand, and browsing a show to its episodes --
   including the seasons the show page defers rather than lists
 * Widevine playback via InputStream Adaptive at up to 1080p
@@ -171,12 +177,12 @@ redoing.
 ## How it fits together
 
 ```
-default.py     routing: channels, guide, search, play
+default.py     routing: home, channels, guide, library, search, play
 service.py     licence proxy lifecycle + the live heartbeat loop
 lib/auth.py    the credential: the stored token and the identity it is accepted as
 lib/oauth.py   the device-code flow and token refresh
-lib/api.py     InnerTube calls: browse(FEunplugged_epg), player, search, heartbeat
-lib/epg.py     renderers -> stations and airings
+lib/api.py     InnerTube calls: guide, home, library, player, search, heartbeat
+lib/epg.py     renderers -> stations, airings, rows and items
 lib/playback.py  player response -> a ListItem wired to InputStream Adaptive
 lib/license_proxy.py  raw Widevine <-> YouTube's JSON envelope, with key rotation
 ```
@@ -197,6 +203,16 @@ request the index appears to be `ceil(unix_time / 86400)` -- a daily period.
 One data point is not a specification, so the proxy tries the neighbouring
 indices when the server rejects its first guess, and logs when a neighbour is
 the one that works.
+
+**Home and Library are pages of rows.** Neither is asked for by browse id --
+the web client wraps the id in a continuation token and sends that, so the
+addon sends the same token. Home arrives four rows at a time and hangs the
+other twenty behind a token on the section list itself, which is *not* the
+first continuation in the response (that one belongs to the first row). The
+Library is one collection sliced six ways: its filter and sort dropdowns form a
+cross product that arrives flattened, and only the selected sort of each filter
+comes back with items. `docs/youtube-tv-protocol.md` has the shapes and the
+arithmetic that pins them down.
 
 **The heartbeat.** Live playback must poll `player/heartbeat` every 30 seconds.
 It carries `HEARTBEAT_CHECK_TYPE_YPC`, the entitlement check, so the loop runs
