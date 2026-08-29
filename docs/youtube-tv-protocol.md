@@ -50,6 +50,38 @@ What it costs: the device-code flow needs the client ID and secret of a Google
 API project, which the cookie route did not. A one-off setup instead of a
 recurring one.
 
+### And one thing it took with it: the player js
+
+The removal broke playback on a fresh profile, and the log said so exactly:
+
+    sabr bridge: no player js, n cannot be solved: the page does not name a player js
+    no SABR session could be opened for this title
+
+`refresh_bootstrap` reads the running player's identity -- clientVersion, the
+signature timestamp, and the url of `base.js` -- off `tv.youtube.com/`. With a
+jar that page is the signed-in app and carries a ytcfg with all three. Signed
+out it is the `/welcome/` marketing page, which carries no ytcfg at all: a fact
+already recorded here, in a comment on the `session_probe` that was deleted in
+the same change. Without the player there is no `n`, and without `n` every
+media url is a 403, so the bridge refuses to open a session at all.
+
+Browsing, the licence and the sign-in were unaffected -- 148 channels on a
+token minted from scratch. It is only the player lookup that needed the page.
+
+The fetch of `base.js` itself never needed a credential: that request has only
+ever carried a User-Agent, and it returns 200 and 2.8 MB. So only *discovering*
+the player id was lost, and the fix sweeps a list of pages for one that names a
+player, logging per candidate which does:
+
+    bootstrap: https://tv.youtube.com/ -> HTTP 200, 41231 bytes, names a player js: no
+
+Only a tv.youtube.com page is allowed to supply the Unplugged clientVersion,
+visitorData and rollout token; www.youtube.com may supply the player url alone,
+since `/s/player/<id>/` is the same tree on both hosts and the file is fetched
+from our own origin either way. A player kept in the profile by a previous run
+stands in when no page names one, which does nothing on a fresh profile -- the
+case that broke -- and keeps a box that has played before from stopping dead.
+
 ## Client identity
 
 Every call to the private API carries:

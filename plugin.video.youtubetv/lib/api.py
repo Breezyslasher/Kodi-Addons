@@ -184,6 +184,25 @@ BOOTSTRAP_FILE = "client_bootstrap.json"
 # -- a stale cache wearing the costume of a parsing failure.
 BOOTSTRAP_SCHEMA = 2
 
+# Where to look for the running player's identity, in order.
+#
+# This mattered less when the addon held a cookie jar: tv.youtube.com/ served
+# the signed-in app page, whose ytcfg names the player js, the client version
+# and the signature timestamp. Signed out it serves the /welcome/ marketing
+# page instead, which carries no ytcfg at all -- so removing the jar took the
+# player js with it, and without a player there is no n, and without n every
+# media url is a 403. That is what the 2026-08-29 16:30 run hit.
+#
+# None of these needs a credential. Which of them actually names a player is
+# logged per candidate rather than assumed, because the answer is a property
+# of Google's pages today and not something to reason out from here.
+BOOTSTRAP_PAGES = (
+    ORIGIN + "/",
+    ORIGIN + "/tv",
+    "https://www.youtube.com/tv",
+    "https://www.youtube.com/",
+)
+
 
 def refresh_bootstrap(session):
     """Read clientVersion and signatureTimestamp off a YouTube TV page.
@@ -201,27 +220,41 @@ def refresh_bootstrap(session):
     cached = kodiutils.read_json(BOOTSTRAP_FILE, default=None) or {}
     if (cached.get("schema") == BOOTSTRAP_SCHEMA
             and cached.get("fetched", 0) > time.time() - 86400
-            and cached.get("version")):
+            and (cached.get("version") or cached.get("js_url"))):
         return cached
 
-    try:
-        # Signed out, and that is fine: clientVersion, the signature
-        # timestamp and the player url are on the public page. The jar used
-        # to be sent here and read nothing extra for it.
-        page = session.get(ORIGIN + "/", timeout=TIMEOUT, headers={
-            "User-Agent": UA,
-        })
-        if page.status_code != 200:
-            return cached
-        version = _PAGE_CLIENT_VERSION.search(page.text)
-        sts = _PAGE_STS.search(page.text)
-        visitor = _PAGE_VISITOR.search(page.text)
-        rollout = _PAGE_ROLLOUT.search(page.text)
-        install = _PAGE_INSTALL.search(page.text)
-        js_url = _PAGE_JS_URL.search(page.text)
-    except Exception as exc:
-        kodiutils.log("bootstrap: could not refresh from the page: %s" % exc)
+    page = None
+    for candidate in BOOTSTRAP_PAGES:
+        try:
+            reply = session.get(candidate, timeout=TIMEOUT,
+                                headers={"User-Agent": UA})
+        except Exception as exc:
+            kodiutils.log("bootstrap: %s -> %s" % (candidate, exc))
+            continue
+        names_js = bool(_PAGE_JS_URL.search(reply.text or ""))
+        kodiutils.log("bootstrap: %s -> HTTP %d, %d bytes, names a player js: "
+                      "%s" % (candidate, reply.status_code, len(reply.text or ""),
+                              "yes" if names_js else "no"))
+        if reply.status_code == 200 and names_js:
+            page = reply
+            break
+        if reply.status_code == 200 and page is None:
+            page = reply
+    if page is None:
         return cached
+
+    # Only a tv.youtube.com page describes the Unplugged client. www.youtube.com
+    # names a player js -- the same /s/player/<id>/ tree, fetched from our own
+    # origin below -- but its clientVersion, visitorData and rollout token
+    # belong to ordinary YouTube, and adopting those would describe a client
+    # this addon is not.
+    unplugged = urlparse(page.url).netloc == urlparse(ORIGIN).netloc
+    js_url = _PAGE_JS_URL.search(page.text)
+    sts = _PAGE_STS.search(page.text) if unplugged else None
+    version = _PAGE_CLIENT_VERSION.search(page.text) if unplugged else None
+    visitor = _PAGE_VISITOR.search(page.text) if unplugged else None
+    rollout = _PAGE_ROLLOUT.search(page.text) if unplugged else None
+    install = _PAGE_INSTALL.search(page.text) if unplugged else None
 
     found = {"fetched": int(time.time()), "schema": BOOTSTRAP_SCHEMA}
     if version:
@@ -236,7 +269,7 @@ def refresh_bootstrap(session):
         found["app_install_data"] = install.group(1)
     if js_url:
         found["js_url"] = js_url.group(1).replace("\\/", "/")
-    if not found.get("version") and not found.get("sts"):
+    if not (found.get("version") or found.get("sts") or found.get("js_url")):
         return cached
 
     if found.get("version") and found["version"] != cached.get("version"):
@@ -255,6 +288,32 @@ def refresh_bootstrap(session):
 _PLAYER_JS = {}
 
 
+def _kept_player():
+    """The newest player nsig saved in the profile, as (id, source).
+
+    A fallback for when no page will name one. The file is what a previous
+    run actually fetched and solved n with, so it is a player this addon has
+    already been served media against -- not a guess. It goes stale when
+    Google ships a new one, which is what the page lookup is for; this only
+    keeps a box that has played before from stopping dead when the lookup
+    fails.
+    """
+    try:
+        import os
+        where = kodiutils.profile_dir()
+        kept = [name for name in os.listdir(where)
+                if name.startswith("player-") and name.endswith(".js")]
+        if not kept:
+            return None
+        newest = max(kept, key=lambda name: os.path.getmtime(
+            os.path.join(where, name)))
+        with open(os.path.join(where, newest), "r", encoding="utf-8") as handle:
+            return newest[len("player-"):-len(".js")], handle.read()
+    except Exception as exc:
+        kodiutils.log("player js: nothing usable kept on disk: %s" % exc)
+        return None
+
+
 def player_js(session):
     """The player JavaScript, fetched once and kept for the session.
 
@@ -266,7 +325,15 @@ def player_js(session):
     boot = refresh_bootstrap(session)
     path = boot.get("js_url")
     if not path:
-        raise ApiError("the page does not name a player js")
+        kept = _kept_player()
+        if kept:
+            player_id, source = kept
+            kodiutils.log("player js: no page named one, so reusing the "
+                          "player kept on disk (%s, %d bytes)"
+                          % (player_id, len(source)))
+            _PLAYER_JS[player_id] = source
+            return player_id, source
+        raise ApiError("no page names a player js and none is kept on disk")
     if path.startswith("//"):
         url = "https:" + path
     elif path.startswith("/"):
