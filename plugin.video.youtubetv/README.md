@@ -3,64 +3,53 @@
 Live channels, the programme guide and on-demand titles from your own YouTube
 TV subscription, played through InputStream Adaptive with Widevine DRM.
 
-**Experimental, and honestly so: playback is not yet confirmed to work.** See
-[Status](#status) before installing.
+**Experimental.** It plays, and it does so by speaking a protocol Google does
+not document. See [Status](#status).
 
 ## What it does
 
 * Live channel list, showing what is on now on each channel in your lineup
 * Programme guide, channel by channel, from the same 7-day EPG the web app uses
-* Search across live and on-demand
-* Widevine playback via InputStream Adaptive, up to 1080p where the account allows
+* Search across live and on-demand, and browsing a show to its episodes --
+  including the seasons the show page defers rather than lists
+* Widevine playback via InputStream Adaptive at up to 1080p
 * A local licence proxy that handles YouTube's JSON-wrapped, rotating-key
   Widevine exchange, which InputStream Adaptive cannot speak on its own
+* A SABR client and a bridge that serves it to InputStream Adaptive as DASH,
+  because YouTube TV no longer delivers entitled media any other way
 
 ## Status
 
-Playback does not work, and the evidence says it cannot without a large
-addition. Everything up to the encrypted media bytes does work, verified on
-real hardware (Kodi 21.3):
+Playback works, live and on-demand, in HD. That took undoing three earlier
+conclusions in this file, so it is worth saying what changed.
 
-* cookie sign-in, the full 150-channel lineup and EPG, search, browsing shows
-  to their episodes;
-* the `player` call for live and on-demand;
-* a hand-built Widevine PSSH that InputStream Adaptive accepts;
-* the Widevine licence exchange -- Google grants the keys.
+YouTube TV does not serve its `dashManifestUrl` segments. Across every capture
+the only `videoplayback` GET answered 200 is the guide's 240p unencrypted
+preview tiles; all real media is fetched by **SABR**, a proprietary POST
+protocol with UMP-framed responses and a proof-of-origin token. Everything that
+looked like a signing problem -- 403s on every segment, oldest to newest, with
+and without `n`, ranged and not -- was that.
 
-Then every request for an actual media segment is refused
-`HTTP 403 (Server: gvs 1.0)`. This was tested exhaustively from inside the
-addon: oldest/middle/newest segment, with and without cookies, with `n`
-removed, with a `cpn` added, path- and query-style, ranged and not. All 403.
+So the addon implements SABR: a UMP parser, the `ClientAbrState` request loop,
+and a bridge that writes a DASH manifest of its own and serves the segments
+through the local proxy, which is the one thing InputStream Adaptive can read.
+Getting HD out of it needed three fields in the request rather than one --
+naming a height is necessary and not sufficient; a viewport and a capability
+list are what make the server serve it.
 
-One test was not conclusive: a proof-of-origin token was injected, but it came
-from a browser session playing a different title, and these tokens are bound to
-the video id. That test showed only that another video's token does not work.
+The proof-of-origin token is minted in **pure Python**. BotGuard is a 63 KB
+obfuscated interpreter running a 10 KB bytecode program, and it now runs on a
+vendored ES5 engine with seven corrections to it, so the addon needs no Node
+and no JavaScript runtime on the box. A token takes about eight seconds to mint
+and lasts twelve hours.
 
-Three other routes were tried and closed. The other five Unplugged client
-identities are refused (400/403/404) where the web client is served. Every
-format arrives as a signatureCipher rather than a URL, so the regular YouTube
-addon's approach was implemented -- and the tv.youtube.com player turns out to
-contain no signature descrambling at all: 2.5 MB of it, and nothing that splits
-a string into characters and rejoins it. It passes the scrambled signature into
-SABR untouched. A proof-of-origin token changed nothing either.
+What is not done: 4K. No format above 1920x1080 has ever been offered to this
+addon or to a browser on the same account, and no format has ever carried
+`DRM_TRACK_TYPE_UHD1` -- the licence grants a UHD1 key, but there is no UHD1
+track to use it on.
 
-The reason is that YouTube TV no longer delivers entitled media over the DASH
-GET path InputStream Adaptive understands. Across every capture, the only
-`videoplayback` GET that returns 200 is the guide's 240p unencrypted preview
-tiles; all real media, live and on-demand, is fetched by SABR -- a proprietary
-POST protocol with UMP-framed responses and a proof-of-origin token minted by
-Google's BotGuard JavaScript. `dashManifestUrl` is still generated and signed
-but its segments are not served. InputStream Adaptive cannot speak SABR.
-
-Making this play would mean implementing a SABR client, running BotGuard to
-mint tokens (they expire within hours), and remuxing the result into something
-ISA can read -- three separate projects against an actively changing protocol.
-The full analysis, including the exact requests tried, is in
-[docs/youtube-tv-protocol.md](../docs/youtube-tv-protocol.md).
-
-The addon is left as a complete, working implementation of everything up to
-that boundary, because the boundary is YouTube's delivery protocol, not the
-code.
+The full analysis, including every request tried and every conclusion since
+retired, is in [docs/youtube-tv-protocol.md](../docs/youtube-tv-protocol.md).
 
 ## Requirements
 
@@ -72,55 +61,38 @@ code.
 
 ## Signing in
 
-Google grants no OAuth scopes for YouTube TV and does not accept scripted
-password login, so there is no "enter your password" screen and no pairing
-code. Signing in means handing the addon the cookies of a browser that is
-already signed in to `tv.youtube.com`.
+A short code, authorised on your phone or laptop. Google shows the code, you
+approve it once, and the addon holds a token that refreshes itself -- there is
+nothing to re-export later.
 
-You need a computer with a browser once. After that the Kodi box is on its own
-until the cookies expire.
+The addon used to take a cookie jar exported from a signed-in browser instead.
+That worked, and it went stale every few days: Google rotates those cookies
+constantly, and the fix was always the same errand of opening a browser,
+exporting again and getting the file onto a TV box. It is gone.
 
-**On the computer:**
+**One-off setup.** The device-code flow needs the client ID and secret of a
+Google API project -- the same pair the regular YouTube add-on asks for, and
+the one thing the cookie route did not need. Create a project at
+`https://console.cloud.google.com`, enable the *YouTube Data API v3*, make an
+**OAuth client ID** of type *TVs and Limited Input devices*, and paste the two
+values into the addon's settings under **Account**.
 
-1. Sign in to `https://tv.youtube.com` in Chrome or Firefox and check a channel
-   plays. If it does not work there, it will not work in Kodi.
-2. Install a cookies.txt extension -- *Get cookies.txt LOCALLY* (Chrome) or
-   *cookies.txt* (Firefox) are the usual ones.
-3. With tv.youtube.com open, export. Choose **all domains** rather than just
-   the current site if the extension offers the choice.
+**Then, in Kodi:** open the addon and choose **Sign in**. It shows a short code
+and a URL; open that on any device signed in to the account with the YouTube TV
+subscription and enter the code. The addon immediately asks YouTube TV for the
+lineup with the new token and tells you how many channels it sees, so a token
+the service will not accept fails at the dialog rather than at the first play.
 
-**Getting the file to Kodi**, whichever is easiest:
-
-* a USB stick;
-* a network share -- Kodi's file browser reads SMB/NFS paths directly, so the
-  file can stay on the computer;
-* if the Kodi box has a browser of its own, do the export there and skip the
-  transfer.
-
-**In Kodi:** open the addon, choose **Sign in** -> *Choose a cookies.txt file*,
-and point it at the file. It calls the guide immediately and tells you how many
-channels the account can see, so a bad import fails at the dialog rather than
-at the first play.
-
-If moving a file around is more trouble than it is worth, **Sign in** ->
-*Paste a Cookie header* takes the raw `Cookie:` header copied from devtools
-(F12 -> Network -> any tv.youtube.com request -> Request Headers). It is about
-3 KB of text, which is unpleasant on a remote but fine with a keyboard or a
-phone app that can send text to the box.
-
-Only the cookies that matter are kept, and they go in the addon's profile
-directory rather than `settings.xml`, which ends up in backups and bug reports.
-Where the export carries both `.google.com` and `.youtube.com` copies of a
-cookie, the youtube.com one wins -- that is the domain the API lives on.
+The token is stored in the addon's profile directory rather than in
+`settings.xml`, which ends up in backups and bug reports.
 
 ### When it stops working
 
-Cookies expire, and Google rotates them faster on accounts with 2FA. The
-symptom is HTTP 401/403 and a "the session was rejected" message. Re-export and
-sign in again; nothing else needs redoing.
-
-Signing out from the browser you exported from also invalidates the addon's
-copy. So does "sign out everywhere" in Google account security.
+The token refreshes itself, so the usual causes are outside the addon:
+revoking the addon's access in your Google account, deleting the API project,
+or the subscription lapsing. The symptom is HTTP 401/403 and a message saying
+the stored sign-in was refused. Choose **Sign in again**; nothing else needs
+redoing.
 
 ## Settings
 
@@ -135,7 +107,8 @@ copy. So does "sign out everywhere" in Google account security.
 ```
 default.py     routing: channels, guide, search, play
 service.py     licence proxy lifecycle + the live heartbeat loop
-lib/auth.py    cookie import, SAPISIDHASH request signing
+lib/auth.py    the credential: the stored token and the identity it is accepted as
+lib/oauth.py   the device-code flow and token refresh
 lib/api.py     InnerTube calls: browse(FEunplugged_epg), player, search, heartbeat
 lib/epg.py     renderers -> stations and airings
 lib/playback.py  player response -> a ListItem wired to InputStream Adaptive

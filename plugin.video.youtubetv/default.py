@@ -9,7 +9,7 @@ import xbmc
 import xbmcgui
 import xbmcplugin
 
-from lib import api, auth, epg, kodiutils, oauth, playback, signin
+from lib import api, auth, epg, kodiutils, oauth, playback
 
 HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 else -1
 BASE_URL = sys.argv[0] if sys.argv else "plugin://plugin.video.youtubetv/"
@@ -36,140 +36,21 @@ def finish(content=""):
 
 # -- sign-in ---------------------------------------------------------------
 
-def _verify(cookies):
-    """Prove the imported jar actually works before storing it.
+def _sign_in():
+    """The device-code flow: the only way in.
 
-    Checking that SAPISID and SID are present only proves something was pasted.
-    One guide call distinguishes the three ways sign-in goes wrong -- expired
-    cookies, the wrong account, no subscription -- while the user is still in
-    front of the dialog, instead of at the first play.
-    """
-    try:
-        client = api.Api(cookies=cookies)
-        stations = epg.parse_epg(client.epg(hours=1, max_airings=1))
-    except auth.AuthError:
-        return False, ("Google rejected those cookies. Export them again from "
-                       "a browser that is signed in right now -- they expire.")
-    except api.ApiError as exc:
-        return False, "Could not reach YouTube TV: %s" % exc
+    Google shows a short code, the account authorises it on another device,
+    and InnerTube is called with a bearer token. This is what the regular
+    YouTube addon does, and tv.youtube.com honours it -- as
+    TVHTML5_UNPLUGGED, which _verify_bearer establishes rather than assumes.
 
-    if not stations:
-        return False, ("Those cookies work, but the account has no YouTube TV "
-                       "lineup. Check it is the account with the subscription.")
-    return True, "Signed in -- %d channels" % len(stations)
+    The addon used to take a cookie jar exported from a signed-in browser
+    instead, which needed no Google API project but went stale every few
+    days. This needs a project once and then refreshes itself.
 
-
-def _import_cookies():
-    """Ask for a cookie jar, either as a file or pasted.
-
-    A browser export is the sane route; the paste exists for the case where the
-    file cannot be got onto the Kodi box easily.
-    """
-    choice = xbmcgui.Dialog().contextmenu([
-        "Sign in from your phone or laptop",
-        "Sign in with a code (experimental)",
-        "Choose a cookies.txt file",
-        "Paste a Cookie header",
-    ])
-    if choice == 0:
-        return _sign_in_over_the_network()
-    if choice == 1:
-        return _sign_in_with_code()
-    choice -= 2
-    try:
-        if choice == 0:
-            path = xbmcgui.Dialog().browseSingle(1, "Select cookies.txt", "files")
-            if not path:
-                return False
-            cookies = auth.parse_cookies_txt(path)
-        elif choice == 1:
-            pasted = kodiutils.input_text("Paste the Cookie header")
-            if not pasted:
-                return False
-            cookies = auth.parse_cookie_header(pasted)
-        else:
-            return False
-    except Exception as exc:
-        kodiutils.ok_dialog("Could not read those cookies: %s" % exc,
-                            "Sign-in failed")
-        return False
-
-    missing = [name for name in auth.REQUIRED if name not in cookies]
-    if missing:
-        kodiutils.ok_dialog(
-            "That jar has no %s. Export with every domain included, not just "
-            "the current site, from a browser signed in to tv.youtube.com."
-            % " or ".join(missing), "Sign-in failed")
-        return False
-
-    ok, message = _verify(cookies)
-    if not ok:
-        kodiutils.ok_dialog(message, "Sign-in failed")
-        return False
-
-    auth.save(cookies)
-    kodiutils.notify(message)
-    return True
-
-
-def _sign_in_over_the_network():
-    """Serve a sign-in page on the LAN and wait for a jar to be pasted into it.
-
-    Typing a three kilobyte Cookie header on a remote is not something anyone
-    does twice, and getting a file onto the box is its own errand. The device
-    that already has the session -- the phone or laptop signed in to
-    tv.youtube.com -- has a keyboard and a clipboard, so the form goes there.
-    """
-    server = signin.SignInServer(verify=_verify)
-    try:
-        server.start()
-    except Exception as exc:
-        kodiutils.ok_dialog("Could not open the sign-in page: %s" % exc,
-                            "Sign-in failed")
-        return False
-
-    host = xbmc.getIPAddress() or "127.0.0.1"
-    progress = xbmcgui.DialogProgress()
-    progress.create(
-        "Sign in from another device",
-        "On a phone or laptop signed in to tv.youtube.com, open:\n\n"
-        "[B]%s[/B]\n\nThis page closes as soon as it has your session."
-        % server.url(host))
-    try:
-        waited = 0
-        # Ten minutes is long enough to find a laptop and short enough that a
-        # page left open by accident does not stay open all evening.
-        while waited < 600 and not server.cookies:
-            if progress.iscanceled():
-                return False
-            xbmc.sleep(500)
-            waited += 0.5
-        cookies = server.cookies
-    finally:
-        progress.close()
-        server.stop()
-
-    if not cookies:
-        kodiutils.notify("Sign-in page closed without a session")
-        return False
-    auth.save(cookies)
-    kodiutils.notify("Signed in")
-    return True
-
-
-def _sign_in_with_code():
-    """The device-code flow, and an honest test of whether it is any use here.
-
-    This is what the regular YouTube addon does: Google shows a short code,
-    the account authorises it on another device, and InnerTube is then called
-    with a bearer token instead of a cookie jar.
-
-    Whether tv.youtube.com honours that is not something the addon can reason
-    its way to. Every authenticated request in every capture of the web player
-    carries SAPISIDHASH and none carries a bearer token -- which says the web
-    player does not use OAuth, not that the surface refuses it. So the token
-    is put straight to work fetching the account's own lineup, and kept only
-    if that works. A stored credential that silently fails is worse than none.
+    The token is put straight to work fetching the account's own lineup and
+    kept only if that works: a stored credential that silently fails is
+    worse than none.
     """
     client_id, secret = oauth.credentials()
     if not client_id:
@@ -217,8 +98,9 @@ def _sign_in_with_code():
         oauth.forget()
         kodiutils.ok_dialog(
             "Google signed us in, but no client identity got a lineup from "
-            "that token:\n\n%s\n\nThe token has been discarded. Sign in "
-            "from your phone or laptop instead." % message,
+            "that token:\n\n%s\n\nThe token has been discarded. Check the "
+            "account authorised is the one with the YouTube TV "
+            "subscription." % message,
             "YouTube TV does not accept this")
         return False
     kodiutils.ok_dialog(message, "Signed in")
@@ -237,7 +119,7 @@ def _verify_bearer():
     reported together; the TV ones are the ones OAuth would plausibly suit.
     """
     try:
-        client = api.Api(bearer=True)
+        client = api.Api()
     except auth.AuthError as exc:
         return False, str(exc), ""
 
@@ -269,21 +151,20 @@ def _client():
         return api.Api()
     except auth.AuthError:
         kodiutils.ok_dialog(
-            "Sign in first: export the cookies of a browser that is already "
-            "signed in to tv.youtube.com, then choose Sign in.",
-            "Not signed in")
+            "Sign in first: choose Sign in, and authorise the code on your "
+            "phone or laptop.", "Not signed in")
         return None
 
 
 # -- routes ----------------------------------------------------------------
 
 def route_root():
-    # A bearer token counts as signed in too. Checked from the stored file
-    # rather than oauth.access_token(), which may go to Google to refresh --
-    # not something to do while drawing a menu.
-    if not auth.signed_in() and not oauth.load().get("access_token"):
-        add_dir("Sign in", plot="From your phone or laptop, or from a cookie "
-                                "export.", action="signin")
+    # Read from the stored file rather than through oauth.access_token(),
+    # which may go to Google to refresh -- not something to do while drawing
+    # a menu.
+    if not auth.signed_in():
+        add_dir("Sign in", plot="Authorise a code on your phone or laptop.",
+                action="signin")
         finish()
         return
 
@@ -292,14 +173,10 @@ def route_root():
     add_dir("Guide", plot="What is on across the next few hours.",
             action="guide")
     add_dir("Search", action="search")
-    # Offered while already signed in, not only before. Signing out is the
-    # only other way to reach this menu, and it clears both credentials --
-    # so re-importing a refreshed cookie jar meant throwing away a working
-    # token, and holding a jar and a token at once was impossible.
-    add_dir("Sign in again", plot="Add or replace a credential. A cookie jar "
-                                  "and a code sign-in can be held at once; "
-                                  "the jar is used for playback.",
-            action="signin")
+    # Offered while already signed in, not only before, so a session that
+    # has gone wrong can be replaced without signing out first.
+    add_dir("Sign in again", plot="Authorise a new code, replacing the "
+                                  "stored sign-in.", action="signin")
     add_dir("Sign out", action="signout")
     finish()
 
@@ -623,35 +500,6 @@ def route_play_channel(station_id):
     route_play(station.now.video_id, station.name)
 
 
-def route_probe_sabr():
-    """Answer the three questions that gate a SABR player.
-
-    Needs something playable to ask about, so it takes whatever is on the
-    first channel in the lineup. Logs and changes nothing.
-    """
-    client = _client()
-    if not client:
-        return
-    try:
-        stations = _fetch_stations(client, hours=2)
-    except (auth.AuthError, api.ApiError) as exc:
-        kodiutils.ok_dialog(str(exc), "Could not load the guide")
-        return
-    airing = next((s.now for s in stations if s.now and s.now.video_id), None)
-    if not airing:
-        kodiutils.ok_dialog("Nothing is playing on any channel right now.",
-                            "Nothing to test with")
-        return
-    from lib import probes
-    try:
-        probes.run(client, airing.video_id)
-    except Exception as exc:
-        kodiutils.log_error("sabr feasibility failed: %s" % exc)
-        kodiutils.notify("SABR check failed -- see the log")
-        return
-    kodiutils.notify("SABR check written to the log")
-
-
 def route_iptv(what, port):
     """Answer service.iptv.manager on the socket it just opened."""
     if not port:
@@ -670,11 +518,10 @@ def main():
     action = params.get("action")
 
     if action == "signin":
-        _import_cookies()
+        _sign_in()
     elif action == "signout":
         if xbmcgui.Dialog().yesno("YouTube TV", "Forget the stored session?"):
             auth.sign_out()
-            oauth.forget()
             kodiutils.notify("Signed out")
     elif action == "channels":
         route_channels()
@@ -697,8 +544,6 @@ def main():
     elif action == "play_channel":
         route_play_channel(params.get("station_id", ""))
         return
-    elif action == "probe_sabr":
-        route_probe_sabr()
         return
     elif action in ("iptv_channels", "iptv_epg"):
         # RunPlugin, not a directory: there is no handle to finish and

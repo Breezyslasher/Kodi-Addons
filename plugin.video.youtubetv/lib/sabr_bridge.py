@@ -14,7 +14,7 @@ keeps one numbering across the whole stack instead of translating between
 two, which is a place bugs live.
 
 Nothing here decrypts anything: the media is Widevine-encrypted and ISA
-does that with the licence proxy, exactly as it does on the cookie path.
+does that with the licence proxy.
 """
 
 import threading
@@ -91,7 +91,7 @@ def set_context(url, config, audio, video, client_name, drm_params="",
         # segment is 1067 bytes of ftyp and moov with no pssh box in
         # it -- walked, not assumed -- and ISA 22 refuses a
         # ContentProtection with no init data under it. drmParams is
-        # where the content id comes from, exactly as on the DASH path.
+        # where the content id comes from.
         "drm_params": drm_params,
         # What the media server will actually serve. Not the licence's
         # ceiling: the licence grants HD and UHD1 for this title and the
@@ -231,7 +231,7 @@ def lookup(key):
     # Every candidate, in both fields. The server chooses among them and
     # names its choice in each MEDIA_HEADER; offering a single video format
     # was answered sabr.no_video_selected for all twelve renditions in
-    # turn, including ones the cookie path plays in HD.
+    # turn, including ones that play in HD once a height is named.
     # ...but not renditions the working path has no equivalent of. Ranking
     # avc1 first changed nothing: the server chose itag 810 again, because
     # it picks from the set rather than taking the order as advice. So
@@ -527,11 +527,10 @@ def _representation(fmt, base, key, itag, start_number,
             # each time, and give up -- where omitting it lets ISA read the
             # moov out of the first media segment, which is what it already
             # does on the live DASH path.
-            # Inside the Representation, which is where the path that
-            # works puts it: manifest.set_key_ids emits
-            # head + _protection(own_uuid, own_pssh) + inner for every
-            # Representation, so each track probes with its own key. The
-            # bridge had it on the AdaptationSet instead.
+            # Inside the Representation, not on the AdaptationSet, so
+            # each track probes with its own key. That is where the DASH
+            # manifest the addon used to repair carried it, and putting it
+            # a level up was what made ISA pick one key for both tracks.
             "protection": protection,
             "init": ('initialization="%s/sabr/init?id=%s&amp;itag=%d&amp;'
                      'k=%s" ' % (base["url"], key, itag, base["secret"])
@@ -601,8 +600,8 @@ def manifest(key, base):
             kodiutils.log("sabr bridge: no file url for itag %s, so the "
                           "bytes cannot be compared" % itag)
 
-    # The PSSH, built the way the DASH path builds it: from drmParams'
-    # content id, with no manifest url to read a source out of.
+    # The PSSH, from drmParams' content id, with no manifest url to read a
+    # source out of -- the bridge writes the manifest, so there is none.
     #
     # And with the track's own key id in it. ISA parsed the manifest, took
     # the licence, and then said "No KID found in PSSH" and refused to open
@@ -637,8 +636,8 @@ def manifest(key, base):
         if not content:
             return ""
         # The init first, then the first media segment. Live has no init of
-        # its own -- that is why the DASH path reads a moov out of the first
-        # media segment, and SABR live behaves the same way for some
+        # its own -- which is why the moov is read out of the first media
+        # segment, and SABR live behaves the same way for some
         # renditions: 317 arrived with no ftyp at all while 148 and 161
         # arrived with one.
         head = session.initialisation.get(itag) or b""
@@ -655,8 +654,8 @@ def manifest(key, base):
                                     raw[16:20], raw[20:32])) if kid else ""
         if not kid:
             # Last resort: what the licence granted for this track's tier.
-            # A height-to-tier mapping is a guess the DASH path avoids by
-            # reading tenc, so it is only used when the media carries none.
+            # A height-to-tier mapping is a guess; reading tenc is not,
+            # so this is only used when the media carries no tenc at all.
             known = license_proxy.key_ids_for(formats.get("video_id") or "")
             tier = ("DRM_TRACK_TYPE_AUDIO" if kind == "audio"
                     else "DRM_TRACK_TYPE_HD" if (fmt.get("height") or 0) >= 720
@@ -688,9 +687,9 @@ def manifest(key, base):
         probe_file(stored.get("audio_url") or "",
                    " (the SABR endpoint served nothing)")
         return ""
-    # Each track's own key, printed: on the cookie path a Representation
-    # carrying the wrong key id is not a decode error, it is ISA removing
-    # the audio track outright, and the manifest is where that is visible.
+    # Each track's own key, printed: a Representation carrying the wrong
+    # key id is not a decode error, it is ISA removing the audio track
+    # outright, and the manifest is where that is visible.
     kodiutils.log("sabr bridge: key ids %s"
                   % {fmt.get("itag"): (mp4.default_kid(
                       session.initialisation.get(fmt["itag"])
@@ -768,11 +767,7 @@ def solve_n(url):
     import requests
     session = requests.Session()
     try:
-        cookies = auth.load()
-    except auth.AuthError:
-        cookies = {}
-    try:
-        player_id, js = api.player_js(session, cookies)
+        player_id, js = api.player_js(session)
     except Exception as exc:
         kodiutils.log_error("sabr bridge: no player js, n cannot be solved: %s"
                             % exc)
@@ -841,8 +836,7 @@ def _file_url(fmt):
     """This track as a plain file: signature resolved, n solved.
 
     The unplugged clients send no plain url on a format -- 35 of 35 carry a
-    signatureCipher instead -- so the url the DASH path would read has to be
-    unscrambled first. Both halves already exist: cipher.parse reads the
+    signatureCipher instead -- so the url has to be unscrambled first. Both halves already exist: cipher.parse reads the
     transform out of the player script that solve_n already fetches, and
     resolve puts the descrambled signature in the parameter sp names.
     """
@@ -856,20 +850,15 @@ def _file_url(fmt):
     import requests
     session = requests.Session()
     try:
-        cookies = auth.load()
-    except auth.AuthError:
-        cookies = {}
-    try:
-        _player_id, js = api.player_js(session, cookies)
+        _player_id, js = api.player_js(session)
         url = cipher.resolve(blob, cipher.parse(js))
     except Exception as exc:
         kodiutils.log("sabr bridge: could not resolve the signature for itag "
                       "%s: %s" % (fmt.get("itag"), exc))
         return ""
     solved = solve_n(url) or ""
-    # A media url without a pot is refused, which is why the DASH path adds
-    # one to every BaseURL. Without this the probe measured its own omission
-    # rather than anything about n.
+    # A media url without a pot is refused. Without this the probe measured
+    # its own omission rather than anything about n.
     token = kodiutils.get_setting("po_token", "") or _baked("PO_TOKEN")
     if solved and token and "pot=" not in solved:
         solved = manifest_mod._add_param(solved, "pot", token)
@@ -959,17 +948,9 @@ def playable_url(player_response, max_height=1080):
 def _client_name():
     """Which identity this credential is accepted as.
 
-    auth.load() alone is the wrong question: a box holding both credentials
-    has a jar whether or not playback is using it, and asking that opened a
-    SABR session as WEB_UNPLUGGED while every url in it came from a token.
-    The setting decides, exactly as it does in Api.
+    One credential, one identity. This used to have to reason about a box
+    holding both, and got it wrong in a way that cost a day: asking whether
+    a jar existed opened a SABR session as WEB_UNPLUGGED while every url in
+    it had come from a token.
     """
-    from . import oauth
-    if kodiutils.get_setting_bool("prefer_token"):
-        if oauth.load().get("access_token"):
-            return oauth.load().get("client_name") or api.OAUTH_CLIENT_NAME
-    try:
-        auth.load()
-        return api.CLIENT_NAME
-    except auth.AuthError:
-        return oauth.load().get("client_name") or api.OAUTH_CLIENT_NAME
+    return auth.client_name()

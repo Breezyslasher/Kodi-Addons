@@ -8,23 +8,6 @@
 					<default>false</default>
 					<control type="toggle"/>
 				</setting>
-				<setting id="probe_sabr_check" type="action" label="30056" help="30057">
-					<level>0</level>
-					<data>RunPlugin(plugin://plugin.video.youtubetv/?action=probe_sabr)</data>
-					<control type="button" format="action">
-						<close>true</close>
-					</control>
-				</setting>
-				<setting id="prefer_token" type="boolean" label="30058" help="30059">
-					<level>0</level>
-					<default>false</default>
-					<control type="toggle"/>
-				</setting>
-				<setting id="force_bridge" type="boolean" label="30060" help="30061">
-					<level>0</level>
-					<default>false</default>
-					<control type="toggle"/>
-				</setting>
 				<setting id="dump_manifest" type="boolean" label="30031" help="30032">
 					<level>0</level>
 					<default>false</default>

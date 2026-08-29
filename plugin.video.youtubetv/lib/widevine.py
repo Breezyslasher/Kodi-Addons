@@ -193,7 +193,7 @@ def pssh_data(content, is_live=True, period_index=None, key_id=None):
     ``key_id`` names the key this init data is for. It is what a conformant
     packager puts here, and it also makes the audio track's PSSH differ from
     the video track's -- which is what ISA compares when deciding whether two
-    streams may share one CDM session. See manifest.set_key_ids.
+    streams may share one CDM session. See sabr_bridge.manifest.
     """
     parts = []
     if key_id:

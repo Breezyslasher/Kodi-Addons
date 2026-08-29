@@ -133,7 +133,7 @@ def poll_for_token(client_id, secret, device_code, interval, deadline,
 
 
 def save(token, client_name=None):
-    """Keep the token beside the cookie jar, in the profile.
+    """Keep the token in the addon profile.
 
     ``client_name`` is the identity YouTube TV accepted this token as. It is
     part of the credential, not a detail: the same token is refused as
