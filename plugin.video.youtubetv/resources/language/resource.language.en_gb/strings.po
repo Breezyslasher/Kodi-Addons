@@ -1,0 +1,77 @@
+# Kodi Media Center language file
+# Addon Name: YouTube TV
+# Addon id: plugin.video.youtubetv
+# Addon Provider: Breezyslasher
+msgid ""
+msgstr ""
+"Project-Id-Version: Kodi Addons\n"
+"Report-Msgid-Bugs-To: https://github.com/Breezyslasher/Kodi-Addons\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgctxt "#30030"
+msgid "Diagnostics"
+msgstr ""
+
+msgctxt "#30031"
+msgid "Save the stream manifest"
+msgstr ""
+
+msgctxt "#30032"
+msgid "Writes the DASH manifest of the next stream you play into the addon's profile folder as last-manifest.mpd, for diagnosing playback failures."
+msgstr ""
+
+msgctxt "#30010"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#30011"
+msgid "Maximum resolution"
+msgstr ""
+
+msgctxt "#30012"
+msgid "Caps the video height InputStream Adaptive will select. Useful on hardware that cannot decode 1080p smoothly."
+msgstr ""
+
+msgctxt "#30013"
+msgid "Unlimited"
+msgstr ""
+
+msgctxt "#30014"
+msgid "1080p"
+msgstr ""
+
+msgctxt "#30015"
+msgid "720p"
+msgstr ""
+
+msgctxt "#30016"
+msgid "480p"
+msgstr ""
+
+msgctxt "#30020"
+msgid "Advanced"
+msgstr ""
+
+msgctxt "#30021"
+msgid "Client version"
+msgstr ""
+
+msgctxt "#30022"
+msgid "The YouTube TV web player version this addon claims to be. Google bumps it regularly; a stale value is the likeliest cause of sudden sign-in failures."
+msgstr ""
+
+msgctxt "#30023"
+msgid "Licence proxy port"
+msgstr ""
+
+msgctxt "#30024"
+msgid "Local port for the Widevine licence proxy. Change it only if something else on this machine already uses it."
+msgstr ""
+
+msgctxt "#30025"
+msgid "Visitor ID (set automatically)"
+msgstr ""
