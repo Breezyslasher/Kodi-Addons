@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# Personal builds may carry a preloaded session; it holds live credentials.
+plugin.video.youtubetv/lib/baked_cookies.py

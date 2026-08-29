@@ -1,0 +1,354 @@
+# YouTube TV (tv.youtube.com) — protocol notes for a possible Kodi addon
+
+Findings from four browser HAR captures of a signed-in YouTube TV session
+(Firefox 154 / Linux, web client `WEB_UNPLUGGED`, August 2026). All identifying
+values below — account IP, `sig`/`spc` signatures, visitor id, cookies, license
+blobs — are redacted or truncated. Nothing here is secret: it is the shape of
+the requests, which is what an addon needs.
+
+Written to answer one question: can Kodi play YouTube TV through
+InputStream Adaptive? Short answer: probably yes, and much more cleanly than
+Apple TV+, but one thing is still unproven. See "The open question" below.
+
+## Client identity
+
+Every call to the private API carries:
+
+| Header | Value |
+| --- | --- |
+| `X-YouTube-Client-Name` | `41` (= `WEB_UNPLUGGED`) |
+| `X-YouTube-Client-Version` | `1.20260825.04.00` |
+| `X-Goog-Visitor-Id` | opaque, from the page bootstrap |
+| `X-Goog-AuthUser` | `0` |
+| `X-Origin` | `https://tv.youtube.com` |
+| `Authorization` | `SAPISIDHASH <ts>_<sha1>` (plus 1P/3P variants) |
+| `Cookie` | full Google jar (`SAPISID`, `__Secure-3PAPISID`, `SID`, …) |
+
+`clientName: 41` is the whole trick — the same InnerTube endpoints under
+`tv.youtube.com` return the subscriber's live lineup only for this client.
+
+The JSON body repeats the client in `context.client`, and adds two
+YouTube-TV-only blocks:
+
+```json
+"unpluggedAppInfo":      { "filterModeType": "UNPLUGGED_FILTER_MODE_TYPE_NONE" },
+"unpluggedLocationInfo": { "clientPermissionState": 2, "timezone": "America/New_York" }
+```
+
+Location matters: the lineup is market-dependent (this capture resolved to
+Pittsburgh locals — KDKA-TV etc.), so an addon inherits whatever market the
+account's location grants.
+
+## Auth
+
+No OAuth, no device-code flow, no public API. Auth is the browser cookie jar
+plus a `SAPISIDHASH` Authorization header computed as:
+
+```
+SHA1(f"{timestamp} {SAPISID} https://tv.youtube.com")
+```
+
+sent as `SAPISIDHASH {timestamp}_{hash}`. This is the same scheme yt-dlp uses
+for authenticated YouTube requests. Practical consequence for an addon: users
+import cookies from a browser. Scripted Google password login is not viable.
+
+## Endpoints
+
+### Guide — `POST https://tv.youtube.com/youtubei/v1/browse?alt=json`
+
+```json
+{
+  "browseId": "FEunplugged_epg",
+  "unpluggedBrowseOptions": {
+    "epgOptions": {
+      "maxAiringsPerStation": 11,
+      "initialEpgFetchStartTimeMs": "...",
+      "initialEpgFetchDurationMs": 9618000,
+      "paginationDurationMs": 5514000,
+      "maxDurationMs": "604800000"
+    }
+  }
+}
+```
+
+Returns ~1.9 MB of EPG: 150 `epgStationRenderer` + 550 `epgAiringRenderer`.
+Paginates through a `continuation` token, up to 7 days (`maxDurationMs`).
+
+A station:
+
+```json
+{
+  "name":     { "runs": [ { "text": "KDKA-TV" } ] },
+  "callSign": { "runs": [ { "text": "KDKA-TV" } ] },
+  "icon":     { "thumbnails": [ { "url": "//yt3.ggpht.com/...", "width": 400 } ] },
+  "stationId": "UCbmNmhvPNwkyvLXZVNspDXA",
+  "tenxId":    "UCbmNmhvPNwkyvLXZVNspDXA",
+  "isDiscreteStation": false
+}
+```
+
+An airing — note it carries the live `videoId`, which is the key to playback:
+
+```json
+{
+  "beginTimeMs": "1787864400000",
+  "endTimeMs":   "1787868000000",
+  "title":         { "runs": [ { "text": "KDKA-TV News at Five" } ] },
+  "quaternaryText":{ "runs": [ { "text": "Midday news update." } ] },
+  "thumbnail":     { "thumbnails": [ { "url": "//yt3.ggpht.com/...", "width": 1920 } ] },
+  "navigationEndpoint": {
+    "watchEndpoint": { "videoId": "z0sfuXTVx8g", "params": "0gEEEgIwAQ%3D%3D" }
+  }
+}
+```
+
+This maps onto a Kodi PVR channel list + EPG almost one-to-one: station name,
+call sign, logo, and a per-airing title/description/start/stop.
+
+### Guide preview mosaic — `POST /youtubei/v1/tenx_player?alt=json`
+
+Takes `{"channelIds": [...]}`, returns per-channel `tenxStreamerUrl.templatedUrl`
+— itag 133 (240p), `ctier=A`, `xtags=tenx=1`, **unencrypted** fMP4, with a
+`&sq=` segment-number placeholder and a ~2 minute `urlExpirationUtcMillis`.
+
+These are the little tiles that animate in the guide. Not useful for real
+playback, but worth knowing: they are DRM-free and trivially fetchable, so a
+"preview" feature is cheap if it's ever wanted.
+
+### Watch metadata — `POST /youtubei/v1/next?alt=json`
+
+~60 KB of watch-page furniture. Not required for playback.
+
+### Player — `POST /youtubei/v1/player?prettyPrint=false`
+
+```json
+{
+  "videoId": "z0sfuXTVx8g",
+  "context": { "client": { "clientName": "WEB_UNPLUGGED", "clientVersion": "1.20260825.04.00", ... } },
+  "playbackContext": {
+    "contentPlaybackContext": {
+      "html5Preference": "HTML5_PREF_WANTS",
+      "signatureTimestamp": 20689,
+      "referer": "https://tv.youtube.com/watch/<videoId>?..."
+    },
+    "devicePlaybackCapabilities": { "supportsVp9Encoding": true, "supportXhr": true }
+  },
+  "cpn": "<16-char random client playback nonce>",
+  "racyCheckOk": true,
+  "captionParams": {}
+}
+```
+
+**There is no `poToken` and no `serviceIntegrityDimensions` in this request.**
+The PO-token enforcement that has been breaking third-party YouTube clients did
+not apply to `WEB_UNPLUGGED` in this capture. That is the single biggest
+positive finding, and also the most likely thing to change without notice.
+
+Response `streamingData` contains:
+
+| Key | Meaning |
+| --- | --- |
+| `dashManifestUrl` | `https://manifest.googlevideo.com/api/manifest-yttv/dash/...` — a real MPD |
+| `licenseInfos` | `[{drmFamily: WIDEVINE, url}, {drmFamily: PLAYREADY, url}]` |
+| `drmParams` | opaque base64, echoed back on every license call |
+| `serverAbrStreamingUrl` | the SABR endpoint the web player actually used |
+| `adaptiveFormats` | 21 entries, 144p → 1080p |
+| `initialAuthorizedDrmTrackTypes` | `["DRM_TRACK_TYPE_AUDIO", "DRM_TRACK_TYPE_SD"]` |
+| `expiresInSeconds` | `21540` (~6 h) |
+
+The manifest URL's own query string is informative:
+`as/fmp4_audio_cenc,fmp4_sd_hd_cenc` (CENC-encrypted fMP4, SD **and** HD),
+`ctier/UL`, `tvn/CBS`, `tvc/<stationId>`.
+
+Formats offered (all video/audio CENC-encrypted; text tracks are not):
+
+```
+146  avc1.4d4028  1080p   WIDEVINE, PLAYREADY
+275  vp9          1080p   WIDEVINE
+359  vp9          1080p   WIDEVINE
+145  avc1.4d401f   720p   WIDEVINE, PLAYREADY
+274  vp9           720p   WIDEVINE
+144/317           480p    …down to 161/279 at 144p
+149  mp4a.40.2    audio   WIDEVINE, PLAYREADY
+381  ac-3         audio   WIDEVINE
+386/387/406  text/mp4     (no DRM)
+```
+
+H.264 is available at every rung alongside VP9, which matters because it is the
+safe codec on low-power Kodi hardware.
+
+### Search — `POST /youtubei/v1/search?alt=json`
+
+```json
+{ "query": "rick", "params": "6gMOCgASABoAIgAqADIAQgA%3D" }
+```
+
+With `POST /youtubei/v1/suggest?alt=json` behind the search box for
+autocomplete. Both are cheap and behave like ordinary InnerTube search.
+
+### Heartbeat — `POST /youtubei/v1/player/heartbeat?alt=json`
+
+Required during live playback. The response carries `pollDelayMs: 30000`, so
+the client re-posts every 30 s:
+
+```json
+{
+  "videoId": "z0sfuXTVx8g",
+  "cpn": "<same cpn>",
+  "sequenceNumber": 15,
+  "heartbeatToken": "...",
+  "heartbeatServerData": "<opaque, echoed from the previous response>",
+  "heartbeatRequestParams": {
+    "heartbeatChecks": ["HEARTBEAT_CHECK_TYPE_LIVE_STREAM_STATUS",
+                        "HEARTBEAT_CHECK_TYPE_YPC"]
+  },
+  "playbackState": { "playbackPosition": { "utcTimeMillis": "..." } }
+}
+```
+
+It returns a fresh `playabilityStatus` and `heartbeatServerData` to carry into
+the next call. An addon has to run this loop for the life of a live channel —
+`HEARTBEAT_CHECK_TYPE_YPC` is the subscription/entitlement check, so dropping
+it should be assumed to end the stream.
+
+### On-demand
+
+The same `player` endpoint serves VOD. A capture of an Adult Swim title
+(`isLiveContent: false`, `lengthSeconds: 1443`) returned the identical
+structure — `dashManifestUrl`, `licenseInfos`, `drmParams`, CENC formats,
+`initialAuthorizedDrmTrackTypes: [AUDIO, SD]` — differing only in the URL
+parameters:
+
+| | Live | On-demand |
+| --- | --- | --- |
+| manifest path | `/api/manifest-yttv/dash/` | `/api/manifest/dash/` |
+| `source` | `yt_tv_broadcast` | `youtube` |
+| `ctier` | `UL` | `UD` |
+
+VOD responses additionally carry `captions`, `adPlacements` and `adSlots`, so
+ad breaks are signalled in-band and would need handling. Live and on-demand can
+share one playback path.
+
+### Widevine license — `POST /youtubei/v1/player/get_drm_license?alt=json`
+
+Not a raw Widevine license server. The challenge is wrapped in JSON:
+
+```json
+{
+  "context":          { ...same client block... },
+  "drmSystem":        "DRM_SYSTEM_WIDEVINE",
+  "videoId":          "z0sfuXTVx8g",
+  "cpn":              "<same cpn as the player call>",
+  "sessionId":        "ad_KTS0r2b-d1UkU",
+  "licenseRequest":   "<base64 raw Widevine challenge>",
+  "drmParams":        "<echoed from streamingData>",
+  "isKeyRotated":     true,
+  "cryptoPeriodIndex": 20693,
+  "drmVideoFeature":  "DRM_VIDEO_FEATURE_SDR"
+}
+```
+
+Response:
+
+```json
+{
+  "status":  "LICENSE_STATUS_OK",
+  "license": "<base64 raw Widevine license>",
+  "authorizedFormats": [
+    { "trackType": "DRM_TRACK_TYPE_UHD1", "keyId": "..." },
+    { "trackType": "DRM_TRACK_TYPE_HD",   "keyId": "..." },
+    { "trackType": "DRM_TRACK_TYPE_SD",   "keyId": "..." }
+  ],
+  "canRenew": false,
+  "sabrLicenseConstraint": ""
+}
+```
+
+Two things follow.
+
+**`isKeyRotated: true` with a `cryptoPeriodIndex`.** Live channels rotate keys,
+and each new crypto period needs a fresh license request with an incremented
+index. InputStream Adaptive's static `license_key` config cannot compute a
+changing index, so a **local license proxy** is required — the same shape as
+`plugin.video.appletv/lib/license_proxy.py`. ISA points at `127.0.0.1:<port>`,
+the proxy unwraps ISA's raw challenge, wraps it in the JSON above with the
+current period index and auth headers, and hands back the decoded `license`
+bytes. That module is a genuine head start; this is the second time the same
+pattern has been needed.
+
+**The license returned HD and UHD1 key ids to a Linux/Firefox client**, i.e. to
+Widevine **L3** — even though `initialAuthorizedDrmTrackTypes` advertised only
+audio + SD. The QoE beacons confirm the session settled on `fmt=275` (1080p
+VP9) with `afmt=149`. If that holds under ISA, this addon would not be stuck at
+the standard-definition ceiling that limits the Apple TV+ addon. Worth
+re-testing rather than assuming: `initialAuthorizedDrmTrackTypes` may be
+enforced elsewhere.
+
+## The open question
+
+The web player **never fetches `dashManifestUrl`**. Across five captures —
+guide browsing, a live channel, search, and an on-demand title —
+`manifest.googlevideo.com` was not requested once. All real playback is SABR:
+`POST` to `rr*---sn-….googlevideo.com` with a ~2.2 KB protobuf body and no
+`itag`/`sq` parameters. The plain `GET …&itag=133&sq=N` requests that appear
+throughout are only the guide's 240p preview tiles.
+
+This is worth stating plainly: **no further browser capture can settle this.**
+The web client is a SABR client; it will not exercise the DASH path no matter
+what is recorded. `dashManifestUrl` is offered in every player response and
+used in none of them.
+
+Everything rests on it:
+
+- If that MPD serves — InputStream Adaptive plays DASH natively, the license
+  proxy handles Widevine, and SABR is irrelevant. A normal buildable addon.
+- If it 403s, or serves a manifest whose segments redirect into SABR — ISA
+  cannot help, and the addon would need SABR reimplemented in Python, which is
+  a moving target yt-dlp is actively struggling with.
+
+**The decisive test is one request**, and it has to be made live rather than
+recorded: take a fresh player response, `GET` its `dashManifestUrl` with the
+session cookies, and check for a 200 with a parseable MPD whose
+`SegmentTemplate` points at ordinary `videoplayback` URLs. Must run inside the
+~6 hour `expiresInSeconds` window.
+
+## Sketch, if the manifest serves
+
+```
+plugin.video.youtubetv/
+  lib/auth.py            cookie import + SAPISIDHASH signing
+  lib/api.py             InnerTube: browse(FEunplugged_epg), player, next
+  lib/epg.py             renderers -> Kodi channels + EPG
+  lib/license_proxy.py   raw Widevine <-> get_drm_license JSON, key rotation
+  default.py             channel list / guide navigation
+  service.py             proxy lifecycle, token refresh
+```
+
+A PVR-style presentation fits the data better than a plain video plugin: the
+EPG response is already channels-with-schedule.
+
+## Caveats
+
+- Everything here is private, undocumented API. `clientVersion` and the
+  InnerTube field shapes change without warning.
+- PO tokens not being required for `WEB_UNPLUGGED` is a snapshot, not a
+  guarantee. If enforcement extends to this client, the addon breaks.
+- Lineup is tied to the account's home market and its location permission.
+- Google's terms do not permit third-party clients. This is account-risk
+  territory; anyone running it uses their own subscription and accepts that.
+
+## Running the decisive test
+
+`tools/youtube_tv_check_dash.py` performs it end to end: it signs a
+`SAPISIDHASH` header from an exported cookie jar, reads the guide, calls
+`player` for the first current airing, then fetches the `dashManifestUrl` and
+reports whether the result is a DASH MPD whose segments are ordinary
+`videoplayback` URLs.
+
+```
+python3 tools/youtube_tv_check_dash.py cookies.txt --save-mpd live.mpd
+```
+
+Exit status 0 means the addon is worth building. It also doubles as a check of
+the auth chain: if `player` returns anything other than `OK`, the cookie or
+`SAPISIDHASH` handling is wrong before DRM ever enters the picture.

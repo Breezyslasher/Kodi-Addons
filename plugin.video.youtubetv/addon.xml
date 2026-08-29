@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.27" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">YouTube TV live channels and on-demand for Kodi (experimental)</summary>
+		<description lang="en_GB">Watch the live channel lineup and on-demand catalogue from your own YouTube TV subscription, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Google provides no public API for YouTube TV. This addon speaks the same private InnerTube endpoints as the YouTube TV web player, identifying itself as the WEB_UNPLUGGED client. Sign-in is by importing cookies from a browser already signed in to tv.youtube.com; Google does not permit scripted password login.
+
+Playback depends on the DASH manifest that the player endpoint offers alongside its own SABR streaming URL. The web player itself always takes the SABR path, so the DASH route is documented but lightly travelled -- if Google stops serving it, this addon stops working and there is no fallback short of reimplementing SABR.
+
+Features:
+* Live channel list and 7-day electronic programme guide
+* On-demand titles and search
+* Widevine playback via InputStream Adaptive, up to 1080p where the account allows
+* Local licence proxy handling YouTube's JSON-wrapped, rotating-key Widevine exchange
+
+Your subscription, your account, your lineup. Nothing is proxied through a third party.</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Google LLC. YouTube and YouTube TV are trademarks of Google LLC. This addon uses private, undocumented endpoints that Google's terms of service do not permit third-party clients to call; use it with your own subscription and accept the risk to your account.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.png</fanart>
+		</assets>
+		<news>
+2026.8.27 - First cut
+- Live channel list and EPG from browse(FEunplugged_epg), on-demand and search,
+  Widevine playback through a local licence proxy. Playback is unverified
+  pending a check that the DASH manifest actually serves; see
+  docs/youtube-tv-protocol.md.
+		</news>
+	</extension>
+</addon>
