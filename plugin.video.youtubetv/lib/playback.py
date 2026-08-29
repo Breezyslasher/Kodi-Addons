@@ -796,6 +796,12 @@ def prepare(client, video_id, label=None, art=None):
                      ",".join(authorized) or "none"))
 
     item = build_item(response, label=label, art=art)
+    if item is None:
+        # build_item says why it gave up. Going on to _resume with nothing
+        # buried that reason under "'NoneType' object has no attribute
+        # 'setProperty'", which is what a stopped service looked like from
+        # the outside.
+        return response, None
     _resume(item, response, is_live)
     return response, item
 

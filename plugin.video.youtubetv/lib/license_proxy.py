@@ -693,11 +693,29 @@ def manifest_url(real_url):
         BIND_HOST, published["port"], published["secret"], quote(real_url, safe=""))
 
 
-def sabr_manifest_url(key):
-    """The bridge manifest for a session, or "" if the proxy is not running."""
+def sabr_manifest_url(key, wait=6.0):
+    """The bridge manifest for a session, or "" if the proxy is not running.
+
+    Waits for it rather than failing outright. The plugin and the service
+    are separate processes and the service publishes its port to a file
+    when it comes up; installing a new version restarts it, so a play
+    started in those first seconds finds nothing published and the whole
+    playback is refused for a reason that has nothing to do with the play.
+    """
+    import time as _time
+    deadline = _time.time() + max(wait, 0)
     published = _published()
-    if not published.get("port") or not published.get("secret"):
-        return ""
+    said = False
+    while not (published.get("port") and published.get("secret")):
+        if _time.time() >= deadline:
+            kodiutils.log_error("the licence proxy has not published a port; "
+                                "is the service running?")
+            return ""
+        if not said:
+            said = True
+            kodiutils.log("waiting for the licence proxy to come up")
+        _time.sleep(0.25)
+        published = _published()
     return "http://%s:%d/sabr/manifest?id=%s&k=%s" % (
         BIND_HOST, published["port"], key, published["secret"])
 

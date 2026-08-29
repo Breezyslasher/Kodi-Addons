@@ -99,7 +99,7 @@
 							<option label="30071">1080</option>
 						</options>
 					</constraints>
-					<control type="list" format="string"/>
+					<control type="list" format="integer"/>
 				</setting>
 				<setting id="no_js_runtime" type="boolean" label="30065" help="30066">
 					<level>2</level>
