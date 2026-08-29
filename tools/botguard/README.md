@@ -101,7 +101,14 @@ differential tracer could have found:
   up: `round(-1.5)` was -2 and `round(2.5)` was 2.
 * **Property order**: `for-in` sorted every key alphabetically and
   `Object.keys` used insertion order, where JS puts integer-like keys first
-  and the rest in insertion order, both times.
+  and the rest in insertion order, both times. `for-in` also stopped at an
+  object's own properties and never walked the prototype chain.
+* **`%` poisoned every number it produced.** js2py interns the small
+  integers and its `%` corrected the result's sign in place, so `-7 % 3`
+  wrote -1 into the shared 2 and the literal `2` evaluated to -1
+  thereafter -- `1 + 1` was -1. The VM's dispatch indexes with `(n + 1) % 3`.
+* **`splice` with one argument** removed nothing, and **`''.split(',')`**
+  answered `[]` rather than `['']`.
 
 Two more the shim covers rather than js2py: there is no `Symbol`, `Map`,
 `Set`, `Promise`, `Reflect` or `TextEncoder` in ES5, and

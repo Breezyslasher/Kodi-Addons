@@ -68,6 +68,42 @@ def apply():
     import js2py.constructors.jsobject as jsobject
     from js2py.base import Js, undefined
 
+    # -- % poisons every number it produces ------------------------------
+    # js2py interns a PyJsNumber for every integer from -1024 to 16383 and
+    # hands the same object out every time that value is wanted. Its %
+    # builds the result with Js(a % b) -- which returns the interned object
+    # -- and then corrects the sign *in place*:
+    #
+    #     pyres = Js(a % b)
+    #     if a < 0 and pyres.value > 0:
+    #         pyres.value -= abs(b)
+    #
+    # So `-7 % 3` takes the shared 2, writes -1 into it, and from then on
+    # the JavaScript literal 2 evaluates to -1 everywhere in that context:
+    # `1 + 1` is -1, `String(2)` is "-1", `Math.pow(2, 53)` is -1. The next
+    # expression in the same statement already sees it -- `5.5 % 2` answers
+    # 0.5, because by then the 2 is a -1.
+    #
+    # Correct the sign before wrapping, and nothing shared is touched.
+    # This is the released library's bug, not something the addon does to
+    # it, and it is not academic: the VM's dispatch indexes with (n + 1) % 3.
+    def __mod__(self, other):
+        a = self.to_number().value
+        b = other.to_number().value
+        if abs(a) == float("inf") or not b:
+            return base.NaN
+        if abs(b) == float("inf"):
+            return Js(a)
+        value = a % b
+        # Python takes the sign of b, JavaScript the sign of a.
+        if a < 0 and value > 0:
+            value -= abs(b)
+        elif a > 0 and value < 0:
+            value += abs(b)
+        return Js(value)
+
+    base.PyJs.__mod__ = __mod__
+
     # -- key order -------------------------------------------------------
     # JS enumerates integer-like keys first, ascending, then the rest in
     # insertion order. js2py sorts every key alphabetically in for-in and
@@ -92,10 +128,28 @@ def apply():
                            if self.own[name]['enumerable']])
         else:
             cands = order(list(self.own))
+        seen = set()
         for cand in cands:
             check = self.own.get(cand)
             if check and check['enumerable']:
+                seen.add(cand)
                 yield Js(cand)
+        # And the prototype chain. js2py stopped at the object's own
+        # properties, so `for (var k in child)` never saw what the
+        # prototype declared -- an inherited enumerable property is
+        # invisible where a browser lists it after the own ones. Built-in
+        # methods live on prototypes too and are not enumerable, so they
+        # stay out of it.
+        if self.IS_CHILD_SCOPE:
+            return
+        proto, depth = self.prototype, 0
+        while proto is not None and depth < 32:
+            for name in order([n for n in getattr(proto, "own", {})
+                               if proto.own[n].get("enumerable")]):
+                if name not in seen:
+                    seen.add(name)
+                    yield Js(name)
+            proto, depth = getattr(proto, "prototype", None), depth + 1
 
     base.PyJs.__iter__ = __iter__
 
@@ -252,6 +306,36 @@ Date.now = function () { return new Date().getTime(); };
   } catch (e) {}
 })();
 
+// Array.prototype.splice with one argument removes everything from there
+// to the end. js2py read the missing deleteCount as 0 and removed nothing,
+// so [1,2,3,4].splice(2) answered [] and left the array untouched.
+(function () {
+  var native_ = Array.prototype.splice;
+  Array.prototype.splice = function (start) {
+    if (!arguments.length) return [];
+    if (arguments.length > 1) return native_.apply(this, arguments);
+    var length = this.length >>> 0;
+    var from = Number(start) || 0;
+    from = from < 0 ? Math.max(length + from, 0) : Math.min(from, length);
+    return native_.call(this, start, length - from);
+  };
+})();
+
+// ''.split(',') is [''], not []. js2py answered [] for every separator
+// that does not match an empty string.
+(function () {
+  var native_ = String.prototype.split;
+  String.prototype.split = function (separator, limit) {
+    var s = String(this);
+    if (s !== '' || separator === undefined)
+      return native_.apply(this, arguments);
+    if (limit === 0) return [];
+    var matchesEmpty = separator instanceof RegExp
+      ? separator.test('') : String(separator) === '';
+    return matchesEmpty ? [] : [''];
+  };
+})();
+
 // Object.keys and getOwnPropertyNames: js2py returned insertion order and,
 // for getOwnPropertyNames, a Python list with no array methods on it at
 // all -- .sort() on the result was "'undefined' is not a function".
@@ -316,3 +400,25 @@ Date.now = function () { return new Date().getTime(); };
   };
 })();
 """
+
+
+def unlock_globals(context):
+    """Let JavaScript replace a global, the way a real engine does.
+
+    js2py defines every built-in on the top scope with writable and
+    configurable both False, so `Uint8Array = ours` at global scope does
+    nothing at all -- silently, since sloppy mode does not throw. In a
+    browser the global built-ins are writable and configurable, and the
+    shim needs that: js2py's typed arrays are implemented with numpy,
+    numpy is not on a Kodi box, and `new Uint8Array(4)` therefore raises a
+    Python NameError. That is not a JavaScript exception, so no try/catch
+    in the VM can catch it and it takes the whole mint down.
+    """
+    try:
+        scope = context._context["var"]
+    except Exception:
+        return
+    for descriptor in getattr(scope, "own", {}).values():
+        if isinstance(descriptor, dict) and "value" in descriptor:
+            descriptor["writable"] = True
+            descriptor["configurable"] = True

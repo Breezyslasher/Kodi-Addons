@@ -84,6 +84,9 @@ var CASES2 = [
   ['encode/decodeURI', function () { return decodeURIComponent(encodeURIComponent('a+b c')) + ',' + encodeURI('a b'); }],
   ['String.raw-ish escapes', function () { return '\x41B\101'.length + ',' + '\x41B'; }],
   ['toString on object', function () { return String({}) + ',' + String({toString: function () { return 'T'; }}); }],
+  ['modulo does not poison', function () { var m = -7 % 3; return (2) + ',' + (1 + 1) + ',' + String(2) + ',' + Math.pow(2, 53) + ',' + m; }],
+  ['modulo signs', function () { return (-7 % 3) + ',' + (7 % -3) + ',' + (5.5 % 2) + ',' + (-5.5 % 2) + ',' + (7 % 3); }],
+  ['global builtins are writable', function () { var held = Array; Array = 5; var r = typeof Array; Array = held; return r; }],
   ['valueOf preferred in +', function () { var o = {valueOf: function () { return 2; }, toString: function () { return 'S'; }}; return (o + 1) + ',' + String(o); }]
 ];
 function __run2() {

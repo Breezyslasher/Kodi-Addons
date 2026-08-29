@@ -322,6 +322,54 @@ TextDecoder.prototype.decode = function (a) {
   for (i = 0; i < a.length; i++) out += String.fromCharCode(a[i]);
   return out;
 };
+// Typed arrays, in ES5. js2py implements them with numpy and numpy is not
+// on a Kodi box, so `new Uint8Array(4)` raises a Python NameError -- which
+// is not a JavaScript exception, so no try/catch in the VM can catch it and
+// it takes the whole mint down. An array-like with a length and numeric
+// properties is what getRandomValues wants and what Array.prototype's
+// methods work on. Values are masked when the array is built; a write after
+// that is not truncated, which ES5 gives no way to do and nothing here
+// needs.
+function __typedArray(mask, signed, bits) {
+  function coerce(v) {
+    v = Number(v);
+    if (!isFinite(v)) return 0;
+    v = (v < 0 ? Math.ceil(v) : Math.floor(v)) & mask;
+    if (signed && v >= (mask + 1) / 2) v -= mask + 1;
+    return v;
+  }
+  function Typed(arg) {
+    var i, source, length;
+    if (arg && typeof arg.length === 'number') {
+      source = arg;
+      length = arg.length;
+    } else {
+      length = arg === undefined ? 0 : Math.floor(Number(arg)) || 0;
+    }
+    this.length = length;
+    this.BYTES_PER_ELEMENT = bits / 8;
+    for (i = 0; i < length; i++)
+      this[i] = source ? coerce(source[i]) : 0;
+  }
+  Typed.prototype.set = function (source, offset) {
+    offset = offset || 0;
+    for (var i = 0; i < source.length; i++)
+      this[offset + i] = coerce(source[i]);
+  };
+  Typed.prototype.subarray = function (start, end) {
+    var out = [], i;
+    end = end === undefined ? this.length : end;
+    for (i = start || 0; i < end; i++) out.push(this[i]);
+    return new Typed(out);
+  };
+  Typed.prototype.slice = Typed.prototype.subarray;
+  Typed.prototype.join = function (sep) {
+    return Array.prototype.join.call(this, sep);
+  };
+  Typed.BYTES_PER_ELEMENT = bits / 8;
+  return Typed;
+}
+
 if (typeof Object.setPrototypeOf !== 'function') {
   Object.setPrototypeOf = function (o, p) { o.__proto__ = p; return o; };
 }
@@ -337,6 +385,23 @@ __define('sessionStorage', __sessionStorage);
 __define('performance', __performance);
 __define('crypto', __crypto);
 __define('__seedEntropy', __seedEntropy);
+// Plain assignment, not __define: the engine keeps its built-ins as scope
+// bindings rather than properties of the global object, so defining a
+// property of `this` leaves the name resolving to the numpy one.
+Uint8Array = __typedArray(255, false, 8);
+Uint8ClampedArray = __typedArray(255, false, 8);
+Int8Array = __typedArray(255, true, 8);
+Uint16Array = __typedArray(65535, false, 16);
+Int16Array = __typedArray(65535, true, 16);
+Uint32Array = __typedArray(4294967295, false, 32);
+Int32Array = __typedArray(4294967295, true, 32);
+__define('Uint8Array', Uint8Array);
+__define('Uint8ClampedArray', Uint8ClampedArray);
+__define('Int8Array', Int8Array);
+__define('Uint16Array', Uint16Array);
+__define('Int16Array', Int16Array);
+__define('Uint32Array', Uint32Array);
+__define('Int32Array', Int32Array);
 __define('innerWidth', __innerWidth);
 __define('innerHeight', __innerHeight);
 __define('outerWidth', __outerWidth);
