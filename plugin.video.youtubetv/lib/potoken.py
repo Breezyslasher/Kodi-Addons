@@ -93,6 +93,33 @@ def _mint(binding):
     return token, int(answer.get("ttl") or 43200)
 
 
+def short_visitor(value):
+    """The visitor id inside a visitorData blob, or the value unchanged.
+
+    visitorData is a base64url protobuf whose first field is the id itself:
+    "CgtaLUZOelFqanVvbyjg..." begins 0a 0b and then eleven bytes of
+    "Z-FNzQjjuoo". Anything that does not decode that way is handed back as
+    it came, since a video id is a perfectly good binding too.
+    """
+    if not value or len(value) < 16:
+        return value
+    try:
+        from urllib.parse import unquote
+        raw = unquote(value)
+        raw += "=" * (-len(raw) % 4)
+        data = base64.urlsafe_b64decode(raw)
+    except Exception:
+        return value
+    if len(data) > 2 and data[0] == 0x0A:
+        length = data[1]
+        if 0 < length <= 64 and len(data) >= 2 + length:
+            try:
+                return data[2:2 + length].decode("utf-8")
+            except UnicodeDecodeError:
+                return value
+    return value
+
+
 def cold_start(binding, client_state=1):
     """A token computed here, with no BotGuard and no JavaScript at all.
 
@@ -106,7 +133,15 @@ def cold_start(binding, client_state=1):
     keys, a client state, a four byte timestamp, the binding, and then the
     payload XORed against the keys that precede it.
     """
+    # The packet carries one length byte, so the binding has to be the short
+    # visitor id -- "Z-FNzQjjuoo" -- and not the five hundred character
+    # visitorData it sits inside. Handing it the blob raises
+    # "byte must be in range(0, 256)", which is what shipped.
+    binding = short_visitor(binding)
     body = binding.encode("utf-8")
+    if len(body) > 200:
+        raise PoTokenError("a cold start binding must be short, not %d bytes"
+                           % len(body))
     now = int(time.time())
     keys = [random.randrange(256), random.randrange(256)]
     header = keys + [0, client_state] + [
@@ -151,7 +186,11 @@ def token(binding, force=False):
             # computed here and needs nothing, and YouTube takes one while it
             # reports StreamProtectionStatus 2. Short-lived on purpose: it
             # should be retried for a real one before long.
-            minted, ttl = cold_start(binding), 1800
+            try:
+                minted, ttl = cold_start(binding), 1800
+            except PoTokenError as second:
+                kodiutils.log_error("po token: %s" % second)
+                return ""
             kodiutils.log("po token: falling back to a cold start token, "
                           "%s... -- it plays while YouTube allows one, and "
                           "is not a substitute for minting" % minted[:16])
