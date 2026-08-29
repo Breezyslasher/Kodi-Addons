@@ -76,12 +76,30 @@ That worked, and it went stale every few days: Google rotates those cookies
 constantly, and the fix was always the same errand of opening a browser,
 exporting again and getting the file onto a TV box. It is gone.
 
-**One-off setup.** The device-code flow needs the client ID and secret of a
-Google API project -- the same pair the regular YouTube add-on asks for, and
-the one thing the cookie route did not need. Create a project at
-`https://console.cloud.google.com`, enable the *YouTube Data API v3*, make an
-**OAuth client ID** of type *TVs and Limited Input devices*, and paste the two
-values into the addon's settings under **Account**.
+**Where the API project comes from.** Google's device flow has no anonymous
+grant, so a project has to exist somewhere. Three places are tried, in order:
+
+1. this addon's own settings, under **Account**;
+2. **plugin.video.youtube's**, if you have that addon set up -- it is the same
+   pair, and reusing it costs nothing, because this addon never calls
+   `googleapis.com` at all. Its InnerTube requests go to `tv.youtube.com` with
+   a bearer token; the project is used to mint that token and for nothing
+   else, so none of the Data API quota is spent here;
+3. one built into the build (`lib/baked_oauth.py`, absent from this repository
+   -- see below).
+
+If none applies, create one at `https://console.cloud.google.com`: enable the
+*YouTube Data API v3*, make an **OAuth client ID** of type *TVs and Limited
+Input devices*, and paste the ID and secret into the addon's settings. This is
+the one thing the cookie route did not need.
+
+**On shipping a project in a public build.** `lib/baked_oauth.py` is gitignored
+on purpose. A client ID published in a repo fronts every install at once:
+whoever owns it carries any abuse, and Google's cap on users of an unverified
+app with a sensitive scope applies to the lot of them together. When it is
+suspended, sign-in breaks for everyone simultaneously and there is nothing the
+installed addon can do. Personal builds are a different matter -- bake it and
+hand out the zip.
 
 **Then, in Kodi:** open the addon and choose **Sign in**. It shows a short code
 and a URL; open that on any device signed in to the account with the YouTube TV

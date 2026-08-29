@@ -62,11 +62,77 @@ class OAuthError(Exception):
     pass
 
 
+def _from_settings():
+    return ((kodiutils.get_setting("oauth_client_id", "") or "").strip(),
+            (kodiutils.get_setting("oauth_client_secret", "") or "").strip())
+
+
+def _from_youtube_addon():
+    """The pair plugin.video.youtube already holds, if it is installed.
+
+    Anyone who set that addon up has made exactly the Google API project this
+    one needs, and asking them to make a second is asking twice for the same
+    thing. The setting names are read off a real box rather than guessed --
+    plugin.video.youtube logs them on every settings change:
+
+        Get setting 'youtube.api.id': '406...qnfrg' (str, success)
+        Get setting 'youtube.api.secret': 'ZxC...Phc' (str, success)
+
+    It is the user's own project either way, and this addon spends none of
+    its Data API quota: the InnerTube calls go to tv.youtube.com with a
+    bearer token and never touch googleapis.com. The project is used to mint
+    the token and for nothing else.
+    """
+    try:
+        import xbmcaddon
+        other = xbmcaddon.Addon("plugin.video.youtube")
+        return ((other.getSetting("youtube.api.id") or "").strip(),
+                (other.getSetting("youtube.api.secret") or "").strip())
+    except Exception:
+        # Not installed, which is the ordinary case and not worth a log line.
+        return ("", "")
+
+
+def _baked():
+    """A project compiled into the build, if there is one.
+
+    Personal builds can ship ``lib/baked_oauth.py`` with CLIENT_ID and
+    CLIENT_SECRET, so a box needs no setup at all. The module is absent from
+    the repository and gitignored, for the same reason the baked session is:
+    published in a public repo, one project would front every install, and
+    whoever owns it carries the abuse and the unverified-app user cap for
+    everyone at once.
+    """
+    try:
+        from . import baked_oauth
+    except ImportError:
+        return ("", "")
+    return ((getattr(baked_oauth, "CLIENT_ID", "") or "").strip(),
+            (getattr(baked_oauth, "CLIENT_SECRET", "") or "").strip())
+
+
 def credentials():
-    """The user's own Google API project, from settings. Both or nothing."""
-    client_id = (kodiutils.get_setting("oauth_client_id", "") or "").strip()
-    secret = (kodiutils.get_setting("oauth_client_secret", "") or "").strip()
-    return (client_id, secret) if client_id and secret else ("", "")
+    """A Google API project to run the device-code flow against.
+
+    Three places, in order of whose it most clearly is: this addon's own
+    settings, then plugin.video.youtube's if that is set up, then one baked
+    into the build. Both halves or nothing -- half a pair fails at Google
+    with an error about the wrong one.
+
+    Google's device flow has no anonymous grant, so there is no fourth
+    option: some project has to exist. Which one is a choice about who
+    carries it, not something the addon can conjure.
+    """
+    for source, (client_id, secret) in (
+            ("this addon's settings", _from_settings()),
+            ("plugin.video.youtube", _from_youtube_addon()),
+            ("the build", _baked())):
+        if client_id and secret:
+            if source != "this addon's settings":
+                kodiutils.log("oauth: using the Google API project from %s"
+                              % source)
+            return client_id, secret
+    return ("", "")
 
 
 def request_code(client_id):

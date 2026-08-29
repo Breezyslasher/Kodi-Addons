@@ -5,3 +5,4 @@ __pycache__/
 plugin.video.youtubetv/lib/baked_cookies.py
 plugin.video.youtubetv/lib/baked_sabr.py
 plugin.video.youtubetv/lib/baked_session.py
+plugin.video.youtubetv/lib/baked_oauth.py
