@@ -91,3 +91,11 @@ msgstr ""
 msgctxt "#30034"
 msgid "Before playing, asks every YouTube TV client (web, Android, iOS, TV) for the same video and logs what each is offered. Used to find a client served plain URLs rather than SABR."
 msgstr ""
+
+msgctxt "#30035"
+msgid "Probe the SABR endpoint"
+msgstr ""
+
+msgctxt "#30036"
+msgid "Before playing, sends a request to the streaming endpoint YouTube's own player uses and logs what comes back. This is where the media actually is; the DASH URLs Kodi can play are refused."
+msgstr ""

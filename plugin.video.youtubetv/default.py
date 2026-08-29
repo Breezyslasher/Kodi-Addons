@@ -147,7 +147,7 @@ def route_channels():
     try:
         stations = _fetch_stations(client, hours=2)
     except auth.AuthError as exc:
-        kodiutils.ok_dialog(str(exc), "Session expired")
+        kodiutils.ok_dialog(str(exc), "Sign-in problem")
         finish()
         return
     except api.ApiError as exc:

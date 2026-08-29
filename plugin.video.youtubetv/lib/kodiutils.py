@@ -74,6 +74,14 @@ def notify(message, heading=None, icon=xbmcgui.NOTIFICATION_INFO, time_ms=5000):
 
 
 def ok_dialog(message, heading=None):
+    """Show an error and write it to the log.
+
+    Every failure in this addon ends at a dialog, and until now none of them
+    reached kodi.log -- which made a screenshot the only evidence of what went
+    wrong, and left whole sessions where the log showed a modal opening and
+    closing and nothing else. Log first, then show.
+    """
+    log("%s: %s" % (heading or ADDON_NAME, message))
     xbmcgui.Dialog().ok(heading or ADDON_NAME, message)
 
 

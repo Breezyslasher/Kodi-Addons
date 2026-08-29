@@ -157,6 +157,11 @@ _PAGE_STS = re.compile(r'"STS"\s*:\s*(\d+)')
 _PAGE_VISITOR = re.compile(r'"visitorData"\s*:\s*"([^"]+)"')
 _PAGE_ROLLOUT = re.compile(r'"rolloutToken"\s*:\s*"([^"]+)"')
 _PAGE_INSTALL = re.compile(r'"appInstallData"\s*:\s*"([^"]+)"')
+# The page says outright whether Google considers the jar signed in. This is
+# the one fact that separates "the cookies are dead" from "the cookies are
+# fine and our InnerTube request is wrong", and every 401 explanation offered
+# so far was a guess made without it.
+_PAGE_LOGGED_IN = re.compile(r'"(?:LOGGED_IN|loggedIn)"\s*:\s*(true|false)')
 BOOTSTRAP_FILE = "client_bootstrap.json"
 
 
@@ -218,6 +223,40 @@ def refresh_bootstrap(session, cookies):
     merged.update(found)
     kodiutils.write_json(BOOTSTRAP_FILE, merged)
     return merged
+
+
+def session_probe(session, cookies):
+    """Ask tv.youtube.com whether it still knows this jar.
+
+    Fetched fresh, not from the bootstrap cache, and only when something has
+    already failed -- the point is to answer "were the cookies the problem?"
+    at the moment it is asked, with Google's own answer rather than ours.
+
+    Returns True (signed in), False (signed out) or None (could not tell).
+    """
+    try:
+        page = session.get(ORIGIN + "/", timeout=TIMEOUT, headers={
+            "User-Agent": UA,
+            "Cookie": auth.cookie_header(cookies),
+        })
+    except Exception as exc:
+        kodiutils.log("session probe: could not load the page: %s" % exc)
+        return None
+    if page.status_code != 200:
+        kodiutils.log("session probe: page returned HTTP %d" % page.status_code)
+        return None
+    # Signed out, tv.youtube.com serves the /welcome/ marketing page, which
+    # carries no ytcfg at all -- so the absence of the flag is itself the
+    # answer, and reporting it as "could not tell" hid a dead jar behind an
+    # inconclusive message. Log where we actually landed either way.
+    kodiutils.log("session probe: %s -> %d, %d bytes"
+                  % (page.url, page.status_code, len(page.text)))
+    if "/welcome" in page.url:
+        return False
+    match = _PAGE_LOGGED_IN.search(page.text)
+    if not match:
+        return False
+    return match.group(1) == "true"
 
 
 def _timezone_name():
@@ -375,29 +414,53 @@ class Api(object):
         except requests.RequestException as exc:
             raise ApiError("could not reach %s: %s" % (endpoint, exc))
 
-        if response.status_code in (401, 403):
-            # Do not call this expiry. A client that is simply not granted this
-            # surface answers 403 on the same cookie jar another client is
-            # happily served with, and saying "cookies have probably expired"
-            # there sends people to re-export a session that was never the
-            # problem. Name the client and let the caller judge.
-            raise auth.AuthError(
-                "YouTube refused %s for client %s (HTTP %d) -- if other calls "
-                "still work, the session is fine and this client is not "
-                "granted" % (endpoint, client_name or CLIENT_NAME,
-                             response.status_code))
         if response.status_code != 200:
-            # InnerTube explains itself in the body -- which field it did not
-            # like, which client it will not answer for. Discarding that turns
-            # a specific complaint into a bare number and invites guessing at
-            # the context instead of reading the answer.
+            # InnerTube explains itself in the body -- which credential it did
+            # not like, which client it will not answer for. Reading it costs
+            # one parse and replaces a guess with Google's own words.
             detail = ""
             try:
-                body = response.json()
-                error = body.get("error") or {}
-                detail = error.get("message") or json.dumps(body)[:400]
+                error = (response.json().get("error") or {})
+                detail = error.get("message") or ""
+                status = error.get("status") or ""
+                if status and status not in detail:
+                    detail = ("%s: %s" % (status, detail)).strip(": ")
             except ValueError:
                 detail = (response.text or "")[:400]
+            kodiutils.log("%s -> HTTP %d as %s v%s%s"
+                          % (endpoint, response.status_code,
+                             client_name or CLIENT_NAME, _client_version(),
+                             ": %s" % detail if detail else ""))
+
+        if response.status_code in (401, 403):
+            # Four different explanations have been offered for a 401 here --
+            # rotation, staleness, integrity cookies, a bad extraction -- all
+            # of them guesses made without asking whether the jar was actually
+            # dead. So ask. The page and this call carry the same cookies, so
+            # a signed-in page and a 401 cannot both be about the session.
+            live = session_probe(self.session, self.cookies)
+            names = ",".join(sorted(self.cookies))
+            kodiutils.log("session probe: signed in = %s; jar carries %s"
+                          % (live, names))
+            if live is False:
+                raise auth.AuthError(
+                    "Google no longer knows this session -- tv.youtube.com "
+                    "serves it a signed-out page. Import a fresh cookie "
+                    "export.%s" % (" (%s)" % detail if detail else ""))
+            if live is True:
+                raise auth.AuthError(
+                    "The session is still signed in -- tv.youtube.com serves "
+                    "these same cookies a signed-in page -- but %s returned "
+                    "HTTP %d, so it is the request being refused, not the "
+                    "cookies.%s"
+                    % (endpoint, response.status_code,
+                       " (%s)" % detail if detail else ""))
+            raise auth.AuthError(
+                "%s returned HTTP %d and the page probe could not say whether "
+                "the session is alive.%s"
+                % (endpoint, response.status_code,
+                   " (%s)" % detail if detail else ""))
+        if response.status_code != 200:
             raise ApiError("%s returned HTTP %d%s"
                            % (endpoint, response.status_code,
                               ": %s" % detail if detail else ""))
