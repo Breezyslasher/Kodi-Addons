@@ -474,6 +474,27 @@ def route_browse(browse_id, name):
     _add_items(items)
 
 
+def _dump_shape(name, response):
+    """Write a page this addon could not read to the profile dir.
+
+    A log line can say which renderers came back; it cannot say what they
+    contained. When a container is unrecognised the response itself is what
+    is needed to write the reader, so it is kept where the user can find and
+    send it. responseContext is stripped: it carries the visitor id and
+    nothing about the page.
+    """
+    try:
+        body = {k: v for k, v in response.items() if k != "responseContext"}
+    except AttributeError:
+        return ""
+    if not kodiutils.write_json(name, body):
+        return ""
+    import os
+    path = os.path.join(kodiutils.profile_dir(), name)
+    kodiutils.log("wrote the unread response to %s" % path)
+    return path
+
+
 def _follow_pages(client, section, limit=10):
     """Everything behind a row's continuation token, page after page.
 
@@ -591,10 +612,20 @@ def route_home():
         finish()
         return
 
-    # No row this addon recognises. Rather than show an empty folder, list
-    # whatever the page names -- and say so in the log, because the shape
-    # having changed is the thing worth knowing.
-    kodiutils.log("home: no rows recognised; listing the page flat")
+    # No known container. Look for named rows by shape before giving up,
+    # and keep the response either way: the shape having changed is the
+    # thing worth knowing.
+    kodiutils.log("home shape: %s" % epg.describe(first_page))
+    _dump_shape("home-shape.json", first_page)
+    rows = []
+    for page in pages:
+        rows.extend(epg.any_rows(page))
+    if rows:
+        kodiutils.log("home: %d row(s) by shape" % len(rows))
+        _list_sections(rows, "home_row")
+        finish()
+        return
+    kodiutils.log("home: nothing recognised; listing the page flat")
     _add_items(epg.parse_items(first_page))
 
 
@@ -609,13 +640,65 @@ def route_home_row(name):
         kodiutils.ok_dialog(error, "Could not open the front page")
         finish()
         return
-    section = next((s for s in _sections_of(pages) if s.title == name), None)
+    sections = _sections_of(pages)
+    if not sections:
+        for page in pages:
+            sections.extend(epg.any_rows(page))
+    section = next((s for s in sections if s.title == name), None)
     if section is None:
         kodiutils.notify("%s is no longer on the front page"
                          % (name or "That row"))
         finish()
         return
     _add_items(_follow_pages(client, section))
+
+
+def _library_sections(response):
+    """(rows, filters, recognised) for a library response.
+
+    The grid readers were written from web-client captures. The TV client
+    answers with something else -- 0 rows and 0 filters on a real account --
+    so when neither matches, fall back to finding named rows by shape. That
+    reader needs no container name, and on the web captures it recovers the
+    same rows plus the grid's own "Recordings & purchases".
+    """
+    rows, filters = epg.parse_library(response)
+    if rows or filters:
+        return rows, filters, True
+    return epg.any_rows(response), [], False
+
+
+def _library_response(client):
+    """The Library page, from whichever client identity can describe it.
+
+    The addon speaks as TVHTML5_UNPLUGGED everywhere, and Home comes back
+    from it in the shape the web captures showed. The Library does not: on a
+    real account it answered with no rows, no filters and one item that
+    parse_items could reach. The grid readers were written from a
+    WEB_UNPLUGGED capture, so that identity is asked second, and its answer
+    is used only if it actually parses. If the token is not accepted for it,
+    or its answer is no better, the first answer stands.
+    """
+    response = client.library()
+    _rows, filters, known = _library_sections(response)
+    if known and (filters or _rows):
+        return response, client.client_name
+
+    for name in ("WEB_UNPLUGGED",):
+        if name == client.client_name or name not in api.UNPLUGGED_CLIENTS:
+            continue
+        try:
+            second = client.library(client_name=name)
+        except (auth.AuthError, api.ApiError) as exc:
+            kodiutils.log("library: %s did not answer: %s" % (name, exc))
+            continue
+        rows, filters, known = _library_sections(second)
+        kodiutils.log("library: as %s -- %d row(s), %d filter(s), %s"
+                      % (name, len(rows), len(filters),
+                         "a known container" if known else "nothing known"))
+        if known and (rows or filters):
+            return second, name
+    return response, client.client_name
 
 
 def route_library():
@@ -633,17 +716,22 @@ def route_library():
         finish()
         return
     try:
-        response = client.library()
+        response, as_client = _library_response(client)
     except (auth.AuthError, api.ApiError) as exc:
         kodiutils.ok_dialog(str(exc), "Could not open your library")
         finish()
         return
 
-    shelves, filters = epg.parse_library(response)
-    kodiutils.log("library: %d row(s) and %d filter(s) -- %s"
+    shelves, filters, known = _library_sections(response)
+    kodiutils.log("library: read as %s" % as_client)
+    kodiutils.log("library: %d row(s) and %d filter(s)%s -- %s"
                   % (len(shelves), len(filters),
+                     "" if known else " (by shape: no known container)",
                      ", ".join("%s (%d)" % (s.title, len(s.items))
                                for s in shelves + filters) or "nothing"))
+    if not known:
+        kodiutils.log("library shape: %s" % epg.describe(response))
+        _dump_shape("library-shape.json", response)
 
     _list_sections(shelves, "library_section")
     _list_sections(filters[1:], "library_section")
@@ -654,9 +742,9 @@ def route_library():
     if shelves:
         finish("videos")
         return
-    # The grid did not come back in a shape this addon knows. List what the
-    # page names anyway; the log above says what arrived instead.
-    kodiutils.log("library: no filters recognised; listing the page flat")
+    # Nothing named a row. List what the page names anyway; the shape log and
+    # the dump above say what arrived instead.
+    kodiutils.log("library: nothing recognised; listing the page flat")
     items = epg.parse_items(response)
     if not items:
         kodiutils.notify("Nothing in your library yet")
@@ -670,13 +758,13 @@ def route_library_section(name):
         finish()
         return
     try:
-        response = client.library()
+        response, _as_client = _library_response(client)
     except (auth.AuthError, api.ApiError) as exc:
         kodiutils.ok_dialog(str(exc), "Could not open your library")
         finish()
         return
 
-    shelves, filters = epg.parse_library(response)
+    shelves, filters, _known = _library_sections(response)
     section = next((s for s in shelves + filters if s.title == name), None)
     if section is None:
         kodiutils.notify("%s is no longer in your library"

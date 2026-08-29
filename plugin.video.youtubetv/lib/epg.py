@@ -646,3 +646,100 @@ def parse_library(response):
     shelves are curated rows, the filters are one collection sliced six ways.
     """
     return page_shelves(response), library_filters(response)
+
+
+_TITLE_KEYS = ("title", "primaryText", "headerText", "shelfTitle")
+
+
+def any_rows(response, least=2):
+    """Named rows found by shape, for a page whose container is unknown.
+
+    page_shelves knows two containers, both read off web-client captures.
+    The TV client answers the Library with something else -- 0 rows, 0
+    filters, and a flat listing of whatever parse_items could reach -- so
+    this is the reader that does not need to know the container's name.
+
+    A row is any renderer that carries a title and has at least ``least``
+    playable-or-browsable things under it. Only the innermost such renderer
+    is kept: a page is itself a titled renderer containing every row, and
+    returning that alongside its own children would list everything twice.
+    Containment is tracked with an ancestor stack rather than inferred from
+    the item sets, which would be a guess whenever two rows happen to
+    overlap.
+    """
+    found = []
+
+    def visit(node, ancestors):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if not (key.endswith("Renderer") and isinstance(value, dict)):
+                    visit(value, ancestors)
+                    continue
+                title = ""
+                for name in _TITLE_KEYS:
+                    title = text(value.get(name))
+                    if title:
+                        break
+                if not title:
+                    visit(value, ancestors)
+                    continue
+                items = parse_items(value)
+                if len(items) < least:
+                    visit(value, ancestors)
+                    continue
+                mine = len(found)
+                found.append([title, items, first(value, "continuation") or "",
+                              set(ancestors), False])
+                for index in ancestors:
+                    found[index][4] = True      # an ancestor has a child row
+                visit(value, ancestors + [mine])
+        elif isinstance(node, list):
+            for value in node:
+                visit(value, ancestors)
+
+    visit(response, [])
+    rows = []
+    for title, items, token, _ancestors, has_child in found:
+        if has_child:
+            continue
+        rows.append(Section(title, items, token if isinstance(token, str) else ""))
+    return rows
+
+
+def describe(response, limit=40):
+    """A compact account of a response's shape, for the log.
+
+    Printed when a page arrives in a container this addon does not know.
+    Naming the renderers that came back, and the lists they sit in, is the
+    difference between "the Library did not parse" and knowing what to
+    write next.
+    """
+    counts = {}
+    lists = []
+
+    def visit(node, path):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key.endswith("Renderer") and isinstance(value, dict):
+                    counts[key] = counts.get(key, 0) + 1
+                visit(value, path + "/" + key)
+        elif isinstance(node, list):
+            names = [name for entry in node if isinstance(entry, dict)
+                     for name in entry if name.endswith("Renderer")]
+            if len(names) >= 2:
+                seen = []
+                for name in names:
+                    if name not in seen:
+                        seen.append(name)
+                lists.append((path, len(node), ",".join(seen[:4])))
+            for index, value in enumerate(node):
+                visit(value, path + "[%d]" % index)
+
+    visit(response, "")
+    ranked = sorted(counts.items(), key=lambda pair: -pair[1])[:limit]
+    lists.sort(key=lambda row: -row[1])
+    return ("top-level keys: %s\n  renderers: %s\n  lists: %s"
+            % (", ".join(sorted(response.keys())) if isinstance(response, dict)
+               else type(response).__name__,
+               ", ".join("%s x%d" % pair for pair in ranked) or "none",
+               " | ".join("%s (%d: %s)" % row for row in lists[:8]) or "none"))

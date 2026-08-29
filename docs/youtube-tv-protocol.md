@@ -210,6 +210,39 @@ Note that `section_continuations`, which the show pages use, is *wrong* here and
 would pair "Shows" with All's second sort. That is why the Library has a reader
 of its own.
 
+#### The TV client does not answer the Library the way the web client does
+
+Measured on a real account, 2026-08-29 19:33, as `TVHTML5_UNPLUGGED`:
+
+    library: 0 row(s) and 0 filter(s) -- nothing
+    library: no filters recognised; listing the page flat
+
+One item reached the listing. Home, asked as the same client minutes earlier,
+came back in exactly the shape the web capture showed — 22 rows of
+`unpluggedHomeShelfRenderer`, including three the web capture did not have
+("Watch in multiview", "Horror movies", "Networks", the last with 256 items) —
+so the client identity is fine and it is the Library page specifically that
+differs. What it returns instead is not yet known; every shape above was read
+off a `WEB_UNPLUGGED` capture.
+
+Three things follow from that, all in place now rather than waiting on a
+capture:
+
+* `epg.any_rows` finds named rows **by shape** — any renderer carrying a title
+  and two or more things `parse_items` can reach — with no container name
+  needed. Only the innermost such renderer counts, tracked with an ancestor
+  stack, because a page is itself a titled renderer holding every row. On the
+  web captures it recovers the same rows the named readers do, plus the grid's
+  own "Recordings & purchases".
+* The Library is asked a second time as `WEB_UNPLUGGED` when the first answer
+  cannot be read, and that answer is used only if it actually parses. The
+  bearer may not be accepted for that identity; if it is not, the first answer
+  stands.
+* An unreadable page is written to `library-shape.json` in the add-on's profile
+  directory, minus `responseContext`, and `epg.describe` logs the renderer
+  names and the lists they sit in. A log line can say which renderers came
+  back; it cannot say what they held.
+
 #### A scheduled recording that is on the air has no watchEndpoint
 
 Six of the seven tiles in "Scheduled recordings" carry a plain `browseEndpoint`

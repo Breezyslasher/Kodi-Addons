@@ -811,16 +811,17 @@ class Api(object):
             }},
         }, client_name=client_name)
 
-    def continuation(self, token):
-        return self.call("browse", {"continuation": token})
+    def continuation(self, token, client_name=None):
+        return self.call("browse", {"continuation": token},
+                         client_name=client_name)
 
-    def library(self):
+    def library(self, client_name=None):
         """Recordings, purchases and what is scheduled to record."""
-        return self.continuation(LIBRARY_CONTINUATION)
+        return self.continuation(LIBRARY_CONTINUATION, client_name=client_name)
 
-    def home(self):
+    def home(self, client_name=None):
         """The front page: resume watching, top picks, and the genre rows."""
-        return self.continuation(HOME_CONTINUATION)
+        return self.continuation(HOME_CONTINUATION, client_name=client_name)
 
     def browse(self, browse_id, params=None):
         body = {"browseId": browse_id}
