@@ -1046,8 +1046,48 @@ bridge puts in the manifest is the one the media's own `tenc` carries:
     itag 146 fragment 3 aux: tenc ... kid=13720fbbf8505264
     itag 148 fragment 2 aux: tenc ... kid=92d444f944355272
 
-**But the two tracks are not encrypted the same way**, and the difference
-lines up exactly with which one fails:
+**Retracted: the subsample explanation below does not survive reading ISA's
+source.** ISA 21.5.22's `CWVCencSingleSampleDecrypter::DecryptSampleData`
+handles a sample with no subsamples correctly on the non-secure path, which is
+the path audio takes here (`GetCapabilities: Single decrypt possible`):
+
+    else
+    {
+      subsampleCount = 1;
+      bytesOfCleartextData = &clearBytes;      // 0
+      bytesOfEncryptedData = &encryptedBytes;  // the whole sample
+    }
+
+and the 8-byte IV is zero-padded to 16 in `CAdaptiveCencSampleDecrypter`. The
+large 21 to 22 rewrite of that file -- including the new comment "If IV present
+but no subs were provided, treat as fully encrypted payload" -- is inside the
+`SSD_SECURE_PATH` branch, which is the *video* path. So the observation below
+is real and the conclusion drawn from it was not.
+
+**What the source does show** is a fragment-level difference, in
+`FragmentedSampleReader::ParseFragment`. Both versions inject an empty `senc`
+when a fragment carries no `saiz`, `saio` or `senc` at all:
+
+    // ISA 21.5.22
+    if (!traf->GetChild(SAIO) && !traf->GetChild(SAIZ) && !traf->GetChild(SENC))
+      traf->AddChild(new AP4_SencAtom());
+
+    // ISA 22.3.20
+    bool isDefaultProtected{true};
+    ... isDefaultProtected = trackEnc->GetDefaultIsProtected() != 0;
+    if (isDefaultProtected && !traf->GetChild(SAIO) && ...)
+      traf->AddChild(new AP4_SencAtom());
+
+21 injects it unconditionally; 22 first asks the track's `tenc` whether samples
+are protected by default. This addon's audio has exactly the shape that reaches
+that code -- **fragment 1 clear with no saiz/saio, every fragment after it
+encrypted** -- so it is the one difference found so far that both versions
+would take differently on this media. Whether it is *the* cause is not
+established: our `tenc` says `protected=1`, which would make `isDefaultProtected`
+true on 22 as well.
+
+**The observation, which stands:** the two tracks are not encrypted the same
+way, and the difference lines up with which one fails:
 
     VIDEO 146   saiz default=0  count=160  sizes[:4]=[16, 16, 16, 16]
     AUDIO 150   saiz default=8  count=430
@@ -1058,11 +1098,10 @@ headers with encrypted payload. Eight bytes per audio sample is the IV and
 nothing else: **the whole sample is encrypted, with no subsamples at all.**
 Both tracks use `iv_size=8`.
 
-That is the classic corner for a CENC implementation -- code that assumes
-subsample entries are present, or mishandles "no subsamples means the entire
-sample", breaks fully-encrypted audio while subsample-encrypted video plays
-perfectly. Which is precisely the observed behaviour on 21.5.22, and it
-explains why video survives.
+It is a plausible corner for a CENC implementation, and it was written up here
+as the cause. Reading 21.5.22 does not support that: the non-secure path
+handles it. Kept as the measurement it is, not as the explanation it was
+claimed to be.
 
 ### Every AAC rendition fails at the same instant, and that is the proof
 
