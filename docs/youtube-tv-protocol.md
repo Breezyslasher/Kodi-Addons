@@ -1016,6 +1016,24 @@ An `audio_itag` setting now names the rendition, so one playback per itag
 answers it. Until that is run, the honest statement is that ISA 21.5.22 fails
 on the rendition the addon chooses -- not that ISA 21 cannot work.
 
+**The first attempt at it tested nothing, and the log said so.** Naming the
+rendition in `_pick` -- which decides what the manifest declares -- left every
+audio format in the SABR offer, and the endpoint picks from what it is given:
+
+    sabr bridge: audio itag 148, because the setting asks for it
+    sabr bridge: session s1788037712, audio itag 148, video itag 146 (1080p)
+    sabr bridge: the server chose video 146, audio 150
+
+Three lines, one second apart, and `ISA asked itag 150` for every segment
+after them. Itag 150 was played in all five runs -- 148, 149, 381 and
+automatic alike -- so four "different renditions" were the same bytes four
+times. This is the video-height finding again in the other track: **the offer
+decides, not the manifest.** The setting now narrows the offer.
+
+Also learned from those runs: this title has no itag 381 at all. AC-3 is not
+on everything, so a rendition test has to say when the one asked for is absent
+rather than silently falling back.
+
 ### What the media actually is
 
 Measured with a probe in the addon rather than inferred. Every init segment:

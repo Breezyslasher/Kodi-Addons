@@ -205,7 +205,7 @@ msgid "Audio rendition"
 msgstr ""
 
 msgctxt "#30073"
-msgid "Which of YouTube TV's four audio tracks to ask the SABR endpoint for. The bridge declares one Representation per track, so it picks rather than leaving it to ISA, and it has always picked the highest-scoring one -- itag 150. That makes the rendition an untested variable in any audio fault: on inputstream.adaptive 21.5.22 this stream's audio turns to invalid AAC after one subsegment, and whether that is ISA's decryption generally or its handling of this packaging has never been separated. Leave on automatic unless you are testing that, or you want AC-3 for a receiver."
+msgid "Which of YouTube TV's audio tracks to ask the SABR endpoint for. It is applied to the offer, not to the manifest: the endpoint chooses from whatever it is given, so the only way to be served a rendition is to offer nothing else -- and if it refuses an offer of one, playback fails rather than quietly widening. Leave on automatic unless you are testing which rendition a decoder can handle, or you want AC-3 for a receiver. Not every title carries every itag; 381 was absent from the one this was written against."
 msgstr ""
 
 msgctxt "#30074"
