@@ -66,7 +66,7 @@ def forget(key):
 
 def set_context(url, config, audio, video, client_name, drm_params="",
                 candidates=None, max_height=1080, video_id="",
-                is_live=True, audio_url=""):
+                is_live=True, audio_url="", authorized=None):
     """Leave everything the service needs to open the session itself.
 
     The url must already have its n solved: the plugin has the player JS and
@@ -93,6 +93,12 @@ def set_context(url, config, audio, video, client_name, drm_params="",
         # ContentProtection with no init data under it. drmParams is
         # where the content id comes from, exactly as on the DASH path.
         "drm_params": drm_params,
+        # What the media server will actually serve. Not the licence's
+        # ceiling: the licence grants HD and UHD1 for this title and the
+        # SABR endpoint still answers sabr.no_video_selected for an offer
+        # of nothing but HD-tier renditions. It serves the tier the player
+        # response authorised and no other.
+        "authorized": authorized or [],
         "video_id": video_id,
         "live": bool(is_live),
         # The same audio track as a plain file, with n already solved. The
@@ -246,6 +252,34 @@ def lookup(key):
     # is not the narrowing that gets refused, which was a single format,
     # but a smaller menu. If the endpoint refuses this one too, priming
     # widens back to every_video below and playback carries on.
+    # Which renditions the media server will actually serve. The licence
+    # grants HD and UHD1 for this title; the endpoint still answers
+    # sabr.no_video_selected for an offer containing nothing but HD-tier
+    # renditions -- one of them or three of them alike. It serves the tier
+    # the player response authorised, and that has read AUDIO,SD on every
+    # identity tried. So a height floor cannot work on its own: itag 146 is
+    # 1080p and unservable, while itag 810 is 1080p *and* SD tier, which is
+    # why the endpoint picked it 36 times before AV1 was held back.
+    authorized = set(stored.get("authorized") or [])
+    kodiutils.log("sabr bridge: the player response authorises %s"
+                  % (", ".join(sorted(authorized)) or "nothing in particular"))
+    for fmt in sorted(alternatives(candidates, "video/", 4320),
+                      key=lambda f: -(f.get("height") or 0)):
+        kodiutils.log("sabr bridge:   itag %-4s %-9s %sx%-5s %s"
+                      % (fmt.get("itag"),
+                         (fmt.get("mimeType") or "").split('codecs="')[-1]
+                         .rstrip('"').split(".")[0],
+                         fmt.get("width"), fmt.get("height"),
+                         fmt.get("drmTrackType") or "?"))
+    if authorized:
+        servable = [f for f in avc
+                    if (f.get("drmTrackType") or "") in authorized]
+        if servable and len(servable) != len(avc):
+            kodiutils.log("sabr bridge: %s are not in an authorised tier, so "
+                          "they come off the offer"
+                          % [f.get("itag") for f in avc if f not in servable])
+            avc = servable
+
     floor = _quality_floor()
     every_avc = list(avc)
     if floor and avc:
@@ -257,8 +291,34 @@ def lookup(key):
                              [f.get("itag") for f in avc if f not in tall]))
             avc = tall
         else:
-            kodiutils.log("sabr bridge: nothing this title offers reaches "
-                          "%dp, so the whole H.264 set stands" % floor)
+            # No H.264 that tall is servable. On this title the only
+            # rendition that is both 1080p and SD tier is itag 810, which is
+            # AV1 -- and AV1 is held back because a run on it ended in
+            # kDecryptError. That run also predates the signatureTimestamp
+            # fix and the key id fix, so it was never a clean test, and this
+            # is the setting that asks for it: height over the safe codec.
+            taller = [f for f in offerable
+                      if (f.get("height") or 0) >= floor
+                      and f not in avc
+                      and (not authorized
+                           or (f.get("drmTrackType") or "") in authorized)]
+            if taller:
+                taller.sort(key=lambda f: -(f.get("height") or 0))
+                kodiutils.log("sabr bridge: no H.264 reaches %dp in a tier "
+                              "this session may play, so offering %s "
+                              "instead -- %s, which is the codec that ended "
+                              "in kDecryptError once"
+                              % (floor, [f.get("itag") for f in taller],
+                                 ", ".join(sorted({
+                                     (f.get("mimeType") or "")
+                                     .split('codecs="')[-1].rstrip('"')
+                                     .split(".")[0] for f in taller}))))
+                avc = taller
+            else:
+                kodiutils.log("sabr bridge: nothing this title offers is "
+                              "both %dp and servable, so the whole set "
+                              "stands" % floor)
+
     session = sabr_session.Session(
         stored["url"], stored.get("config") or "",
         [_entry(f) for f in alternatives(candidates, "audio/")],
@@ -894,6 +954,8 @@ def playable_url(player_response, max_height=1080):
                       candidates=formats, max_height=max_height,
                       video_id=(player_response.get("videoDetails") or {}
                                 ).get("videoId", ""),
+                      authorized=streaming.get(
+                          "initialAuthorizedDrmTrackTypes") or [],
                       is_live=bool((player_response.get("videoDetails") or {}
                                     ).get("isLive")))
     kodiutils.log("sabr bridge: session %s, audio itag %s, video itag %s (%sp)"

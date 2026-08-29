@@ -1646,6 +1646,40 @@ one per track, and that is not a limitation to be worked around: a
 Representation the bridge cannot serve does not degrade to a lower quality,
 it removes the track.
 
+### Why the bridge is stuck at 480p and the DASH path is not
+
+`initialAuthorizedDrmTrackTypes` reads `AUDIO, SD` on every log, on every
+identity, cookie and token alike. The two paths do different things with
+that.
+
+On **DASH** the client chooses. The manifest declares every Representation
+-- `declared widevine for AUDIO x3, HD x3, SD x6` -- ISA picks one and
+fetches it from googlevideo by byte range, and the *licence* decides whether
+it decrypts. The licence grants HD and UHD1, so HD plays: a cookie-path log
+has ISA selecting `ID 224 (Bandwidth: 3481861, Resolution: 1280x720)` and
+decoding h264 at 1280x720. The bridge is not involved on that path at all;
+the local proxy only repairs the manifest.
+
+On **SABR** the server chooses, and it obeys the authorisation rather than
+the licence. Offer it nothing but HD-tier renditions and it answers
+`sabr.no_video_selected` -- one of them or three of them alike, which is
+what makes this a tier rule and not an "offer too small" rule:
+
+    [146]                 1 format,  all HD tier   -> sabr.no_video_selected
+    [146, 224, 145]       3 formats, all HD tier   -> sabr.no_video_selected
+    9 H.264, HD and SD                             -> serves 223  (SD tier)
+    32 formats including AV1                       -> serves 810  (SD tier)
+
+And that is what the 36 AV1 picks were about. Itag 810 is 1920x1080 *and*
+carries the SD tier's key id, so it is the one tall rendition the endpoint
+is allowed to send. It was never choosing the tallest thing; it was
+choosing the tallest thing in the only tier it may serve.
+
+So a height floor cannot work by height. The offer is filtered to the
+authorised tier first, and the floor then applies within it -- and when no
+H.264 in that tier is tall enough, the floor is what asks for the AV1 that
+is.
+
 ### The server has served 1080p, just never H.264 1080p
 
 Every rendition the endpoint has chosen across every log on this box:
