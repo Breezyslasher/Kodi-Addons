@@ -35,6 +35,8 @@ SLACK = 60
 
 _lock = threading.Lock()
 _memo = {}
+# How the token in hand was come by, for anything that wants to say so.
+last = {"source": ""}
 
 
 class PoTokenError(Exception):
@@ -176,8 +178,10 @@ def token(binding, force=False):
             held = stored.get(binding)
         if held and not force and held.get("expires_at", 0) > now + SLACK:
             _memo[binding] = held
+            last["source"] = held.get("source") or "cached"
             return held.get("token") or ""
 
+        how = "minted"
         try:
             minted, ttl = _mint(binding)
         except PoTokenError as exc:
@@ -187,15 +191,13 @@ def token(binding, force=False):
             # reports StreamProtectionStatus 2. Short-lived on purpose: it
             # should be retried for a real one before long.
             try:
-                minted, ttl = cold_start(binding), 1800
+                minted, ttl, how = cold_start(binding), 1800, "cold started"
             except PoTokenError as second:
                 kodiutils.log_error("po token: %s" % second)
                 return ""
-            kodiutils.log("po token: falling back to a cold start token, "
-                          "%s... -- it plays while YouTube allows one, and "
-                          "is not a substitute for minting" % minted[:16])
 
-        held = {"token": minted, "expires_at": int(now + ttl)}
+
+        held = {"token": minted, "expires_at": int(now + ttl), "source": how}
         _memo[binding] = held
         stored = kodiutils.read_json(CACHE_FILE, default={}) or {}
         # Only this binding's, and only the ones still alive: the file should
@@ -204,6 +206,9 @@ def token(binding, force=False):
                   if isinstance(v, dict) and v.get("expires_at", 0) > now}
         stored[binding] = held
         kodiutils.write_json(CACHE_FILE, stored)
-        kodiutils.log("po token: minted %s... for %s..., good for %d hours"
-                      % (minted[:16], binding[:12], ttl // 3600))
+        last["source"] = how
+        kodiutils.log("po token: %s %s... for %s..., good for %s"
+                      % (how, minted[:16], binding[:12],
+                         ("%d hours" % (ttl // 3600)) if ttl >= 3600
+                         else ("%d minutes" % (ttl // 60))))
         return minted
