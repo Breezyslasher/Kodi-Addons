@@ -965,6 +965,34 @@ three seconds forever. The video track's `DecryptAndDecodeVideo` returned
 kNoKey in the same instant, sixteen milliseconds after the flush, which made it
 look like a second fault and was only ever a consequence of the first.
 
+### Reproduced through the bridge, on 2026-08-29
+
+The original comparison was made on the DASH path, when the addon still held a
+cookie jar, so whether ISA 21 failed the same way on media the SABR bridge
+serves was inferred rather than measured. It is measured now: Kodi 21.3 with
+**inputstream.adaptive 21.5.22**, the same code as the Kodi 22 build to the
+byte apart from `addon.xml`.
+
+The addon side is clean -- `asking for 1080p, offering [146]`, `opened session
+as TVHTML5_UNPLUGGED`, per-track key ids, `the server chose video 146, audio
+150`, `licence granted: 949 bytes, 4 formats`, and watchtime reported out to
+47.9s. Then:
+
+    16:59:58.009  Creating video codec with codec id: 27
+    17:00:07.466  [aac] channel element 2.10 is not allocated
+                  [aac] Reserved bit set.
+
+**9.46 seconds**, against the 9.5 measured on the DASH path -- one audio
+subsegment, the same failure, and no reason left to think the delivery had
+anything to do with it. 4912 AAC errors and 28 `stream stalled` in the run.
+
+One thing did change, and it is the session's fixes showing: **zero kNoKey**.
+On the DASH path the video track went kNoKey sixteen milliseconds after the
+audio flush, which looked like a second fault. Here video keeps decoding while
+audio is destroyed, because each Representation now carries its own key id and
+the two tracks no longer share a CDM session. So ISA 21's remaining fault is
+audio decryption alone, and nothing in this addon can reach it.
+
 ### What the media actually is
 
 Measured with a probe in the addon rather than inferred. Every init segment:
