@@ -20,3 +20,7 @@ They need no network and no credentials.
 `test_credentials.py` covers where the Google API project comes from: this
 addon's settings, then plugin.video.youtube's if that addon is installed, then
 one baked into the build -- and that half a pair is skipped rather than sent.
+
+`test_skip.py` covers the audio fragment offset behind the `skip_clear_audio`
+diagnostic: that the clear first fragment is not served when it is on, and that
+the offset is per session rather than shared between them.

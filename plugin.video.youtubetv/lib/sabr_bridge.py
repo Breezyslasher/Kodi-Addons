@@ -736,6 +736,16 @@ def manifest(key, base):
                   % ", ".join("%s %s" % (kind, fmt.get("itag"))
                               for kind, fmt in served))
 
+    if _skip_clear_audio():
+        for kind, fmt in served:
+            if kind == "audio":
+                session.skip[fmt["itag"]] = 1
+                kodiutils.log(
+                    "sabr bridge: serving audio itag %s one fragment on, so "
+                    "ISA never sees the clear first one. The tracks will be "
+                    "out of step by that fragment -- this is a diagnostic, "
+                    "not a fix." % fmt.get("itag"))
+
     sets = []
     for kind, fmt in served:
         itag = fmt["itag"]
@@ -908,6 +918,29 @@ def _pick(formats, kind, max_height=1080):
         primary = [f for f in wanted if "primary" in (f.get("xtags") or "")]
         wanted = primary or wanted
     return max(wanted, key=_preference)
+
+
+def _skip_clear_audio():
+    """Whether to hide the clear first audio fragment from ISA.
+
+    YouTube TV's audio arrives with fragment 1 unencrypted -- the addon's own
+    parser says "clear (no saiz/saio)" -- and every fragment after it
+    encrypted. On inputstream.adaptive 21.5.22 the audio is destroyed the
+    instant the first encrypted fragment is decoded, which is 9.5 seconds in
+    because that is one fragment; on 22.3.20 the same media plays.
+
+    Reading both versions found one difference this shape reaches.
+    FragmentedSampleReader injects a synthetic senc into any fragment that
+    carries no saiz, saio or senc -- 21 unconditionally, 22 only when the
+    track's tenc says samples are protected by default. A clear fragment is
+    exactly such a fragment.
+
+    So: never hand ISA the clear one, and see whether the encrypted ones
+    decrypt. It costs synchronisation -- audio runs a fragment ahead of video
+    -- which makes it a diagnostic rather than a fix. If the answer is yes,
+    the fix is to drop the same amount of media from both tracks.
+    """
+    return kodiutils.get_setting_bool("skip_clear_audio", False)
 
 
 def _audio_itag():

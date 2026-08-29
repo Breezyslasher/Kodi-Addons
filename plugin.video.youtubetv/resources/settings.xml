@@ -72,6 +72,11 @@
 					<constraints><allowempty>true</allowempty></constraints>
 					<control type="edit" format="string"/>
 				</setting>
+				<setting id="skip_clear_audio" type="boolean" label="30079" help="30080">
+					<level>0</level>
+					<default>false</default>
+					<control type="toggle"/>
+				</setting>
 				<setting id="audio_itag" type="integer" label="30072" help="30073">
 					<level>0</level>
 					<default>0</default>
