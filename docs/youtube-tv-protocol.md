@@ -186,6 +186,40 @@ safe codec on low-power Kodi hardware.
 With `POST /youtubei/v1/suggest?alt=json` behind the search box for
 autocomplete. Both are cheap and behave like ordinary InnerTube search.
 
+### A show page — `POST /youtubei/v1/browse?alt=json`
+
+```json
+{ "browseId": "UCZYw_wEStht0rr7CDQIC2Hw" }
+```
+
+The body is the browse id and a context, nothing else: the browser sends no
+`params` here, and the capture of 2026-08-27 23:38 confirms it field for
+field.
+
+**The page does not carry the episodes.** Browsing Rick and Morty answers
+with 71 KB holding exactly two playable items — the two newest episodes —
+and eleven `shelfRenderer` blocks of which ten are empty. Those ten are the
+seasons. They sit under one `unpluggedSelectableSectionRenderer` whose
+`selectors` hold a `dropdownRenderer` naming them ("Season 1" … "Season 9",
+"Extras") and whose `contents` hold one shelf each, carrying nothing but a
+`nextContinuationData.continuation`. The two lists are parallel, not nested:
+`selectors[i]` names `contents[i]`, and the only link between a label and its
+shelf is the index.
+
+Each token is spent as an ordinary continuation — `{"context": …,
+"continuation": "4qmFsgJO…"}` to the same endpoint — and answers with that
+season. Two further shelves (`4qmFsgIq…`) hold Cast & Crew and related
+shows rather than episodes.
+
+Episodes the account cannot play are still listed, with no `watchEndpoint`.
+On this account Season 9 returns ten episodes of which seven are playable,
+Season 8 ten of which one is, Season 7 ten of which one is, and Season 6 none
+— nine playable in total, which is what the page would show if all ten
+shelves were asked for. Listing only what the page itself carries showed two.
+
+The counts above are the addon's own parser run over the browser's recorded
+responses, not a reading of the UI.
+
 ### Heartbeat — `POST /youtubei/v1/player/heartbeat?alt=json`
 
 Required during live playback. The response carries `pollDelayMs: 30000`, so

@@ -14,6 +14,7 @@ import json
 import random
 import re
 import string
+import threading
 import time
 
 import requests
@@ -650,6 +651,12 @@ class Api(object):
                 self.client_name = (oauth.load().get("client_name")
                                     or OAUTH_CLIENT_NAME)
         self.session = requests.Session()
+        # A show page's seasons are fetched together rather than one after
+        # another, so more than one thread can be inside call() at once. The
+        # request itself is fine -- requests pools per host -- but the two
+        # things a reply mutates on the client, the jar and the visitor id,
+        # are not, and both end in a write to the profile.
+        self._lock = threading.Lock()
         self._cookies_written = 0.0
         self._visitor_id = kodiutils.get_setting("visitor_id", "") or _baked_visitor_id()
         try:
@@ -735,15 +742,16 @@ class Api(object):
             fresh = requests.utils.dict_from_cookiejar(response.cookies)
         except Exception:
             return
-        changed = auth.absorb(fresh, self.cookies)
-        if not changed:
-            return
-        now = time.time()
-        if now - self._cookies_written < 60:
-            return
+        with self._lock:
+            changed = auth.absorb(fresh, self.cookies)
+            if not changed:
+                return
+            now = time.time()
+            if now - self._cookies_written < 60:
+                return
+            self._cookies_written = now
         try:
             auth.save(self.cookies)
-            self._cookies_written = now
             kodiutils.log("cookies refreshed: %s" % ", ".join(sorted(changed)))
         except auth.AuthError as exc:
             # A rotation that would leave the jar unusable is not a rotation.
@@ -832,8 +840,11 @@ class Api(object):
         # continuing session rather than a fresh client each time.
         visitor = response.headers.get("X-Goog-Visitor-Id")
         if visitor and visitor != self._visitor_id:
-            self._visitor_id = visitor
-            kodiutils.set_setting("visitor_id", visitor)
+            with self._lock:
+                fresh_id = visitor != self._visitor_id
+                self._visitor_id = visitor
+            if fresh_id:
+                kodiutils.set_setting("visitor_id", visitor)
 
         try:
             return response.json()

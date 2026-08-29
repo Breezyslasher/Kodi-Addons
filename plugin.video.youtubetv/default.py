@@ -1,5 +1,6 @@
 """YouTube TV for Kodi -- plugin entry point."""
 
+import re
 import sys
 import time
 from urllib.parse import parse_qsl, urlencode
@@ -464,6 +465,72 @@ def route_search():
     _add_items(items)
 
 
+def _expand_sections(client, response, items):
+    """Fetch the shelves the page deferred, and add what they hold.
+
+    A show page carries its newest episode or two and defers the rest: Rick
+    and Morty answers with two, and hides Seasons 1-9 and Extras behind ten
+    continuation tokens. Listing the page alone showed two episodes on an
+    account entitled to nine.
+
+    The shelves are fetched together rather than one after another. Ten
+    round trips in series is a folder that takes several seconds to open,
+    and they do not depend on each other.
+    """
+    sections = epg.section_continuations(response)
+    if not sections:
+        return items
+
+    seen = {item.video_id or item.browse_id for item in items}
+
+    def fetch(pair):
+        label, token = pair
+        try:
+            return label, epg.parse_items(client.continuation(token))
+        except (auth.AuthError, api.ApiError) as exc:
+            kodiutils.log("could not open %s: %s" % (label or "a shelf", exc))
+            return label, []
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(6, len(sections))) as pool:
+        fetched = list(pool.map(fetch, sections))
+
+    for label, found in fetched:
+        added = 0
+        for item in found:
+            key = item.video_id or item.browse_id
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append(item)
+            added += 1
+        kodiutils.log("%s: %d of %d were new"
+                      % (label or "shelf", added, len(found)))
+    return _in_episode_order(items)
+
+
+_EPISODE = re.compile(r"^S(\d+)\s*E(\d+)\b")
+
+
+def _in_episode_order(items):
+    """Sort a merged list into episode order, when it is one.
+
+    Merging leaves the page's own two newest episodes in front of the
+    seasons that follow, so Rick and Morty listed S9E10, S9E9, then S7E10,
+    S8E1, S9E8 and down -- every episode present and none of them in order.
+
+    Only when every title names a season and an episode, which is what a
+    show page's shelves give and what a channel or a film page does not.
+    Anything else keeps the order the server chose.
+    """
+    numbered = [_EPISODE.match(item.title or "") for item in items]
+    if not items or not all(numbered):
+        return items
+    order = {id(item): (int(m.group(1)), int(m.group(2)))
+             for item, m in zip(items, numbered)}
+    return sorted(items, key=lambda item: order[id(item)])
+
+
 def route_browse(browse_id, name):
     """A show, movie or channel page reached from search.
 
@@ -481,7 +548,7 @@ def route_browse(browse_id, name):
         finish()
         return
 
-    items = epg.parse_items(response)
+    items = _expand_sections(client, response, epg.parse_items(response))
     if not items:
         kodiutils.notify("Nothing playable under %s" % (name or browse_id))
     _add_items(items)
