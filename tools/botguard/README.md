@@ -77,7 +77,7 @@ anyway. So a broken run looks exactly like a working one unless the response
 is checked for its leading `$`. It fails about one run in three regardless,
 which is why the addon retries.
 
-## Can this be pure Python? Measured, not guessed
+## Can this be pure Python? Where it stands
 
 A pure-Python JavaScript engine exists -- js2py, ES5.1, no native code, so it
 would install on LibreELEC where node will not. It gets a long way:
@@ -87,33 +87,28 @@ would install on LibreELEC where node will not. It gets a long way:
 * `vm.a(program, setup, ...)` completes its setup (2.4 s),
 * `asyncSnapshotFunction` returns.
 
-It returns a failure, every time, and the shim is not the reason. The same
-ES5 shim the js2py driver uses was run under node against the same endpoint
-and minted a `$...` snapshot, so the fake browser is adequate; the
-interpreter is the difference.
+It returns a failure, and it does so on every run -- four in a row, the same
+`[object, 30, 264]` every time -- so this is a semantic divergence and not
+the endpoint's own flakiness.
 
-The difference is `Function.prototype.toString`. js2py discards the source
-text when it translates JS to Python, so every function -- the VM's own
-included -- answers
+The shim is not the reason. The same ES5 shim the js2py driver uses was run
+under node against the same endpoint and minted, so the fake browser is
+adequate; the interpreter is the difference.
+
+**`Function.prototype.toString` is not the reason either**, though one run
+said it was. js2py discards the source text when it translates JS to Python,
+so every function -- the VM's own included -- answers
 
     function name(args) { [python code] }
 
-where V8 answers the real source, and native functions answer
-`{ [native code] }`. BotGuard reads that.
+where V8 answers the real source. Blinding V8's toString exactly that way
+looked decisive: unblinded minted, blinded failed. It was a single run of
+each, and this flow fails about one run in three on its own. Eight runs each
+say otherwise:
 
-The control run, back to back against the same endpoint:
+    toString unblinded   5 minted, 3 failed
+    toString blinded     7 minted, 1 failed
 
-    unblinded                         $duk56bNRAAY6jxFaGo_eWOHFqwkr..   works
-    Function.prototype.toString
-      blinded to "{ [python code] }"  E:...                            fails
-
-That is V8 -- everything else identical, the same shim, the same program --
-failing the moment it can no longer show a function its own source. So this
-is not a shim gap that can be filled one error at a time. It is structural:
-an engine that cannot hand back the source it was given cannot pass BotGuard,
-and js2py throws that source away at translation time.
-
-Patching js2py to carry each function's source through the translator is the
-only route left, and it is a real change to a vendored, unmaintained library
--- against which the cold-start token already plays, in pure Python, with
-nothing vendored at all.
+-- the same distribution. BotGuard does not read function sources here, or
+does not act on them. One run is not a measurement in a flow with a one in
+three failure rate, which is the same trap the leading `$` check exists for.
