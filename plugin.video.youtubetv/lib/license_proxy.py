@@ -520,8 +520,17 @@ class LicenseProxy(object):
             except Exception:
                 pass
             self._server = None
-        kodiutils.delete_file(PROXY_FILE)
-        kodiutils.delete_file(CONTEXT_FILE)
+        # The published port and the playback context are deliberately left
+        # behind. They are how the plugin process finds the service, and a
+        # stopping service deleting them is a race it cannot win: Kodi
+        # restarts this service when the addon's settings change, and if the
+        # old one tears down after the new one has published then the new
+        # one's file is the one that goes. The plugin then reports "no SABR
+        # session could be opened" for a service that is running perfectly.
+        #
+        # A left-behind file names a dead port only while the service is
+        # down, which is exactly when playback cannot work anyway, and the
+        # next start overwrites it.
 
 
 def _published():
@@ -708,8 +717,13 @@ def sabr_manifest_url(key, wait=6.0):
     said = False
     while not (published.get("port") and published.get("secret")):
         if _time.time() >= deadline:
+            where = ""
+            try:
+                where = " (looked in %s)" % kodiutils.profile_dir()
+            except Exception:
+                pass
             kodiutils.log_error("the licence proxy has not published a port; "
-                                "is the service running?")
+                                "is the service running?%s" % where)
             return ""
         if not said:
             said = True
