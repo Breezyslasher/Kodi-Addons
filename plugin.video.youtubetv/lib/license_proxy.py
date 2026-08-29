@@ -379,6 +379,19 @@ def _fetch_license(challenge):
         kodiutils.log("licence: status %s at cryptoPeriodIndex %s"
                       % (status, index))
 
+    if last_status == "LICENSE_STATUS_UNPLAYABLE":
+        # Measured on one machine running two Kodi installs against the same
+        # account, the same title and the same addon: the one whose Widevine
+        # CDM reported 4.10.3050.0 was granted a licence every time, and the
+        # one reporting 4.10.2934.0 was refused every time. Nothing else in
+        # the request varies with the box -- YouTube sees the challenge, the
+        # video id, the cpn and the drmParams -- and the challenge is what
+        # the CDM builds. So an old CDM is the first thing to suspect.
+        raise RuntimeError(
+            "YouTube refused to license this title (LICENSE_STATUS_UNPLAYABLE)."
+            " The likeliest cause is an out-of-date Widevine CDM: check the "
+            "version in the log ('CDM version:') and update it with "
+            "InputStream Helper if it is older than 4.10.3050.0.")
     raise RuntimeError("licence refused (%s)" % last_status)
 
 

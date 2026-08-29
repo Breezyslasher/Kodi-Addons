@@ -1130,6 +1130,48 @@ so the mechanism covers it.
 Nothing in this addon reaches this: the key ids are right, the codecs are
 right, and YouTube decides how it encrypts.
 
+### Kodi 20: the manifest type, and then an old Widevine CDM
+
+Kodi 20.5 with inputstream.adaptive 20.3.18 does everything up to playback --
+signs in, browses, mints a proof-of-origin token, opens a SABR session at
+1080p -- and then refuses the stream in five milliseconds, with Kodi saying
+only `CVideoPlayer::OpenInputStream - error opening`. ISA 20's own `Open()`
+says the rest:
+
+    if (m_kodiProps.m_manifestType == PROPERTIES::ManifestType::UNKNOWN)
+      return false;
+
+ISA 21 infers the manifest type from the mime type and deprecates the
+property, so the addon had stopped setting it. It is set again below ISA 21.
+
+With that in, ISA reaches the media and cannot decrypt any of it. The reason
+is not ISA's:
+
+    licence exchange failed: licence refused (LICENSE_STATUS_UNPLAYABLE)
+    CCurlFile::Open - <http://127.0.0.1:57814/license?...> Failed with code 502
+    GetCapabilities: Keys empty
+
+YouTube refused the licence, four times, on every run -- `licence granted`
+never appears. And the machine is the same one that plays perfectly under
+Kodi 21 and 22, on the same account, the same title and the same addon, which
+leaves very little to vary:
+
+    Kodi 21 / 22 (Flatpak)   CDM 4.10.3050.0   licence granted
+    Kodi 20    (~/.kodi)     CDM 4.10.2934.0   LICENSE_STATUS_UNPLAYABLE
+
+YouTube sees the challenge, the video id, the cpn and the drmParams. Kodi's
+version and ISA's are invisible to it; the challenge is what the CDM builds.
+So the CDM is the variable, and an out-of-date one is the first thing to
+suspect when a licence is refused outright.
+
+The refusal now says so rather than surfacing as an HTTP 502 with nothing
+attached.
+
+One incidental measurement from those runs, since the rewrite was toggled
+across them: with it off, 51 decrypt failures and 5387 AAC errors; with it on,
+102 decrypt failures and none. Without keys nothing decrypts either way, but
+the rewrite makes ISA fail rather than feed the decoder garbage.
+
 ### Live audio: the sample size is in tfhd, not trun
 
 With the manifest fix in, live started on Kodi 21 -- and the audio was noise
