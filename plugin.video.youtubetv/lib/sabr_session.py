@@ -113,7 +113,8 @@ class Session(object):
     """One playback session against one serverAbrStreamingUrl."""
 
     def __init__(self, url, config, audio, video, client_name, client_id,
-                 client_version, post, live=True, po_token=b""):
+                 client_version, post, live=True, po_token=b"",
+                 max_height=1080):
         self.url = url
         self.config = config
         # Lists of (itag, lastModified, xtags), not one each. Fields 16 and
@@ -156,17 +157,14 @@ class Session(object):
         self._announced = set()
         self._boxed = {}
         self._reinit = {}
-        # kind -> the itag the player asked for, when it is choosing rather
-        # than the server. Only consulted when the bridge has turned
-        # adaptive switching on: with it off the manifest names one
-        # rendition per track, so narrowing would only ever repeat the
-        # choice the server had already made, at the risk of a refusal.
-        self.wanted = {}
+        # itag -> height, so the itag ISA fetches can be turned into the
+        # height cap the request carries. Filled in by the bridge; empty
+        # means nothing to steer with.
+        self.heights = {}
+        # What ClientAbrState field 59 asks for, and what it started as.
+        self.ceiling = max_height
+        self.wanted_height = max_height
         self.adaptive = False
-        # Set once the endpoint has refused a narrowed set, after which the
-        # whole set is offered for the rest of the session rather than
-        # narrowing again on the next segment and refusing again.
-        self.narrowing = True
         # ISA reads audio and video on separate threads and both drive this
         # one session. Two fetches at once interleave their MEDIA parts
         # through the same _open map and the same echo, so a segment can be
@@ -176,44 +174,32 @@ class Session(object):
 
     # -- the conversation ------------------------------------------------
 
-    def _entries(self):
-        """The sets to offer, narrowed to a track that has been asked for.
-
-        SABR is server-driven: fields 16 and 17 are what the client can play
-        and the server picks, which is why the log says "the server chose".
-        For the player to do the choosing instead, the set has to be narrowed
-        to the rendition it asked for -- so `want` records one and this
-        offers that alone, with the rest still there to fall back to.
-        """
-        audio, video = self.audio, self.video
-        for entry in self.audio:
-            if entry[0] == self.wanted.get("audio"):
-                audio = [entry]
-        for entry in self.video:
-            if entry[0] == self.wanted.get("video"):
-                video = [entry]
-        return audio, video
-
     def want(self, itag):
-        """Ask the server for this rendition from here on.
+        """Ask for the quality tier this rendition sits in, from here on.
 
-        Returns True if anything changed. Offering a single video format was
-        answered sabr.no_video_selected once, though that was before FormatId
-        sent its empty fields; offering nine H.264 renditions alone is
-        answered normally now. If it is refused again the session stops
-        narrowing altogether rather than refusing once per segment.
+        Not by narrowing what is offered. Fields 16 and 17 are what the
+        client can play, and offering one video format is answered
+        sabr.no_video_selected -- measured twice now, most recently with
+        every key id in place and the manifest naming nine renditions, so
+        it is the request the endpoint objects to and not the pick.
+
+        The client says what it wants through ClientAbrState instead. Field
+        59 is the height cap, and the browser sends 1080 in it; that is the
+        knob a server-driven ABR gives the client, so this turns "ISA
+        fetched itag 224" into "cap the state at 1080" and lets the server
+        choose within it, which is the arrangement SABR is built around.
+
+        Audio has no equivalent field, so an audio itag changes nothing.
         """
-        if not self.adaptive or not self.narrowing:
+        if not self.adaptive:
             return False
-        entry = self.entries.get(itag)
-        if not entry:
+        height = self.heights.get(itag) or 0
+        if not height or height == self.wanted_height:
             return False
-        kind = "audio" if entry in self.audio else "video"
-        if self.wanted.get(kind) == itag:
-            return False
-        self.wanted[kind] = itag
-        kodiutils.log("sabr session: the player asked for %s %s"
-                      % (kind, itag))
+        kodiutils.log("sabr session: the player fetched itag %s (%dp), so "
+                      "the abr state asks for %dp rather than %dp"
+                      % (itag, height, height, self.wanted_height))
+        self.wanted_height = height
         return True
 
     def _buffered(self):
@@ -256,23 +242,23 @@ class Session(object):
         try:
             return self._exchange()
         except SabrError as exc:
-            if not self.wanted:
+            if self.wanted_height == self.ceiling:
                 raise
-            # The narrowed set was refused. Everything the session has done
-            # so far was answered with the whole set, so go back to it and
-            # let the server choose again rather than failing the segment.
-            kodiutils.log("sabr session: the endpoint refused the rendition "
-                          "the player asked for (%s): %s -- offering the "
-                          "whole set again" % (self.wanted, str(exc).strip()))
-            self.wanted = {}
-            self.narrowing = False
+            # The cap the player asked for was refused. Put it back where it
+            # started rather than failing the segment, and stop moving it.
+            kodiutils.log("sabr session: the endpoint refused an abr state "
+                          "asking for %dp (%s) -- back to %dp and leaving it "
+                          "there" % (self.wanted_height, str(exc).strip(),
+                                     self.ceiling))
+            self.wanted_height = self.ceiling
+            self.adaptive = False
             return self._exchange()
 
     def _exchange(self):
-        audio, video = self._entries()
         body = sabr.build_request(
-            self.config, audio=audio, video=video,
+            self.config, audio=self.audio, video=self.video,
             player_time_ms=self.position,
+            max_height=self.wanted_height,
             buffered=self._buffered(),
             context=sabr.streamer_context(info=self.info,
                                           po_token=self.po_token,
