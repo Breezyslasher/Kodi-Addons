@@ -10,6 +10,46 @@ Written to answer one question: can Kodi play YouTube TV through
 InputStream Adaptive? Short answer: probably yes, and much more cleanly than
 Apple TV+, but one thing is still unproven. See "The open question" below.
 
+## The cookie path is gone
+
+The addon signed in with a cookie jar exported from a browser for most of this
+document's life, and that is what every capture here was taken from. It is no
+longer how the addon works, and the notes below still describe it because a
+capture of WEB_UNPLUGGED is what the protocol was read out of.
+
+What made the removal possible was not the credential but the delivery. A
+token session is never offered a `dashManifestUrl` -- eight request shapes,
+five sending less than the browser and three sending more, all answered
+`dash=False` -- so until SABR played, and played in HD, dropping cookies meant
+dropping playback. Both are now measured on `TVHTML5_UNPLUGGED`:
+
+    licensed up to 2160p according to the licence: AUDIO, HD, SD, UHD1
+    sabr bridge: asking for 1080p, offering [146]
+    sabr bridge: opened session s1788028710 as TVHTML5_UNPLUGGED
+    sabr bridge: the server chose video 146, audio 150
+
+What went with the jar:
+
+* `lib/signin.py`, the LAN page that took a pasted `Cookie:` header, and the
+  cookies.txt import beside it;
+* SAPISIDHASH request signing, the `Cookie` header on every InnerTube call,
+  and the write-back that absorbed Google's constant re-issues;
+* `session_probe`, which existed to answer "were the cookies the problem?" --
+  a question a bearer token cannot pose, since it cannot be alive in a browser
+  and refused here at the same time;
+* the DASH path entire: the licence proxy's `/manifest` handler, and with it
+  most of `lib/manifest.py` -- the timescale repair that stopped ISA dividing
+  by zero, the SegmentList rebuild, the proof-of-origin injection into every
+  BaseURL, and `set_key_ids`. The bridge writes its own manifest, so there is
+  nothing to repair;
+* `lib/probes.py`, whose three questions ("does the licence exchange work on a
+  bearer token? is `serverAbrStreamingUrl` there? is a SABR POST served?") are
+  all answered yes by an addon that plays.
+
+What it costs: the device-code flow needs the client ID and secret of a Google
+API project, which the cookie route did not. A one-off setup instead of a
+recurring one.
+
 ## Client identity
 
 Every call to the private API carries:

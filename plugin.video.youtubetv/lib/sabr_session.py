@@ -85,8 +85,9 @@ def find_pssh(data):
 
     ISA needs init data to open a Widevine session -- given a
     ContentProtection with no pssh under it, ISA 22 refuses with "PSSH init
-    data has unexpected size (0)". On the DASH path the manifest carries it
-    because live streams there have no init segment at all. SABR does send
+    data has unexpected size (0)". The DASH manifest the addon used to repair
+    carried it, because live streams there have no init segment at all. SABR
+    does send
     one, so the question is whether its moov already holds a pssh, and that
     is answered by walking the boxes rather than by assuming either way.
     """
@@ -122,7 +123,7 @@ class Session(object):
         # among them: the browser offers two audio and six video in its
         # first request and the response names the pick. A single video
         # format was answered sabr.no_video_selected for all twelve
-        # renditions in turn, HD ones the cookie path plays included.
+        # renditions in turn, HD ones included.
         self.audio = list(audio or [])
         self.video = list(video or [])
         self.entries = {entry[0]: entry

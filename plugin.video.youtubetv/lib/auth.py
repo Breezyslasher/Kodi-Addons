@@ -1,287 +1,64 @@
-"""Google session auth for the YouTube TV private API.
+"""The addon's credential.
 
-Sign-in is a cookie jar exported from a browser that is already signed in;
-every request is signed with the SAPISIDHASH scheme the web player uses.
+This used to be a cookie jar exported from a signed-in browser, signed with
+the SAPISIDHASH scheme the web player uses. That worked, and it was the only
+thing that worked for a long time, but it had a cost that never went away:
+Google rotates those cookies constantly, an export goes stale in hours to
+days, and the fix was always the same errand -- open a browser, export again,
+paste it into a TV box. The addon absorbed rotations to slow that down and
+still could not stop it.
 
-An earlier version of this note claimed flatly that no OAuth path exists. That
-was an assertion, not a finding, and it was wrong: the OAuth device-code token
-plugin.video.youtube uses is accepted here too, as TVHTML5_UNPLUGGED, and
-returned a full lineup. See lib/oauth.py. The web player itself authenticates
-with SAPISIDHASH in every capture and never with a bearer token, which says
-what the web player does and not what the surface allows.
+What replaced it is the device-code token the regular YouTube addon uses,
+accepted here as TVHTML5_UNPLUGGED. It refreshes itself, so there is nothing
+to re-export. What made it usable was not the credential but the delivery: a
+token session is never offered a DASH manifest, only YouTube's own SABR
+endpoint, and until the bridge in lib/sabr_bridge could serve SABR to
+InputStream Adaptive -- in HD, which took naming a height, a viewport and a
+capability list -- dropping cookies would have meant dropping playback.
 
-So there are two ways in, and a cookie jar is still the one that needs no
-Google API project of your own.
+That is done and measured, so the jar is gone. See lib/oauth for the flow and
+docs/youtube-tv-protocol.md for what the two credentials were each offered.
 
-Two import routes, because typing a 3 KB cookie header on a remote is cruel:
-
-* a Netscape ``cookies.txt`` path (what every browser extension exports), or
-* the raw ``Cookie:`` header pasted from devtools.
-
-Either way we keep only the names that matter and store them in the addon
-profile, never in the settings file -- settings.xml is world-readable inside
-the userdata directory and gets copied around in backups and bug reports.
+One thing this costs, and it is worth being plain about: the device-code flow
+needs the client ID and secret of a Google API project, which the user has to
+create and paste into the settings. The cookie route needed no project of
+anyone's. That is the trade -- a one-off setup instead of a recurring one.
 """
 
-import hashlib
-import time
-
 from . import kodiutils
-
-COOKIE_FILE = "cookies.json"
-# Written by sign_out() so an explicit sign-out sticks even when the build
-# carries a preloaded session -- see _baked().
-SIGNED_OUT = {"signed_out": True}
-ORIGIN = "https://tv.youtube.com"
-
-# The jar the API actually needs. SAPISID and SID do the authenticating; the
-# 1P/3P variants are hashed alongside them; LOGIN_INFO and the VISITOR_* pair
-# keep YouTube from treating the session as a brand new anonymous client.
-WANTED = (
-    "SAPISID", "__Secure-1PAPISID", "__Secure-3PAPISID",
-    "SID", "__Secure-1PSID", "__Secure-3PSID",
-    "HSID", "SSID", "APISID",
-    "SIDCC", "__Secure-1PSIDCC", "__Secure-3PSIDCC",
-    "__Secure-1PSIDTS", "__Secure-3PSIDTS",
-    "LOGIN_INFO", "VISITOR_INFO1_LIVE", "VISITOR_PRIVACY_METADATA",
-    "PREF", "YSC", "__Secure-YNID", "__Secure-ROLLOUT_TOKEN",
-)
-
-# A note for the next person tempted to prune this list. SIDCC and the SIDTS
-# pair rotate every few minutes, and dropping them looked like an obvious way
-# to stop an imported jar going stale. It is not: a jar captured from a request
-# that provably authenticated -- a 200 on browse or player -- contains them and
-# works, and the 401s that prompted the pruning came from somewhere else
-# entirely. Carry what the working request carried.
-
-REQUIRED = ("SAPISID", "SID")
 
 
 class AuthError(Exception):
     """Sign-in is missing or no longer accepted."""
 
 
-def _filter(cookies):
-    """Keep the jar as the browser sent it.
+def bearer():
+    """The access token, refreshed if it needed to be.
 
-    There used to be an allow-list here, and every round of trimming it cost a
-    day: first the session-integrity cookies were pruned on a hunch, then a
-    capture turned out to carry names the list had never heard of --
-    __Secure-BUCKET, YTV_CLC, NID, ST-* -- which were silently dropped from a
-    jar that had provably authenticated seconds earlier. Whether Google needs
-    each one is not knowable from here, and guessing wrong looks exactly like
-    an expired session. Send what worked. WANTED survives only to describe the
-    names that matter for REQUIRED and for the docs.
+    Raises rather than returning empty, because every caller of this wants a
+    credential and none of them can proceed without one -- and a caller that
+    quietly carried on with no Authorization header would be asking YouTube
+    TV for a signed-out lineup and reporting whatever came back.
     """
-    return dict(cookies)
+    from . import oauth
+    token = oauth.access_token()
+    if not token:
+        raise AuthError("not signed in")
+    return token
 
 
-def parse_cookie_header(header):
-    """Split a raw ``Cookie:`` header into a dict."""
-    cookies = {}
-    for part in (header or "").split(";"):
-        name, sep, value = part.strip().partition("=")
-        if sep and name:
-            cookies[name] = value
-    return _filter(cookies)
-
-
-HOST = "tv.youtube.com"
-
-
-def domain_matches(domain, host=HOST):
-    """The cookie domain-match rule, as a browser applies it.
-
-    A cookies.txt export holds every domain the browser knows, and youtube.com
-    alone spans www, music, studio, m and tv -- each with its own host-scoped
-    cookies. Sending the lot to tv.youtube.com is not "what the browser sent";
-    it is several times what the browser sent, and Google answers 413.
-
-    So match the way a browser does: a cookie scoped to youtube.com travels to
-    any subdomain, one scoped to www.youtube.com travels only there.
-    """
-    domain = domain.lstrip(".")
-    return host == domain or host.endswith("." + domain)
-
-
-def expired(expiry, now=None):
-    """Whether a cookies.txt row is one a browser would no longer send.
-
-    An export is a dump of the cookie store, not of what gets sent: it keeps
-    rows long past their expiry. That is not academic here. A real export
-    carried 113 ST-* cookies totalling 101 KB, nearly all of them expired two
-    weeks earlier, and sending them produced HTTP 413 from Google -- a failure
-    with no obvious connection to the cookie the request actually needed.
-
-    Expiry 0 means a session cookie, which the browser does still send.
-    """
-    try:
-        stamp = int(float(expiry))
-    except (TypeError, ValueError):
-        return False
-    return stamp != 0 and stamp < (now if now is not None else time.time())
-
-
-def parse_cookies_txt(path):
-    """Read a Netscape cookies.txt and keep what tv.youtube.com would receive.
-
-    Hand-rolled rather than http.cookiejar because the exports in the wild are
-    not always well formed -- extensions emit a ``#HttpOnly_`` prefix that
-    MozillaCookieJar rejects outright, and a strict parser fails the whole file
-    over one bad line.
-
-    Google keeps a copy of the session under .google.com as well, which no
-    browser shows tv.youtube.com. It is used only to fill in an authenticating
-    name the youtube.com jar lacks -- a browser signed in on one domain and not
-    the other -- and never to add cookies of its own.
-    """
-    with open(path, "r", encoding="utf-8", errors="replace") as handle:
-        return parse_cookies_txt_text(handle.read())
-
-
-def parse_cookies_txt_text(text):
-    """The same, for an export pasted rather than saved to disk.
-
-    Split out so the sign-in page can take a cookies.txt someone pasted into
-    a textarea without first asking them to put a file on the Kodi box, which
-    is the whole difficulty being removed.
-    """
-    youtube, google = {}, {}
-    now = time.time()
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") and not line.startswith("#HttpOnly_"):
-            continue
-        if line.startswith("#HttpOnly_"):
-            line = line[len("#HttpOnly_"):]
-        fields = line.split("\t")
-        if len(fields) < 7:
-            continue
-        domain, expiry, name, value = (fields[0], fields[4],
-                                       fields[5], fields[6])
-        if expired(expiry, now):
-            continue
-        if domain_matches(domain):
-            # Two entries can carry one name -- .youtube.com and a
-            # host-scoped tv.youtube.com copy. The specific one is the one
-            # that was set for us, so let it win.
-            if name not in youtube or domain.lstrip(".") == HOST:
-                youtube[name] = value
-        elif domain_matches(domain, "www.google.com"):
-            google[name] = value
-
-    jar = dict(youtube)
-    for name in WANTED:
-        if name not in jar and name in google:
-            jar[name] = google[name]
-    return jar
-
-
-def save(cookies):
-    missing = [name for name in REQUIRED if name not in cookies]
-    if missing:
-        raise AuthError("the cookie jar is missing %s -- export it from a "
-                        "browser signed in to tv.youtube.com, with all "
-                        "domains included" % " and ".join(missing))
-    kodiutils.write_json(COOKIE_FILE, cookies)
-
-
-def absorb(jar, cookies):
-    """Fold a response's Set-Cookie back into the stored session.
-
-    Google re-issues session cookies constantly -- SIDCC, __Secure-1PSIDCC,
-    __Secure-3PSIDCC and __Secure-YEC appear twenty-one times each across a
-    single browser capture, all from tv.youtube.com -- and the addon has
-    never read one back. It signs in once with whatever was exported and
-    then holds that jar until it dies, which is why an export that worked in
-    the morning is answering LOGIN_REQUIRED by the afternoon.
-
-    Returns the names that actually changed, so a caller can decide whether
-    the write is worth doing.
-    """
-    changed = []
-    for name, value in (jar or {}).items():
-        if not value or cookies.get(name) == value:
-            continue
-        cookies[name] = value
-        changed.append(name)
-    return changed
-
-
-def _baked():
-    """A session compiled into the build, if there is one.
-
-    Personal builds can ship ``lib/baked_cookies.py`` holding a ``COOKIES``
-    dict, so the addon works on first run with no import step -- useful when
-    Kodi is on a TV box with no browser and no keyboard. The module is absent
-    from the repository and gitignored, because it holds live credentials; the
-    published addon simply has no baked session and asks the user to sign in.
-
-    A jar imported through the UI always wins, and an explicit sign-out
-    suppresses this too.
-    """
-    try:
-        from . import baked_cookies
-    except ImportError:
-        return None
-    cookies = getattr(baked_cookies, "COOKIES", None)
-    if not isinstance(cookies, dict):
-        return None
-    return _filter(cookies) or None
-
-
-def load():
-    stored = kodiutils.read_json(COOKIE_FILE, default=None)
-    if isinstance(stored, dict) and stored.get("signed_out"):
-        raise AuthError("signed out")
-    if stored and all(name in stored for name in REQUIRED):
-        return stored
-
-    baked = _baked()
-    if baked and all(name in baked for name in REQUIRED):
-        return baked
-
-    raise AuthError("not signed in")
+def client_name():
+    """The identity this credential is accepted as."""
+    from . import api, oauth
+    return oauth.load().get("client_name") or api.OAUTH_CLIENT_NAME
 
 
 def signed_in():
-    try:
-        load()
-        return True
-    except AuthError:
-        return False
+    from . import oauth
+    return bool(oauth.load().get("access_token"))
 
 
 def sign_out():
-    """Forget the session.
-
-    Deleting the stored jar is not enough on a build with a baked session --
-    load() would fall straight back to it -- so record the sign-out instead.
-    """
-    kodiutils.write_json(COOKIE_FILE, SIGNED_OUT)
-
-
-def _hash(value, origin, now):
-    digest = hashlib.sha1(("%d %s %s" % (now, value, origin)).encode()).hexdigest()
-    return "%d_%s" % (now, digest)
-
-
-def authorization(cookies, origin=ORIGIN):
-    """The ``Authorization`` header the web player sends.
-
-    SHA1 over "<unix seconds> <SAPISID> <origin>", repeated for the first- and
-    third-party variants. Where a variant cookie is absent Google accepts the
-    plain SAPISID value hashed in its place, which is what the web player does
-    on accounts that predate the split.
-    """
-    now = int(time.time())
-    sapisid = cookies["SAPISID"]
-    return "SAPISIDHASH %s SAPISID1PHASH %s SAPISID3PHASH %s" % (
-        _hash(sapisid, origin, now),
-        _hash(cookies.get("__Secure-1PAPISID", sapisid), origin, now),
-        _hash(cookies.get("__Secure-3PAPISID", sapisid), origin, now),
-    )
-
-
-def cookie_header(cookies):
-    return "; ".join("%s=%s" % item for item in cookies.items())
+    from . import oauth
+    oauth.forget()
+    kodiutils.log("signed out: the stored token is gone")

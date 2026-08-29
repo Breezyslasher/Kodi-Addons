@@ -2,7 +2,7 @@
 
 import xbmcgui
 
-from . import api, auth, cipher, kodiutils, license_proxy, manifest as manifest_mod, sabr, widevine
+from . import api, kodiutils, license_proxy, sabr, widevine
 
 ISA_ADDON = "inputstream.adaptive"
 
@@ -119,178 +119,34 @@ def _dump_player(player_response):
         kodiutils.log_error("could not save the player response: %s" % exc)
 
 
-def _dump_manifest(url):
-    """Save the manifest ISA is about to fetch, when diagnostics are on.
-
-    ISA reports "Unhandled encrypted stream" without saying what about the
-    stream it could not handle, and the manifest is the only place the answer
-    lives -- which ContentProtection schemes are declared, and whether they
-    carry the PSSH init data ISA needs to open a CDM session.
-
-    Fetched through the proxy, not from YouTube. The upstream copy is the one
-    nobody plays: its n is still as minted, so every segment url in it is a
-    403 by construction, and the probe below spent several builds reporting
-    that as though it were news. What ISA reads is what the proxy returns.
-    """
-    if not kodiutils.get_setting_bool("dump_manifest", False):
-        return
-    try:
-        import os
-
-        import requests
-        response = requests.get(license_proxy.manifest_url(url), timeout=60,
-                                headers={
-            "User-Agent": api.UA, "Origin": api.ORIGIN,
-            "Referer": api.ORIGIN + "/",
-            "Cookie": auth.cookie_header(auth.load()),
-        })
-        path = os.path.join(kodiutils.profile_dir(), "last-manifest.mpd")
-        with open(path, "wb") as handle:
-            handle.write(response.content)
-        kodiutils.log("manifest saved to %s (HTTP %d, %d bytes)"
-                      % (path, response.status_code, len(response.content)))
-        # Ask the CDN for the first segment with exactly the headers ISA uses,
-        # so a 403 from ISA can be attributed to the URL or to ISA.
-        manifest_mod.probe_segments(response.content, {
-            "User-Agent": api.UA,
-            "Origin": api.ORIGIN,
-            "Referer": api.ORIGIN + "/",
-        }, cookie_header=auth.cookie_header(auth.load()))
-    except Exception as exc:
-        kodiutils.log_error("could not save the manifest: %s" % exc)
-
-
-def probe_subsegments(manifest_url):
-    """Ask what is actually at the second subsegment's offset.
-
-    Not wired into playback any more: this answered its question -- the
-    fragments and their crypto boxes were sound, the decrypter was not -- and
-    it costs a handful of ranged GETs per play. Kept for the next time a
-    fragment needs looking at; call it by hand from prepare().
-
-    Playback dies one subsegment in: audio turns to invalid AAC and the CDM
-    answers kNoKey for video, both at about 9.5 seconds, which is one audio
-    subsegment. Every explanation tried so far -- the key id, the CDM session,
-    the resolution -- has been ruled out by a measurement, so this measures the
-    remaining one. If the bytes at that offset are not the start of a movie
-    fragment, nothing downstream could have worked, and the question becomes
-    why the range came back wrong rather than why decryption failed.
-
-    Reads each track's SegmentIndex, then fetches subsegment 1 and subsegment 2
-    and reports the box each one begins with. Subsegment 2 is fetched a second
-    time without the pot, because that is the one parameter this addon adds to
-    a URL YouTube signed and the browser never sends it on this path.
-    """
-    import requests
-
-    from . import mp4
-    proxied = license_proxy.manifest_url(manifest_url)
-    headers = {"User-Agent": api.UA, "Origin": api.ORIGIN,
-               "Referer": api.ORIGIN + "/"}
-    body = requests.get(proxied, timeout=60, headers=dict(
-        headers, Cookie=auth.cookie_header(auth.load()))).content
-
-    def fetch(url, first, last):
-        response = requests.get(url, timeout=30, headers=dict(
-            headers, Range="bytes=%d-%d" % (first, last)))
-        return response.status_code, response.content
-
-    for ident, url, index_first, index_last in manifest_mod.index_targets(body)[:4]:
-        try:
-            # The init segment is everything before the index. Whether its
-            # sample entry is enca/encv or mp4a/avc1 decides whether ISA
-            # believes the track is encrypted at all -- and the fragments say
-            # it is, from the second one on.
-            status, moov = fetch(url, 0, index_first - 1)
-            protected, iv_size, kid = mp4.track_encryption(moov)
-            kodiutils.log("subsegment probe [%s init @0+%d]: HTTP %d, "
-                          "tenc protected=%s iv_size=%s kid=%s"
-                          % (ident, index_first, status, protected, iv_size,
-                             kid[:8]))
-            kodiutils.log("subsegment probe [%s init] boxes: %s"
-                          % (ident, " ".join(b.strip() for b in
-                                             mp4.box_tree(moov, limit=80))))
-            status, sidx = fetch(url, index_first, index_last)
-            subs = mp4.subsegments(sidx, index_first)
-            kodiutils.log("subsegment probe [%s]: sidx HTTP %d, %d bytes, "
-                          "%d subsegments" % (ident, status, len(sidx), len(subs)))
-            for number in (0, 1):
-                if number >= len(subs):
-                    break
-                offset, size, _ = subs[number]
-                status, head = fetch(url, offset, offset + 8191)
-                kodiutils.log("subsegment probe [%s #%d @%d+%d]: HTTP %d, "
-                              "boxes: %s"
-                              % (ident, number, offset, size, status,
-                                 " ".join(b.strip() for b in
-                                          mp4.box_tree(head))))
-                note = mp4.crypto_info(head, offset) or "nothing"
-                if "saiz default_size=" in note and iv_size is not None:
-                    declared = int(note.split("saiz default_size=")[1]
-                                   .split()[0])
-                    note += ("; tenc iv_size=%d vs saiz %d -> %s"
-                             % (iv_size, declared,
-                                "AGREE" if iv_size == declared
-                                else "DISAGREE"))
-                kodiutils.log("subsegment probe [%s #%d] crypto: %s"
-                              % (ident, number, note))
-            if len(subs) > 1:
-                offset = subs[1][0]
-                bare = manifest_mod._strip_param(url, "pot")
-                status, head = fetch(bare, offset, offset + 63)
-                kodiutils.log("subsegment probe [%s #1 no pot]: HTTP %d, "
-                              "starts with %r"
-                              % (ident, status, mp4.first_box_type(head)))
-        except Exception as exc:
-            kodiutils.log_error("subsegment probe [%s] failed: %s" % (ident, exc))
-
-
 def build_item(player_response, label=None, art=None):
     """A ListItem wired to InputStream Adaptive, or None if unplayable."""
     streaming = player_response.get("streamingData") or {}
     details = player_response.get("videoDetails") or {}
 
     _dump_player(player_response)
-    manifest = streaming.get("dashManifestUrl")
-    if manifest and kodiutils.get_setting_bool("force_bridge"):
-        # The credential and the delivery have always changed together --
-        # cookies play DASH, the token plays SABR -- so nothing has ever
-        # separated "the bridge is wrong" from "the token's licence is
-        # wrong". This does: the same recording, on cookies, through the
-        # bridge.
-        kodiutils.log("ignoring the DASH manifest: the setting asks for the "
-                      "bridge")
-        manifest = ""
-    path = ""
-    if manifest:
-        if not _ensure_widevine():
-            return None
-        _dump_manifest(manifest)
-        # ISA reads the manifest through the local proxy, which repairs the
-        # missing SegmentList attributes that otherwise crash it. See
-        # lib/manifest.
-        path = license_proxy.manifest_url(manifest)
-    else:
-        # No DASH. A token session is never offered any -- eight request
-        # shapes, five sending less and three sending more, all answered
-        # dash=False -- so SABR is the only delivery it has, and the bridge
-        # serves it to ISA as DASH. See lib/sabr_bridge.
-        from . import sabr_bridge
-        if not _ensure_widevine():
-            return None
-        # The bridge declares one Representation per track, so the cap has
-        # to be applied when choosing rather than left to ISA's chooser.
-        # Same two inputs as the DASH path: the quality setting and what the
-        # licence actually covers.
-        licensed = _authorized_cap(streaming, details.get("videoId") or "")
-        caps = [c for c in (_quality_cap(), licensed) if c]
-        path = sabr_bridge.playable_url(player_response,
-                                        max_height=min(caps) if caps else 1080)
-        if not path:
-            kodiutils.log_error("player response has no dashManifestUrl and "
-                                "no SABR session could be opened")
-            return None
-        kodiutils.log("playing through the SABR bridge: %s" % path)
+
+    # There is one delivery now. A token session is never offered a DASH
+    # manifest -- eight request shapes, five sending less than the browser
+    # and three sending more, all answered dash=False -- so SABR is what
+    # there is, and the bridge serves it to ISA as DASH. See lib/sabr_bridge.
+    #
+    # The addon used to hold a cookie jar as well, which was offered DASH,
+    # and playback branched on which credential had been used. That branch
+    # is gone with the jar.
+    from . import sabr_bridge
+    if not _ensure_widevine():
+        return None
+    # The bridge declares one Representation per track, so the cap has to be
+    # applied when choosing rather than left to ISA's chooser.
+    licensed = _authorized_cap(streaming, details.get("videoId") or "")
+    caps = [c for c in (_quality_cap(), licensed) if c]
+    path = sabr_bridge.playable_url(player_response,
+                                    max_height=min(caps) if caps else 1080)
+    if not path:
+        kodiutils.log_error("no SABR session could be opened for this title")
+        return None
+    kodiutils.log("playing through the SABR bridge: %s" % path)
 
     item = xbmcgui.ListItem(label=label or details.get("title") or "",
                             path=path)
@@ -335,11 +191,16 @@ def build_item(player_response, label=None, art=None):
         item.setProperty("inputstream.adaptive.license_key",
                          "%s|Content-Type=application/octet-stream|R{SSM}|" % licence)
 
-        # YouTube's manifests carry no PSSH ISA can open a session from, which
-        # is what "Unhandled encrypted stream" means, on live and on-demand
-        # alike. Hand it the one the web player builds for itself; the content
-        # id comes out of drmParams and the manifest URL. See lib/widevine.py.
-        content = widevine.content_id(streaming.get("drmParams", ""), manifest)
+        # YouTube's manifests carry no PSSH ISA can open a session from,
+        # which is what "Unhandled encrypted stream" means, on live and
+        # on-demand alike. Hand it the one the web player builds for itself.
+        #
+        # No manifest URL to read a source or an id from: the bridge writes
+        # the manifest itself. Both come out of drmParams, and the source
+        # falls back to widevine.DEFAULT_SOURCE -- which is what this call
+        # was already resolving to on this path, since the argument was ""
+        # whenever there was no DASH manifest. See lib/widevine.py.
+        content = widevine.content_id(streaming.get("drmParams", ""), "")
         if content:
             kodiutils.log("pssh content id: %s (live=%s)" % (content, is_live))
 
@@ -374,11 +235,10 @@ def build_item(player_response, label=None, art=None):
             #    Video falls back to the secure path and plays; audio is
             #    removed outright. Video with no sound, exactly as reported.
             #
-            # Unset, GetProtectionData runs and reads the manifest the proxy
-            # serves: a <cenc:pssh> and that track's own cenc:default_KID on
-            # every Representation, so each track probes with its own key.
-            # See manifest.set_key_ids and the licence proxy's manifest
-            # handler.
+            # Unset, GetProtectionData runs and reads the manifest the
+            # bridge serves: a <cenc:pssh> and that track's own
+            # cenc:default_KID on every Representation, so each track probes
+            # with its own key. See sabr_bridge.manifest.
             #
             # Note the cost this shares with the resolution ceiling: the key
             # ids come from a licence, so the first play of a title still has
@@ -523,65 +383,6 @@ def probe_clients(client, video_id):
         kodiutils.log("client %-22s   first url: n=%s  sig=%s  -> %s"
                       % (name, (query.get("n") or ["absent"])[0],
                          "present" if query.get("sig") else "absent", served))
-
-
-def probe_cipher(client, video_id, response):
-    """Descramble a format's signatureCipher and see if the CDN serves it.
-
-    Every format comes as a signatureCipher rather than a URL, and we have only
-    ever used the DASH manifest's pre-signed segment URLs, which are refused.
-    These are a different family -- their sparams carry aitags and bui, matching
-    the requests the browser gets 200s for -- so whether they are served is the
-    open question this answers.
-    """
-    formats = (response.get("streamingData") or {}).get("adaptiveFormats") or []
-    ciphered = [f for f in formats
-                if f.get("signatureCipher") and "video/" in f.get("mimeType", "")]
-    if not ciphered:
-        kodiutils.log("cipher probe: no ciphered video formats to try")
-        return
-
-    headers = {"User-Agent": api.UA, "Cookie": auth.cookie_header(client.cookies)}
-    watch = "%s/watch/%s" % (api.ORIGIN, video_id)
-    try:
-        _url, plan = cipher.fetch_plan(client.session, headers, watch)
-    except cipher.CipherError as exc:
-        kodiutils.log_error("cipher probe: %s" % exc)
-        return
-    except Exception as exc:
-        kodiutils.log_error("cipher probe: could not read the player: %s" % exc)
-        return
-
-    chosen = min(ciphered, key=lambda f: f.get("height") or 9999)
-    try:
-        resolved = cipher.resolve(chosen["signatureCipher"], plan)
-    except cipher.CipherError as exc:
-        kodiutils.log_error("cipher probe: %s" % exc)
-        return
-
-    token = kodiutils.get_setting("po_token", "") or manifest_mod._baked_po_token()
-    attempts = [("descrambled", resolved)]
-    if token:
-        attempts.append(("descrambled + pot",
-                         manifest_mod._add_param(resolved, "pot", token)))
-    attempts.append(("descrambled, no n",
-                     manifest_mod._strip_param(resolved, "n")))
-
-    import requests
-    for name, candidate in attempts:
-        try:
-            reply = requests.get(candidate, timeout=20, stream=True, headers={
-                "User-Agent": api.UA,
-                "Origin": api.ORIGIN,
-                "Referer": api.ORIGIN + "/",
-                "Range": "bytes=0-131071",
-            })
-            kodiutils.log("cipher probe [%-18s itag %s]: HTTP %d, %s bytes"
-                          % (name, chosen.get("itag"), reply.status_code,
-                             reply.headers.get("Content-Length", "?")))
-            reply.close()
-        except Exception as exc:
-            kodiutils.log_error("cipher probe [%s] failed: %s" % (name, exc))
 
 
 def probe_sabr(client, response, cpn):

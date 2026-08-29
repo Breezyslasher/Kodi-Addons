@@ -153,39 +153,15 @@ msgid "Google API client ID"
 msgstr ""
 
 msgctxt "#30054"
-msgid "Only needed for the experimental \"Sign in with a code\" option. This is your own Google API project, the same client ID and secret the YouTube add-on asks for; none is shipped with this add-on. Signing in from your phone or laptop needs neither."
+msgid "Required. The device-code sign-in is the only way in, and it needs your own Google API project -- the same client ID and secret the YouTube add-on asks for; none is shipped with this add-on. Create one at console.cloud.google.com, enable the YouTube Data API v3, and make an OAuth client ID of type \"TVs and Limited Input devices\"."
 msgstr ""
 
 msgctxt "#30055"
 msgid "Google API client secret"
 msgstr ""
 
-msgctxt "#30056"
-msgid "Check whether SABR could replace the cookie sign-in"
-msgstr ""
-
-msgctxt "#30057"
-msgid "Asks three things and writes the answers to the log: whether the Widevine licence server accepts the credential you are signed in with, whether this session is offered a SABR endpoint, and whether that endpoint serves a request once the n parameter is solved. Plays nothing and changes nothing."
-msgstr ""
-
-msgctxt "#30058"
-msgid "Play through SABR when signed in with a code"
-msgstr ""
-
-msgctxt "#30059"
-msgid "The cookie jar is used for playback whenever there is one, because it is offered a DASH manifest and plays through the ordinary path. Turn this on to use a code sign-in instead when you hold both: that identity is only ever offered SABR, so playback goes through the bridge. One quality per track: SABR chooses server-side and a manifest naming more than the server serves takes the video track down."
-msgstr ""
-
-msgctxt "#30060"
-msgid "Always play through the SABR bridge"
-msgstr ""
-
-msgctxt "#30061"
-msgid "Ignore the DASH manifest even when one is offered, so a cookie session plays through the bridge too. This exists to tell two things apart that are otherwise always changed together: the credential and the delivery. The same recording, byte for byte the same media, decrypts on the DASH path and does not through the bridge -- so if it also fails here on cookies, the bridge is at fault, and if it plays, the token's licence is."
-msgstr ""
-
 msgctxt "#30062"
-msgid "Paste this together with the proof-of-origin token, from the same browser capture. A session-bound token is bound to the visitorData that minted it: the addon bootstraps its own visitorData from the page it loads with your cookies, which is a different session from your browser's, so a token minted there can never satisfy urls bound to this one. Same account, different session identity, and the media is refused with an empty-bodied 403."
+msgid "Paste this together with the proof-of-origin token, from the same browser capture. A session-bound token is bound to the visitorData that minted it: the addon bootstraps its own visitorData from the page it loads, which is a different session from your browser's, so a token minted there can never satisfy urls bound to this one. Same account, different session identity, and the media is refused with an empty-bodied 403."
 msgstr ""
 
 msgctxt "#30063"
@@ -209,7 +185,7 @@ msgid "Least quality to accept on the bridge"
 msgstr ""
 
 msgctxt "#30068"
-msgid "Mostly this can do nothing, and it is here to be honest about why. The SABR endpoint serves only the DRM tier the player response authorised, which for a code sign-in reads AUDIO and SD -- and every SD-tier rendition of a title measured so far is 854x480 or shorter. Offer it nothing but taller renditions and it answers sabr.no_video_selected. So the offer is filtered to the authorised tier first and this applies within it, which on that identity leaves nothing to do. Signing in with cookies plays the DASH path instead, where the player chooses and the licence -- which grants HD -- is what decides."
+msgid "The SABR endpoint serves the height you ask it for, and asking is three fields rather than one -- a height, a viewport and a capability list. With those it serves HD, so this is a floor rather than a workaround: set it and the bridge offers nothing shorter, stepping down only if the title has nothing that tall. An earlier version of this note said the endpoint would only serve the tier the player response authorised, which reads AUDIO and SD on every title measured. That was wrong: the browser reads the same and is served HD."
 msgstr ""
 
 msgctxt "#30069"

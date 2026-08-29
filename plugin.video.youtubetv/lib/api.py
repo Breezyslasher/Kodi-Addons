@@ -5,9 +5,13 @@ docs/youtube-tv-protocol.md for the raw shapes. Nothing is documented or
 stable, so the client identity constants below are the first thing to check
 when calls start failing.
 
-The one identity that matters is client name 41, ``WEB_UNPLUGGED``. The same
-InnerTube endpoints under tv.youtube.com return a subscriber's live lineup only
-for that client; anything else gets ordinary YouTube.
+Two identities have been used in anger. ``WEB_UNPLUGGED`` (client name 41) is
+the web player's, authenticated with a cookie jar, and it is the one the
+captures were taken from; the addon no longer signs in that way. What it uses
+is ``TVHTML5_UNPLUGGED`` (65), which is what a device-code bearer token is
+accepted as -- asked as WEB_UNPLUGGED the same token answers HTTP 400
+INVALID_ARGUMENT. WEB_UNPLUGGED stays in the table below because the protocol
+notes are written against it and because it names what a capture was.
 """
 
 import json
@@ -31,9 +35,9 @@ CLIENT_NAME = "WEB_UNPLUGGED"
 # assumed: of the six the addon knows, this is the one that answered.
 OAUTH_CLIENT_NAME = "TVHTML5_UNPLUGGED"
 CLIENT_NAME_ID = "41"
-# Bumped by Google whenever they ship a new web player. A stale value is the
-# likeliest cause of a sudden LOGIN_REQUIRED against cookies that still work in
-# a browser, so it is a setting as well as a default.
+# Bumped by Google whenever they ship a new web player. Only a fallback:
+# refresh_bootstrap reads the live value off the page, and it is a setting
+# too, because a pinned one is stale within a day.
 CLIENT_VERSION = "1.20260826.04.00"
 # The player's signature timestamp, paired with the client version above.
 # Both are only the fallback: refresh_bootstrap() reads the live pair off the
@@ -173,11 +177,6 @@ _PAGE_ROLLOUT = re.compile(r'"rolloutToken"\s*:\s*"([^"]+)"')
 _PAGE_INSTALL = re.compile(r'"appInstallData"\s*:\s*"([^"]+)"')
 # Where the player JavaScript lives. Needed to compute n -- see nsig.py.
 _PAGE_JS_URL = re.compile(r'"jsUrl"\s*:\s*"([^"]+base\.js)"')
-# The page says outright whether Google considers the jar signed in. This is
-# the one fact that separates "the cookies are dead" from "the cookies are
-# fine and our InnerTube request is wrong", and every 401 explanation offered
-# so far was a guess made without it.
-_PAGE_LOGGED_IN = re.compile(r'"(?:LOGGED_IN|loggedIn)"\s*:\s*(true|false)')
 BOOTSTRAP_FILE = "client_bootstrap.json"
 # Bumped whenever a new field is read off the page. Without this the day-long
 # cache serves a copy written before the field existed, and the caller sees a
@@ -186,7 +185,7 @@ BOOTSTRAP_FILE = "client_bootstrap.json"
 BOOTSTRAP_SCHEMA = 2
 
 
-def refresh_bootstrap(session, cookies):
+def refresh_bootstrap(session):
     """Read clientVersion and signatureTimestamp off a YouTube TV page.
 
     Both were hardcoded from a capture, and comparing our request against the
@@ -206,9 +205,11 @@ def refresh_bootstrap(session, cookies):
         return cached
 
     try:
+        # Signed out, and that is fine: clientVersion, the signature
+        # timestamp and the player url are on the public page. The jar used
+        # to be sent here and read nothing extra for it.
         page = session.get(ORIGIN + "/", timeout=TIMEOUT, headers={
             "User-Agent": UA,
-            "Cookie": auth.cookie_header(cookies),
         })
         if page.status_code != 200:
             return cached
@@ -254,7 +255,7 @@ def refresh_bootstrap(session, cookies):
 _PLAYER_JS = {}
 
 
-def player_js(session, cookies):
+def player_js(session):
     """The player JavaScript, fetched once and kept for the session.
 
     A megabyte of it, so it is held in memory rather than re-fetched per
@@ -262,7 +263,7 @@ def player_js(session, cookies):
     url, which is what the solved values are cached against -- a new player
     means new answers.
     """
-    boot = refresh_bootstrap(session, cookies)
+    boot = refresh_bootstrap(session)
     path = boot.get("js_url")
     if not path:
         raise ApiError("the page does not name a player js")
@@ -319,40 +320,6 @@ def player_js(session, cookies):
     raise ApiError("no player js could be fetched (last HTTP %s)" % last)
 
 
-def session_probe(session, cookies):
-    """Ask tv.youtube.com whether it still knows this jar.
-
-    Fetched fresh, not from the bootstrap cache, and only when something has
-    already failed -- the point is to answer "were the cookies the problem?"
-    at the moment it is asked, with Google's own answer rather than ours.
-
-    Returns True (signed in), False (signed out) or None (could not tell).
-    """
-    try:
-        page = session.get(ORIGIN + "/", timeout=TIMEOUT, headers={
-            "User-Agent": UA,
-            "Cookie": auth.cookie_header(cookies),
-        })
-    except Exception as exc:
-        kodiutils.log("session probe: could not load the page: %s" % exc)
-        return None
-    if page.status_code != 200:
-        kodiutils.log("session probe: page returned HTTP %d" % page.status_code)
-        return None
-    # Signed out, tv.youtube.com serves the /welcome/ marketing page, which
-    # carries no ytcfg at all -- so the absence of the flag is itself the
-    # answer, and reporting it as "could not tell" hid a dead jar behind an
-    # inconclusive message. Log where we actually landed either way.
-    kodiutils.log("session probe: %s -> %d, %d bytes"
-                  % (page.url, page.status_code, len(page.text)))
-    if "/welcome" in page.url:
-        return False
-    match = _PAGE_LOGGED_IN.search(page.text)
-    if not match:
-        return False
-    return match.group(1) == "true"
-
-
 def _timezone_name():
     """The IANA zone name, e.g. America/New_York."""
     try:
@@ -407,13 +374,8 @@ def _signature_timestamp():
         return sts
     try:
         import requests
-        from . import auth
         session = requests.Session()
-        try:
-            cookies = auth.load()
-        except Exception:
-            cookies = {}
-        player_id, js = player_js(session, cookies)
+        player_id, js = player_js(session)
         found = _STS_IN_PLAYER.search(js)
         if found:
             _PLAYER_STS[player_id] = int(found.group(1))
@@ -440,15 +402,9 @@ def _baked_visitor_id():
     # they are baked together.
     try:
         from . import baked_session
-        if getattr(baked_session, "VISITOR_ID", ""):
-            return baked_session.VISITOR_ID
-    except ImportError:
-        pass
-    try:
-        from . import baked_cookies
     except ImportError:
         return ""
-    return getattr(baked_cookies, "VISITOR_ID", "") or ""
+    return getattr(baked_session, "VISITOR_ID", "") or ""
 
 
 def visitor_data():
@@ -598,69 +554,32 @@ def context(location=True, client_name=None):
 
 
 class Api(object):
-    def __init__(self, cookies=None, bearer=None):
-        # A bearer token stands in for the cookie jar when there is one. The
-        # jar is still preferred: it is what every captured request uses, and
-        # OAuth here is an experiment that reports its own result rather than
-        # a route anything falls back to silently.
-        self.bearer = ""
-        # Which identity this session claims. The cookie jar is the web
-        # player's, so it claims to be the web player; a bearer token is not,
-        # and measurably cannot be. See below.
-        self.client_name = CLIENT_NAME
-        # A jar wins by default because it is offered DASH and plays through
-        # the path that has always worked. Holding both credentials is now
-        # possible, though, and there is no way to reach the SABR path while
-        # a jar exists -- signing out to force it clears the token too. So
-        # the choice is a setting rather than an accident of what is stored.
-        if (not bearer and not cookies
-                and kodiutils.get_setting_bool("prefer_token")):
-            from . import oauth
-            if oauth.load().get("access_token"):
-                bearer = True
-                kodiutils.log("using the code sign-in for this session, as "
-                              "the setting asks")
-        if bearer:
-            # Asked for by name, because the jar wins by default and a caller
-            # verifying a token would otherwise verify the cookies instead --
-            # and then store the identity the *cookies* answered as against
-            # the token, which is an identity the token cannot use.
-            from . import oauth
-            self.bearer = bearer if isinstance(bearer, str) else oauth.access_token()
-            if not self.bearer:
-                raise auth.AuthError("no bearer token stored")
-            self.cookies = {}
-            self.client_name = oauth.load().get("client_name") or OAUTH_CLIENT_NAME
-        elif cookies:
-            self.cookies = cookies
-        else:
-            try:
-                self.cookies = auth.load()
-            except auth.AuthError:
-                from . import oauth
-                self.bearer = oauth.access_token()
-                if not self.bearer:
-                    raise
-                self.cookies = {}
-                # A device-code token is minted for a limited-input client and
-                # YouTube TV treats it that way. Asked as WEB_UNPLUGGED it
-                # answers HTTP 400 INVALID_ARGUMENT; asked as
-                # TVHTML5_UNPLUGGED, the same token returned a 150 channel
-                # lineup. So the identity travels with the credential rather
-                # than every call having to remember to pass one.
-                self.client_name = (oauth.load().get("client_name")
-                                    or OAUTH_CLIENT_NAME)
+    def __init__(self, bearer=None):
+        """A session on the stored device-code token.
+
+        There used to be a choice here -- a cookie jar, a token, and a
+        setting to say which won -- and with it the standing hazard that a
+        caller verifying one credential would silently verify the other and
+        record the identity the wrong one answered as. There is one
+        credential now, so there is nothing to pick.
+        """
+        self.bearer = bearer if isinstance(bearer, str) and bearer else auth.bearer()
+        # A device-code token is minted for a limited-input client and
+        # YouTube TV treats it that way: asked as WEB_UNPLUGGED it answers
+        # HTTP 400 INVALID_ARGUMENT, and asked as TVHTML5_UNPLUGGED the same
+        # token returned a 150 channel lineup. So the identity travels with
+        # the credential rather than every call having to remember one.
+        self.client_name = auth.client_name()
         self.session = requests.Session()
         # A show page's seasons are fetched together rather than one after
         # another, so more than one thread can be inside call() at once. The
-        # request itself is fine -- requests pools per host -- but the two
-        # things a reply mutates on the client, the jar and the visitor id,
-        # are not, and both end in a write to the profile.
+        # request itself is fine -- requests pools per host -- but the
+        # visitor id a reply can carry is not, and it ends in a write to the
+        # profile.
         self._lock = threading.Lock()
-        self._cookies_written = 0.0
         self._visitor_id = kodiutils.get_setting("visitor_id", "") or _baked_visitor_id()
         try:
-            refresh_bootstrap(self.session, self.cookies)
+            refresh_bootstrap(self.session)
         except Exception as exc:
             kodiutils.log("bootstrap refresh skipped: %s" % exc)
 
@@ -680,11 +599,8 @@ class Api(object):
             "X-YouTube-Client-Name": client_id,
             "X-YouTube-Client-Version": version,
             "X-Goog-AuthUser": "0",
-            "Authorization": ("Bearer " + self.bearer if self.bearer
-                              else auth.authorization(self.cookies)),
+            "Authorization": "Bearer " + self.bearer,
         }
-        if self.cookies:
-            headers["Cookie"] = auth.cookie_header(self.cookies)
         if self._visitor_id:
             headers["X-Goog-Visitor-Id"] = self._visitor_id
         return headers
@@ -695,8 +611,10 @@ class Api(object):
         Not an InnerTube call and deliberately not routed through ``call``:
         the body is empty, everything is in the query string the player
         response already signed, and a 204 is success. The capture of
-        2026-08-28 03:10 shows no Authorization header on these -- cookies,
-        the visitor id and the origin are the whole of the credential.
+        2026-08-28 03:10 shows no Authorization header on these at all --
+        the browser's cookies, the visitor id and the origin were the whole
+        of the credential. A token session has no cookies, so it sends the
+        bearer; the endpoint answers 204 either way.
 
         The url comes back from playbackTracking pointing at s.youtube.com
         and the player sends it to the origin instead, so the host is
@@ -714,10 +632,7 @@ class Api(object):
             "X-Goog-AuthUser": "0",
             "Content-Length": "0",
         }
-        if self.cookies:
-            headers["Cookie"] = auth.cookie_header(self.cookies)
-        elif self.bearer:
-            headers["Authorization"] = "Bearer " + self.bearer
+        headers["Authorization"] = "Bearer " + self.bearer
         if self._visitor_id:
             headers["X-Goog-Visitor-Id"] = self._visitor_id
         try:
@@ -726,36 +641,6 @@ class Api(object):
         except requests.RequestException as exc:
             raise ApiError("could not reach %s: %s" % (parts.path, exc))
         return response.status_code
-
-    def _absorb_cookies(self, response):
-        """Keep the jar current, since Google keeps re-issuing it.
-
-        Every InnerTube reply carries fresh session cookies and the addon
-        threw them all away, holding whatever was exported until it went
-        stale. Written back rarely -- only when a value actually changed,
-        and at most once a minute -- because this is a file in the profile,
-        not a cache, and every call would otherwise write it.
-        """
-        if not self.cookies:
-            return
-        try:
-            fresh = requests.utils.dict_from_cookiejar(response.cookies)
-        except Exception:
-            return
-        with self._lock:
-            changed = auth.absorb(fresh, self.cookies)
-            if not changed:
-                return
-            now = time.time()
-            if now - self._cookies_written < 60:
-                return
-            self._cookies_written = now
-        try:
-            auth.save(self.cookies)
-            kodiutils.log("cookies refreshed: %s" % ", ".join(sorted(changed)))
-        except auth.AuthError as exc:
-            # A rotation that would leave the jar unusable is not a rotation.
-            kodiutils.log("cookies not written back: %s" % exc)
 
     def call(self, endpoint, body, params=None, client_name=None):
         url = BASE + endpoint
@@ -769,8 +654,6 @@ class Api(object):
                                          timeout=TIMEOUT)
         except requests.RequestException as exc:
             raise ApiError("could not reach %s: %s" % (endpoint, exc))
-
-        self._absorb_cookies(response)
 
         if response.status_code != 200:
             # InnerTube explains itself in the body -- which credential it did
@@ -792,43 +675,21 @@ class Api(object):
                     detail = "%s | details=%s" % (detail, json.dumps(details)[:600])
             except ValueError:
                 detail = (response.text or "")[:400]
-            # The jar's size belongs in this line: a 413 here is Google
-            # refusing the request for bulk, and the Cookie header is the only
-            # part of it that grows without bound.
-            jar = auth.cookie_header(self.cookies)
             asked = client_name or self.client_name
             shown = effective_version(asked)
-            kodiutils.log("%s -> HTTP %d as %s v%s, %d cookies / %d bytes%s"
+            kodiutils.log("%s -> HTTP %d as %s v%s%s"
                           % (endpoint, response.status_code, asked, shown,
-                             len(self.cookies), len(jar),
                              ": %s" % detail[:300] if detail else ""))
 
         if response.status_code in (401, 403):
-            # Four different explanations have been offered for a 401 here --
-            # rotation, staleness, integrity cookies, a bad extraction -- all
-            # of them guesses made without asking whether the jar was actually
-            # dead. So ask. The page and this call carry the same cookies, so
-            # a signed-in page and a 401 cannot both be about the session.
-            live = session_probe(self.session, self.cookies)
-            names = ",".join(sorted(self.cookies))
-            kodiutils.log("session probe: signed in = %s; jar carries %s"
-                          % (live, names))
-            if live is False:
-                raise auth.AuthError(
-                    "Google no longer knows this session -- tv.youtube.com "
-                    "serves it a signed-out page. Import a fresh cookie "
-                    "export.%s" % (" (%s)" % detail if detail else ""))
-            if live is True:
-                raise auth.AuthError(
-                    "The session is still signed in -- tv.youtube.com serves "
-                    "these same cookies a signed-in page -- but %s returned "
-                    "HTTP %d, so it is the request being refused, not the "
-                    "cookies.%s"
-                    % (endpoint, response.status_code,
-                       " (%s)" % detail if detail else ""))
+            # A refused token is a refused token: it has either expired
+            # beyond refreshing or was never authorised for this account.
+            # There is nothing to probe -- the old jar-or-request question
+            # existed because a cookie could be alive in a browser and
+            # refused here at the same time, which a bearer cannot be.
             raise auth.AuthError(
-                "%s returned HTTP %d and the page probe could not say whether "
-                "the session is alive.%s"
+                "YouTube TV refused the stored sign-in (%s returned HTTP %d). "
+                "Sign in again.%s"
                 % (endpoint, response.status_code,
                    " (%s)" % detail if detail else ""))
         if response.status_code != 200:
