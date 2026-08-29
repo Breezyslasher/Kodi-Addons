@@ -16,8 +16,27 @@ released one, and apply() is safe to call more than once.
 """
 
 import math
+import os
+import sys
 
 _applied = False
+
+
+def _vendor():
+    """Put the vendored js2py on the path, behind anything installed.
+
+    Appended rather than inserted: Kodi runs every addon in one Python
+    process and sys.path is shared, so putting `six` at the front of it
+    would hand our copy to every other addon on the box. At the back, ours
+    is only reached when nothing else provides the name.
+
+    Here rather than only in the caller, so that importing this module is
+    enough -- apply() imports js2py, and an ordering where it ran first
+    would fail with ModuleNotFoundError.
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor")
+    if path not in sys.path:
+        sys.path.append(path)
 
 
 def apply():
@@ -26,6 +45,7 @@ def apply():
     if _applied:
         return
     _applied = True
+    _vendor()
     # -- Python 3.12 --------------------------------------------------
     # The translator names a try/catch's temporaries with
     # random.randrange(1e8), and 3.12 stopped taking a float there. Before

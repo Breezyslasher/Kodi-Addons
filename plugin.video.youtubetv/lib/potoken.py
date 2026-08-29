@@ -35,10 +35,15 @@ SLACK = 60
 
 _lock = threading.Lock()
 _memo = {}
-# Bindings a mint is already running for, so two playbacks starting at once
-# do not each run the VM.
-_minting = set()
+# binding -> when its mint started, so two playbacks starting at once do not
+# each run the VM.
+_minting = {}
 _mint_lock = threading.Lock()
+# After this, a mint that has not finished is treated as lost and another may
+# start. A run takes seconds; a thread cannot be killed, so the alternative
+# to a deadline is one hung mint meaning cold started tokens for as long as
+# Kodi stays up, and nothing in the log saying why.
+MINT_DEADLINE = 300
 # How the token in hand was come by, for anything that wants to say so.
 last = {"source": ""}
 
@@ -136,12 +141,20 @@ def _start_mint(binding):
 
     Returns without doing anything if one is already running for this
     binding: ISA opens the manifest from more than one thread and both ask
-    for a token.
+    for a token. One that has been running past the deadline is treated as
+    lost and another is allowed to start -- the thread cannot be killed, but
+    a token can still be got.
     """
+    now = time.time()
     with _mint_lock:
-        if binding in _minting:
+        began = _minting.get(binding)
+        if began and now - began < MINT_DEADLINE:
             return
-        _minting.add(binding)
+        if began:
+            kodiutils.log("po token: the mint started %d seconds ago and has "
+                          "not finished; starting another"
+                          % (now - began))
+        _minting[binding] = now
 
     def run():
         try:
@@ -155,7 +168,10 @@ def _start_mint(binding):
             return
         finally:
             with _mint_lock:
-                _minting.discard(binding)
+                # Only if this run is still the one on record: a later one
+                # may have been started after the deadline passed.
+                if _minting.get(binding) == now:
+                    _minting.pop(binding, None)
         _remember(binding, minted, ttl, "minted")
 
     thread = threading.Thread(target=run, name="potoken-mint")
