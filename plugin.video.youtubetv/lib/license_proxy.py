@@ -206,6 +206,16 @@ class _Handler(BaseHTTPRequestHandler):
             body = manifest_mod.add_po_token(
                 body, kodiutils.get_setting("po_token", ""))
             body = _resolve_n(body, cookies)
+            # Name the key each track needs. ISA holds all four the licence
+            # grants and, with no cenc:default_KID anywhere in the manifest,
+            # no way to tell which belongs to which -- so it picks one and
+            # every sample fails to decrypt after downloading perfectly well.
+            ctx = _context()
+            body = manifest_mod.set_key_ids(
+                body, key_ids_for(ctx.get("video_id", "")),
+                pssh=widevine.build_pssh(
+                    widevine.content_id(ctx.get("drm_params", ""), target),
+                    is_live=bool(ctx.get("is_live"))))
         except Exception as exc:
             # A manifest we failed to repair still beats no manifest.
             kodiutils.log_error("manifest patch failed, passing it through: %s"

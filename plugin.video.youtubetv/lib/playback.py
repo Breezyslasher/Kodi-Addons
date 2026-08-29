@@ -43,21 +43,31 @@ TRACK_TYPE_HEIGHTS = {
 }
 
 
-def _authorized_cap(streaming):
+def _authorized_cap(streaming, video_id=""):
     """The tallest track this account is actually licensed to decrypt.
 
-    The player response says which track types were granted -- commonly just
-    AUDIO and SD -- while the manifest still advertises 720p and 1080p. Left
-    alone, ISA picks by screen size, asks the CDM to decrypt a track whose key
-    was never issued, and the result is not a clean error: it has taken Kodi
-    down. Capping to what was granted keeps the chooser inside the keys we
-    hold.
+    Two sources disagree, and the field name says which to believe:
+    streamingData carries *initial*AuthorizedDrmTrackTypes, commonly just AUDIO
+    and SD, while the licence that comes back a moment later grants AUDIO, SD,
+    HD and UHD1 for the same title. The initial list is a hint from before the
+    exchange; the licence is the answer.
 
-    Returns 0 when the response says nothing, rather than inventing a limit.
+    So prefer what the licence granted, which the proxy records per title on
+    its way past. The first play of a title has none yet and falls back to the
+    hint -- one play at a lower resolution, then the real ceiling.
     """
-    granted = streaming.get("initialAuthorizedDrmTrackTypes") or []
+    granted = list(license_proxy.key_ids_for(video_id)) if video_id else []
+    source = "the licence"
+    if not granted:
+        granted = streaming.get("initialAuthorizedDrmTrackTypes") or []
+        source = "the player response (no licence seen for this title yet)"
     heights = [TRACK_TYPE_HEIGHTS[t] for t in granted if t in TRACK_TYPE_HEIGHTS]
-    return max(heights) if heights else 0
+    if not heights:
+        return 0
+    tallest = max(heights)
+    kodiutils.log("licensed up to %dp according to %s: %s"
+                  % (tallest, source, ", ".join(sorted(granted))))
+    return tallest
 
 
 def _dump_manifest(url):
@@ -168,41 +178,39 @@ def build_item(player_response, label=None, art=None):
             kodiutils.log("pssh content id: %s (live=%s)" % (content, is_live))
             item.setProperty("inputstream.adaptive.license_data", pssh)
 
-            # ISA has been opening every session with an unknown KID, because
-            # nothing it can read carries one: YouTube's ContentProtection has
-            # no cenc:default_KID and a content-id PSSH has no key ids. The
-            # licence response does name them, so a previous play of this title
-            # leaves them behind for this one. pre_init_data is the property
-            # that takes both halves.
+            # No pre_init_data. It was the right answer while nothing ISA
+            # could read carried a key id, but it pins the CDM to one session
+            # for one key -- and the licence grants four. With the SD key
+            # pinned, every audio sample has a key id no session holds, which
+            # is what "Decrypt Sample returns failure!" was reporting fifty
+            # times a second while the video decoded.
+            #
+            # The manifest now declares mp4protection with the key id for each
+            # track and the Widevine system id with this PSSH, so ISA opens the
+            # sessions it needs by itself. See manifest.set_key_ids.
             video_id = details.get("videoId") or ""
             known = license_proxy.key_ids_for(video_id)
-            key_id = (known.get("DRM_TRACK_TYPE_SD")
-                      or known.get("DRM_TRACK_TYPE_AUDIO")
-                      or next(iter(known.values()), ""))
-            if key_id:
-                kodiutils.log("pre_init_data: supplying key id from the "
-                              "previous licence (%d known for this title)"
-                              % len(known))
-                item.setProperty("inputstream.adaptive.pre_init_data",
-                                 "%s|%s" % (pssh, key_id))
+            if known:
+                kodiutils.log("keys known for %s: %s -- the manifest names "
+                              "them per track" % (video_id or "this title",
+                                                  ", ".join(sorted(known))))
             else:
-                kodiutils.log("no key id known for %s yet -- ISA will open "
-                              "with an unknown KID; the licence this play "
-                              "fetches will supply one for next time"
+                kodiutils.log("no key ids known for %s yet: the licence this "
+                              "play fetches supplies them, so the first play "
+                              "of a title may not decrypt"
                               % (video_id or "this title"))
         else:
             kodiutils.log_error("no content id could be derived -- ISA will "
                                 "have no PSSH and will refuse the stream")
 
     # The lower of what the user asked for and what the licence covers.
-    caps = [c for c in (_quality_cap(), _authorized_cap(streaming)) if c]
+    licensed = _authorized_cap(streaming, details.get("videoId") or "")
+    caps = [c for c in (_quality_cap(), licensed) if c]
     cap = min(caps) if caps else 0
     if cap:
-        authorized = _authorized_cap(streaming)
-        if authorized and cap == authorized:
-            kodiutils.log("capping to %dp: the account is licensed for %s"
-                          % (cap, ", ".join(streaming.get(
-                              "initialAuthorizedDrmTrackTypes") or [])))
+        kodiutils.log("capping to %dp (%s)"
+                      % (cap, "the licence's ceiling" if cap == licensed
+                         else "your quality setting"))
         # Both spellings: the chooser properties are what ISA 21+ reads, and
         # max_resolution is the older name still honoured by some builds.
         item.setProperty("inputstream.adaptive.max_resolution", str(cap))

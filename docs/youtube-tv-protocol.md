@@ -666,3 +666,38 @@ What that leaves, in order of honesty:
 
 What is *not* worth another attempt: a fifth extraction pattern, a sixth cookie
 theory, or any change to the DASH URLs. Those are all settled above.
+
+## Playback works
+
+The chain, end to end:
+
+1. `player` for the video, with a `cpn` minted for the session;
+2. the PSSH built by hand from `drmParams`, since the manifest declares
+   `schemeIdUri="http://youtube.com/drm/2012/10/10"` and carries no key ids;
+3. the licence fetched through the local proxy, which records the key id of
+   each authorised track on the way past;
+4. `n` computed by running the player's own transform in a JavaScript engine;
+5. the manifest rewritten with the solved `n` and with a `cenc:default_KID`
+   naming the key each track needs.
+
+Two things had to be true at once for step 5, and either alone still fails.
+`n` wrong, and every segment is refused with an empty 403. `n` right and the
+key unnamed, and the segments arrive, the codecs open, playback starts, and
+every sample fails to decrypt -- because YouTube TV grants four keys and the
+manifest says nothing about which is which.
+
+### The n transform
+
+Reached through the value handed to `set("n", ...)`, in the `tce` builds only:
+
+```js
+a.D&&(eO(a),b=a.j.n||null)&&(b=Yma(b),a.set("n",b))
+```
+
+`Yma` in `player_ias_tce`, `Nia` in `player_es6_tce`; the builds the page
+points at hide it behind an opcode VM and have no such call at all. It opens
+with `if(typeof Xma==="undefined")return a;` -- a sentinel that must be carried
+with the function, or it returns its input untouched and silently.
+
+Running it needs a real JavaScript engine. The vendored Python interpreter
+stops on an unbraced `if` body and again on `typeof`.
