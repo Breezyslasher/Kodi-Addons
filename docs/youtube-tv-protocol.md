@@ -1711,6 +1711,16 @@ evidence available at the time:
   served HD-tier renditions. The field does not describe what the endpoint
   will serve.
 
+  It does not describe what the *licence* will grant either, which took
+  longer to act on. The addon kept using it as the resolution ceiling on
+  the first play of a title, before any licence had been recorded, so every
+  title's first play was 480p. Measured across three titles and both
+  credentials, the hint read `AUDIO,SD` every time and the licence that
+  followed granted `AUDIO, SD, HD, UHD1` every time. It is no longer
+  consulted: with no licence recorded there is no ceiling, and the quality
+  setting is the only limit. Once a licence has been seen, its grant is the
+  ceiling as before -- an SD-only licence still caps at 480p.
+
 The correlation behind all three was real but backwards: every offer that
 was accepted happened to contain 480p renditions, because 480p is what a
 request naming no height gets. Nothing was being refused for its tier or
