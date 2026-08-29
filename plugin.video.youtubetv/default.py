@@ -247,6 +247,31 @@ def route_station(station_id, name):
     finish("videos")
 
 
+def _add_items(items, content="videos"):
+    """List parsed items: playable ones resolve, folders browse deeper."""
+    for item in items:
+        listitem = xbmcgui.ListItem(label=item.title)
+        listitem.setArt({"thumb": item.art, "fanart": item.art})
+        info = listitem.getVideoInfoTag()
+        info.setTitle(item.title)
+        if item.subtitle:
+            info.setPlot(item.subtitle)
+        info.setMediaType("video")
+        if item.playable:
+            listitem.setProperty("IsPlayable", "true")
+            xbmcplugin.addDirectoryItem(
+                HANDLE,
+                url(action="play", video_id=item.video_id, label=item.title),
+                listitem, isFolder=False)
+        else:
+            xbmcplugin.addDirectoryItem(
+                HANDLE,
+                url(action="browse", browse_id=item.browse_id,
+                    name=item.title),
+                listitem, isFolder=True)
+    finish(content)
+
+
 def route_search():
     query = kodiutils.input_text("Search YouTube TV")
     if not query:
@@ -263,21 +288,33 @@ def route_search():
         finish()
         return
 
-    results = epg.parse_search(response)
-    if not results:
+    items = epg.parse_search(response)
+    if not items:
         kodiutils.notify("Nothing found for %s" % query)
-    for video_id, title, description, art in results:
-        item = xbmcgui.ListItem(label=title)
-        item.setArt({"thumb": art, "fanart": art})
-        info = item.getVideoInfoTag()
-        info.setTitle(title)
-        info.setPlot(description)
-        info.setMediaType("video")
-        item.setProperty("IsPlayable", "true")
-        xbmcplugin.addDirectoryItem(
-            HANDLE, url(action="play", video_id=video_id, label=title),
-            item, isFolder=False)
-    finish("videos")
+    _add_items(items)
+
+
+def route_browse(browse_id, name):
+    """A show, movie or channel page reached from search.
+
+    Search answers with shows rather than episodes, so this is where the
+    playable things actually live.
+    """
+    client = _client()
+    if not client:
+        finish()
+        return
+    try:
+        response = client.browse(browse_id)
+    except (auth.AuthError, api.ApiError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or browse_id))
+        finish()
+        return
+
+    items = epg.parse_items(response)
+    if not items:
+        kodiutils.notify("Nothing playable under %s" % (name or browse_id))
+    _add_items(items)
 
 
 def route_play(video_id, label):
@@ -327,6 +364,9 @@ def main():
         return
     elif action == "search":
         route_search()
+        return
+    elif action == "browse":
+        route_browse(params.get("browse_id", ""), params.get("name", ""))
         return
     elif action == "play":
         route_play(params.get("video_id", ""), params.get("label", ""))

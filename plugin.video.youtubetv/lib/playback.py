@@ -2,7 +2,7 @@
 
 import xbmcgui
 
-from . import api, auth, kodiutils, license_proxy
+from . import api, auth, kodiutils, license_proxy, manifest as manifest_mod, widevine
 
 ISA_ADDON = "inputstream.adaptive"
 
@@ -33,6 +33,33 @@ def _quality_cap():
     return kodiutils.get_setting_int("max_height", 0)
 
 
+# What each granted DRM track type is worth in picture height. YouTube offers
+# 144p-1080p on a live channel regardless of what the account may decrypt.
+TRACK_TYPE_HEIGHTS = {
+    "DRM_TRACK_TYPE_SD": 480,
+    "DRM_TRACK_TYPE_HD": 1080,
+    "DRM_TRACK_TYPE_UHD1": 2160,
+    "DRM_TRACK_TYPE_UHD2": 4320,
+}
+
+
+def _authorized_cap(streaming):
+    """The tallest track this account is actually licensed to decrypt.
+
+    The player response says which track types were granted -- commonly just
+    AUDIO and SD -- while the manifest still advertises 720p and 1080p. Left
+    alone, ISA picks by screen size, asks the CDM to decrypt a track whose key
+    was never issued, and the result is not a clean error: it has taken Kodi
+    down. Capping to what was granted keeps the chooser inside the keys we
+    hold.
+
+    Returns 0 when the response says nothing, rather than inventing a limit.
+    """
+    granted = streaming.get("initialAuthorizedDrmTrackTypes") or []
+    heights = [TRACK_TYPE_HEIGHTS[t] for t in granted if t in TRACK_TYPE_HEIGHTS]
+    return max(heights) if heights else 0
+
+
 def _dump_manifest(url):
     """Save the manifest ISA is about to fetch, when diagnostics are on.
 
@@ -57,7 +84,13 @@ def _dump_manifest(url):
             handle.write(response.content)
         kodiutils.log("manifest saved to %s (HTTP %d, %d bytes)"
                       % (path, response.status_code, len(response.content)))
-        kodiutils.notify("Manifest saved to the addon's profile folder")
+        # Ask the CDN for the first segment with exactly the headers ISA uses,
+        # so a 403 from ISA can be attributed to the URL or to ISA.
+        manifest_mod.probe_segments(response.content, {
+            "User-Agent": api.UA,
+            "Origin": api.ORIGIN,
+            "Referer": api.ORIGIN + "/",
+        }, cookie_header=auth.cookie_header(auth.load()))
     except Exception as exc:
         kodiutils.log_error("could not save the manifest: %s" % exc)
 
@@ -80,7 +113,10 @@ def build_item(player_response, label=None, art=None):
 
     _dump_manifest(manifest)
 
-    item = xbmcgui.ListItem(label=label or details.get("title") or "", path=manifest)
+    # ISA reads the manifest through the local proxy, which repairs the
+    # missing SegmentList attributes that otherwise crash it. See lib/manifest.
+    item = xbmcgui.ListItem(label=label or details.get("title") or "",
+                            path=license_proxy.manifest_url(manifest))
     item.setMimeType("application/dash+xml")
     item.setContentLookup(False)
 
@@ -122,10 +158,33 @@ def build_item(player_response, label=None, art=None):
         item.setProperty("inputstream.adaptive.license_key",
                          "%s|Content-Type=application/octet-stream|R{SSM}|" % licence)
 
-    cap = _quality_cap()
+        # YouTube's manifests carry no PSSH ISA can open a session from, which
+        # is what "Unhandled encrypted stream" means. Hand it the one the web
+        # player builds for itself; see lib/widevine.py. Live only -- the
+        # on-demand content-id prefix is not yet known, and a wrong PSSH is
+        # worse than none, since ISA would try it and fail on the licence
+        # instead of falling back.
+        if is_live:
+            video_id = details.get("videoId") or ""
+            if video_id:
+                item.setProperty("inputstream.adaptive.license_data",
+                                 widevine.build_pssh(video_id))
+
+    # The lower of what the user asked for and what the licence covers.
+    caps = [c for c in (_quality_cap(), _authorized_cap(streaming)) if c]
+    cap = min(caps) if caps else 0
     if cap:
+        authorized = _authorized_cap(streaming)
+        if authorized and cap == authorized:
+            kodiutils.log("capping to %dp: the account is licensed for %s"
+                          % (cap, ", ".join(streaming.get(
+                              "initialAuthorizedDrmTrackTypes") or [])))
+        # Both spellings: the chooser properties are what ISA 21+ reads, and
+        # max_resolution is the older name still honoured by some builds.
         item.setProperty("inputstream.adaptive.max_resolution", str(cap))
-        item.setProperty("inputstream.adaptive.max_bandwidth", "0")
+        item.setProperty("inputstream.adaptive.chooser_resolution_max", "%dp" % cap)
+        item.setProperty("inputstream.adaptive.chooser_resolution_secure_max",
+                         "%dp" % cap)
 
     headers = "User-Agent=%s&Referer=%s/" % (api.UA, api.ORIGIN)
     item.setProperty("inputstream.adaptive.stream_headers", headers)

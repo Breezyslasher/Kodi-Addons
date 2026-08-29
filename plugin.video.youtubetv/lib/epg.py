@@ -225,33 +225,126 @@ def continuation_token(response):
     return None
 
 
-def parse_search(response):
-    """Search hits as (video_id, title, description, art) tuples.
+class Item(object):
+    """Something the UI can show: a folder to browse, or a video to play."""
 
-    Search mixes several renderer types depending on what matched; rather than
-    enumerate them, take anything carrying a watchEndpoint and a title.
+    __slots__ = ("video_id", "browse_id", "title", "subtitle", "art",
+                 "start_ms", "end_ms")
+
+    def __init__(self, video_id="", browse_id="", title="", subtitle="",
+                 art="", start_ms=0, end_ms=0):
+        self.video_id = video_id
+        self.browse_id = browse_id
+        self.title = title
+        self.subtitle = subtitle
+        self.art = art
+        self.start_ms = start_ms
+        self.end_ms = end_ms
+
+    @property
+    def playable(self):
+        return bool(self.video_id)
+
+
+def _endpoint_id(node, endpoint, key):
+    """The id under a named endpoint, searching only this renderer.
+
+    Deliberately shallow-ish: a renderer's menu carries endpoints for other
+    things entirely ("Go to Rick and Morty", "Add to library"), so the first
+    matching endpoint anywhere below would often be the wrong one. The
+    navigationEndpoint is checked first for that reason.
     """
-    results = []
+    nav = node.get("navigationEndpoint")
+    if isinstance(nav, dict):
+        block = nav.get(endpoint)
+        if isinstance(block, dict) and block.get(key):
+            return block[key]
+    block = node.get(endpoint)
+    if isinstance(block, dict) and block.get(key):
+        return block[key]
+    return ""
+
+
+def _title_of(node):
+    for field in ("primaryText", "title", "headline", "label"):
+        value = text(node.get(field))
+        if value:
+            return value
+    return ""
+
+
+def _subtitle_of(node):
+    parts = []
+    for field in ("secondaryText", "tertiaryText", "descriptionSnippet"):
+        value = text(node.get(field))
+        if value and value not in parts:
+            parts.append(value)
+    return " • ".join(parts)
+
+
+def _seconds_ms(node, field):
+    try:
+        return int(node[field]) * 1000
+    except (KeyError, TypeError, ValueError):
+        return 0
+
+
+def parse_items(response):
+    """Every renderer that names something to play or browse.
+
+    Matched by shape rather than by renderer name. The first version of this
+    listed the renderer names it expected -- tileRenderer, videoRenderer and
+    friends -- and returned nothing at all, because YouTube TV uses its own
+    (unpluggedGridVideoRenderer, unpluggedBrowseItemRenderer,
+    unpluggedCompactVideoVersionRenderer). Names change; carrying a
+    watchEndpoint and a title does not.
+    """
+    items = []
     seen = set()
-    for key in ("tileRenderer", "compactVideoRenderer", "videoRenderer",
-                "gridVideoRenderer", "unpluggedVideoRenderer"):
-        for renderer in walk(response, key):
-            if not isinstance(renderer, dict):
-                continue
-            video_id = ""
-            for endpoint in walk(renderer, "watchEndpoint"):
-                if isinstance(endpoint, dict) and endpoint.get("videoId"):
-                    video_id = endpoint["videoId"]
-                    break
-            if not video_id or video_id in seen:
-                continue
-            title = (text(renderer.get("title"))
-                     or text(first(renderer, "headline") or {})
-                     or text(first(renderer, "primaryText") or {}))
-            if not title:
-                continue
-            seen.add(video_id)
-            results.append((video_id, title,
-                            text(renderer.get("descriptionSnippet")),
-                            thumbnail(renderer, prefer_width=1280)))
-    return results
+
+    def visit(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key.endswith("Renderer") and isinstance(value, dict):
+                    _collect(value)
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    def _collect(renderer):
+        title = _title_of(renderer)
+        if not title:
+            return
+        video_id = _endpoint_id(renderer, "watchEndpoint", "videoId")
+        browse_id = "" if video_id else _endpoint_id(renderer, "browseEndpoint",
+                                                     "browseId")
+        if not video_id and not browse_id:
+            return
+        key = video_id or browse_id
+        if key in seen:
+            return
+        seen.add(key)
+        items.append(Item(
+            video_id=video_id,
+            browse_id=browse_id,
+            title=title,
+            subtitle=_subtitle_of(renderer),
+            art=thumbnail(renderer.get("thumbnail") or {}, prefer_width=1280),
+            start_ms=_seconds_ms(renderer, "startTimeSeconds"),
+            end_ms=_seconds_ms(renderer, "endTimeSeconds"),
+        ))
+
+    visit(response)
+    return items
+
+
+def parse_search(response):
+    """Search hits.
+
+    YouTube TV answers a search with shows and scheduled airings, which carry a
+    browseEndpoint rather than a watchEndpoint -- you browse into them to reach
+    an episode. So most results are folders, and any that happen to be directly
+    playable come back playable.
+    """
+    return parse_items(response)
