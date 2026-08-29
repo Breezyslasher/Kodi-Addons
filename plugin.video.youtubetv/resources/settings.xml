@@ -20,6 +20,11 @@
 					<default>false</default>
 					<control type="toggle"/>
 				</setting>
+				<setting id="force_bridge" type="boolean" label="30060" help="30061">
+					<level>0</level>
+					<default>false</default>
+					<control type="toggle"/>
+				</setting>
 				<setting id="dump_manifest" type="boolean" label="30031" help="30032">
 					<level>0</level>
 					<default>false</default>

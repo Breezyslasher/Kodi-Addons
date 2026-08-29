@@ -384,3 +384,32 @@ def aux_report(fragment, init=b""):
         out.append("first entry (%d bytes) %s"
                    % (first, fragment[start:start + first].hex()))
     return "; ".join(out)
+
+
+def movie_header(data):
+    """ftyp and moov only, dropping whatever the file keeps after them.
+
+    A SABR initialisation part is not the file's initialisation. Measured
+    against the same track fetched as a file: initRange is 0..1711 and
+    indexRange 1712..3483, and SABR sends all 3484 bytes as one part --
+    ftyp, moov, and the sidx that belongs to the index. The DASH path that
+    decrypts this track hands InputStream Adaptive the first 1712 bytes and
+    reads the index separately, so the bridge should hand it the same
+    thing. The media itself needs no editing: fragments 1 and 2 came off
+    SABR byte for byte identical to the file.
+    """
+    out = bytearray()
+    seen_moov = False
+    pos = 0
+    while pos + 8 <= len(data):
+        size = int.from_bytes(data[pos:pos + 4], "big")
+        kind = data[pos + 4:pos + 8]
+        if size < 8 or pos + size > len(data):
+            break
+        if kind in (b"ftyp", b"moov"):
+            out += data[pos:pos + size]
+            seen_moov = seen_moov or kind == b"moov"
+        elif seen_moov:
+            break
+        pos += size
+    return bytes(out) if seen_moov else data

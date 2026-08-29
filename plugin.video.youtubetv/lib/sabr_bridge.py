@@ -22,7 +22,7 @@ import time
 
 import requests
 
-from . import (api, auth, kodiutils, license_proxy,
+from . import (api, auth, cipher, kodiutils, license_proxy,
                manifest as manifest_mod, mp4, nsig, sabr_session,
                widevine)
 
@@ -125,6 +125,33 @@ def _post(url, body):
     return reply.content
 
 
+def _preference(fmt):
+    """Rank a rendition: H.264 ahead of everything, then bitrate.
+
+    Audio never gets a CDM session of its own. ISA creates one for the
+    video track, finds the video key needs the secure path, and the audio
+    track then reuses that session -- so the video the bridge picks decides
+    the session the audio decrypt happens inside. The run that decrypts
+    this title picked itag 224, avc1, and made its session for KID
+    13720fbb; the bridge picks 810, av01, and makes it for 4d3521e2. That
+    is the last input to the licence that still differs between a run that
+    decrypts and one that does not, now that the media is proven identical
+    on both.
+
+    YouTube's own manifest for this title settles it: twelve
+    Representations, every one of them avc1, and no AV1 anywhere --
+
+      148/149/150  mp4a               kid=92d444f9
+      142/143/144/161/222/223  avc1 <=854x480   kid=4d3521e2
+      145/146/224  avc1 720p-1080p    kid=13720fbb
+
+    -- while the SABR format list offers itag 810, AV1 at 1080p, carrying
+    the SD tier's key id. That rendition is not one the DASH path can
+    play, so nothing about it has ever been exercised on a run that works.
+    """
+    return ("avc1" in (fmt.get("mimeType") or ""), fmt.get("bitrate") or 0)
+
+
 def _entry(fmt):
     return (fmt["itag"], fmt.get("lastModified") or 0, fmt.get("xtags") or "")
 
@@ -138,7 +165,7 @@ def alternatives(candidates, kind, max_height=1080, exclude=()):
     if kind == "audio/":
         primary = [f for f in wanted if "primary" in (f.get("xtags") or "")]
         wanted = primary or wanted
-    return sorted(wanted, key=lambda f: f.get("bitrate") or 0, reverse=True)
+    return sorted(wanted, key=_preference, reverse=True)
 
 
 def lookup(key):
@@ -160,12 +187,25 @@ def lookup(key):
     # names its choice in each MEDIA_HEADER; offering a single video format
     # was answered sabr.no_video_selected for all twelve renditions in
     # turn, including ones the cookie path plays in HD.
+    # ...but not renditions the working path has no equivalent of. Ranking
+    # avc1 first changed nothing: the server chose itag 810 again, because
+    # it picks from the set rather than taking the order as advice. So
+    # offer H.264 alone when H.264 exists, and keep the whole set as the
+    # fallback for when the endpoint refuses that.
+    video = alternatives(candidates, "video/", max_height)
+    avc = [f for f in video if "avc1" in (f.get("mimeType") or "")]
     session = sabr_session.Session(
         stored["url"], stored.get("config") or "",
         [_entry(f) for f in alternatives(candidates, "audio/")],
-        [_entry(f) for f in alternatives(candidates, "video/", max_height)],
+        [_entry(f) for f in (avc or video)],
         name, spec["id"], api.effective_version(name), _post,
-        live=bool(stored.get("live", True)))
+        live=bool(stored.get("live", True)), po_token=po_token())
+    if avc and len(avc) != len(video):
+        kodiutils.log("sabr bridge: offering %d H.264 rendition(s) and "
+                      "holding %d other(s) back: %s"
+                      % (len(avc), len(video) - len(avc),
+                         [f.get("itag") for f in video if f not in avc]))
+    session.every_video = [_entry(f) for f in video]
     formats = {"audio": audio, "video": video,
                "drm_params": stored.get("drm_params", ""),
                "candidates": candidates, "max_height": max_height,
@@ -212,7 +252,34 @@ def split_boxes(data):
     return head, [bytes(f) for f in fragments]
 
 
-def compare_against_file(session, url, itag):
+def probe_file(url, note=""):
+    """Ask for the first kilobyte of a media url and say what came back.
+
+    The SABR endpoint answers an empty-bodied 403 both when n is wrong and
+    when the request is refused for its own reasons, and the two are
+    indistinguishable from the outside. The audio track's file url carries
+    an n solved by the same code in the same run, so its status separates
+    them: 403 on both is n, 200 on the file is not.
+    """
+    if not url:
+        kodiutils.log("sabr bridge: no file url to probe%s" % note)
+        return
+    try:
+        reply = requests.get(url, timeout=TIMEOUT, headers={
+            "User-Agent": api.UA,
+            "Origin": api.ORIGIN,
+            "Referer": api.ORIGIN + "/",
+            "Range": "bytes=0-1023",
+        })
+    except Exception as exc:
+        kodiutils.log("sabr bridge: the file url could not be reached%s: %s"
+                      % (note, exc))
+        return
+    kodiutils.log("sabr bridge: the file url answered HTTP %d, %d bytes%s"
+                  % (reply.status_code, len(reply.content), note))
+
+
+def compare_against_file(session, url, itag, fmt=None):
     """Whether what SABR delivered is what the file holds, byte for byte.
 
     Everything measurable about the bridge's audio has come back correct --
@@ -229,7 +296,15 @@ def compare_against_file(session, url, itag):
     order = sorted(held)
     if len(order) < 2:
         return
-    init = session.initialisation.get(itag) or b""
+    init = mp4.movie_header(session.initialisation.get(itag) or b"")
+    span = ((fmt or {}).get("initRange") or {})
+    if span:
+        declared = int(span.get("end", -1)) - int(span.get("start", 0)) + 1
+        kodiutils.log("sabr bridge: itag %s initialisation is %d bytes, the "
+                      "file declares %d -- %s"
+                      % (itag, len(init), declared,
+                         "the same" if declared == len(init)
+                         else "NOT the same"))
     ours = [held[order[0]], held[order[1]]]
     want = len(init) + sum(len(part) for part in ours) + 65536
     try:
@@ -354,11 +429,28 @@ def manifest(key, base):
         try:
             session.prime()
         except sabr_session.SabrError as exc:
-            # With every candidate offered there is no narrower selection to
-            # retry -- a refusal here is about the request, not the pick.
-            kodiutils.log_error("sabr bridge: the endpoint refused the whole "
-                                "set: %s" % str(exc).strip())
-            return ""
+            wider = getattr(session, "every_video", None)
+            if wider and len(wider) != len(session.video):
+                kodiutils.log("sabr bridge: the endpoint refused the H.264 "
+                              "renditions (%s), offering every one again"
+                              % str(exc).strip())
+                session.video = list(wider)
+                session.entries = {entry[0]: entry
+                                   for entry in session.audio + session.video}
+                try:
+                    session.prime()
+                except sabr_session.SabrError as second:
+                    kodiutils.log_error("sabr bridge: the endpoint refused "
+                                        "the whole set: %s"
+                                        % str(second).strip())
+                    return ""
+            else:
+                # With every candidate offered there is no narrower
+                # selection to retry -- a refusal here is about the
+                # request, not the pick.
+                kodiutils.log_error("sabr bridge: the endpoint refused the "
+                                    "whole set: %s" % str(exc).strip())
+                return ""
 
     if not formats.get("compared"):
         formats["compared"] = True
@@ -367,7 +459,8 @@ def manifest(key, base):
         itag = (formats.get("audio") or {}).get("itag")
         if audio_url and itag:
             try:
-                compare_against_file(session, audio_url, itag)
+                compare_against_file(session, audio_url, itag,
+                                     formats.get("audio"))
             except Exception as exc:
                 kodiutils.log("sabr bridge: the file comparison failed: %s"
                               % exc)
@@ -384,13 +477,28 @@ def manifest(key, base):
     # DASH path solves this by reading each Representation's tenc box; the
     # bridge already holds every init segment in memory, so it reads the
     # same box from the same bytes rather than guessing a track tier.
+    #
+    # The source prefix is half the content id and it was wrong. source_of
+    # reads it out of the manifest url's /source/ segment and falls back to
+    # yt_tv_broadcast when there is none -- and the bridge passed no url at
+    # all, so every title, on demand included, asked for a licence as
+    # YT_TV_BROADCAST:15b3613898561ecd. The run that decrypts this very
+    # title asks as YOUTUBE:15b3613898561ecd. So read the source out of the
+    # SABR url when it names one, and otherwise let live decide: broadcast
+    # for live, YOUTUBE for a recording.
     content = ""
     drm_params = formats.get("drm_params") or ""
     if drm_params:
         try:
-            content = widevine.content_id(drm_params, "")
+            content = widevine.content_id(drm_params, session.url)
+            if content and "/source/" not in (session.url or ""):
+                source = ("YT_TV_BROADCAST" if getattr(session, "live", True)
+                          else "YOUTUBE")
+                content = "%s:%s" % (source, content.split(":", 1)[-1])
         except Exception as exc:
             kodiutils.log_error("sabr bridge: no content id: %s" % exc)
+    kodiutils.log("sabr bridge: pssh content id: %s (live=%s)"
+                  % (content, getattr(session, "live", True)))
 
     def protection_for(itag, kind):
         if not content:
@@ -443,6 +551,9 @@ def manifest(key, base):
         served.append((kind, fmt))
     if not served:
         kodiutils.log("sabr bridge: the session holds nothing to describe")
+        stored = kodiutils.read_json(CONTEXT_FILE, default={}) or {}
+        probe_file(stored.get("audio_url") or "",
+                   " (the SABR endpoint served nothing)")
         return ""
     # Each track's own key, printed: on the cookie path a Representation
     # carrying the wrong key id is not a decode error, it is ISA removing
@@ -487,12 +598,23 @@ def manifest(key, base):
 
     if not sets:
         return ""
+    # PT4H was a placeholder and it reached the user's screen: a 22 minute
+    # episode showed 00:00:05 / 04:00:00 and a seek bar four hours wide.
+    # The formats carry the real length, so use it and keep the placeholder
+    # only for live, which has no end to declare.
+    length = 0
+    for fmt in (formats.get("video"), formats.get("audio")):
+        try:
+            length = max(length, int((fmt or {}).get("approxDurationMs") or 0))
+        except (TypeError, ValueError):
+            pass
     return (
         '<?xml version="1.0" encoding="utf-8"?>'
         '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011" xmlns:cenc="urn:mpeg:cenc:2013" '
         'profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static" '
-        'mediaPresentationDuration="PT4H" minBufferTime="PT10S">'
-        '<Period id="0">%s</Period></MPD>' % "".join(sets))
+        'mediaPresentationDuration="%s" minBufferTime="PT10S">'
+        '<Period id="0">%s</Period></MPD>'
+        % ("PT%.3fS" % (length / 1000.0) if length else "PT4H", "".join(sets)))
 
 
 _WRAP = "<BaseURL>%s</BaseURL>"
@@ -531,6 +653,65 @@ def solve_n(url):
     return rewritten[len("<BaseURL>"):-len("</BaseURL>")]
 
 
+def po_token():
+    """The proof-of-origin token, as the bytes a SABR request carries.
+
+    The setting holds it the way a url spells it, base64url; streamerContext
+    wants the bytes themselves. A captured browser request carries 85 of
+    them under subfield 2, which is the 116 character setting decoded.
+    """
+    text = kodiutils.get_setting("po_token", "")
+    if not text:
+        return b""
+    import base64
+    padded = text + "=" * (-len(text) % 4)
+    try:
+        return base64.urlsafe_b64decode(padded)
+    except Exception as exc:
+        kodiutils.log("sabr bridge: the po_token setting could not be "
+                      "decoded: %s" % exc)
+        return b""
+
+
+def _file_url(fmt):
+    """This track as a plain file: signature resolved, n solved.
+
+    The unplugged clients send no plain url on a format -- 35 of 35 carry a
+    signatureCipher instead -- so the url the DASH path would read has to be
+    unscrambled first. Both halves already exist: cipher.parse reads the
+    transform out of the player script that solve_n already fetches, and
+    resolve puts the descrambled signature in the parameter sp names.
+    """
+    if fmt.get("url"):
+        return solve_n(fmt["url"]) or ""
+    blob = fmt.get("signatureCipher") or ""
+    if not blob:
+        kodiutils.log("sabr bridge: itag %s carries neither url nor "
+                      "signatureCipher" % fmt.get("itag"))
+        return ""
+    import requests
+    session = requests.Session()
+    try:
+        cookies = auth.load()
+    except auth.AuthError:
+        cookies = {}
+    try:
+        _player_id, js = api.player_js(session, cookies)
+        url = cipher.resolve(blob, cipher.parse(js))
+    except Exception as exc:
+        kodiutils.log("sabr bridge: could not resolve the signature for itag "
+                      "%s: %s" % (fmt.get("itag"), exc))
+        return ""
+    solved = solve_n(url) or ""
+    # A media url without a pot is refused, which is why the DASH path adds
+    # one to every BaseURL. Without this the probe measured its own omission
+    # rather than anything about n.
+    token = kodiutils.get_setting("po_token", "")
+    if solved and token and "pot=" not in solved:
+        solved = manifest_mod._add_param(solved, "pot", token)
+    return solved
+
+
 def _pick(formats, kind, max_height=1080):
     """One rendition per track.
 
@@ -549,7 +730,7 @@ def _pick(formats, kind, max_height=1080):
     if kind == "audio/":
         primary = [f for f in wanted if "primary" in (f.get("xtags") or "")]
         wanted = primary or wanted
-    return max(wanted, key=lambda f: f.get("bitrate") or 0)
+    return max(wanted, key=_preference)
 
 
 def playable_url(player_response, max_height=1080):
@@ -578,12 +759,12 @@ def playable_url(player_response, max_height=1080):
     if not solved:
         return ""
 
-    audio_url = ""
-    if audio.get("url"):
-        audio_url = solve_n(audio["url"]) or ""
-    else:
-        kodiutils.log("sabr bridge: itag %s came with no url, only %s"
-                      % (audio.get("itag"), sorted(audio)))
+    kodiutils.log("sabr bridge: itag %s as a file: initRange=%s indexRange=%s "
+                  "contentLength=%s lastModified=%s drmTrackType=%s"
+                  % (audio.get("itag"), audio.get("initRange"),
+                     audio.get("indexRange"), audio.get("contentLength"),
+                     audio.get("lastModified"), audio.get("drmTrackType")))
+    audio_url = _file_url(audio)
 
     key = set_context(solved, config, audio, video,
                       _client_name(), streaming.get("drmParams", ""),
