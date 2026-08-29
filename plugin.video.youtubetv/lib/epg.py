@@ -541,6 +541,41 @@ def unreadable_sample(node, limit=3):
     return out
 
 
+def renderer_sample(response, limit=8):
+    """The keys one example of each renderer name carries.
+
+    unreadable_sample asks for a title and a thumbnail before it reports a
+    renderer, so a client that files *those* elsewhere too gets reported as
+    nothing at all -- which is what happened: a page holding nineteen tiles
+    produced no sample line. This asks for nothing. It cannot come back
+    empty while the response holds any renderer, which is the property a
+    last-resort diagnostic needs.
+
+    Ordered by how many of each there are, so the tile renderer -- the
+    numerous one -- leads.
+    """
+    counts = {}
+    first_seen = {}
+
+    def visit(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key.endswith("Renderer") and isinstance(value, dict):
+                    counts[key] = counts.get(key, 0) + 1
+                    if key not in first_seen:
+                        first_seen[key] = sorted(value.keys())
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(response)
+    ranked = sorted(counts.items(), key=lambda pair: -pair[1])[:limit]
+    return ["%s x%d carries [%s]" % (name, count,
+                                     ", ".join(first_seen[name]))
+            for name, count in ranked]
+
+
 def parse_search(response):
     """Search hits.
 

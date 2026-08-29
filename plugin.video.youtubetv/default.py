@@ -600,9 +600,10 @@ def _follow_pages(client, section, limit=10):
                       % (section.title, page, added))
         if not added:
             # A page that answered and held nothing readable is the
-            # interesting case: say what its tiles carry, so the key their
-            # endpoint sits under can be read off the log.
-            for line in epg.unreadable_sample(response):
+            # interesting case: say what its renderers carry, so the key
+            # their endpoint sits under can be read off the log.
+            for line in (epg.unreadable_sample(response)
+                         or epg.renderer_sample(response, limit=4)):
                 kodiutils.log("%s: %s" % (section.title, line))
         following = epg.continuation_token(response)
         if not added or not following or following == token:
@@ -777,9 +778,15 @@ def route_library():
         kodiutils.log("library shape: %s" % epg.describe(response))
         _dump_shape("library-shape.json", response)
 
-    if not sum(len(section.items) for section in shelves + filters):
+    # Any empty tab is worth explaining, not only an entirely empty page:
+    # the first time this ran, Scheduled's single item was enough to keep
+    # the whole diagnostic quiet while eight tabs listed nothing.
+    if any(not section.items for section in filters):
         for line in epg.unreadable_sample(response):
             kodiutils.log("library: %s" % line)
+        for line in epg.renderer_sample(response):
+            kodiutils.log("library: %s" % line)
+        _dump_shape("library-shape.json", response)
 
     _list_sections(shelves, "library_section")
     _list_sections(filters[1:], "library_section")
