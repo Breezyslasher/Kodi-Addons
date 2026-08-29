@@ -1670,15 +1670,24 @@ what makes this a tier rule and not an "offer too small" rule:
     9 H.264, HD and SD                             -> serves 223  (SD tier)
     32 formats including AV1                       -> serves 810  (SD tier)
 
-And that is what the 36 AV1 picks were about. Itag 810 is 1920x1080 *and*
-carries the SD tier's key id, so it is the one tall rendition the endpoint
-is allowed to send. It was never choosing the tallest thing; it was
-choosing the tallest thing in the only tier it may serve.
+Printing the format table with each rendition's codec, size and tier --
+rather than inferring any of it from itags -- settles what the tier
+actually contains:
 
-So a height floor cannot work by height. The offer is filtered to the
-authorised tier first, and the floor then applies within it -- and when no
-H.264 in that tier is tall enough, the floor is what asks for the AV1 that
-is.
+    146 814 813 553   1920x1080   HD tier
+    224 145 812 811 552  1280x720 HD tier
+    223 222 144 810 809 551  854x480   SD tier
+    143 550   640x360     142 549  426x240     161 548  256x144   SD tier
+
+Every SD-tier rendition is 854x480 or shorter. **There is no tall
+rendition in the tier this session may play**, so 854x480 is a hard
+ceiling on the bridge for a code sign-in, and no setting reaches past it.
+
+That also corrects what was written here about the 36 AV1 picks. Itag 810
+was recorded as "AV1 at 1080p carrying the SD tier's key id", inferred
+from the itag; the table says 854x480. The endpoint was not reaching for
+height when it chose it. It was choosing between renditions of the same
+size.
 
 ### The server has served 1080p, just never H.264 1080p
 

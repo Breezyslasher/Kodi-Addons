@@ -151,9 +151,11 @@ def _preference(fmt):
       142/143/144/161/222/223  avc1 <=854x480   kid=4d3521e2
       145/146/224  avc1 720p-1080p    kid=13720fbb
 
-    -- while the SABR format list offers itag 810, AV1 at 1080p, carrying
-    the SD tier's key id. That rendition is not one the DASH path can
-    play, so nothing about it has ever been exercised on a run that works.
+    -- and itag 810 is AV1 at 854x480 in the SD tier, which is what the
+    endpoint kept choosing. "AV1 at 1080p" was written here from the itag
+    rather than from the format table, and it was wrong: printing the
+    table shows every SD-tier rendition of this title at 854x480 or
+    shorter. So the AV1 picks were never the endpoint reaching for height.
     """
     return ("avc1" in (fmt.get("mimeType") or ""), fmt.get("bitrate") or 0)
 
@@ -291,33 +293,13 @@ def lookup(key):
                              [f.get("itag") for f in avc if f not in tall]))
             avc = tall
         else:
-            # No H.264 that tall is servable. On this title the only
-            # rendition that is both 1080p and SD tier is itag 810, which is
-            # AV1 -- and AV1 is held back because a run on it ended in
-            # kDecryptError. That run also predates the signatureTimestamp
-            # fix and the key id fix, so it was never a clean test, and this
-            # is the setting that asks for it: height over the safe codec.
-            taller = [f for f in offerable
-                      if (f.get("height") or 0) >= floor
-                      and f not in avc
-                      and (not authorized
-                           or (f.get("drmTrackType") or "") in authorized)]
-            if taller:
-                taller.sort(key=lambda f: -(f.get("height") or 0))
-                kodiutils.log("sabr bridge: no H.264 reaches %dp in a tier "
-                              "this session may play, so offering %s "
-                              "instead -- %s, which is the codec that ended "
-                              "in kDecryptError once"
-                              % (floor, [f.get("itag") for f in taller],
-                                 ", ".join(sorted({
-                                     (f.get("mimeType") or "")
-                                     .split('codecs="')[-1].rstrip('"')
-                                     .split(".")[0] for f in taller}))))
-                avc = taller
-            else:
-                kodiutils.log("sabr bridge: nothing this title offers is "
-                              "both %dp and servable, so the whole set "
-                              "stands" % floor)
+            # Nothing that tall is servable, and on the token identity that
+            # is the normal case rather than an edge: the tier tops out at
+            # 854x480. Reading the format table instead of asserting it is
+            # what settled that -- see below.
+            kodiutils.log("sabr bridge: nothing this title offers is both "
+                          "%dp and in a tier this session may play, so the "
+                          "whole set stands" % floor)
 
     session = sabr_session.Session(
         stored["url"], stored.get("config") or "",
