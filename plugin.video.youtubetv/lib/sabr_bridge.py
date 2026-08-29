@@ -236,46 +236,57 @@ def probe_after_licence(video_id=""):
     if not hd:
         return
     from . import sabr
+    from . import sabr
     tallest = max(f.get("height") or 0 for f in hd)
-    hd = [f for f in hd if (f.get("height") or 0) == tallest]
-    body = sabr.build_request(
-        session.config,
-        audio=session.audio, video=[_entry(f) for f in hd],
-        player_time_ms=session.position,
-        max_height=tallest, target_height=tallest,
-        buffered=[],
-        context=sabr.streamer_context(info=session.info,
-                                      po_token=session.po_token,
-                                      echo=session.echo))
-    try:
-        data = _post(session.url, body)
-    except Exception as exc:
-        kodiutils.log("sabr bridge: the post-licence HD probe could not be "
-                      "sent: %s" % exc)
-        return
-    if not data:
-        kodiutils.log("sabr bridge: the post-licence HD probe got an empty "
-                      "answer for %s" % [f.get("itag") for f in hd])
-        return
-    served, refusal = [], ""
-    for part_type, payload in sabr.parse_ump(data):
-        if part_type == 44:
-            refusal = bytes(payload[:60]).decode("ascii", "replace")
-        elif part_type == 20:
-            got = dict((n, v) for n, _w, v in sabr.fields(payload))
-            if got.get(3) is not None:
-                served.append(got[3])
-    if refusal:
-        kodiutils.log("sabr bridge: the endpoint refuses HD %s even asked "
-                      "for by name at %dp: %s"
-                      % ([f.get("itag") for f in hd], tallest,
-                         refusal.strip()))
-    else:
-        kodiutils.log("sabr bridge: THE ENDPOINT SERVES HD when the height "
-                      "is named -- asked for %dp with %s and it answered "
-                      "with itag(s) %s (%d bytes)"
-                      % (tallest, [f.get("itag") for f in hd],
-                         sorted(set(served)) or "none", len(data)))
+    by_codec = {}
+    for f in alternatives(candidates, "video/", 4320):
+        if (f.get("height") or 0) != tallest:
+            continue
+        codec = (f.get("mimeType") or "").split('codecs="')[-1].split(".")[0]
+        by_codec.setdefault(codec, []).append(f)
+
+    # Naming the height was not enough on its own, so this asks what else
+    # the browser's accepted request carries that ours does not. Each row
+    # is one request, sent once per playback and thrown away.
+    extras = sabr._b(72, sabr.VIEWPORT_1080) + sabr._b(79, sabr.CAPABILITIES)
+    trials = []
+    for codec, group in sorted(by_codec.items()):
+        trials.append(("%s at %dp, height named" % (codec, tallest),
+                       group, b"", 0))
+        trials.append(("%s at %dp, height named + viewport and capabilities"
+                       % (codec, tallest), group, extras, 0))
+        trials.append(("%s at %dp, the whole shape" % (codec, tallest),
+                       group, extras, 6650587))
+
+    for label, group, extra, bandwidth in trials:
+        body = sabr.build_request(
+            session.config, audio=session.audio,
+            video=[_entry(f) for f in group],
+            player_time_ms=session.position,
+            max_height=tallest, target_height=tallest,
+            bandwidth=bandwidth, extras=extra,
+            context=sabr.streamer_context(info=session.info,
+                                          po_token=session.po_token,
+                                          echo=session.echo))
+        try:
+            data = _post(session.url, body)
+        except Exception as exc:
+            kodiutils.log("sabr bridge: probe %r could not be sent: %s"
+                          % (label, exc))
+            continue
+        served, refusal = [], ""
+        for part_type, payload in sabr.parse_ump(data or b""):
+            if part_type == 44:
+                refusal = bytes(payload[:60]).decode("ascii", "replace")
+            elif part_type == 20:
+                got = dict((n, v) for n, _w, v in sabr.fields(payload))
+                if got.get(3) is not None:
+                    served.append(got[3])
+        kodiutils.log("sabr bridge: probe %-52s %s"
+                      % (label,
+                         ("REFUSED: %s" % refusal.strip()) if refusal
+                         else ("SERVED itag(s) %s, %d bytes"
+                               % (sorted(set(served)) or "none", len(data or b"")))))
 
 
 def _quality_floor():
