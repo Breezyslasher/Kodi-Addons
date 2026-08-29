@@ -439,6 +439,30 @@ def _trun_sample_sizes(fragment, trun):
     return [_u(fragment, at + i * stride + before, 4) for i in range(count)]
 
 
+def _tfhd_default_sample_size(fragment, tfhd):
+    """tfhd's default_sample_size, or 0 if it does not carry one.
+
+    A packager whose samples are all the same length says so once here rather
+    than repeating it in every trun entry -- which is what YouTube TV's live
+    AC-3 does, 156 samples of identical size per fragment. Reading only trun
+    saw "0 sample sizes for 156 encrypted samples" and gave up.
+
+    Optional fields come in flag order, so the earlier ones are stepped over
+    by width to reach this one.
+    """
+    flags = _u(fragment, tfhd + 9, 3)
+    if not flags & 0x000010:            # default-sample-size-present
+        return 0
+    at = tfhd + 16                      # past version, flags and track_ID
+    if flags & 0x000001:                # base-data-offset-present
+        at += 8
+    if flags & 0x000002:                # sample-description-index-present
+        at += 4
+    if flags & 0x000008:                # default-sample-duration-present
+        at += 4
+    return _u(fragment, at, 4)
+
+
 def _trun_data_offset(fragment, trun):
     """(offset of the field, its value) if trun carries a data offset."""
     flags = _u(fragment, trun + 9, 3)
@@ -509,9 +533,16 @@ def explicit_subsamples(fragment):
         return fragment, "the aux data runs past the end of the fragment"
 
     sample_sizes = _trun_sample_sizes(fragment, trun)
+    if not sample_sizes:
+        # Every sample the same length, said once in tfhd.
+        tfhd, _ = find_box(fragment, [b"moof", b"traf", b"tfhd"])
+        default_size = _tfhd_default_sample_size(fragment, tfhd) if tfhd else 0
+        if default_size:
+            sample_sizes = [default_size] * count
     if len(sample_sizes) != count:
         return fragment, ("trun gives %d sample sizes for %d encrypted "
-                          "samples" % (len(sample_sizes), count))
+                          "samples, and tfhd names no default"
+                          % (len(sample_sizes), count))
 
     # senc: full box, flags bit 1 says subsample data follows each IV.
     body = bytearray()

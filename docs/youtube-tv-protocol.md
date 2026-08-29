@@ -1130,6 +1130,34 @@ so the mechanism covers it.
 Nothing in this addon reaches this: the key ids are right, the codecs are
 right, and YouTube decides how it encrypts.
 
+### Live audio: the sample size is in tfhd, not trun
+
+With the manifest fix in, live started on Kodi 21 -- and the audio was noise
+while the video froze. The instrumentation added for exactly this said why in
+one line:
+
+    sabr session: itag 381 not re-signalled -- trun gives 0 sample sizes
+                  for 156 encrypted samples
+
+The subsample rewrite needs each sample's length. It read them from `trun`,
+which is where they are on demand. Live AC-3 does not put them there: every
+sample is the same length, so the packager says it once in `tfhd` as
+`default_sample_size` and `trun` carries no sizes at all. The rewrite declined,
+the fragment went out as it arrived, and ISA 21 turned it to noise -- which is
+the original bug, reappearing on the one shape the rewrite did not cover.
+
+`_tfhd_default_sample_size` reads it, and a fragment whose `trun` names no
+sizes uses the tfhd default for every sample.
+
+Kodi 22 on the same channel at the same time: one audio stream, `ac3, channels:
+6`, zero decoder errors, zero stalls, audio and video in step at sequence
+2861434/2861435. So live is well on 22 and this was the last thing between
+Kodi 21 and the same.
+
+Also worth recording: this channel offers AAC as well as AC-3 (itags 149 and
+148 beside 381), which the candidate table now shows -- it listed video only
+until a live channel served AC-3 and there was no way to see the alternatives.
+
 ### Live on Kodi 21 died inside our own diagnostic
 
 The subsample rewrite works on live too -- the endpoint served AC-3 (itag 381)
