@@ -289,6 +289,38 @@ def _seconds_ms(node, field):
         return 0
 
 
+def section_continuations(response):
+    """(label, token) for every deferred shelf behind a page's own selector.
+
+    A show page does not carry its episodes. Browsing Rick and Morty answers
+    with the two newest episodes inline and nothing else: the ten seasons
+    ("Season 1".."Season 9", "Extras") are ten empty shelves under an
+    unpluggedSelectableSectionRenderer, each holding only a continuation
+    token. The addon asked for the page and listed what was in it, which is
+    why the cookie path showed two episodes where the account is entitled to
+    nine -- the other seven were one request away and never requested.
+
+    The selector labels and the shelves are two parallel lists rather than one
+    structure, so they are paired by position: selectors[i] names contents[i].
+    Labels are returned so a caller can say which shelf a request is for; the
+    order is the page's own.
+    """
+    pairs = []
+    for section in walk(response, "unpluggedSelectableSectionRenderer"):
+        if not isinstance(section, dict):
+            continue
+        labels = [text(item.get("label"))
+                  for item in walk(section.get("selectors"),
+                                   "dropdownItemRenderer")
+                  if isinstance(item, dict)]
+        for index, contents in enumerate(section.get("contents") or []):
+            token = first(contents, "continuation")
+            if not isinstance(token, str) or not token:
+                continue
+            pairs.append((labels[index] if index < len(labels) else "", token))
+    return pairs
+
+
 def parse_items(response):
     """Every renderer that names something to play or browse.
 
