@@ -154,42 +154,6 @@ def describe_candidates(js, look_back=1600, width=260, limit=12):
     return "\n".join(lines) or "  nothing splits and rejoins a string here"
 
 
-def resolve_function(js):
-    """Find the n transform and return (source to run, function name).
-
-    The source comes back because the transform is not always a named function:
-    where the player stores it inline in an array, a wrapper is appended that
-    gives it a name, rather than trying to hand the interpreter a fragment.
-    """
-    match = None
-    for pattern in _N_FUNC_PATTERNS:
-        match = pattern.search(js)
-        if match:
-            break
-    if not match:
-        kodiutils.log("nsig: no pattern matched.\nLandmarks:\n%s"
-                      "\nFunctions that split and rejoin a string:\n%s"
-                      % (describe_sites(js), describe_candidates(js)))
-        raise NsigError("no n transform found in the player js")
-    name, index = match.group("nfunc"), match.groupdict().get("idx")
-    if index is None:
-        return js, name
-
-    body = _array_body(js, name)
-    if body is None:
-        raise NsigError("the n transform is indexed but its array is missing")
-    members = _split_top_level(body)
-    try:
-        member = members[int(index)]
-    except (IndexError, ValueError):
-        raise NsigError("the n transform index %s is out of range for %s"
-                        % (index, name))
-    if _IDENTIFIER.match(member):
-        return js, member
-    return ("%s\n;function %s(a){return (%s)(a)}"
-            % (js, SYNTHETIC_NAME, member)), SYNTHETIC_NAME
-
-
 # How the tce builds reach the transform:
 #
 #     a.D&&(eO(a),b=a.j.n||null)&&(b=Yma(b),a.set("n",b))

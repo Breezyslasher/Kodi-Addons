@@ -167,3 +167,11 @@ msgstr ""
 msgctxt "#30057"
 msgid "Asks three things and writes the answers to the log: whether the Widevine licence server accepts the credential you are signed in with, whether this session is offered a SABR endpoint, and whether that endpoint serves a request once the n parameter is solved. Plays nothing and changes nothing."
 msgstr ""
+
+msgctxt "#30058"
+msgid "Play through SABR when signed in with a code"
+msgstr ""
+
+msgctxt "#30059"
+msgid "The cookie jar is used for playback whenever there is one, because it is offered a DASH manifest and plays through the ordinary path. Turn this on to use a code sign-in instead when you hold both: that identity is only ever offered SABR, so playback goes through the bridge. One quality per track, no adaptive switching yet."
+msgstr ""

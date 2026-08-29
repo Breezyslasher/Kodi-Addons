@@ -34,6 +34,7 @@ three things should be measured first because any one of them sinks it.
 Nothing here plays anything or changes any setting.
 """
 
+import base64
 import json
 import time
 
@@ -74,6 +75,8 @@ def run(client, video_id):
     _cookie_as_tv(video_id)
     _mint_web_session()
     _mint_scope()
+    _ask_google_why()
+    _mint_browser_flow()
 
 
 def _tv_dash(video_id):
@@ -340,6 +343,142 @@ def _mint_web_session():
               if name in jar]
     kodiutils.log("mint: of the names the addon needs, it set %s"
                   % (wanted or "none"))
+
+
+AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+
+
+def _mint_browser_flow():
+    """Would a browser sign-in with our client reach the minting scope?
+
+    Asked once with a localhost redirect and refused -- and the refusal was
+    nothing to do with scopes. Google's authError blob decodes to
+    `invalid_request: Localhost URI is not allowed for 'NATIVE_DEVICE'
+    client type`, which is a complaint about the redirect, so the scope was
+    never reached. A device client gets the out-of-band redirect instead, so
+    ask again with each redirect it is allowed and decode what comes back
+    rather than reading a verdict off a status code.
+    """
+    try:
+        from . import oauth
+    except Exception:
+        return
+    client_id, _secret = oauth.credentials()
+    if not client_id:
+        return
+    both = oauth.SCOPE + " https://www.google.com/accounts/OAuthLogin"
+
+    for label, redirect, scope in (
+            ("oob, both scopes", "urn:ietf:wg:oauth:2.0:oob", both),
+            ("oob, minting scope only", "urn:ietf:wg:oauth:2.0:oob",
+             "https://www.google.com/accounts/OAuthLogin"),
+            ("oob, youtube only (control)", "urn:ietf:wg:oauth:2.0:oob",
+             oauth.SCOPE)):
+        try:
+            reply = requests.get(AUTH_URL, timeout=TIMEOUT,
+                                 allow_redirects=False,
+                                 params={"client_id": client_id,
+                                         "redirect_uri": redirect,
+                                         "response_type": "code",
+                                         "scope": scope},
+                                 headers={"User-Agent": api.UA})
+        except Exception as exc:
+            kodiutils.log_error("mint browser [%s]: %s" % (label, exc))
+            continue
+        where = reply.headers.get("Location", "")
+        kodiutils.log("mint browser [%-27s]: HTTP %d -> %s"
+                      % (label, reply.status_code,
+                         _auth_error(where) or where[:90] or "(no redirect)"))
+
+
+def _auth_error(location):
+    """Google's authError blob, decoded, or "" if there is not one.
+
+    The reason is base64 inside the redirect and reads plainly once
+    decoded -- worth doing, since the last run reported "an error page" for
+    a message that named the exact problem.
+    """
+    if "authError=" not in location:
+        return ""
+    blob = location.split("authError=", 1)[1].split("&")[0]
+    try:
+        raw = base64.urlsafe_b64decode(blob + "=" * (-len(blob) % 4))
+    except Exception:
+        return ""
+    readable = "".join(chr(b) if 32 <= b < 127 else " " for b in raw)
+    return readable.strip()
+
+
+def _ask_google_why():
+    """Make Google say more than "invalid argument" and "invalid_scope".
+
+    Two refusals have been taken at face value for want of asking twice.
+
+    The device endpoint refused the youtube and minting scopes together
+    with `invalid_scope` and named neither, so each is now asked for on its
+    own: if youtube alone is accepted and the minting scope alone is not,
+    the refusal is about that scope rather than about the pair or the
+    client.
+
+    InnerTube answers 400 "Request contains an invalid argument" with an
+    empty error.details. Google's APIs take $.xgafv=2, which selects the
+    verbose error format, and prettyPrint -- worth one request to find out
+    whether the same call explains itself when asked to.
+    """
+    try:
+        from . import oauth
+    except Exception:
+        return
+    client_id, _secret = oauth.credentials()
+    minting = "https://www.google.com/accounts/OAuthLogin"
+
+    if client_id:
+        for label, scope in (("youtube only (control)", oauth.SCOPE),
+                             ("minting scope only", minting),
+                             ("both", oauth.SCOPE + " " + minting)):
+            try:
+                reply = requests.post(oauth.DEVICE_CODE_URL, timeout=TIMEOUT,
+                                      data={"client_id": client_id,
+                                            "scope": scope},
+                                      headers={"User-Agent": api.UA})
+            except Exception as exc:
+                kodiutils.log_error("ask google [%s]: %s" % (label, exc))
+                continue
+            kodiutils.log("ask google: device code, %-22s -> HTTP %d: %s"
+                          % (label, reply.status_code,
+                             (reply.text or "")[:120].replace("\n", " ")))
+
+    # And the InnerTube 400, asked to explain itself.
+    try:
+        token = oauth.access_token()
+    except Exception:
+        token = ""
+    if not token:
+        return
+    payload = {"context": api.context(client_name=api.CLIENT_NAME),
+               "browseId": "default"}
+    spec = api.client_spec(api.CLIENT_NAME)
+    for label, params in (("as sent", {"prettyPrint": "false"}),
+                          ("with $.xgafv=2", {"$.xgafv": "2",
+                                              "prettyPrint": "true"})):
+        try:
+            reply = requests.post(
+                api.BASE + "browse", data=json.dumps(payload), params=params,
+                timeout=TIMEOUT,
+                headers={"Content-Type": "application/json",
+                         "User-Agent": spec["context"].get("userAgent", api.UA),
+                         "Origin": api.ORIGIN,
+                         "X-YouTube-Client-Name": spec["id"],
+                         "X-YouTube-Client-Version":
+                             api.effective_version(api.CLIENT_NAME),
+                         "Authorization": "Bearer " + token})
+        except Exception as exc:
+            kodiutils.log_error("ask google [%s]: %s" % (label, exc))
+            continue
+        kodiutils.log("ask google: browse as WEB with a token, %-14s -> "
+                      "HTTP %d: %s"
+                      % (label, reply.status_code,
+                         (reply.text or "")[:400].replace("\n", " ")))
 
 
 def _mint_scope():
@@ -874,6 +1013,140 @@ def _probe_sabr(response, streaming, sabr_url, cpn, how,
     if solved_url:
         _drive_session(solved_url, config, wanted, picked_video,
                        client_name)
+        _session_check(solved_url, config, wanted, picked_video,
+                       client_name, streaming.get("drmParams", ""))
+
+
+def _session_check(url, config, audio, video, client_name,
+                   drm_params=""):
+    """Does the session driver produce what ISA would need?
+
+    The bridge stands or falls on this: an initialisation segment per track
+    and numbered media segments that begin with a moof. Checked here against
+    the live server rather than a capture, because a captured response is
+    zero-padded past its last real part and cannot show a segment closing.
+    """
+    from . import sabr_session
+
+    def post(target, body):
+        try:
+            reply = requests.post(target, data=body, timeout=TIMEOUT, headers={
+                "User-Agent": api.UA,
+                "Origin": api.ORIGIN,
+                "Referer": api.ORIGIN + "/",
+                "Content-Type": "application/x-protobuf",
+            })
+        except Exception as exc:
+            kodiutils.log_error("session check: %s" % exc)
+            return b""
+        if reply.status_code != 200:
+            kodiutils.log("session check: HTTP %d" % reply.status_code)
+            return b""
+        return reply.content
+
+    spec = api.client_spec(client_name)
+    session = sabr_session.Session(
+        url, config, _format_entry(audio) if audio else None,
+        _format_entry(video) if video else None,
+        client_name, spec["id"], api.effective_version(client_name), post)
+
+    try:
+        for _ in range(4):
+            session.fetch()
+    except sabr_session.SabrError as exc:
+        kodiutils.log_error("session check: the endpoint refused: %s" % exc)
+        return
+
+    for itag in sorted(session.segments):
+        head = session.initialisation.get(itag, b"")
+        held = sorted(session.segments[itag])
+        gaps = [b - a for a, b in zip(held, held[1:]) if b - a != 1]
+        shapes = {}
+        for sequence in held[:4]:
+            body = session.segments[itag][sequence]
+            shapes[sequence] = (len(body), bytes(body[4:8]))
+        kodiutils.log("session check: itag %-4s init %d bytes (moov %s), "
+                      "%d segments %s..%s%s"
+                      % (itag, len(head), b"moov" in head, len(held),
+                         held[0] if held else "-", held[-1] if held else "-",
+                         ", GAPS %s" % gaps if gaps else ", contiguous"))
+        kodiutils.log("session check: itag %-4s first segments %s"
+                      % (itag, shapes))
+    if not session.segments:
+        kodiutils.log("session check: no segment closed in four exchanges")
+        return
+    _bridge_check(session, audio, video, drm_params)
+
+
+def _start_number(manifest_text, itag):
+    """startNumber for one representation, read back out of the manifest."""
+    marker = '<Representation id="%d"' % itag
+    at = manifest_text.find(marker)
+    if at < 0:
+        return 0
+    at = manifest_text.find('startNumber="', at)
+    if at < 0:
+        return 0
+    at += len('startNumber="')
+    return int(manifest_text[at:manifest_text.find('"', at)] or 0)
+
+
+def _bridge_check(session, audio, video, drm_params=""):
+    """Fetch the manifest and a segment the way ISA would: over HTTP.
+
+    The routes and the manifest are only worth anything if a real client can
+    walk them, so this goes through the running proxy rather than calling
+    the functions directly -- the secret, the query parsing, the blocking
+    segment fetch and all.
+    """
+    from . import sabr_bridge
+    # Deliberately through the file, not through register(): the plugin and
+    # the service are different processes, and an in-process registry made
+    # the manifest 404 while every function it called worked perfectly.
+    key = sabr_bridge.set_context(session.url, session.config,
+                                  audio, video, session.client_name,
+                                  drm_params=drm_params)
+    try:
+        proxy = kodiutils.read_json("license_proxy.json", default={}) or {}
+        port, secret = proxy.get("port"), proxy.get("secret")
+        if not port or not secret:
+            kodiutils.log("bridge check: the proxy has not published a port")
+            return
+        base = "http://127.0.0.1:%d" % port
+
+        got = requests.get("%s/sabr/manifest" % base, timeout=TIMEOUT,
+                           params={"id": key, "k": secret})
+        kodiutils.log("bridge check: manifest -> HTTP %d, %d bytes"
+                      % (got.status_code, len(got.content)))
+        if got.status_code != 200:
+            return
+        text = got.text
+        kodiutils.log("bridge check: manifest says %s"
+                      % text[:400].replace("\n", " "))
+        kodiutils.log("bridge check: ContentProtection elements %d, "
+                      "cenc:pssh present %s"
+                      % (text.count("<ContentProtection"), "<cenc:pssh>" in text))
+
+        for fmt in (audio, video):
+            if not fmt:
+                continue
+            itag = fmt["itag"]
+            head = requests.get("%s/sabr/init" % base, timeout=TIMEOUT,
+                                params={"id": key, "itag": itag, "k": secret})
+            # The service opened its own session, so ask it for a number it
+            # will have: the manifest's own startNumber.
+            number = _start_number(text, itag)
+            seg = requests.get("%s/sabr/segment" % base, timeout=TIMEOUT,
+                               params={"id": key, "itag": itag, "n": number,
+                                       "k": secret})
+            kodiutils.log("bridge check: itag %-4s init HTTP %d (%d bytes, %s)"
+                          "  segment %d HTTP %d (%d bytes, %s)"
+                          % (itag, head.status_code, len(head.content),
+                             head.content[4:8] if head.content else b"-",
+                             number, seg.status_code, len(seg.content),
+                             seg.content[4:8] if seg.content else b"-"))
+    finally:
+        sabr_bridge.forget(key)
 
 
 def _drive_session(url, config, audio, video, client_name=None):

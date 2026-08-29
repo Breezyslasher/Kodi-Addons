@@ -214,22 +214,39 @@ def build_item(player_response, label=None, art=None):
     details = player_response.get("videoDetails") or {}
 
     manifest = streaming.get("dashManifestUrl")
-    if not manifest:
-        # Only SABR was offered. Nothing in Kodi can play that today, and
-        # saying so plainly beats a silent failure in the player.
-        kodiutils.log_error("player response has no dashManifestUrl -- SABR "
-                            "only, which InputStream Adaptive cannot play")
-        return None
+    path = ""
+    if manifest:
+        if not _ensure_widevine():
+            return None
+        _dump_manifest(manifest)
+        # ISA reads the manifest through the local proxy, which repairs the
+        # missing SegmentList attributes that otherwise crash it. See
+        # lib/manifest.
+        path = license_proxy.manifest_url(manifest)
+    else:
+        # No DASH. A token session is never offered any -- eight request
+        # shapes, five sending less and three sending more, all answered
+        # dash=False -- so SABR is the only delivery it has, and the bridge
+        # serves it to ISA as DASH. See lib/sabr_bridge.
+        from . import sabr_bridge
+        if not _ensure_widevine():
+            return None
+        # The bridge declares one Representation per track, so the cap has
+        # to be applied when choosing rather than left to ISA's chooser.
+        # Same two inputs as the DASH path: the quality setting and what the
+        # licence actually covers.
+        licensed = _authorized_cap(streaming, details.get("videoId") or "")
+        caps = [c for c in (_quality_cap(), licensed) if c]
+        path = sabr_bridge.playable_url(player_response,
+                                        max_height=min(caps) if caps else 1080)
+        if not path:
+            kodiutils.log_error("player response has no dashManifestUrl and "
+                                "no SABR session could be opened")
+            return None
+        kodiutils.log("playing through the SABR bridge: %s" % path)
 
-    if not _ensure_widevine():
-        return None
-
-    _dump_manifest(manifest)
-
-    # ISA reads the manifest through the local proxy, which repairs the
-    # missing SegmentList attributes that otherwise crash it. See lib/manifest.
     item = xbmcgui.ListItem(label=label or details.get("title") or "",
-                            path=license_proxy.manifest_url(manifest))
+                            path=path)
     item.setMimeType("application/dash+xml")
     item.setContentLookup(False)
 

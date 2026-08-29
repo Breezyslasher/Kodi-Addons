@@ -529,6 +529,18 @@ class Api(object):
         # player's, so it claims to be the web player; a bearer token is not,
         # and measurably cannot be. See below.
         self.client_name = CLIENT_NAME
+        # A jar wins by default because it is offered DASH and plays through
+        # the path that has always worked. Holding both credentials is now
+        # possible, though, and there is no way to reach the SABR path while
+        # a jar exists -- signing out to force it clears the token too. So
+        # the choice is a setting rather than an accident of what is stored.
+        if (not bearer and not cookies
+                and kodiutils.get_setting_bool("prefer_token")):
+            from . import oauth
+            if oauth.load().get("access_token"):
+                bearer = True
+                kodiutils.log("using the code sign-in for this session, as "
+                              "the setting asks")
         if bearer:
             # Asked for by name, because the jar wins by default and a caller
             # verifying a token would otherwise verify the cookies instead --

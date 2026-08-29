@@ -55,6 +55,28 @@ TIMEOUT = 30
 _SECRET = None
 
 
+def _credential():
+    """(cookies, bearer) for the licence exchange.
+
+    The jar first, as everywhere else, and the stored token when there is
+    none -- or when the setting says to prefer it. Without this the SABR
+    path fetches its media on a token and then tries to licence it on
+    cookies, which is not the thing being tested and would not work at all
+    on a box that never had a jar.
+    """
+    from . import oauth
+    prefer = kodiutils.get_setting_bool("prefer_token")
+    if not prefer:
+        try:
+            return auth.load(), ""
+        except auth.AuthError:
+            pass
+    token = oauth.access_token()
+    if token:
+        return {}, token
+    return auth.load(), ""
+
+
 def _context():
     return kodiutils.read_json(CONTEXT_FILE, default={}) or {}
 
@@ -176,8 +198,63 @@ class _Handler(BaseHTTPRequestHandler):
         if parsed.path == "/manifest":
             self._serve_manifest(parse_qs(parsed.query))
             return
+        if parsed.path.startswith("/sabr/"):
+            self._serve_sabr(parsed.path, parse_qs(parsed.query))
+            return
         # ISA probes the licence endpoint before posting to it.
         self._send(200, b"ok", "text/plain")
+
+    def _serve_sabr(self, path, query):
+        """The three routes a SABR session is served through.
+
+        A segment request blocks while the session pumps: ISA asked for
+        segment N, and at the live edge N may not exist for another few
+        seconds. Blocking is the honest answer -- an empty body would be
+        read as a broken segment and end playback.
+        """
+        from . import sabr_bridge, sabr_session
+        try:
+            self._sabr(path, query, sabr_bridge, sabr_session)
+        except Exception as exc:
+            # Anything that escapes here closes the socket with no response
+            # at all, and ISA reports that as "CURLOpen failed" -- which
+            # reads like a network fault and was actually a SabrError
+            # travelling out of the handler. A status is always sent.
+            kodiutils.log_error("sabr bridge: %s: %s"
+                                % (type(exc).__name__, exc))
+            self._send(500)
+
+    def _sabr(self, path, query, sabr_bridge, sabr_session):
+        key = (query.get("id") or [""])[0]
+        found = sabr_bridge.lookup(key)
+        if not found:
+            self._send(404)
+            return
+        session, _formats = found
+
+        if path == "/sabr/manifest":
+            base = {"url": "http://%s:%d" % (BIND_HOST, self.server.server_address[1]),
+                    "secret": _secret()}
+            body = sabr_bridge.manifest(key, base)
+            self._send(200 if body else 503, body.encode("utf-8"),
+                       "application/dash+xml")
+            return
+
+        itag = int((query.get("itag") or ["0"])[0] or 0)
+        try:
+            if path == "/sabr/init":
+                self._send(200, session.initialisation_for(itag), "video/mp4")
+                return
+            if path == "/sabr/segment":
+                number = int((query.get("n") or ["0"])[0] or 0)
+                body = session.segment(itag, number)
+                self._send(200 if body else 404, body, "video/mp4")
+                return
+        except sabr_session.SabrError as exc:
+            kodiutils.log_error("sabr bridge: %s" % exc)
+            self._send(404)
+            return
+        self._send(404)
 
     def _serve_manifest(self, query):
         """Fetch the manifest from Google and hand ISA a repaired copy.
@@ -277,7 +354,7 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(200, licence)
 
 
-def _post_license(payload, cookies, session):
+def _post_license(payload, cookies, session, bearer=""):
     headers = {
         "Content-Type": "application/json",
         "User-Agent": api.UA,
@@ -288,9 +365,22 @@ def _post_license(payload, cookies, session):
         "X-YouTube-Client-Version": kodiutils.get_setting(
             "client_version", api.CLIENT_VERSION) or api.CLIENT_VERSION,
         "X-Goog-AuthUser": "0",
-        "Authorization": auth.authorization(cookies),
-        "Cookie": auth.cookie_header(cookies),
     }
+    if cookies:
+        headers["Authorization"] = auth.authorization(cookies)
+        headers["Cookie"] = auth.cookie_header(cookies)
+    else:
+        # A token session has no jar, and this exchange used to open with
+        # auth.load() and raise before it sent anything. The token is
+        # accepted here -- a placeholder challenge is answered 400
+        # INVALID_ARGUMENT, which is the request being rejected rather than
+        # the credential -- so the identity has to match it too, or
+        # InnerTube answers 400 for the client instead.
+        headers["Authorization"] = "Bearer " + bearer
+        headers["X-YouTube-Client-Name"] = api.client_spec(
+            api.OAUTH_CLIENT_NAME)["id"]
+        headers["X-YouTube-Client-Version"] = api.effective_version(
+            api.OAUTH_CLIENT_NAME)
     visitor = kodiutils.get_setting("visitor_id", "")
     if visitor:
         headers["X-Goog-Visitor-Id"] = visitor
@@ -313,11 +403,13 @@ def _fetch_license(challenge):
     if not ctx.get("video_id"):
         raise RuntimeError("no playback context -- nothing to license")
 
-    cookies = auth.load()
+    cookies, bearer = _credential()
     session = requests.Session()
 
     payload = {
-        "context": api.context(location=False),
+        "context": api.context(location=False,
+                               client_name=None if cookies
+                               else api.OAUTH_CLIENT_NAME),
         "drmSystem": "DRM_SYSTEM_WIDEVINE",
         "videoId": ctx["video_id"],
         "cpn": ctx.get("cpn", ""),
@@ -341,7 +433,7 @@ def _fetch_license(challenge):
             attempt["isKeyRotated"] = True
             attempt["cryptoPeriodIndex"] = index
 
-        body = _post_license(attempt, cookies, session)
+        body = _post_license(attempt, cookies, session, bearer)
         status = body.get("status")
         if status == "LICENSE_STATUS_OK" and body.get("license"):
             if index is not None and index != candidates[0]:
@@ -586,6 +678,15 @@ def manifest_url(real_url):
         return real_url
     return "http://%s:%d/manifest?k=%s&u=%s" % (
         BIND_HOST, published["port"], published["secret"], quote(real_url, safe=""))
+
+
+def sabr_manifest_url(key):
+    """The bridge manifest for a session, or "" if the proxy is not running."""
+    published = _published()
+    if not published.get("port") or not published.get("secret"):
+        return ""
+    return "http://%s:%d/sabr/manifest?id=%s&k=%s" % (
+        BIND_HOST, published["port"], key, published["secret"])
 
 
 def license_url():
