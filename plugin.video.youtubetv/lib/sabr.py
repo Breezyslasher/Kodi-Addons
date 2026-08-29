@@ -76,11 +76,22 @@ def _b(field, value):
     return _tag(field, 2) + _varint(len(value)) + value
 
 
-def format_id(itag, last_modified):
-    """A FormatId submessage: {itag, lastModified}."""
+def format_id(itag, last_modified=0, xtags=""):
+    """A FormatId submessage: {itag, lastModified, xtags}.
+
+    xtags is not decoration. YouTube TV lists the same audio itag twice --
+    148 and 149 each appear as both primary and secondary -- and the only
+    thing telling them apart is the xtags string, which the player response
+    carries per format and the captured request sends verbatim, still
+    base64, rather than decoded. An audio FormatId without it names a track
+    the server cannot resolve, and the answer to a request built that way
+    was `sabr.no_audio_selected`.
+    """
     body = _v(1, int(itag))
     if last_modified:
         body += _v(2, int(last_modified))
+    if xtags:
+        body += _b(3, xtags.encode("ascii"))
     return body
 
 
@@ -93,19 +104,28 @@ def client_abr_state(player_time_ms=0, max_height=1080):
     """
     return (_v(21, 0)                    # start / seek position marker
             + _v(28, int(player_time_ms))
-            + _v(29, 3)                  # media type: audio+video
+            # 2, because that is what the request the server answered with
+            # 15 MB carried. The 3 that used to be here was an annotation of
+            # mine -- "audio+video" -- and never a measurement.
+            + _v(29, 2)
             + _v(59, int(max_height))
             + _v(71, 1)
             + _v(80, 1)
             + _v(85, 1))
 
 
-def build_request(ustreamer_config, wanted, known=(), player_time_ms=0,
+def build_request(ustreamer_config, audio=(), video=(), player_time_ms=0,
                   max_height=1080):
     """A VideoPlaybackAbrRequest body.
 
-    ``ustreamer_config`` is the base64url string from the player response;
-    ``wanted`` and ``known`` are (itag, lastModified) pairs.
+    ``ustreamer_config`` is the base64url string from the player response.
+    ``audio`` and ``video`` are sequences of (itag, lastModified, xtags).
+
+    Fields 16 and 17 are the audio and the video selection, one repeated
+    entry per chosen track -- not "the one I want" and "the others I know
+    about", which is what they were built as and what produced a request
+    selecting no audio at all. Every captured body sends audio in 16 and
+    video in 17, and the browser sends two 16s, primary and secondary.
 
     The config is omitted when there is none. That is not hypothetical: a
     TVHTML5_UNPLUGGED response carries serverAbrStreamingUrl and no
@@ -120,10 +140,10 @@ def build_request(ustreamer_config, wanted, known=(), player_time_ms=0,
         config = base64.urlsafe_b64decode(
             ustreamer_config + "=" * (-len(ustreamer_config) % 4))
         body += _b(5, config)
-    for itag, lmt in ([wanted] if wanted else []):
-        body += _b(16, format_id(itag, lmt))
-    for itag, lmt in known:
-        body += _b(17, format_id(itag, lmt))
+    for entry in audio:
+        body += _b(16, format_id(*entry))
+    for entry in video:
+        body += _b(17, format_id(*entry))
     return body
 
 
@@ -168,6 +188,73 @@ def parse_ump(data):
         yield part_type, payload
 
 
+def fields(data):
+    """Every top-level protobuf field as (number, wire type, value).
+
+    Generic on purpose. The field numbering of MEDIA_HEADER is not something
+    to look up and half-remember: dumped across two requests at different
+    player times, the field that counts up by one is the sequence number and
+    the one near a segment length is the duration. The data says which is
+    which.
+    """
+    out = []
+    pos = 0
+    while pos < len(data):
+        try:
+            key, pos = _read_varint(data, pos)
+        except (IndexError, ValueError):
+            break
+        number, wire = key >> 3, key & 7
+        try:
+            if wire == 2:
+                length, pos = _read_varint(data, pos)
+                value = data[pos:pos + length]
+                pos += length
+            elif wire == 0:
+                value, pos = _read_varint(data, pos)
+            elif wire == 5:
+                value, pos = data[pos:pos + 4], pos + 4
+            elif wire == 1:
+                value, pos = data[pos:pos + 8], pos + 8
+            else:
+                break
+        except (IndexError, ValueError):
+            break
+        out.append((number, wire, value))
+    return out
+
+
+def describe_media_header(payload):
+    """One line naming every field a MEDIA_HEADER carries, and its value."""
+    parts = []
+    for number, wire, value in fields(payload):
+        if isinstance(value, bytes):
+            shown = value.decode("ascii", "replace") if len(value) < 24 else \
+                "%d bytes" % len(value)
+            parts.append("%d=%r" % (number, shown))
+        else:
+            parts.append("%d=%d" % (number, value))
+    return " ".join(parts)
+
+
+def _read_varint(data, pos):
+    """Read a plain protobuf varint.
+
+    Named for reading. The first version of this was called _varint, which
+    is the name of the *encoder* twenty lines up -- so every _v() in the
+    request builder started calling a decoder, and the whole SABR probe died
+    with "missing 1 required positional argument: 'pos'".
+    """
+    result = shift = 0
+    while True:
+        byte = data[pos]
+        pos += 1
+        result |= (byte & 0x7f) << shift
+        shift += 7
+        if not byte & 0x80:
+            return result, pos
+
+
 def _dump(data, limit=96):
     """Hex and printable ascii, for a response too small to be media."""
     head = data[:limit]
@@ -190,7 +277,10 @@ def describe_response(data):
     """
     lines = ["sabr response: %d bytes" % len(data)]
     media = 0
+    headers = []
     for part_type, payload in parse_ump(data):
+        if part_type == 20:
+            headers.append(payload)
         name = PART_TYPES.get(part_type, "type %d" % part_type)
         if part_type == 21:
             media += len(payload)
@@ -201,6 +291,8 @@ def describe_response(data):
         lines.append("  %-26s %d bytes%s" % (name, len(payload), detail))
     if media:
         lines.append("  MEDIA (total)              %d bytes" % media)
+    for payload in headers:
+        lines.append("  MEDIA_HEADER fields: %s" % describe_media_header(payload))
     if data and len(data) < 1024:
         lines.append("  too small to be media -- the whole body:")
         lines.append(_dump(data, limit=len(data)))

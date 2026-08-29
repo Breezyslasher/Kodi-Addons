@@ -561,17 +561,17 @@ def probe_sabr(client, response, cpn):
     if not audio and not video:
         kodiutils.log("sabr probe: no formats to ask for")
         return
-    wanted = audio or video
-    known = [(f["itag"], f.get("lastModified") or 0)
-             for f in (video, audio) if f and f is not wanted and f.get("itag")]
+    def entry(fmt):
+        return (fmt["itag"], fmt.get("lastModified") or 0,
+                fmt.get("xtags") or "")
 
     body = sabr.build_request(
         config,
-        wanted=(wanted["itag"], wanted.get("lastModified") or 0),
-        known=known)
-    kodiutils.log("sabr probe: asking for itag %s (%s), %d byte request"
-                  % (wanted.get("itag"), wanted.get("mimeType", "")[:24],
-                     len(body)))
+        audio=[entry(audio)] if audio else [],
+        video=[entry(video)] if video else [])
+    kodiutils.log("sabr probe: asking for audio %s / video %s, %d byte request"
+                  % (audio.get("itag") if audio else "none",
+                     video.get("itag") if video else "none", len(body)))
 
     # The browser rewrites n before it fetches: the player hands out a
     # scrambled value and the page's JS transforms it. n is not in sparams, so
@@ -824,7 +824,8 @@ def cross_sabr(client, response):
     our_body = b""
     if config and audio:
         our_body = sabr.build_request(
-            config, wanted=(audio["itag"], audio.get("lastModified") or 0))
+            config, audio=[(audio["itag"], audio.get("lastModified") or 0,
+                            audio.get("xtags") or "")])
 
     # Which query parameters each side carries. The browser's working request
     # has no pot at all, and carries c/cver/cpn/rn/alr/sabr/svpuc; a missing

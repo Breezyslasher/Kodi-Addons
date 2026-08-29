@@ -35,6 +35,7 @@ Nothing here plays anything or changes any setting.
 """
 
 import json
+import time
 
 import requests
 
@@ -44,56 +45,289 @@ LICENSE_URL = api.BASE + "player/get_drm_license"
 TIMEOUT = 30
 
 
-def _credential():
-    """(headers, how) for whichever credential this session holds."""
+def run(client, video_id):
+    """Answer the three, on every credential this box holds.
+
+    One arm per credential, because the interesting one is no longer the
+    default: the jar is preferred for playback, so running only the
+    credential playback would pick meant the token path -- the one the whole
+    exercise is for -- was never taken end to end.
+    """
+    kodiutils.log("sabr feasibility: starting on %s" % video_id)
+    arms = _arms()
+    if not arms:
+        kodiutils.log_error("sabr feasibility: not signed in at all")
+        return
+    for how, credential, client_name in arms:
+        _feasibility(video_id, how, credential, client_name)
+
+    # -- 4. where the ustreamer config lives -------------------------------
+    _config_matrix(video_id)
+    _bearer_as_web(video_id)
+    _tv_versions(video_id)
+    _tv_dash(video_id)
+    _tv_dash_more(video_id)
+
+
+def _tv_dash(video_id):
+    """Can the token session be given a DASH manifest instead of SABR?
+
+    Worth asking before anything is built. The addon already plays DASH,
+    and InputStream Adaptive cannot speak SABR -- so a token session served
+    a dashManifestUrl needs no bridge at all, while one served only SABR
+    needs a whole synthetic-DASH layer in front of ISA.
+
+    dash=False on the TV client has been read as server policy, but it has
+    only ever been asked one way. The web client, which is served dash=True,
+    sends a *smaller* request than we do: its captured player body carries
+    no `params` at all, and no mdxContext or captionParams. So vary the
+    request rather than assume the policy.
+    """
+    try:
+        from . import oauth
+        token = oauth.access_token()
+    except Exception:
+        token = ""
+    if not token:
+        kodiutils.log("tv dash: no token stored, nothing to try")
+        return
+    credential = {"Authorization": "Bearer " + token}
+    name = api.OAUTH_CLIENT_NAME
+
+    def shaped(change):
+        body = api.player_body(video_id, api.new_cpn())
+        change(body)
+        return body
+
+    def drop_params(body):
+        body.pop("params", None)
+
+    def drop_html5(body):
+        ctx = body["playbackContext"]["contentPlaybackContext"]
+        ctx.pop("html5Preference", None)
+
+    def as_browser(body):
+        # What the captured web request actually carries, no more.
+        body.pop("params", None)
+        body.pop("captionParams", None)
+        ctx = body["playbackContext"]["contentPlaybackContext"]
+        for key in ("mdxContext", "autonavState", "autoCaptionsDefaultOn"):
+            ctx.pop(key, None)
+
+    def no_playback_context(body):
+        body.pop("playbackContext", None)
+
+    for label, change in (("as sent", lambda b: None),
+                          ("without params", drop_params),
+                          ("without html5Preference", drop_html5),
+                          ("shaped like the browser's", as_browser),
+                          ("no playbackContext", no_playback_context)):
+        kodiutils.log("tv dash [%-26s]: %s"
+                      % (label, _ask_player(video_id, name, credential,
+                                            body=shaped(change))))
+
+
+def _tv_dash_more(video_id):
+    """The other direction: a TV request that sends MORE, not less.
+
+    The first sweep only ever removed fields, so it tested "less than we
+    send" five ways and never "more". Diffed against the browser's captured
+    request, our TV context is the thin one -- it omits things that are not
+    web-specific at all: utcOffsetMinutes, timeZone, playerType, the
+    request block's useSsl, user.lockedSafetyMode, clientScreenNonce, and
+    every device field. context() strips the web extras from non-web
+    clients deliberately, because sending visitorData and friends to a
+    mobile identity drew HTTP 400s, but that reasoning never covered the
+    generic fields.
+
+    So add them back in layers. The device values come from the client's
+    own User-Agent string -- Cobalt 25, Starboard 16 -- rather than being
+    invented, and are candidates like any other: the server answers.
+    """
+    try:
+        from . import oauth
+        token = oauth.access_token()
+    except Exception:
+        token = ""
+    if not token:
+        return
+    credential = {"Authorization": "Bearer " + token}
+    name = api.OAUTH_CLIENT_NAME
+
+    def generic(ctx):
+        ctx["client"].update({
+            "utcOffsetMinutes": -int(time.timezone / 60),
+            "timeZone": api._timezone_name(),
+            "playerType": "UNIPLAYER",
+        })
+        ctx["request"] = {"useSsl": True, "internalExperimentFlags": [],
+                          "consistencyTokenJars": []}
+        ctx["user"] = {"lockedSafetyMode": False}
+        ctx["clientScreenNonce"] = api.new_cpn()
+
+    def device(ctx):
+        ctx["client"].update({
+            "deviceMake": "", "deviceModel": "",
+            "osName": "Cobalt", "osVersion": "25.master",
+            "clientFormFactor": "UNKNOWN_FORM_FACTOR",
+            "clientScreen": "WATCH",
+            "applicationState": "ACTIVE",
+        })
+
+    def both(ctx):
+        generic(ctx)
+        device(ctx)
+
+    for label, change in (("generic InnerTube fields", generic),
+                          ("TV device fields", device),
+                          ("both", both)):
+        ctx = api.context(client_name=name)
+        change(ctx)
+        kodiutils.log("tv dash+ [%-26s]: %s"
+                      % (label, _ask_player(video_id, name, credential,
+                                            context=ctx)))
+
+
+def _arms():
+    """(how, credential, client_name) for each credential stored.
+
+    Each credential carries the identity it is accepted as: the jar is the
+    web player's, and a device-code token is refused by every client but the
+    TV one.
+    """
+    arms = []
     try:
         cookies = auth.load()
     except auth.AuthError:
-        try:
-            from . import oauth
-            token = oauth.access_token()
-        except Exception:
-            token = ""
-        if not token:
-            return None, "nothing"
-        return {"Authorization": "Bearer " + token}, "bearer token"
-    return ({"Authorization": auth.authorization(cookies),
-             "Cookie": auth.cookie_header(cookies)}, "cookie jar")
+        cookies = {}
+    if cookies:
+        arms.append(("cookie jar", {
+            "Authorization": auth.authorization(cookies),
+            "Cookie": auth.cookie_header(cookies)}, api.CLIENT_NAME))
+    try:
+        from . import oauth
+        token = oauth.access_token()
+    except Exception:
+        token = ""
+    if token:
+        arms.append(("bearer token", {"Authorization": "Bearer " + token},
+                     oauth.load().get("client_name") or api.OAUTH_CLIENT_NAME))
+    return arms
 
 
-def run(client, video_id):
-    """Answer the three, in the order that fails cheapest."""
-    kodiutils.log("sabr feasibility: starting on %s" % video_id)
-    credential, how = _credential()
-    if credential is None:
-        kodiutils.log_error("sabr feasibility: not signed in at all")
-        return
-    kodiutils.log("sabr feasibility: signed in with a %s, asking as %s"
-                  % (how, client.client_name if hasattr(client, "client_name")
-                     else api.CLIENT_NAME))
-
+def _feasibility(video_id, how, credential, client_name):
+    """The three questions, for one credential and the identity it works as."""
+    kodiutils.log("sabr feasibility: --- %s, asking as %s v%s ---"
+                  % (how, client_name, api.effective_version(client_name)))
     cpn = api.new_cpn()
-    response = client.player(video_id, cpn)
+    response = _raw_player(video_id, client_name, credential, cpn=cpn)
+    if not response:
+        kodiutils.log_error("sabr feasibility: no player response as %s"
+                            % client_name)
+        return
     streaming = response.get("streamingData") or {}
 
-    # -- 2. what delivery is actually offered ------------------------------
     sabr_url = streaming.get("serverAbrStreamingUrl") or ""
-    kodiutils.log("sabr feasibility: dash=%s sabr=%s (%d formats)"
+    kodiutils.log("sabr feasibility: dash=%s sabr=%s (%d formats) config=%s"
                   % (bool(streaming.get("dashManifestUrl")), bool(sabr_url),
-                     len(streaming.get("adaptiveFormats") or [])))
+                     len(streaming.get("adaptiveFormats") or []),
+                     len(_find_ustreamer(response)) or "NONE"))
 
-    # -- 1. the licence, which decides whether SABR would be worth anything -
     _probe_license(response, video_id, cpn, credential, how)
 
-    # -- 3. SABR with a solved n -------------------------------------------
     if not sabr_url:
         kodiutils.log("sabr feasibility: no serverAbrStreamingUrl, nothing to "
                       "POST to")
         return
-    _probe_sabr(response, streaming, sabr_url, cpn, how)
+    _probe_sabr(response, streaming, sabr_url, cpn, how, client_name)
 
-    # -- 4. where the ustreamer config lives -------------------------------
-    _config_matrix(video_id)
+
+def _tv_versions(video_id):
+    """Is the config withheld from the TV client, or from a stale version?
+
+    The client table still claims TVHTML5_UNPLUGGED is version 6.36, which
+    is a value that was copied across three clients and is certainly not
+    what a current TV app sends -- an earlier run read 7.20260826.15.00 off
+    the TV shell page. The version travels in the context and in the
+    X-YouTube-Client-Version header, so a server deciding what to serve has
+    it in hand, and every measurement so far was taken at 6.36.
+
+    So sweep. The versions are candidates, not claims; the server decides.
+    """
+    try:
+        from . import oauth
+        token = oauth.access_token()
+    except Exception:
+        token = ""
+    if not token:
+        kodiutils.log("tv versions: no token stored, nothing to try")
+        return
+    credential = {"Authorization": "Bearer " + token}
+    name = api.OAUTH_CLIENT_NAME
+
+    candidates = [
+        (api.client_spec(name)["version"], "the table's value"),
+        ("7.20260826.15.00", "read off the TV shell page in an earlier run"),
+        (api.effective_version(api.CLIENT_NAME), "what the web client sends"),
+    ]
+    seen = set()
+    for version, why in candidates:
+        if not version or version in seen:
+            continue
+        seen.add(version)
+        kodiutils.log("tv versions: %-20s (%s) -> %s"
+                      % (version, why,
+                         _ask_player(video_id, name, credential,
+                                     version=version)))
+
+    # And what the TV response actually carries, in case the config is there
+    # under a name nothing has searched for.
+    body = _raw_player(video_id, name, credential)
+    if body:
+        kodiutils.log("tv versions: TV response top level: %s" % sorted(body))
+        interesting = []
+
+        def walk(node, path=""):
+            if isinstance(node, dict):
+                for key, value in node.items():
+                    low = key.lower()
+                    if any(w in low for w in ("onesie", "abr", "sabr",
+                                              "ustreamer", "streamer")):
+                        interesting.append("%s.%s" % (path, key))
+                    walk(value, path + "." + key)
+            elif isinstance(node, list):
+                for item in node[:3]:
+                    walk(item, path + "[]")
+
+        walk(body)
+        kodiutils.log("tv versions: keys mentioning onesie/abr/sabr/streamer:"
+                      " %s" % (sorted(set(interesting))[:25] or "none"))
+
+
+def _raw_player(video_id, client_name, credential, cpn=None):
+    """The parsed player response, or {} -- for surveying rather than judging."""
+    spec = api.client_spec(client_name)
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": spec["context"].get("userAgent", api.UA),
+        "Accept": "*/*",
+        "Origin": api.ORIGIN,
+        "Referer": api.ORIGIN + "/",
+        "X-Origin": api.ORIGIN,
+        "X-YouTube-Client-Name": spec["id"],
+        "X-YouTube-Client-Version": api.effective_version(client_name),
+        "X-Goog-AuthUser": "0",
+    }
+    headers.update(credential)
+    payload = api.player_body(video_id, cpn or api.new_cpn())
+    payload["context"] = api.context(client_name=client_name)
+    try:
+        reply = requests.post(api.BASE + "player", data=json.dumps(payload),
+                              headers=headers, timeout=TIMEOUT,
+                              params={"prettyPrint": "false"})
+        return reply.json() if reply.status_code == 200 else {}
+    except Exception:
+        return {}
 
 
 def _config_matrix(video_id):
@@ -136,13 +370,31 @@ def _config_matrix(video_id):
     kodiutils.log("ustreamer matrix: %d credential(s) x %d clients"
                   % (len(credentials), len(api.UNPLUGGED_CLIENTS)))
 
+    verdict = {}
     for how, credential in credentials:
         for name in sorted(api.UNPLUGGED_CLIENTS):
+            line = _ask_player(video_id, name, credential)
+            verdict[(how, name)] = line
             kodiutils.log("ustreamer matrix: %-20s + %-12s -> %s"
-                          % (name, how, _ask_player(video_id, name, credential)))
+                          % (name, how, line))
+
+    # A dead jar answers every row identically and looks like a finding. Say
+    # so instead: an arm that was never signed in has not measured anything.
+    for how, _ in credentials:
+        rows = [v for (h, _n), v in verdict.items() if h == how]
+        served = [v for v in rows if v.startswith("OK")]
+        if not served:
+            kodiutils.log("ustreamer matrix: the %s was refused by every "
+                          "client -- that arm measured nothing, not a finding"
+                          % how)
+        elif not any("config=NONE" not in v for v in served):
+            kodiutils.log("ustreamer matrix: the %s was served by %d client(s)"
+                          " and handed a config by none of them"
+                          % (how, len(served)))
 
 
-def _ask_player(video_id, client_name, credential):
+def _ask_player(video_id, client_name, credential, context=None,
+                version=None, body=None):
     """One player call, described in a line: delivery, config, or refusal."""
     spec = api.client_spec(client_name)
     headers = {
@@ -153,15 +405,20 @@ def _ask_player(video_id, client_name, credential):
         "Referer": api.ORIGIN + "/",
         "X-Origin": api.ORIGIN,
         "X-YouTube-Client-Name": spec["id"],
-        "X-YouTube-Client-Version": api.effective_version(client_name),
+        "X-YouTube-Client-Version": version or api.effective_version(client_name),
         "X-Goog-AuthUser": "0",
     }
     headers.update(credential)
     # The same body the working play path sends. An abbreviated one answered
     # UNPLAYABLE with no formats where this one is served 25, which would
     # have been read as the server withholding them.
-    payload = api.player_body(video_id, api.new_cpn())
-    payload["context"] = api.context(client_name=client_name)
+    payload = body if body is not None else api.player_body(video_id,
+                                                            api.new_cpn())
+    payload["context"] = (context if context is not None
+                          else api.context(client_name=client_name))
+    if version:
+        # Both places, or the request contradicts itself.
+        payload["context"]["client"]["clientVersion"] = version
     try:
         reply = requests.post(api.BASE + "player", data=json.dumps(payload),
                               headers=headers, timeout=TIMEOUT,
@@ -169,12 +426,7 @@ def _ask_player(video_id, client_name, credential):
     except Exception as exc:
         return "request failed: %s" % exc
     if reply.status_code != 200:
-        detail = ""
-        try:
-            detail = ((reply.json().get("error") or {}).get("message") or "")
-        except ValueError:
-            detail = (reply.text or "")[:120]
-        return "HTTP %d %s" % (reply.status_code, detail[:90])
+        return "HTTP %d %s" % (reply.status_code, _complaint(reply))
     try:
         body = reply.json()
     except ValueError:
@@ -193,11 +445,82 @@ def _ask_player(video_id, client_name, credential):
                                  for r in reason.get("runs") or []))
         status = "%s(%s)" % (status, (reason or "no reason given")[:70])
     config = _find_ustreamer(body)
-    return ("%s dash=%s sabr=%s formats=%d config=%s"
+    # useServerDrivenAbr travels with the config in every capture that has
+    # one, and is absent from the TV response that has none, so it is worth
+    # reporting beside it rather than inferring the link later.
+    common = ((body.get("playerConfig") or {}).get("mediaCommonConfig") or {})
+    return ("%s dash=%s sabr=%s formats=%d config=%s abr=%s"
             % (status, bool(streaming.get("dashManifestUrl")),
                bool(streaming.get("serverAbrStreamingUrl")),
                len(streaming.get("adaptiveFormats") or []),
-               "%d chars" % len(config) if config else "NONE"))
+               "%d chars" % len(config) if config else "NONE",
+               common.get("useServerDrivenAbr", False)))
+
+
+def _complaint(reply):
+    """What InnerTube said, including which argument it disliked.
+
+    "Request contains an invalid argument" names nothing, and four rows of
+    the matrix say only that. error.details is where InnerTube names the
+    field when it knows it, and it was being thrown away.
+    """
+    try:
+        error = (reply.json().get("error") or {})
+    except ValueError:
+        return (reply.text or "")[:120]
+    message = error.get("message") or ""
+    details = error.get("details")
+    if details:
+        message = "%s | details=%s" % (message, json.dumps(details)[:400])
+    return message[:500]
+
+
+def _bearer_as_web(video_id):
+    """Can the one identity that is given a config be asked with a token?
+
+    The matrix cannot separate identity from credential, because the two
+    are confounded: cookies are refused by TVHTML5_UNPLUGGED and a token is
+    refused by WEB_UNPLUGGED, so each credential only ever reaches its own
+    client. The refusal is HTTP 400 INVALID_ARGUMENT, which is a complaint
+    about the request rather than about the sign-in -- and the web context
+    carries three fields that describe a browser session the token does not
+    have: visitorData, rolloutToken and configInfo.appInstallData.
+
+    So ask three times, dropping them. If any shape is served, a token
+    session can hold a ustreamer config and the whole cookie-free path
+    opens; if all three are refused the same way, the identity is closed to
+    the token and SABR frees nothing.
+    """
+    try:
+        from . import oauth
+        token = oauth.access_token()
+    except Exception:
+        token = ""
+    if not token:
+        kodiutils.log("bearer-as-web: no token stored, nothing to try")
+        return
+    credential = {"Authorization": "Bearer " + token}
+
+    full = api.context(client_name=api.CLIENT_NAME)
+    trimmed = json.loads(json.dumps(full))
+    for key in ("visitorData", "rolloutToken", "configInfo"):
+        trimmed["client"].pop(key, None)
+    minimal = {"client": {k: v for k, v in full["client"].items()
+                          if k in ("hl", "gl", "clientName", "clientVersion",
+                                   "unpluggedAppInfo")}}
+
+    for label, ctx in (("web context, as sent", full),
+                       ("minus visitor/rollout/install", trimmed),
+                       ("client name and version only", minimal)):
+        kodiutils.log("bearer-as-web [%-29s]: %s"
+                      % (label, _ask_player(video_id, api.CLIENT_NAME,
+                                            credential, context=ctx)))
+
+
+def _format_entry(fmt):
+    """(itag, lastModified, xtags) as the captured requests carry them."""
+    return (fmt.get("itag"), fmt.get("lastModified") or 0,
+            fmt.get("xtags") or "")
 
 
 def _find_ustreamer(body):
@@ -267,7 +590,8 @@ def _probe_license(response, video_id, cpn, credential, how):
                   % (reply.text or "")[:300].replace("\n", " "))
 
 
-def _probe_sabr(response, streaming, sabr_url, cpn, how):
+def _probe_sabr(response, streaming, sabr_url, cpn, how,
+                client_name=None):
     """POST to SABR with n solved, which has never been tried."""
     try:
         config = (response["playerConfig"]["mediaCommonConfig"]
@@ -304,11 +628,24 @@ def _probe_sabr(response, streaming, sabr_url, cpn, how):
         kodiutils.log("sabr feasibility: no audio format to ask for")
         return
     wanted = min(audio, key=lambda f: f.get("bitrate") or 1 << 30)
-    body = sabr.build_request(config, (wanted.get("itag"),
-                                       wanted.get("lastModified") or 0))
+    video = [f for f in formats if "video/" in (f.get("mimeType") or "")]
+    picked_video = (min(video, key=lambda f: f.get("bitrate") or 1 << 30)
+                    if video else None)
+    body = sabr.build_request(
+        config,
+        audio=[_format_entry(wanted)],
+        video=[_format_entry(picked_video)] if picked_video else [])
+    kodiutils.log("sabr feasibility: asking for audio itag %s xtags=%s"
+                  ", video itag %s"
+                  % (wanted.get("itag"), wanted.get("xtags") or "none",
+                     picked_video.get("itag") if picked_video else "none"))
 
-    url = sabr.playback_url(sabr_url, cpn, api._client_version(),
-                            api.CLIENT_NAME)
+    # c and cver must name the client the player call was made as. Sending
+    # the web client's name and version on a TV session describes a session
+    # that does not exist.
+    client_name = client_name or api.CLIENT_NAME
+    url = sabr.playback_url(sabr_url, cpn,
+                            api.effective_version(client_name), client_name)
     solved_url, minted, solved = _with_solved_n(url)
     kodiutils.log("sabr feasibility: n %s -> %s"
                   % (minted or "(none in the url)", solved or "(unsolved)"))
@@ -340,6 +677,53 @@ def _probe_sabr(response, streaming, sabr_url, cpn, how):
         if reply.status_code == 200 and reply.content:
             kodiutils.log("sabr feasibility [%s]: %s"
                           % (label, sabr.describe_response(reply.content)))
+
+    if solved_url:
+        _probe_seek(solved_url, config, wanted, picked_video)
+
+
+def _probe_seek(url, config, audio, video):
+    """Can a segment be asked for by time, or only streamed from wherever?
+
+    This decides whether a bridge is buildable at all. InputStream Adaptive
+    fetches segment N of a template, so the bridge has to turn "segment N"
+    into a SABR request and get back that segment -- not whatever the server
+    felt like sending. ClientAbrState field 28 is the player position, so
+    ask twice at two positions and compare what comes back.
+
+    If the two answers carry different sequence numbers, segments are
+    addressable and a bridge can map ISA's requests onto them. If both
+    return the same bytes, SABR is a stream that starts where it likes and
+    the bridge would have to buffer rather than address.
+    """
+    entries = ([_format_entry(audio)] if audio else [],
+               [_format_entry(video)] if video else [])
+    for position in (0, 30000):
+        body = sabr.build_request(config, audio=entries[0], video=entries[1],
+                                  player_time_ms=position)
+        try:
+            reply = requests.post(url, data=body, timeout=TIMEOUT, headers={
+                "User-Agent": api.UA,
+                "Origin": api.ORIGIN,
+                "Referer": api.ORIGIN + "/",
+                "Content-Type": "application/x-protobuf",
+            })
+        except Exception as exc:
+            kodiutils.log_error("sabr seek [%d ms]: %s" % (position, exc))
+            continue
+        if reply.status_code != 200 or not reply.content:
+            kodiutils.log("sabr seek [%6d ms]: HTTP %d, %d bytes"
+                          % (position, reply.status_code, len(reply.content)))
+            continue
+        headers = [payload for kind, payload in sabr.parse_ump(reply.content)
+                   if kind == 20]
+        media = sum(len(payload) for kind, payload
+                    in sabr.parse_ump(reply.content) if kind == 21)
+        kodiutils.log("sabr seek [%6d ms]: %d bytes, %d media, %d header(s)"
+                      % (position, len(reply.content), media, len(headers)))
+        for payload in headers:
+            kodiutils.log("sabr seek [%6d ms]:   %s"
+                          % (position, sabr.describe_media_header(payload)))
 
 
 def _find_keys(node, needle, path="", found=None):
