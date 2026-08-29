@@ -72,6 +72,11 @@
 					<constraints><allowempty>true</allowempty></constraints>
 					<control type="edit" format="string"/>
 				</setting>
+				<setting id="respell_audio_crypto" type="boolean" label="30081" help="30082">
+					<level>0</level>
+					<default>false</default>
+					<control type="toggle"/>
+				</setting>
 				<setting id="skip_clear_audio" type="boolean" label="30079" help="30080">
 					<level>0</level>
 					<default>false</default>

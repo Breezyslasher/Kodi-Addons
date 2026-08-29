@@ -413,3 +413,139 @@ def movie_header(data):
             break
         pos += size
     return bytes(out) if seen_moov else data
+
+
+def _trun_sample_sizes(fragment, trun):
+    """Every sample's size out of a trun box, or [] if it does not carry them.
+
+    trun is a full box: version, flags, sample_count, then optional
+    data_offset and first_sample_flags, then per-sample fields in a fixed
+    order. Only the sizes are wanted, so the others are stepped over by
+    width rather than decoded.
+    """
+    flags = _u(fragment, trun + 9, 3)
+    count = _u(fragment, trun + 12, 4)
+    at = trun + 16
+    if flags & 0x000001:            # data-offset-present
+        at += 4
+    if flags & 0x000004:            # first-sample-flags-present
+        at += 4
+    if not flags & 0x000200:        # sample-size-present
+        return []
+    stride = ((4 if flags & 0x000100 else 0) + 4
+              + (4 if flags & 0x000400 else 0)
+              + (4 if flags & 0x000800 else 0))
+    before = 4 if flags & 0x000100 else 0
+    return [_u(fragment, at + i * stride + before, 4) for i in range(count)]
+
+
+def _trun_data_offset(fragment, trun):
+    """(offset of the field, its value) if trun carries a data offset."""
+    flags = _u(fragment, trun + 9, 3)
+    if not flags & 0x000001:
+        return None, 0
+    at = trun + 16
+    value = _u(fragment, at, 4)
+    if value >= 0x80000000:
+        value -= 0x100000000
+    return at, value
+
+
+def explicit_subsamples(fragment):
+    """Rewrite a fragment's encryption signalling to name subsamples.
+
+    YouTube TV encrypts audio whole-sample: the auxiliary data is one IV per
+    sample and nothing else, which CENC spells as a subsample count of zero
+    and every implementation is then supposed to read as "all of it". Video
+    is encrypted with subsamples -- a clear NAL header and an encrypted
+    payload -- and carries an explicit entry per sample.
+
+    That is the one difference between the track InputStream Adaptive 21.5.22
+    plays and the track it turns to noise. This says the same thing the other
+    way: one subsample per sample, zero clear bytes, the whole sample
+    encrypted. The ciphertext is untouched -- only how it is described.
+
+    Returns the fragment unchanged if there is nothing to do or anything is
+    not as expected, because serving a fragment we have half rewritten is
+    worse than serving the original.
+    """
+    moof, moof_size = find_box(fragment, [b"moof"])
+    if moof is None:
+        return fragment
+    traf, traf_size = find_box(fragment, [b"moof", b"traf"])
+    if traf is None:
+        return fragment
+    saiz, saiz_size = find_box(fragment, [b"moof", b"traf", b"saiz"])
+    saio, saio_size = find_box(fragment, [b"moof", b"traf", b"saio"])
+    senc, _senc_size = find_box(fragment, [b"moof", b"traf", b"senc"])
+    trun, _trun_size = find_box(fragment, [b"moof", b"traf", b"trun"])
+    if saiz is None or saio is None or trun is None or senc is not None:
+        return fragment
+
+    default, count, sizes = _saiz_sizes(fragment, saiz)
+    if not default or sizes or not count:
+        # Per-sample aux sizes mean subsample entries are already there.
+        return fragment
+    iv_size = default
+    if iv_size not in (8, 16):
+        return fragment
+
+    offsets = _saio_offsets(fragment, saio)
+    if len(offsets) != 1:
+        return fragment
+    aux = moof + offsets[0]
+    if aux + count * iv_size > len(fragment):
+        return fragment
+
+    sample_sizes = _trun_sample_sizes(fragment, trun)
+    if len(sample_sizes) != count:
+        return fragment
+
+    # senc: full box, flags bit 1 says subsample data follows each IV.
+    body = bytearray()
+    body += b"\x00"                                   # version
+    body += (0x000002).to_bytes(3, "big")             # flags
+    body += count.to_bytes(4, "big")
+    for index in range(count):
+        body += fragment[aux + index * iv_size:aux + (index + 1) * iv_size]
+        body += (1).to_bytes(2, "big")                # one subsample
+        body += (0).to_bytes(2, "big")                # no clear bytes
+        body += int(sample_sizes[index]).to_bytes(4, "big")
+    senc_box = (len(body) + 8).to_bytes(4, "big") + b"senc" + bytes(body)
+
+    # The aux data itself sits at the front of the mdat payload, not in the
+    # moof -- a real fragment reads moof size 1853, saio offset 1861, and the
+    # samples starting at 5301, so the 3440 bytes between are the IVs at the
+    # head of the mdat. It is left exactly where it is, unreferenced, rather
+    # than splicing the mdat: the samples must not move relative to each
+    # other, and a few kilobytes of ignored bytes cost nothing.
+    #
+    # Dropping saiz and saio and adding senc does change the moof's size, and
+    # trun's data offset is measured from the start of the moof, so that has
+    # to move by the same amount.
+    kept = bytearray()
+    cursor = traf + 8
+    for start, size in sorted([(saiz, saiz_size), (saio, saio_size)]):
+        if start < cursor:
+            return fragment
+        kept += fragment[cursor:start]
+        cursor = start + size
+    kept += fragment[cursor:traf + traf_size]
+    new_traf_body = bytes(kept) + senc_box
+
+    delta = (len(new_traf_body) + 8) - traf_size
+    new_traf = (len(new_traf_body) + 8).to_bytes(4, "big") + b"traf" + new_traf_body
+    new_moof_body = (fragment[moof + 8:traf] + new_traf
+                     + fragment[traf + traf_size:moof + moof_size])
+    new_moof = ((len(new_moof_body) + 8).to_bytes(4, "big") + b"moof"
+                + new_moof_body)
+
+    rebuilt = bytearray(fragment[:moof] + new_moof + fragment[moof + moof_size:])
+    # Re-find trun in the rebuilt moof and correct its data offset.
+    new_trun, _ = find_box(bytes(rebuilt), [b"moof", b"traf", b"trun"])
+    if new_trun is None:
+        return fragment
+    field, value = _trun_data_offset(bytes(rebuilt), new_trun)
+    if field is not None:
+        rebuilt[field:field + 4] = ((value + delta) & 0xFFFFFFFF).to_bytes(4, "big")
+    return bytes(rebuilt)

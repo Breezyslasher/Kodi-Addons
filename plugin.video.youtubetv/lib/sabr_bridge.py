@@ -736,6 +736,15 @@ def manifest(key, base):
                   % ", ".join("%s %s" % (kind, fmt.get("itag"))
                               for kind, fmt in served))
 
+    if kodiutils.get_setting_bool("respell_audio_crypto", False):
+        for kind, fmt in served:
+            if kind == "audio":
+                session.respell.add(fmt["itag"])
+                kodiutils.log(
+                    "sabr bridge: re-signalling audio itag %s as one explicit "
+                    "subsample per sample -- the ciphertext is untouched, "
+                    "only how it is described" % fmt.get("itag"))
+
     if _skip_clear_audio():
         for kind, fmt in served:
             if kind == "audio":
