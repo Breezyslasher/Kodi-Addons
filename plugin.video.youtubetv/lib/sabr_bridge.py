@@ -192,6 +192,19 @@ def key_id_hex(value):
     return raw.hex() if len(raw) == 16 else ""
 
 
+def _quality_floor():
+    """The shortest rendition worth offering, or 0 for all of them.
+
+    A setting rather than a guess: the server chooses, and the only way to
+    stop it choosing 480p is not to offer 480p. Which is also how it turns
+    into a stall if the title has nothing taller, so the caller checks.
+    """
+    try:
+        return int(kodiutils.get_setting("sabr_floor", "0") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def lookup(key):
     """The session for this id, opening it from the stored context if needed."""
     with _lock:
@@ -222,6 +235,30 @@ def lookup(key):
     # on the first play that got this far.
     offerable = alternatives(candidates, "video/", max_height)
     avc = [f for f in offerable if "avc1" in (f.get("mimeType") or "")]
+    # The server picks out of what it is offered, and left to itself it has
+    # picked 854x480 every time -- with the licence granting 2160p, the
+    # height cap at 2160p and nine renditions on the table. It is not
+    # reading the cap as a request; it is making an ABR decision with the
+    # signals the browser sends and this does not.
+    #
+    # What it cannot do is serve a rendition it was never offered. So take
+    # the tall ones off the bottom rather than trying to persuade it: this
+    # is not the narrowing that gets refused, which was a single format,
+    # but a smaller menu. If the endpoint refuses this one too, priming
+    # widens back to every_video below and playback carries on.
+    floor = _quality_floor()
+    every_avc = list(avc)
+    if floor and avc:
+        tall = [f for f in avc if (f.get("height") or 0) >= floor]
+        if tall:
+            kodiutils.log("sabr bridge: asking for %dp or better, so "
+                          "offering %s and holding back %s"
+                          % (floor, [f.get("itag") for f in tall],
+                             [f.get("itag") for f in avc if f not in tall]))
+            avc = tall
+        else:
+            kodiutils.log("sabr bridge: nothing this title offers reaches "
+                          "%dp, so the whole H.264 set stands" % floor)
     session = sabr_session.Session(
         stored["url"], stored.get("config") or "",
         [_entry(f) for f in alternatives(candidates, "audio/")],
@@ -234,7 +271,13 @@ def lookup(key):
                       "holding %d other(s) back: %s"
                       % (len(avc), len(offerable) - len(avc),
                          [f.get("itag") for f in offerable if f not in avc]))
-    session.every_video = [_entry(f) for f in offerable]
+    # Each step back, widest last. The H.264 set first: a floor that
+    # narrowed too far should land on what has been playing for days, not
+    # on AV1.
+    session.fallbacks = [entries for entries in
+                         ([_entry(f) for f in every_avc] if every_avc else [],
+                          [_entry(f) for f in offerable])
+                         if entries and len(entries) != len(session.video)]
     # The manifest reads these as single renditions. A list here is a bug
     # that only surfaces several seconds later, inside the manifest handler,
     # as an AttributeError ISA reports as "Cannot download the stream
@@ -464,31 +507,31 @@ def manifest(key, base):
     # socket on ISA with no response at all -- which it reported as
     # "CURLOpen failed" and I would have read as a network problem.
     if not session.segments:
-        try:
-            session.prime()
-        except sabr_session.SabrError as exc:
-            wider = getattr(session, "every_video", None)
-            if wider and len(wider) != len(session.video):
-                kodiutils.log("sabr bridge: the endpoint refused the H.264 "
-                              "renditions (%s), offering every one again"
-                              % str(exc).strip())
+        # Widen a step at a time rather than all the way. A quality floor
+        # can narrow the offer to a single format, which is the shape the
+        # endpoint answers sabr.no_video_selected -- and widening straight
+        # back to everything puts AV1 on the menu, which is what the server
+        # picked 36 times in these logs and what would not decrypt. So the
+        # first step back is the whole H.264 set, and only if that is
+        # refused does anything else go on the table.
+        while True:
+            try:
+                session.prime()
+                break
+            except sabr_session.SabrError as exc:
+                wider = session.fallbacks.pop(0) if session.fallbacks else None
+                if not wider:
+                    kodiutils.log_error("sabr bridge: the endpoint refused "
+                                        "every set on offer: %s"
+                                        % str(exc).strip())
+                    return ""
+                kodiutils.log("sabr bridge: the endpoint refused %s (%s); "
+                              "offering %s instead"
+                              % ([e[0] for e in session.video],
+                                 str(exc).strip(), [e[0] for e in wider]))
                 session.video = list(wider)
                 session.entries = {entry[0]: entry
                                    for entry in session.audio + session.video}
-                try:
-                    session.prime()
-                except sabr_session.SabrError as second:
-                    kodiutils.log_error("sabr bridge: the endpoint refused "
-                                        "the whole set: %s"
-                                        % str(second).strip())
-                    return ""
-            else:
-                # With every candidate offered there is no narrower
-                # selection to retry -- a refusal here is about the
-                # request, not the pick.
-                kodiutils.log_error("sabr bridge: the endpoint refused the "
-                                    "whole set: %s" % str(exc).strip())
-                return ""
 
     if not formats.get("compared"):
         formats["compared"] = True

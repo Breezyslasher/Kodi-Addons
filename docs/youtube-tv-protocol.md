@@ -1646,6 +1646,27 @@ one per track, and that is not a limitation to be worked around: a
 Representation the bridge cannot serve does not degrade to a lower quality,
 it removes the track.
 
+### The server has served 1080p, just never H.264 1080p
+
+Every rendition the endpoint has chosen across every log on this box:
+
+    36 x  itag 810   1920x1080  AV1
+    30 x  itag 223    854x480   avc1
+
+So it is not refusing to send 1080p and it is not throttling for bandwidth
+-- offered AV1 it took the tallest thing on the table. It is only among
+H.264 that it settles on 480p, and it has done that with the licence
+granting 2160p, the height cap asking for 2160p and nine renditions on
+offer. Whatever it is reading, it is not any of those.
+
+What it cannot do is serve a rendition it was never offered, so the
+quality floor takes the short ones off the menu rather than trying to
+persuade it. That is a smaller menu, not the single-format narrowing the
+endpoint refuses -- and if it is refused anyway, the widening goes one
+step at a time: the whole H.264 set first, everything only after that.
+Widening straight to everything is how AV1 gets back on the table, and
+AV1 is the rendition that would not decrypt.
+
 What is left is influencing the server's single choice, and the cap is now
 part of that: it was hardcoded to 1080 in the request builder and nothing
 ever passed one, so a licence allowing 2160 still asked for 1080. It asks
