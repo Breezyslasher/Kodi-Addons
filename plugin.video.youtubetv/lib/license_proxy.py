@@ -30,11 +30,11 @@ import secrets
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import requests
 
-from . import api, auth, kodiutils
+from . import api, auth, kodiutils, manifest as manifest_mod, widevine
 
 LICENSE_URL = api.BASE + "player/get_drm_license"
 CONTEXT_FILE = "playback_context.json"
@@ -64,9 +64,12 @@ def set_context(video_id, cpn, drm_params, is_live):
         "cpn": cpn,
         "drm_params": drm_params,
         "is_live": bool(is_live),
-        # One DRM session id per playback, reused across key rotations, the way
-        # the web player does it.
-        "session_id": "ad_" + secrets.token_urlsafe(9)[:13],
+        # The session id is not ours to invent: the player response mints one
+        # and embeds it in drmParams, and the licence exchange has to quote
+        # that same string. Falling back to a generated one only keeps things
+        # moving if the field ever goes missing.
+        "session_id": (widevine.session_id_from_drm_params(drm_params)
+                       or "ad_" + secrets.token_urlsafe(9)[:13]),
         "created": int(time.time()),
     })
 
@@ -74,17 +77,15 @@ def set_context(video_id, cpn, drm_params, is_live):
 def _crypto_period_index(now=None):
     """The current key period.
 
-    Derived from one observation: a licence request at unix 1787864547 carried
-    ``cryptoPeriodIndex: 20693``, and ceil(1787864547 / 86400) is exactly
-    20693 -- a daily period, indexed by the day it ends.
+    One day per period, which is no longer a guess: the PSSH inside the
+    browser's own licence challenge carries crypto_period_seconds = 86400
+    beside crypto_period_index = 20693, and 20693 is that day's index. See
+    lib/widevine.py.
 
-    One data point is not a specification. It could as easily be a counter that
-    happened to align, and a daily rotation is long for live DRM. So this is a
-    starting guess, not an answer: _fetch_license() retries the neighbouring
-    indices when the server rejects it, which costs one round trip on the day
-    the guess is wrong and nothing at all when it is right.
+    The neighbours are still tried on rejection, because a request landing
+    either side of a period boundary would otherwise fail for a whole minute.
     """
-    return int(math.ceil((now or time.time()) / 86400.0))
+    return widevine.crypto_period_index(now)
 
 
 def _encode(value):
@@ -103,20 +104,72 @@ class _Handler(BaseHTTPRequestHandler):
         return bool(expected) and hmac.compare_digest(supplied, expected)
 
     def _send(self, status, body=b"", content_type="application/octet-stream"):
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        if body:
-            self.wfile.write(body)
+        # ISA abandons a manifest request routinely -- it opens one, changes its
+        # mind, and closes. Writing into that closed socket raises BrokenPipe,
+        # and socketserver prints the whole traceback into the Kodi log. It is
+        # not an error worth a stack trace.
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            kodiutils.log("client hung up before the response was sent")
 
     def do_GET(self):
-        # ISA probes the endpoint before posting to it.
         parsed = urlparse(self.path)
         if not self._authorized(parsed.query):
             self._send(403)
             return
+        if parsed.path == "/manifest":
+            self._serve_manifest(parse_qs(parsed.query))
+            return
+        # ISA probes the licence endpoint before posting to it.
         self._send(200, b"ok", "text/plain")
+
+    def _serve_manifest(self, query):
+        """Fetch the manifest from Google and hand ISA a repaired copy.
+
+        Live manifests are re-fetched every few seconds (minimumUpdatePeriod is
+        5s here), so this runs continuously during playback, not just once.
+        """
+        target = (query.get("u") or [""])[0]
+        if not target:
+            self._send(400)
+            return
+        target = unquote(target)
+        if not target.startswith("https://"):
+            # The secret already gates this, but never let the proxy be aimed
+            # somewhere arbitrary with the account's cookies attached.
+            self._send(403)
+            return
+        try:
+            cookies = auth.load()
+            response = requests.get(target, timeout=TIMEOUT, headers={
+                "User-Agent": api.UA,
+                "Origin": api.ORIGIN,
+                "Referer": api.ORIGIN + "/",
+                "Cookie": auth.cookie_header(cookies),
+            })
+        except Exception as exc:
+            kodiutils.log_error("manifest fetch failed: %s" % exc)
+            self._send(502)
+            return
+        if response.status_code != 200:
+            kodiutils.log_error("manifest fetch returned HTTP %d"
+                                % response.status_code)
+            self._send(response.status_code)
+            return
+        try:
+            body = manifest_mod.patch(response.content)
+        except Exception as exc:
+            # A manifest we failed to repair still beats no manifest.
+            kodiutils.log_error("manifest patch failed, passing it through: %s"
+                                % exc)
+            body = response.content
+        self._send(200, body, "application/dash+xml")
 
     def do_POST(self):
         parsed = urlparse(self.path)
@@ -216,7 +269,16 @@ def _fetch_license(challenge):
                 kodiutils.log("licence: cryptoPeriodIndex %d worked where %d "
                               "did not -- the daily-period guess is off"
                               % (index, candidates[0]))
-            return base64.b64decode(body["license"])
+            licence = widevine.decode_b64(body["license"])
+            # Say what was granted. A silent success is indistinguishable from
+            # a licence carrying no usable key for the tracks being played,
+            # which is exactly the case worth spotting from a log.
+            granted = body.get("authorizedFormats") or []
+            kodiutils.log("licence granted: %d bytes, %d formats [%s]"
+                          % (len(licence), len(granted),
+                             ", ".join(sorted({f.get("trackType", "?")
+                                               for f in granted}))))
+            return licence
         last_status = status
         kodiutils.log("licence: status %s at cryptoPeriodIndex %s"
                       % (status, index))
@@ -236,11 +298,21 @@ class LicenseProxy(object):
 
     def start(self):
         secret = secrets.token_urlsafe(24)
-        try:
-            self._server = ThreadingHTTPServer((BIND_HOST, self.port), _Handler)
-        except OSError as exc:
-            kodiutils.log_error("licence proxy could not bind %s:%d: %s"
-                                % (BIND_HOST, self.port, exc))
+        # A second Kodi, or one that crashed with the port still held, leaves
+        # the configured port taken -- and giving up there disables playback
+        # entirely until the machine is rebooted. The port number is an
+        # implementation detail: the plugin reads whichever one we bound from
+        # license_proxy.json, so any free port serves.
+        self._server = None
+        for candidate in (self.port, 0):
+            try:
+                self._server = ThreadingHTTPServer((BIND_HOST, candidate),
+                                                   _Handler)
+                break
+            except OSError as exc:
+                kodiutils.log_error("licence proxy could not bind %s:%d: %s"
+                                    % (BIND_HOST, candidate, exc))
+        if self._server is None:
             return False
         # Bound port, not the requested one: port 0 means "pick one".
         self.port = self._server.server_address[1]
@@ -285,6 +357,15 @@ def _secret():
     if _SECRET:
         return _SECRET
     return _published().get("secret", "")
+
+
+def manifest_url(real_url):
+    """The proxied manifest URL to hand ISA, or the real one if not running."""
+    published = _published()
+    if not published.get("port") or not published.get("secret"):
+        return real_url
+    return "http://%s:%d/manifest?k=%s&u=%s" % (
+        BIND_HOST, published["port"], published["secret"], quote(real_url, safe=""))
 
 
 def license_url():
