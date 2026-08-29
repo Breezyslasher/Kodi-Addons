@@ -883,7 +883,37 @@ def _pick(formats, kind, max_height=1080):
     if kind == "audio/":
         primary = [f for f in wanted if "primary" in (f.get("xtags") or "")]
         wanted = primary or wanted
+        asked = _audio_itag()
+        if asked:
+            named = [f for f in wanted if int(f.get("itag") or 0) == asked]
+            if named:
+                kodiutils.log("sabr bridge: audio itag %d, because the "
+                              "setting asks for it" % asked)
+                return named[0]
+            kodiutils.log("sabr bridge: this title has no itag %d, so the "
+                          "usual choice stands -- offered %s"
+                          % (asked, sorted(int(f.get("itag") or 0)
+                                           for f in wanted)))
     return max(wanted, key=_preference)
+
+
+def _audio_itag():
+    """A specific audio rendition to ask for, or 0 to choose the best.
+
+    YouTube TV offers four -- 150 and 149 are AAC-LC, 148 is HE-AAC and 381
+    is AC-3 -- and the bridge has only ever asked for the best-scoring one,
+    which is 150. That makes the rendition an untested variable in every
+    audio problem seen so far, including ISA 21.5.22 turning this stream's
+    audio to invalid AAC 9.46 seconds in: whether that is ISA's decryption
+    generally or its handling of this particular packaging has never been
+    separated, because nothing else has ever been offered.
+
+    A setting rather than a probe, so one playback answers it.
+    """
+    try:
+        return int(kodiutils.get_setting("audio_itag", "0") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def playable_url(player_response, max_height=1080):

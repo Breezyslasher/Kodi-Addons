@@ -991,7 +991,30 @@ On the DASH path the video track went kNoKey sixteen milliseconds after the
 audio flush, which looked like a second fault. Here video keeps decoding while
 audio is destroyed, because each Representation now carries its own key id and
 the two tracks no longer share a CDM session. So ISA 21's remaining fault is
-audio decryption alone, and nothing in this addon can reach it.
+audio decryption alone.
+
+**What has not been tested, and the claim that overreached.** This was written
+up as "nothing in this addon can reach it", which the evidence does not
+support. Every ISA 21 run has used one audio rendition, because the bridge
+declares a single Representation per track and always picks the
+highest-scoring one. YouTube TV offers four:
+
+    itag 148   audio/mp4   mp4a.40.5   HE-AAC       DRM_TRACK_TYPE_AUDIO
+    itag 149   audio/mp4   mp4a.40.2   AAC-LC med   DRM_TRACK_TYPE_AUDIO
+    itag 150   audio/mp4   mp4a.40.2   AAC-LC high  DRM_TRACK_TYPE_AUDIO
+    itag 381   audio/mp4   ac-3        AC-3         DRM_TRACK_TYPE_AUDIO
+
+Only 150 has ever been played, on either ISA version. The failure is ffmpeg's
+AAC decoder rejecting bytes it was given, which says the bytes were wrong, not
+which layer made them wrong -- and this audio is packaged full-sample with an
+8-byte IV and no subsamples, which is the awkward case for a CENC
+implementation. Whether ISA 21.5.22 mishandles that packaging in general, or
+this rendition in particular, has never been separated, and **itag 381 is not
+even AAC**, so it exercises a different decoder path entirely.
+
+An `audio_itag` setting now names the rendition, so one playback per itag
+answers it. Until that is run, the honest statement is that ISA 21.5.22 fails
+on the rendition the addon chooses -- not that ISA 21 cannot work.
 
 ### What the media actually is
 

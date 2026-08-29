@@ -199,3 +199,31 @@ msgstr ""
 msgctxt "#30071"
 msgid "1080p or better"
 msgstr ""
+
+msgctxt "#30072"
+msgid "Audio rendition"
+msgstr ""
+
+msgctxt "#30073"
+msgid "Which of YouTube TV's four audio tracks to ask the SABR endpoint for. The bridge declares one Representation per track, so it picks rather than leaving it to ISA, and it has always picked the highest-scoring one -- itag 150. That makes the rendition an untested variable in any audio fault: on inputstream.adaptive 21.5.22 this stream's audio turns to invalid AAC after one subsegment, and whether that is ISA's decryption generally or its handling of this packaging has never been separated. Leave on automatic unless you are testing that, or you want AC-3 for a receiver."
+msgstr ""
+
+msgctxt "#30074"
+msgid "Automatic (best available)"
+msgstr ""
+
+msgctxt "#30075"
+msgid "150 -- AAC-LC, high"
+msgstr ""
+
+msgctxt "#30076"
+msgid "149 -- AAC-LC, medium"
+msgstr ""
+
+msgctxt "#30077"
+msgid "148 -- HE-AAC, low"
+msgstr ""
+
+msgctxt "#30078"
+msgid "381 -- AC-3"
+msgstr ""
