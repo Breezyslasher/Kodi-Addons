@@ -1646,91 +1646,47 @@ one per track, and that is not a limitation to be worked around: a
 Representation the bridge cannot serve does not degrade to a lower quality,
 it removes the track.
 
-### Why the bridge is stuck at 480p and the DASH path is not
+### The bridge was stuck at 480p because the request named no height
 
-`initialAuthorizedDrmTrackTypes` reads `AUDIO, SD` on every log, on every
-identity, cookie and token alike. The two paths do different things with
-that.
+A capture of the browser's own quality selector -- the first one carrying
+the POST bodies -- decodes to this:
 
-On **DASH** the client chooses. The manifest declares every Representation
--- `declared widevine for AUDIO x3, HD x3, SD x6` -- ISA picks one and
-fetches it from googlevideo by byte range, and the *licence* decides whether
-it decrypts. The licence grants HD and UHD1, so HD plays: a cookie-path log
-has ISA selecting `ID 224 (Bandwidth: 3481861, Resolution: 1280x720)` and
-decoding h264 at 1280x720. The bridge is not involved on that path at all;
-the local proxy only repairs the manifest.
+    ClientAbrState 16 / 21   video itags offered
+    720 / 720                [812, 811, 552]   all 1280x720, HD tier
+    480 / 480                [810, 809, 551]   all  854x480
+    360 / 360                [550]             one format
+    1080 / 1080              [814, 813, 553]   all 1920x1080, HD tier
 
-On **SABR** the server chooses, and it obeys the authorisation rather than
-the licence. Offer it nothing but HD-tier renditions and it answers
-`sabr.no_video_selected` -- one of them or three of them alike, which is
-what makes this a tier rule and not an "offer too small" rule:
+Fields 16 and 21 are the height being asked for. Field 59, which this
+addon did send, is the ceiling -- the browser holds it at 1080 throughout
+while 16 and 21 move between 360 and 1080.
 
-    [146]                 1 format,  all HD tier   -> sabr.no_video_selected
-    [146, 224, 145]       3 formats, all HD tier   -> sabr.no_video_selected
-    9 H.264, HD and SD                             -> serves 223  (SD tier)
-    32 formats including AV1                       -> serves 810  (SD tier)
+This addon sent no 16 at all and a hardcoded `21 = 0`. So every request it
+ever made asked for no particular height, and the endpoint answered with
+480p or, when the offer contained nothing at 480p, `sabr.no_video_selected`.
 
-Printing the format table with each rendition's codec, size and tier --
-rather than inferring any of it from itags -- settles what the tier
-actually contains:
+That retires three conclusions recorded here, each of which fitted the
+evidence available at the time:
 
-    146 814 813 553   1920x1080   HD tier
-    224 145 812 811 552  1280x720 HD tier
-    223 222 144 810 809 551  854x480   SD tier
-    143 550   640x360     142 549  426x240     161 548  256x144   SD tier
+* **"A single video format is refused."** The browser offers exactly one
+  (itag 550, at 360/360) and is served.
+* **"An offer of three HD renditions is refused, so it is the tier."** The
+  browser offers exactly three (814, 813, 553, at 1080/1080) and is served.
+* **"initialAuthorizedDrmTrackTypes caps the bridge at the SD tier."** The
+  browser's session is authorised `AUDIO,SD` like every other, and is
+  served HD-tier renditions. The field does not describe what the endpoint
+  will serve.
 
-Every SD-tier rendition is 854x480 or shorter. **There is no tall
-rendition in the tier this session may play**, so 854x480 is a hard
-ceiling on the bridge, and no setting reaches past it.
+The correlation behind all three was real but backwards: every offer that
+was accepted happened to contain 480p renditions, because 480p is what a
+request naming no height gets. Nothing was being refused for its tier or
+its size.
 
-The `force_bridge` setting exists to separate the credential from the
-delivery, which had always changed together, and this is what it separates:
-
-    credential  delivery  initialAuthorized  what played
-    cookies     DASH      AUDIO,SD           ID 224, 1280x720, decoded
-    cookies     SABR      AUDIO,SD           223,     854x480
-    token       SABR      AUDIO,SD           223,     854x480
-
-Same account, same title, same licence granting HD and UHD1. **The
-delivery decides the quality, not the credential.** A cookie session
-forced through the bridge gets 854x480 exactly like a token one; the same
-cookies on DASH get 1280x720. So the ceiling belongs to SABR's
-server-side selection, and the way past it is not to use SABR.
-
-That also corrects what was written here about the 36 AV1 picks. Itag 810
-was recorded as "AV1 at 1080p carrying the SD tier's key id", inferred
-from the itag; the table says 854x480. The endpoint was not reaching for
-height when it chose it. It was choosing between renditions of the same
-size.
-
-### The server has served 1080p, just never H.264 1080p
-
-Every rendition the endpoint has chosen across every log on this box:
-
-    36 x  itag 810   1920x1080  AV1
-    30 x  itag 223    854x480   avc1
-
-So it is not refusing to send 1080p and it is not throttling for bandwidth
--- offered AV1 it took the tallest thing on the table. It is only among
-H.264 that it settles on 480p, and it has done that with the licence
-granting 2160p, the height cap asking for 2160p and nine renditions on
-offer. Whatever it is reading, it is not any of those.
-
-What it cannot do is serve a rendition it was never offered, so the
-quality floor takes the short ones off the menu rather than trying to
-persuade it. That is a smaller menu, not the single-format narrowing the
-endpoint refuses -- and if it is refused anyway, the widening goes one
-step at a time: the whole H.264 set first, everything only after that.
-Widening straight to everything is how AV1 gets back on the table, and
-AV1 is the rendition that would not decrypt.
-
-What is left is influencing the server's single choice, and the cap is now
-part of that: it was hardcoded to 1080 in the request builder and nothing
-ever passed one, so a licence allowing 2160 still asked for 1080. It asks
-for the real ceiling now. That alone does not move the server -- it chose
-223 with the cap at 2160 -- so what does is the remaining question, and the
-place to look is the eight `ClientAbrState` fields the browser sends and
-this does not.
+So the bridge now asks for one height at a time, names it in 16 and 21,
+and offers the renditions at that height -- tallest first, stepping down
+on a refusal, and finally falling back to the old shape that named
+nothing. A post-licence probe confirmed the licence was never the missing
+piece: with one in hand, an unnamed HD offer is refused exactly as before.
 
 ## No JavaScript runtime, anywhere in the addon
 

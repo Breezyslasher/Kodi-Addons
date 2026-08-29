@@ -170,6 +170,10 @@ class Session(object):
         # fields 16 and 17 to the wanted itag instead is answered
         # sabr.no_video_selected. One Representation per track it is.
         self.wanted_height = max_height
+        # ClientAbrState 16 and 21: the height being asked for, as opposed
+        # to 59 which is the ceiling. Naming it is what makes the endpoint
+        # serve it -- see sabr.client_abr_state.
+        self.target_height = 0
         # ISA reads audio and video on separate threads and both drive this
         # one session. Two fetches at once interleave their MEDIA parts
         # through the same _open map and the same echo, so a segment can be
@@ -223,6 +227,7 @@ class Session(object):
             self.config, audio=self.audio, video=self.video,
             player_time_ms=self.position,
             max_height=self.wanted_height,
+            target_height=self.target_height,
             buffered=self._buffered(),
             context=sabr.streamer_context(info=self.info,
                                           po_token=self.po_token,
