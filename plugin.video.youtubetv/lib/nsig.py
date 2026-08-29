@@ -439,7 +439,25 @@ def solve(js, value, player_id=""):
     # the player and the program built from it, once per release, named by
     # release, where they can be read afterwards.
     _keep(js, player_id)
-    runtime, name, result = _solve_with_runtime(js, value)
+
+    # Python first. The interpreter needed three things it did not have --
+    # a brace-less if branch, typeof at all, and typeof binding tighter than
+    # === -- and with them it answers the player's own transform exactly:
+    # YouTube minted 2YLDnv4vx-5yo8ccc44, the browser sent -AcdKn1WC2CNPg,
+    # and so does this, in half a second. That takes a JavaScript runtime
+    # off the list of things a box must have to play anything.
+    name = ""
+    runtime = "the built-in interpreter"
+    result = ""
+    try:
+        name, _program = build_program(js, value)
+        result = _solve_with_interpreter(js, name, value)
+    except Exception as exc:
+        kodiutils.log("nsig: the built-in interpreter could not solve it (%s), "
+                      "falling back to a runtime" % exc)
+        result = ""
+    if not result or result == value:
+        runtime, name, result = _solve_with_runtime(js, value)
     if not result:
         raise NsigError("%s produced nothing for %s" % (runtime, name))
     if result == value:

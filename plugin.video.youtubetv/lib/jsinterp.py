@@ -343,6 +343,21 @@ class JSInterpreter:
             flags |= cls._RE_FLAGS[ch]
         return flags, expr[idx + 1:]
 
+    def _branch(self, expr):
+        """One arm of an if or else: a block, or a single statement.
+
+        Returns (arm, rest). JavaScript allows either, and the players use
+        both -- often in the same function.
+        """
+        if expr.startswith('{'):
+            return self._separate_at_paren(expr)
+        head, _, tail = expr.partition(';')
+        for part in self._separate(expr, ';', 1):
+            head = part
+            break
+        rest = expr[len(head):]
+        return head, rest[1:] if rest.startswith(';') else rest
+
     @staticmethod
     def _separate(expr, delim=',', max_split=None):
         OP_CHARS = '+-*/%&|^=<>!,;{}:['
@@ -485,6 +500,49 @@ class JSInterpreter:
             left = self.interpret_expression(expr[5:], local_vars, allow_recursion)
             return None, should_return
 
+        # The transform refuses to run unless a sentinel global exists:
+        #   if(typeof Xma==="undefined")return a;
+        # typeof binds tighter than ===, so it takes the name beside it and
+        # no more; swallowing the comparison too answers "boolean" and the
+        # transform bails to its input, silently returning the value it was
+        # given as though it had worked.
+        if expr.startswith('typeof '):
+            found = re.match(r'typeof\s+([\w$]+)\s*(.*)$', expr, re.S)
+            if found:
+                name, rest = found.group(1), found.group(2)
+                if name in local_vars:
+                    value = local_vars[name]
+                else:
+                    # It may still be one of the player's own globals: the
+                    # sentinel is a plain `var Xma=-604020884;` elsewhere in
+                    # the file.
+                    declared = re.search(
+                        r'(?:var|let|const)\s+%s\s*=\s*([^;,]+)' % re.escape(name),
+                        self.code or '')
+                    value = (self.interpret_expression(declared.group(1).strip(),
+                                                       local_vars, allow_recursion)
+                             if declared else None)
+                    if declared:
+                        local_vars[name] = value
+                if value is None and name not in local_vars:
+                    kind = 'undefined'
+                elif isinstance(value, bool):
+                    kind = 'boolean'
+                elif isinstance(value, (int, float)):
+                    kind = 'number'
+                elif isinstance(value, str):
+                    kind = 'string'
+                elif callable(value):
+                    kind = 'function'
+                elif value is None:
+                    kind = 'undefined'
+                else:
+                    kind = 'object'
+                if rest.strip():
+                    return self.interpret_expression(
+                        json.dumps(kind) + rest, local_vars, allow_recursion), should_return
+                return kind, should_return
+
         if expr.startswith('{'):
             inner, outer = self._separate_at_paren(expr)
             # try for object expression (Map)
@@ -528,12 +586,16 @@ class JSInterpreter:
         md = m.groupdict() if m else {}
         if md.get('if'):
             cndn, expr = self._separate_at_paren(expr[m.end() - 1:])
-            if_expr, expr = self._separate_at_paren(expr.lstrip())
+            # A branch need not be a block. The player writes
+            #   if(typeof Xma==="undefined")return a;
+            # and reading that as one always looked for a brace and found the
+            # "r" of return, which is where the whole transform stopped.
+            if_expr, expr = self._branch(expr.lstrip())
             # TODO: "else if" is not handled
             else_expr = None
-            m = re.match(r'else\s*{', expr)
+            m = re.match(r'else\b', expr.lstrip())
             if m:
-                else_expr, expr = self._separate_at_paren(expr[m.end() - 1:])
+                else_expr, expr = self._branch(expr.lstrip()[m.end():].lstrip())
             cndn = _js_ternary(self.interpret_expression(cndn, local_vars, allow_recursion))
             ret, should_abort = self.interpret_statement(
                 if_expr if cndn else else_expr, local_vars, allow_recursion)
