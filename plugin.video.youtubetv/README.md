@@ -55,12 +55,14 @@ retired, is in [docs/youtube-tv-protocol.md](../docs/youtube-tv-protocol.md).
 
 * Kodi 22 (Piers) or newer
 * **InputStream Adaptive 22.3.20 or newer**, with a working Widevine CDM.
-  Not 21: on the same account, licence and media, ISA 21.5.22 cannot decrypt
-  YouTube TV's audio fragments and 22.3.20 can -- the video track plays and
-  the audio is silent or noise, and no change to this addon fixes it. ISA 22
-  is a binary addon built against Kodi 22, which is why the Kodi requirement
-  moves with it. `addon.xml` requires 22.3.20, so on Kodi 21 the addon will
-  not resolve its dependencies rather than half-playing
+  Not 21, and measured rather than assumed: a build differing only in
+  `addon.xml` was run on Kodi 21.3 with ISA 21.5.22, and the audio track turned
+  to invalid AAC 9.46 seconds in -- one audio subsegment -- while the addon
+  itself was clean, licence and all. 22.3.20 plays the same media with zero
+  audio errors. No change to this addon reaches it. ISA 22 is a binary addon
+  built against Kodi 22, which is why the Kodi requirement moves with it;
+  `addon.xml` requires 22.3.20, so on Kodi 21 the addon will not resolve its
+  dependencies rather than half-playing
 * A paid YouTube TV subscription
 * The addon's **service must be enabled** -- the licence proxy runs there, and
   protected playback fails without it
