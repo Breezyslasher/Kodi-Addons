@@ -251,6 +251,8 @@ class _Handler(BaseHTTPRequestHandler):
             if path == "/sabr/segment":
                 number = int((query.get("n") or ["0"])[0] or 0)
                 body = session.segment(itag, number)
+                kodiutils.log("sabr bridge: ISA asked itag %d for %d -> "
+                              "%d bytes" % (itag, number, len(body)))
                 # 503, not an empty 200 and not 404: ISA retries a 503 and
                 # treats the other two as a segment that is broken or gone.
                 self._send(200 if body else 503, body, "video/mp4")
@@ -450,10 +452,16 @@ def _fetch_license(challenge):
             # a licence carrying no usable key for the tracks being played,
             # which is exactly the case worth spotting from a log.
             granted = body.get("authorizedFormats") or []
+            # The key ids too, not just the track types. The CDM reported
+            # exactly one key on the bridge path -- video's -- while audio
+            # samples asked for a key it had never been given, and there was
+            # no way to tell from this line whether YouTube had withheld the
+            # audio key or ISA had never installed it.
             kodiutils.log("licence granted: %d bytes, %d formats [%s]"
                           % (len(licence), len(granted),
-                             ", ".join(sorted({f.get("trackType", "?")
-                                               for f in granted}))))
+                             ", ".join("%s=%s" % (f.get("trackType", "?"),
+                                                  (f.get("keyId") or "none")[:16])
+                                       for f in granted)))
             _remember_key_ids(ctx.get("video_id", ""), granted)
             return licence
         last_status = status
