@@ -383,7 +383,45 @@ def _bootstrap():
     return kodiutils.read_json(BOOTSTRAP_FILE, default={}) or {}
 
 
+# player id -> the signatureTimestamp that player declares.
+_PLAYER_STS = {}
+_STS_IN_PLAYER = re.compile(r"signatureTimestamp\s*:\s*(\d+)")
+
+
 def _signature_timestamp():
+    """The timestamp of the player we will actually unscramble with.
+
+    Not the page's. The page named 20690 while the player the addon fetches
+    and extracts n from, e937390a, declares signatureTimestamp:20684 in its
+    own source -- so we were promising one build and unscrambling with
+    another, and every url minted for us expected a transform we never
+    applied. They were refused for everyone, the browser included, which is
+    exactly what that mismatch looks like from outside.
+
+    So read it from the player itself, which cannot disagree with the
+    transform by construction, and keep the page's value as the fallback
+    for when the player cannot be fetched.
+    """
+    for sts in _PLAYER_STS.values():
+        return sts
+    try:
+        import requests
+        from . import auth
+        session = requests.Session()
+        try:
+            cookies = auth.load()
+        except Exception:
+            cookies = {}
+        player_id, js = player_js(session, cookies)
+        found = _STS_IN_PLAYER.search(js)
+        if found:
+            _PLAYER_STS[player_id] = int(found.group(1))
+            kodiutils.log("player %s declares signatureTimestamp %s"
+                          % (player_id, found.group(1)))
+            return _PLAYER_STS[player_id]
+    except Exception as exc:
+        kodiutils.log("could not read signatureTimestamp from the player: %s"
+                      % exc)
     return _bootstrap().get("sts") or SIGNATURE_TIMESTAMP
 
 
@@ -394,6 +432,17 @@ def _baked_visitor_id():
     from the response header -- but starting with the id the session was
     captured under keeps it looking continuous rather than brand new.
     """
+    # A personal build may carry the browser session's own visitorData, which
+    # matters because a proof-of-origin token is bound to the visitorData
+    # that minted it: paste a token from one session while presenting
+    # another's identity and the media is refused. They belong together, so
+    # they are baked together.
+    try:
+        from . import baked_session
+        if getattr(baked_session, "VISITOR_ID", ""):
+            return baked_session.VISITOR_ID
+    except ImportError:
+        pass
     try:
         from . import baked_cookies
     except ImportError:
@@ -406,6 +455,11 @@ def _client_version():
 
     An explicit setting wins, so a user can pin one; otherwise whatever the
     page last told us, falling back to the value this was written against.
+
+    The fallback is 1.20260826.04.00 because that is what the browser sends
+    today, read out of its own SABR request: streamerContext subfield 1
+    carries locale en_US, client 41 and version "1.20260826.04.00". We were
+    a day behind it.
     """
     override = kodiutils.get_setting("client_version", "")
     if override and override != CLIENT_VERSION:
@@ -427,6 +481,14 @@ def effective_version(name=None):
     return client_spec(name)["version"]
 
 
+def _log_sts():
+    """The signature timestamp we are about to declare, said out loud."""
+    sts = _signature_timestamp()
+    kodiutils.log("player request: signatureTimestamp %s, clientVersion %s"
+                  % (sts, _client_version()))
+    return sts
+
+
 def player_body(video_id, cpn):
     """The player request body, as the working play path sends it.
 
@@ -442,7 +504,12 @@ def player_body(video_id, cpn):
         "playbackContext": {
             "contentPlaybackContext": {
                 "html5Preference": "HTML5_PREF_WANTS",
-                "signatureTimestamp": _signature_timestamp(),
+                # Logged every play, not only when it changes. It says which
+                # player build we are claiming we will unscramble with, and
+                # if it disagrees with the build n is actually solved from,
+                # the urls we are minted expect a transform we never apply.
+                # The browser sends 20684 today.
+                "signatureTimestamp": _log_sts(),
                 "referer": "%s/watch/%s" % (ORIGIN, video_id),
                 "autonavState": "STATE_OFF",
                 "autoCaptionsDefaultOn": False,

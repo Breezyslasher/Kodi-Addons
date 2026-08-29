@@ -82,6 +82,30 @@ def _authorized_cap(streaming, video_id=""):
     return tallest
 
 
+def _dump_player(player_response):
+    """Save the player response, when diagnostics are on.
+
+    The browser's media urls play and ours are refused -- the very url the
+    addon was given, pasted into a browser on the same machine and the same
+    IP, returned nothing at all. So the urls are not being refused for how
+    we ask; they are refused for what we were issued. The only way to see
+    that is to put our player response beside the browser's, which a HAR
+    already has, and diff them.
+    """
+    if not kodiutils.get_setting_bool("dump_manifest", False):
+        return
+    try:
+        import json
+        import os
+        path = os.path.join(kodiutils.profile_dir(), "last-player.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(player_response, handle, indent=1, sort_keys=True)
+        kodiutils.log("player response saved to %s (%d bytes)"
+                      % (path, os.path.getsize(path)))
+    except Exception as exc:
+        kodiutils.log_error("could not save the player response: %s" % exc)
+
+
 def _dump_manifest(url):
     """Save the manifest ISA is about to fetch, when diagnostics are on.
 
@@ -213,6 +237,7 @@ def build_item(player_response, label=None, art=None):
     streaming = player_response.get("streamingData") or {}
     details = player_response.get("videoDetails") or {}
 
+    _dump_player(player_response)
     manifest = streaming.get("dashManifestUrl")
     if manifest and kodiutils.get_setting_bool("force_bridge"):
         # The credential and the delivery have always changed together --
@@ -521,7 +546,7 @@ def probe_cipher(client, video_id, response):
         kodiutils.log_error("cipher probe: %s" % exc)
         return
 
-    token = kodiutils.get_setting("po_token", "")
+    token = kodiutils.get_setting("po_token", "") or manifest_mod._baked_po_token()
     attempts = [("descrambled", resolved)]
     if token:
         attempts.append(("descrambled + pot",

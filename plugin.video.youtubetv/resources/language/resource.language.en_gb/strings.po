@@ -183,3 +183,15 @@ msgstr ""
 msgctxt "#30061"
 msgid "Ignore the DASH manifest even when one is offered, so a cookie session plays through the bridge too. This exists to tell two things apart that are otherwise always changed together: the credential and the delivery. The same recording, byte for byte the same media, decrypts on the DASH path and does not through the bridge -- so if it also fails here on cookies, the bridge is at fault, and if it plays, the token's licence is."
 msgstr ""
+
+msgctxt "#30062"
+msgid "Paste this together with the proof-of-origin token, from the same browser capture. A session-bound token is bound to the visitorData that minted it: the addon bootstraps its own visitorData from the page it loads with your cookies, which is a different session from your browser's, so a token minted there can never satisfy urls bound to this one. Same account, different session identity, and the media is refused with an empty-bodied 403."
+msgstr ""
+
+msgctxt "#30063"
+msgid "SABR endpoint override"
+msgstr ""
+
+msgctxt "#30064"
+msgid "Diagnostic. A url pasted here is used instead of the one the player response carries, exactly as pasted. Paste one a browser was served and this answers whether the urls we are issued are refused or our client is: the same url that returned megabytes to the browser either works here or it does not. Leave empty for normal playback."
+msgstr ""
