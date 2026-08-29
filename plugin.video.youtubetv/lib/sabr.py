@@ -95,27 +95,101 @@ def format_id(itag, last_modified=0, xtags=""):
     return body
 
 
-def client_abr_state(player_time_ms=0, max_height=1080):
-    """The smallest ClientAbrState that still describes a real player.
+# What the browser sends for "play from the live edge": Number.MAX_SAFE_INTEGER.
+LIVE_EDGE = 9007199254740991
 
-    The captured one carries eighteen fields; most look like buffer health and
-    telemetry that a server has no reason to require. These are the ones whose
-    meaning is legible: where the player is, and what it can display.
+
+def client_abr_state(player_time_ms=0, max_height=1080, elapsed_ms=0):
+    """ClientAbrState, with the fields four captured requests agree on.
+
+    Field 29 is not a media-type enum. It was annotated as one here, first
+    as 3 and then as 2 after a capture was read too quickly; across four
+    consecutive requests from one playback session it reads 2, 3, 490,
+    1579, which is a counter, not a constant. It is passed in now.
+
+    Field 28 is the position: MAX_SAFE_INTEGER on the first request of a
+    live session -- the browser's way of saying "the edge" -- and an
+    absolute media timestamp thereafter.
+
+    Fields 18 and 19 are 2140 and 1204 in every captured request of every
+    session, so they are sent as the constants they appear to be.
     """
-    return (_v(21, 0)                    # start / seek position marker
+    return (_v(18, 2140)
+            + _v(19, 1204)
+            + _v(21, 0)
             + _v(28, int(player_time_ms))
-            # 2, because that is what the request the server answered with
-            # 15 MB carried. The 3 that used to be here was an annotation of
-            # mine -- "audio+video" -- and never a measurement.
-            + _v(29, 2)
+            + _v(29, int(elapsed_ms))
             + _v(59, int(max_height))
             + _v(71, 1)
             + _v(80, 1)
             + _v(85, 1))
 
 
+def client_info(client_id, client_version, locale="en_US", os_name="X11"):
+    """StreamerContext.ClientInfo, as the captured requests carry it."""
+    return (_b(1, locale.encode("ascii"))
+            + _v(16, int(client_id))
+            + _b(17, client_version.encode("ascii"))
+            + _b(18, os_name.encode("ascii")))
+
+
+def streamer_context(info=b"", po_token=b"", echo=b""):
+    """Top-level field 19.
+
+    Subfield 3 is the continuation: whatever the previous response's
+    NEXT_REQUEST_POLICY carried in its field 7, echoed back verbatim.
+    Rebuilt from a captured response and compared against the request that
+    followed it, the two are byte-identical -- which is what makes a SABR
+    session a session rather than the same answer over and over.
+    """
+    body = b""
+    if info:
+        body += _b(1, info)
+    if po_token:
+        body += _b(2, po_token)
+    if echo:
+        body += _b(3, echo)
+    return body
+
+
+def next_request_echo(data):
+    """The blob to echo, taken from a response's NEXT_REQUEST_POLICY."""
+    for part_type, payload in parse_ump(data):
+        if part_type != 35:
+            continue
+        for number, _wire, value in fields(payload):
+            if number == 7 and isinstance(value, bytes):
+                return value
+    return b""
+
+
+def buffered_range(entry, start_ms, duration_ms, first_sequence,
+                   last_sequence):
+    """One BufferedRange: what we already hold for a format.
+
+    Top-level field 3, repeated once per track. Decoded from two captured
+    bodies six seconds apart, it is how the client tells the server where it
+    has got to:
+
+        3 { 1: FormatId  2: startTimeMs  3: durationMs
+            4: firstSequence  5: lastSequence }
+
+    and between those two captures field 5 went 2834103 -> 2834104 while
+    field 3 grew by one segment. Without it every request says "I have
+    nothing", which is why the same request repeated six seconds apart came
+    back byte-identical, same sequence numbers and all: the server was
+    answering the question we kept asking.
+    """
+    body = _b(1, format_id(*entry))
+    body += _v(2, int(start_ms))
+    body += _v(3, int(duration_ms))
+    body += _v(4, int(first_sequence))
+    body += _v(5, int(last_sequence))
+    return body
+
+
 def build_request(ustreamer_config, audio=(), video=(), player_time_ms=0,
-                  max_height=1080):
+                  max_height=1080, buffered=(), context=b"", elapsed_ms=0):
     """A VideoPlaybackAbrRequest body.
 
     ``ustreamer_config`` is the base64url string from the player response.
@@ -135,7 +209,9 @@ def build_request(ustreamer_config, audio=(), video=(), player_time_ms=0,
     without field 5 is the thing to find out, and it cannot be found out by a
     builder that refuses to make one.
     """
-    body = _b(1, client_abr_state(player_time_ms, max_height))
+    body = _b(1, client_abr_state(player_time_ms, max_height, elapsed_ms))
+    for held in buffered:
+        body += _b(3, held)
     if ustreamer_config:
         config = base64.urlsafe_b64decode(
             ustreamer_config + "=" * (-len(ustreamer_config) % 4))
@@ -144,6 +220,8 @@ def build_request(ustreamer_config, audio=(), video=(), player_time_ms=0,
         body += _b(16, format_id(*entry))
     for entry in video:
         body += _b(17, format_id(*entry))
+    if context:
+        body += _b(19, context)
     return body
 
 

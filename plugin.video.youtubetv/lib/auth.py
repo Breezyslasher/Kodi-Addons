@@ -186,6 +186,28 @@ def save(cookies):
     kodiutils.write_json(COOKIE_FILE, cookies)
 
 
+def absorb(jar, cookies):
+    """Fold a response's Set-Cookie back into the stored session.
+
+    Google re-issues session cookies constantly -- SIDCC, __Secure-1PSIDCC,
+    __Secure-3PSIDCC and __Secure-YEC appear twenty-one times each across a
+    single browser capture, all from tv.youtube.com -- and the addon has
+    never read one back. It signs in once with whatever was exported and
+    then holds that jar until it dies, which is why an export that worked in
+    the morning is answering LOGIN_REQUIRED by the afternoon.
+
+    Returns the names that actually changed, so a caller can decide whether
+    the write is worth doing.
+    """
+    changed = []
+    for name, value in (jar or {}).items():
+        if not value or cookies.get(name) == value:
+            continue
+        cookies[name] = value
+        changed.append(name)
+    return changed
+
+
 def _baked():
     """A session compiled into the build, if there is one.
 

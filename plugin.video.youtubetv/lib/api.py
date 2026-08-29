@@ -560,6 +560,7 @@ class Api(object):
                 self.client_name = (oauth.load().get("client_name")
                                     or OAUTH_CLIENT_NAME)
         self.session = requests.Session()
+        self._cookies_written = 0.0
         self._visitor_id = kodiutils.get_setting("visitor_id", "") or _baked_visitor_id()
         try:
             refresh_bootstrap(self.session, self.cookies)
@@ -629,6 +630,35 @@ class Api(object):
             raise ApiError("could not reach %s: %s" % (parts.path, exc))
         return response.status_code
 
+    def _absorb_cookies(self, response):
+        """Keep the jar current, since Google keeps re-issuing it.
+
+        Every InnerTube reply carries fresh session cookies and the addon
+        threw them all away, holding whatever was exported until it went
+        stale. Written back rarely -- only when a value actually changed,
+        and at most once a minute -- because this is a file in the profile,
+        not a cache, and every call would otherwise write it.
+        """
+        if not self.cookies:
+            return
+        try:
+            fresh = requests.utils.dict_from_cookiejar(response.cookies)
+        except Exception:
+            return
+        changed = auth.absorb(fresh, self.cookies)
+        if not changed:
+            return
+        now = time.time()
+        if now - self._cookies_written < 60:
+            return
+        try:
+            auth.save(self.cookies)
+            self._cookies_written = now
+            kodiutils.log("cookies refreshed: %s" % ", ".join(sorted(changed)))
+        except auth.AuthError as exc:
+            # A rotation that would leave the jar unusable is not a rotation.
+            kodiutils.log("cookies not written back: %s" % exc)
+
     def call(self, endpoint, body, params=None, client_name=None):
         url = BASE + endpoint
         payload = dict(body)
@@ -641,6 +671,8 @@ class Api(object):
                                          timeout=TIMEOUT)
         except requests.RequestException as exc:
             raise ApiError("could not reach %s: %s" % (endpoint, exc))
+
+        self._absorb_cookies(response)
 
         if response.status_code != 200:
             # InnerTube explains itself in the body -- which credential it did

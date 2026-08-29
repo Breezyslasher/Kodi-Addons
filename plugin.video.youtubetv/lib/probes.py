@@ -42,6 +42,10 @@ import requests
 from . import api, auth, kodiutils, manifest as manifest_mod, nsig, sabr, widevine
 
 LICENSE_URL = api.BASE + "player/get_drm_license"
+# What one segment is worth. The captured requests grow a buffered range by
+# 5015 ms for audio and 5005 for video per segment; the server is told a
+# duration, not a segment count, and 5000 is close enough to claim honestly.
+SEGMENT_MS = 5000
 TIMEOUT = 30
 
 
@@ -67,6 +71,9 @@ def run(client, video_id):
     _tv_versions(video_id)
     _tv_dash(video_id)
     _tv_dash_more(video_id)
+    _cookie_as_tv(video_id)
+    _mint_web_session()
+    _mint_scope()
 
 
 def _tv_dash(video_id):
@@ -186,6 +193,192 @@ def _tv_dash_more(video_id):
         kodiutils.log("tv dash+ [%-26s]: %s"
                       % (label, _ask_player(video_id, name, credential,
                                             context=ctx)))
+
+
+def _cookie_as_tv(video_id):
+    """The one empty cell: a cookie jar asked as the TV client.
+
+    Every measurement says delivery follows the identity -- the web client
+    is served DASH and the TV client is not, under eight request shapes --
+    but identity and credential are welded together, because each credential
+    is refused by the other's client. So "cookies get DASH" and "the web
+    client gets DASH" are the same sentence said twice, and there is no way
+    to tell which half is doing the work.
+
+    Unless the TV client can be made to accept a jar. It answers 400
+    INVALID_ARGUMENT, which is a complaint about the request, and the
+    probe's own request is thinner than the addon's real one in a way that
+    matters here: it never sends X-Goog-Visitor-Id, which Api._headers
+    always does, and the TV context carries no visitorData. A jar whose
+    visitor session is missing is a plausible thing for InnerTube to
+    dislike.
+
+    If any shape is served, the cell fills in and the question is answered
+    outright. If none is, that is worth knowing too: it means the pairing is
+    enforced and no experiment on this box can separate the two.
+    """
+    try:
+        cookies = auth.load()
+    except auth.AuthError:
+        cookies = auth._baked() or {}
+    if not cookies:
+        kodiutils.log("cookie-as-tv: no jar, nothing to try")
+        return
+    base = {"Authorization": auth.authorization(cookies),
+            "Cookie": auth.cookie_header(cookies)}
+    visitor = (kodiutils.get_setting("visitor_id", "")
+               or api._bootstrap().get("visitor_data")
+               or api._baked_visitor_id())
+    name = api.OAUTH_CLIENT_NAME
+
+    def with_visitor_header():
+        headers = dict(base)
+        if visitor:
+            headers["X-Goog-Visitor-Id"] = visitor
+        return headers
+
+    def with_visitor_context():
+        ctx = api.context(client_name=name)
+        if visitor:
+            ctx["client"]["visitorData"] = visitor
+        return ctx
+
+    def generous():
+        ctx = with_visitor_context()
+        ctx["client"].update({
+            "utcOffsetMinutes": -int(time.timezone / 60),
+            "timeZone": api._timezone_name(),
+            "playerType": "UNIPLAYER",
+        })
+        ctx["request"] = {"useSsl": True, "internalExperimentFlags": [],
+                          "consistencyTokenJars": []}
+        ctx["user"] = {"lockedSafetyMode": False}
+        return ctx
+
+    trials = (
+        ("as sent", base, None),
+        ("+ visitor id header", with_visitor_header(), None),
+        ("+ visitorData in context", base, with_visitor_context()),
+        ("+ both", with_visitor_header(), with_visitor_context()),
+        ("+ both, generous context", with_visitor_header(), generous()),
+    )
+    for label, headers, ctx in trials:
+        kodiutils.log("cookie-as-tv [%-24s]: %s"
+                      % (label, _ask_player(video_id, name, headers,
+                                            context=ctx)))
+    if not visitor:
+        kodiutils.log("cookie-as-tv: no visitor id was available, so three of"
+                      " those trials were the first one again")
+
+
+UBER_URL = "https://accounts.google.com/OAuthLogin"
+MERGE_URL = "https://accounts.google.com/MergeSession"
+
+
+def _mint_web_session():
+    """Can a browser session be minted from the token we already hold?
+
+    This is the shortcut past the whole bridge. The addon already plays the
+    web client's DASH; what makes that path need a manual cookie export is
+    only that we have no way to *become* the web client. Google's own
+    accounts service has a route that turns an OAuth token into browser
+    cookies -- OAuthLogin issues an "uberauth" token, MergeSession trades it
+    for a Set-Cookie -- which is how Android hands a signed-in session to a
+    WebView.
+
+    What is not known is whether our token is allowed near it. It carries
+    one scope, youtube, and the accounts route wants
+    https://www.google.com/accounts/OAuthLogin, which Google does not hand
+    to ordinary OAuth clients. So ask, and read the refusal: an error naming
+    the scope means "request that scope at sign-in and try again", while an
+    error about the client means the door is shut to a device-code app and
+    the bridge is the way.
+
+    Nothing here signs anything in or stores anything. It asks two questions
+    and prints what Google says.
+    """
+    try:
+        from . import oauth
+        token = oauth.access_token()
+    except Exception:
+        token = ""
+    if not token:
+        kodiutils.log("mint: no token stored, nothing to try")
+        return
+    kodiutils.log("mint: the stored token carries scope %s" % oauth.SCOPE)
+
+    try:
+        reply = requests.get(UBER_URL, timeout=TIMEOUT,
+                             params={"source": "ChromiumBrowser",
+                                     "issueuberauth": "1"},
+                             headers={"Authorization": "Bearer " + token,
+                                      "User-Agent": api.UA})
+    except Exception as exc:
+        kodiutils.log_error("mint: OAuthLogin failed: %s" % exc)
+        return
+    body = (reply.text or "").strip()
+    kodiutils.log("mint: OAuthLogin -> HTTP %d, %d bytes: %s"
+                  % (reply.status_code, len(body), body[:200].replace("\n", " ")))
+    if reply.status_code != 200 or not body or " " in body[:40]:
+        kodiutils.log("mint: no uberauth token came back, so MergeSession has "
+                      "nothing to trade")
+        return
+
+    try:
+        merged = requests.get(MERGE_URL, timeout=TIMEOUT, allow_redirects=False,
+                              params={"source": "ChromiumBrowser",
+                                      "uberauth": body,
+                                      "continue": api.ORIGIN},
+                              headers={"User-Agent": api.UA})
+    except Exception as exc:
+        kodiutils.log_error("mint: MergeSession failed: %s" % exc)
+        return
+    jar = sorted(merged.cookies.keys())
+    kodiutils.log("mint: MergeSession -> HTTP %d, cookies %s"
+                  % (merged.status_code, jar or "none"))
+    wanted = [name for name in ("SID", "HSID", "SSID", "APISID", "SAPISID")
+              if name in jar]
+    kodiutils.log("mint: of the names the addon needs, it set %s"
+                  % (wanted or "none"))
+
+
+def _mint_scope():
+    """Would Google issue our client a token that OAuthLogin accepts?
+
+    OAuthLogin answered `Error=badauth`, which is the accounts service's
+    terse refusal and names nothing -- not a scope, not a client. The token
+    it was given carries the youtube scope alone, and the route wants
+    https://www.google.com/accounts/OAuthLogin, so the obvious next question
+    is whether our client may even ask for that scope.
+
+    The device-code endpoint answers that on its own, without anyone signing
+    in: hand it the combined scope and it either returns a user code, which
+    means the scope is allowed and a sign-in would be worth doing, or it
+    refuses and names invalid_scope, which closes the route for good and
+    leaves the bridge as the way.
+    """
+    try:
+        from . import oauth
+    except Exception:
+        return
+    client_id, _secret = oauth.credentials()
+    if not client_id:
+        kodiutils.log("mint scope: no client id configured")
+        return
+    combined = oauth.SCOPE + " https://www.google.com/accounts/OAuthLogin"
+    try:
+        reply = requests.post(oauth.DEVICE_CODE_URL, timeout=TIMEOUT,
+                              data={"client_id": client_id, "scope": combined},
+                              headers={"User-Agent": api.UA})
+    except Exception as exc:
+        kodiutils.log_error("mint scope: %s" % exc)
+        return
+    body = (reply.text or "")[:300].replace("\n", " ")
+    kodiutils.log("mint scope: asking for both scopes -> HTTP %d: %s"
+                  % (reply.status_code, body))
+    if reply.status_code == 200:
+        kodiutils.log("mint scope: the scope is allowed -- a sign-in with it "
+                      "is worth trying, and nothing has been signed in here")
 
 
 def _arms():
@@ -679,28 +872,65 @@ def _probe_sabr(response, streaming, sabr_url, cpn, how,
                           % (label, sabr.describe_response(reply.content)))
 
     if solved_url:
-        _probe_seek(solved_url, config, wanted, picked_video)
+        _drive_session(solved_url, config, wanted, picked_video,
+                       client_name)
 
 
-def _probe_seek(url, config, audio, video):
-    """Can a segment be asked for by time, or only streamed from wherever?
+def _drive_session(url, config, audio, video, client_name=None):
+    """Drive a real SABR session: does it advance, segment by segment?
 
-    This decides whether a bridge is buildable at all. InputStream Adaptive
-    fetches segment N of a template, so the bridge has to turn "segment N"
-    into a SABR request and get back that segment -- not whatever the server
-    felt like sending. ClientAbrState field 28 is the player position, so
-    ask twice at two positions and compare what comes back.
+    Nothing advanced across every previous attempt -- not a six second
+    wait, not a claimed buffer, not a position -- and every explanation I
+    offered for that was a guess. The captured traffic answers it outright.
+    A response's NEXT_REQUEST_POLICY carries a blob in field 7; the request
+    that follows sends that same blob, byte for byte, as streamerContext
+    field 3. Rebuilt from a capture and compared to the request that
+    actually followed it, they are identical. That echo is what makes a
+    SABR session a session; without it every request is request one.
 
-    If the two answers carry different sequence numbers, segments are
-    addressable and a bridge can map ISA's requests onto them. If both
-    return the same bytes, SABR is a stream that starts where it likes and
-    the bridge would have to buffer rather than address.
+    So run the loop the browser runs: ask for the live edge, then echo what
+    comes back, claim what arrived, and ask again.
     """
-    entries = ([_format_entry(audio)] if audio else [],
-               [_format_entry(video)] if video else [])
-    for position in (0, 30000):
-        body = sabr.build_request(config, audio=entries[0], video=entries[1],
-                                  player_time_ms=position)
+    client_name = client_name or api.CLIENT_NAME
+    spec = api.client_spec(client_name)
+    info = sabr.client_info(spec["id"], api.effective_version(client_name),
+                            os_name=spec["context"].get("osName", "X11"))
+
+    tracks = {}
+    for fmt in (audio, video):
+        if fmt and fmt.get("itag"):
+            tracks[fmt["itag"]] = _format_entry(fmt)
+
+    echo = b""
+    # itag -> {sequence: media start time}. Every sequence actually held,
+    # rather than a running first/last pair: the server answered the live
+    # edge with N and then handed back N-1, and a pair that only grew
+    # forwards could not represent "I now hold both", so the claim stopped
+    # changing and so did the response, for four rounds.
+    state = {}
+    position = sabr.LIVE_EDGE
+    started = time.time()
+
+    audio_entries = [tracks[audio["itag"]]] if audio and audio.get("itag") else []
+    video_entries = [tracks[video["itag"]]] if video and video.get("itag") else []
+
+    for round_number in range(1, 7):
+        buffered = []
+        for itag, seen_starts in sorted(state.items()):
+            first, last = min(seen_starts), max(seen_starts)
+            # startTimeMs belongs to the first sequence of the range and the
+            # duration covers the whole run -- that is what the captured
+            # ranges do when they extend: start held still at the first
+            # segment while duration grew from 5015 to 10031.
+            buffered.append(sabr.buffered_range(
+                tracks[itag], seen_starts[first],
+                (last - first + 1) * SEGMENT_MS, first, last))
+        body = sabr.build_request(
+            config, audio=audio_entries, video=video_entries,
+            player_time_ms=position,
+            buffered=buffered,
+            context=sabr.streamer_context(info=info, echo=echo),
+            elapsed_ms=int((time.time() - started) * 1000))
         try:
             reply = requests.post(url, data=body, timeout=TIMEOUT, headers={
                 "User-Agent": api.UA,
@@ -709,21 +939,59 @@ def _probe_seek(url, config, audio, video):
                 "Content-Type": "application/x-protobuf",
             })
         except Exception as exc:
-            kodiutils.log_error("sabr seek [%d ms]: %s" % (position, exc))
-            continue
+            kodiutils.log_error("sabr drive [round %d]: %s" % (round_number, exc))
+            return
         if reply.status_code != 200 or not reply.content:
-            kodiutils.log("sabr seek [%6d ms]: HTTP %d, %d bytes"
-                          % (position, reply.status_code, len(reply.content)))
-            continue
-        headers = [payload for kind, payload in sabr.parse_ump(reply.content)
-                   if kind == 20]
-        media = sum(len(payload) for kind, payload
-                    in sabr.parse_ump(reply.content) if kind == 21)
-        kodiutils.log("sabr seek [%6d ms]: %d bytes, %d media, %d header(s)"
-                      % (position, len(reply.content), media, len(headers)))
-        for payload in headers:
-            kodiutils.log("sabr seek [%6d ms]:   %s"
-                          % (position, sabr.describe_media_header(payload)))
+            kodiutils.log("sabr drive [round %d]: HTTP %d, %d bytes"
+                          % (round_number, reply.status_code,
+                             len(reply.content)))
+            return
+
+        parts = list(sabr.parse_ump(reply.content))
+        media = sum(len(p) for kind, p in parts if kind == 21)
+        if round_number == 1:
+            # Does a segment arrive with its initialisation, or does ISA
+            # have to be given one from somewhere else? An fMP4 says so in
+            # its first box: ftyp/moov is initialisation, moof is media.
+            # Worth reading rather than reasoning about -- the bridge has to
+            # hand ISA an init segment either way.
+            for kind, payload in parts:
+                if kind != 21 or len(payload) < 16:
+                    continue
+                # A MEDIA payload opens with the id of its MEDIA_HEADER.
+                body = payload[1:]
+                box = body[4:8]
+                kodiutils.log("sabr drive: first media part opens with %r "
+                              "(%s)" % (box, body[:16].hex()))
+                break
+        errors = [p for kind, p in parts if kind == 44]
+        seen = []
+        for kind, payload in parts:
+            if kind != 20:
+                continue
+            got = dict((n, v) for n, _w, v in sabr.fields(payload))
+            itag, sequence, start = got.get(3), got.get(9), got.get(11)
+            seen.append((itag, sequence))
+            if itag in tracks and sequence is not None and start is not None:
+                state.setdefault(itag, {})[sequence] = start
+        # The playhead stays where the session started. The captured
+        # requests hold field 28 still across rounds and let the buffered
+        # ranges do the advancing; taking it from whichever header landed
+        # last mixed the audio and video timelines together.
+        if position == sabr.LIVE_EDGE and state:
+            position = min(min(seen.values()) for seen in state.values())
+        kodiutils.log("sabr drive [round %d]: %d bytes, %d media, (itag,seq) %s"
+                      "  holding %s%s"
+                      % (round_number, len(reply.content), media, seen,
+                         {itag: "%d..%d" % (min(v), max(v))
+                          for itag, v in sorted(state.items())},
+                         "  ERROR %r" % errors[0][:40] if errors else ""))
+
+        echo = sabr.next_request_echo(reply.content)
+        if not echo:
+            kodiutils.log("sabr drive [round %d]: no NEXT_REQUEST_POLICY to "
+                          "echo -- the session cannot continue" % round_number)
+            return
 
 
 def _find_keys(node, needle, path="", found=None):
