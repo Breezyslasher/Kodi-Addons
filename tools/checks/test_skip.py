@@ -10,6 +10,7 @@ class S(sabr_session.Session):
         self.segments = {150: {1: b"clear-fragment-1",
                                2: b"encrypted-2", 3: b"encrypted-3"}}
         self.skip = {}
+        self.respell = set()
     def fetch(self):
         return False
 
