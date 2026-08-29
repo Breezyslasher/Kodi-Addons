@@ -105,8 +105,16 @@ def format_id(itag, last_modified=0, xtags=""):
 LIVE_EDGE = 9007199254740991
 
 
+# Two ClientAbrState fields the browser sends verbatim on every request,
+# lifted from a capture rather than reconstructed. 72 is a viewport
+# ({1:0, 2:1080, 3:0, 4:0, 5:1080, 6:0}); 79 is a repeated {1: n, 2: 0}
+# for n = 3, 4, 2, 1, which has the shape of a codec capability list.
+VIEWPORT_1080 = bytes.fromhex("080010b8081800200028b8083000")
+CAPABILITIES = bytes.fromhex("0a04080310000a04080410000a04080210000a0408011000")
+
+
 def client_abr_state(player_time_ms=0, max_height=1080, elapsed_ms=0,
-                     target_height=0, bandwidth=0):
+                     target_height=0, bandwidth=0, extras=b""):
     """ClientAbrState, with the fields four captured requests agree on.
 
     Field 29 is not a media-type enum. It was annotated as one here, first
@@ -153,7 +161,7 @@ def client_abr_state(player_time_ms=0, max_height=1080, elapsed_ms=0,
         body = _v(16, int(target_height)) + body
     if bandwidth:
         body += _v(23, int(bandwidth))
-    return body
+    return body + extras
 
 
 def client_info(client_id, client_version, locale="en_US", os_name="X11"):
@@ -221,7 +229,7 @@ def buffered_range(entry, start_ms, duration_ms, first_sequence,
 
 def build_request(ustreamer_config, audio=(), video=(), player_time_ms=0,
                   max_height=1080, buffered=(), context=b"", elapsed_ms=0,
-                  target_height=0, bandwidth=0):
+                  target_height=0, bandwidth=0, extras=b""):
     """A VideoPlaybackAbrRequest body.
 
     ``ustreamer_config`` is the base64url string from the player response.
@@ -242,7 +250,7 @@ def build_request(ustreamer_config, audio=(), video=(), player_time_ms=0,
     builder that refuses to make one.
     """
     body = _b(1, client_abr_state(player_time_ms, max_height, elapsed_ms,
-                                  target_height, bandwidth))
+                                  target_height, bandwidth, extras))
     for held in buffered:
         body += _b(3, held)
     if ustreamer_config:
