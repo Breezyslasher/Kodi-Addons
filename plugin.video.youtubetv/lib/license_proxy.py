@@ -463,6 +463,16 @@ def _fetch_license(challenge):
                                                   (f.get("keyId") or "none")[:16])
                                        for f in granted)))
             _remember_key_ids(ctx.get("video_id", ""), granted)
+            # One question, asked once per session, costing one request:
+            # does the endpoint serve HD now that this session has a
+            # licence? Every refusal so far was collected before one
+            # existed. See sabr_bridge.probe_after_licence.
+            try:
+                from . import sabr_bridge
+                sabr_bridge.probe_after_licence(ctx.get("video_id", ""))
+            except Exception as exc:
+                kodiutils.log("sabr bridge: post-licence probe skipped: %s"
+                              % exc)
             return licence
         last_status = status
         kodiutils.log("licence: status %s at cryptoPeriodIndex %s"

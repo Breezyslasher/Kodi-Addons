@@ -200,6 +200,80 @@ def key_id_hex(value):
     return raw.hex() if len(raw) == 16 else ""
 
 
+def probe_after_licence(video_id=""):
+    """Ask the endpoint for HD once a licence exists, and say what it says.
+
+    Every HD offer this bridge has made was made at session-open, which is
+    before any licence has been granted -- and every one was answered
+    sabr.no_video_selected. The browser's own capture puts the licence in
+    the *middle* of its SABR session:
+
+        POST /player                  authorises AUDIO,SD
+        POST videoplayback x3
+        POST /player/get_drm_license
+        POST videoplayback x6         same session, licence now held
+
+    So "the endpoint will not serve HD" and "the endpoint will not serve HD
+    to a session that has not licensed it yet" are two different claims and
+    nothing has told them apart. This tells them apart: one extra request,
+    offering the HD-tier renditions, sent after the licence and thrown
+    away. It reads the answer and changes nothing -- the response is not
+    absorbed and the session's own offer is untouched.
+    """
+    with _lock:
+        found = [pair for key, pair in _sessions.items()]
+    if not found:
+        return
+    session, formats = found[-1]
+    if getattr(session, "_probed", False):
+        return
+    session._probed = True
+    candidates = formats.get("candidates") or []
+    tiers = {"DRM_TRACK_TYPE_HD", "DRM_TRACK_TYPE_UHD1"}
+    hd = [f for f in alternatives(candidates, "video/", 4320)
+          if (f.get("drmTrackType") or "") in tiers
+          and "avc1" in (f.get("mimeType") or "")]
+    if not hd:
+        return
+    from . import sabr
+    body = sabr.build_request(
+        session.config,
+        audio=session.audio, video=[_entry(f) for f in hd],
+        player_time_ms=session.position,
+        max_height=max(f.get("height") or 0 for f in hd),
+        buffered=[],
+        context=sabr.streamer_context(info=session.info,
+                                      po_token=session.po_token,
+                                      echo=session.echo))
+    try:
+        data = _post(session.url, body)
+    except Exception as exc:
+        kodiutils.log("sabr bridge: the post-licence HD probe could not be "
+                      "sent: %s" % exc)
+        return
+    if not data:
+        kodiutils.log("sabr bridge: the post-licence HD probe got an empty "
+                      "answer for %s" % [f.get("itag") for f in hd])
+        return
+    served, refusal = [], ""
+    for part_type, payload in sabr.parse_ump(data):
+        if part_type == 44:
+            refusal = bytes(payload[:60]).decode("ascii", "replace")
+        elif part_type == 20:
+            got = dict((n, v) for n, _w, v in sabr.fields(payload))
+            if got.get(3) is not None:
+                served.append(got[3])
+    if refusal:
+        kodiutils.log("sabr bridge: with a licence in hand the endpoint "
+                      "still refuses HD %s: %s"
+                      % ([f.get("itag") for f in hd], refusal.strip()))
+    else:
+        kodiutils.log("sabr bridge: WITH A LICENCE THE ENDPOINT SERVES HD -- "
+                      "offered %s and it answered with itag(s) %s (%d bytes)"
+                      % ([f.get("itag") for f in hd],
+                         sorted(set(served)) or "none", len(data)))
+
+
 def _quality_floor():
     """The shortest rendition worth offering, or 0 for all of them.
 
