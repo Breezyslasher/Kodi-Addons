@@ -701,7 +701,7 @@ def po_token():
     if not _said.get("po_token"):
         _said["po_token"] = True
         where = ("the setting" if setting else
-                 "minting" if minted else
+                 potoken.last.get("source") or "minting" if minted else
                  "the build" if text else "nowhere")
         kodiutils.log("sabr bridge: proof-of-origin token from %s: %s (%d chars)"
                       % (where, (text[:16] + "...") if text else "-", len(text)))
