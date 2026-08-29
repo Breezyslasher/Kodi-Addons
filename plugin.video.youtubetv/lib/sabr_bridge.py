@@ -168,6 +168,30 @@ def alternatives(candidates, kind, max_height=1080, exclude=()):
     return sorted(wanted, key=_preference, reverse=True)
 
 
+def key_id_hex(value):
+    """A key id as 32 hex characters, whichever way it was spelled.
+
+    The licence names them in base64: DRM_TRACK_TYPE_SD reads
+    TTUh4p7fUhmchZcN.., which decodes to 4d3521e29edf52199c85970d.. -- the
+    very kid itag 223's tenc box carries. The bridge tested the licence's
+    ids for 32 hex characters, so every one of them failed, and the
+    fallback meant to name a rendition's key when its media has not been
+    served yet has never once fired.
+    """
+    text = (value or "").strip()
+    if len(text) == 32:
+        try:
+            bytes.fromhex(text)
+            return text.lower()
+        except ValueError:
+            pass
+    try:
+        raw = widevine.decode_b64(text)
+    except Exception:
+        return ""
+    return raw.hex() if len(raw) == 16 else ""
+
+
 def siblings(session, formats, kind, chosen):
     """The other renditions of one track that can share its AdaptationSet.
 
@@ -572,7 +596,7 @@ def manifest(key, base):
             tier = ("DRM_TRACK_TYPE_AUDIO" if kind == "audio"
                     else "DRM_TRACK_TYPE_HD" if (fmt.get("height") or 0) >= 720
                     else "DRM_TRACK_TYPE_SD")
-            raw = known.get(tier) or ""
+            raw = key_id_hex(known.get(tier) or "")
             kid = bytes.fromhex(raw) if len(raw) == 32 else None
             uuid = ("%s-%s-%s-%s-%s" % (raw[0:8], raw[8:12], raw[12:16],
                                         raw[16:20], raw[20:32])) if kid else ""
@@ -602,7 +626,7 @@ def manifest(key, base):
         tier = ("DRM_TRACK_TYPE_AUDIO" if kind == "audio"
                 else "DRM_TRACK_TYPE_HD" if (fmt.get("height") or 0) >= 720
                 else "DRM_TRACK_TYPE_SD")
-        return len(known.get(tier) or "") == 32
+        return len(key_id_hex(known.get(tier) or "")) == 32
 
     # What the server actually served, rather than what was asked for.
     by_itag = {f.get("itag"): f for f in (formats.get("candidates") or [])}
