@@ -89,6 +89,11 @@
 					<constraints><allowempty>true</allowempty></constraints>
 					<control type="edit" format="string"/>
 				</setting>
+				<setting id="no_js_runtime" type="boolean" label="30065" help="30066">
+					<level>2</level>
+					<default>false</default>
+					<control type="toggle"/>
+				</setting>
 				<setting id="sabr_url" type="string" label="30063" help="30064">
 					<level>2</level>
 					<default></default>

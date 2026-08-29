@@ -294,6 +294,11 @@ def _runtime_on_path():
     flatpak-spawn --host runs it on the host properly, rather than borrowing
     the host binary into a sandbox whose libraries it was not built against.
     """
+    # A box may have a runtime and still need to be tested without one:
+    # LibreELEC ships Python and nothing else, and a PC with node would
+    # quietly cover for anything the Python path cannot do.
+    if kodiutils.get_setting_bool("no_js_runtime", False):
+        return "", []
     configured = kodiutils.get_setting("js_runtime", "")
     if configured:
         if os.path.isfile(configured) and os.access(configured, os.X_OK):
