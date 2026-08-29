@@ -50,6 +50,47 @@ something breaks again. `LENIENT=1` makes a property read on undefined
 answer undefined instead of throwing, which is occasionally useful for
 seeing how much further a run would get.
 
+## The one that would have bitten hardest
+
+`%` poisoned every number it produced. js2py interns a `PyJsNumber` for
+every integer from -1024 to 16383 and hands the same object out each time
+that value is wanted; its `__mod__` built the result with `Js(a % b)` --
+returning the interned object -- and then corrected the sign **in place**:
+
+    pyres = Js(a % b)
+    if a < 0 and pyres.value > 0:
+        pyres.value -= abs(b)
+
+So `-7 % 3` takes the shared `2`, writes `-1` into it, and from then on the
+JavaScript literal `2` evaluates to `-1` everywhere in that context:
+`1 + 1` is `-1`, `String(2)` is `"-1"`, `Math.pow(2, 53)` is `-1`. The very
+next expression in the same statement already sees it, which is why
+`(-7 % 3) + ',' + (7 % -3) + ',' + (5.5 % 2)` answers `-1,1,0.5` where a
+browser says `-1,1,1.5`.
+
+This is the released library's bug, not something the addon does to it, and
+it is not academic: the VM's own dispatch indexes with `(n + 1) % 3`.
+
+It was found by the conformance corpus in an unexpected way -- a case
+several rows later started answering wrongly, and bisecting the prefix
+named `modulo negatives` as the culprit. A case that fails on its own is
+easy; a case that poisons the ones after it is what a corpus run in
+sequence is for.
+
+## What still differs, and why it is left
+
+Ten of 161 cases, all either deliberate or out of reach:
+
+| case | what happens |
+|---|---|
+| `eval sees local` | **Deliberate.** js2py cannot tell a direct eval from an indirect one, and BotGuard needs indirect semantics -- global scope -- or the probe that must throw `O is not defined` quietly succeeds. Direct eval therefore does not see the caller's locals. |
+| typed arrays (3 cases) | The shim implements them in ES5 because js2py's are numpy-only and numpy is not on a Kodi box. Values are masked when the array is built; a write afterwards is not truncated, and `Object.prototype.toString` says `[object Object]`. ES5 gives no way to do better, and the alternative is a Python `NameError` that no JavaScript `try/catch` can catch. |
+| `this in call`, `call with primitive this` | Sloppy-mode boxing of a primitive `this`. |
+| `arguments aliasing` | Writing a parameter does not show through `arguments[0]`. |
+| `sparse forEach` | Visits holes. |
+| `new on bound` | `new (f.bind(...))` throws. |
+| `+'0b11'` | js2py is ES5-correct here and node is not: binary literals in `Number()` are ES6. |
+
 ## What is measured, and what is not
 
 The snapshot matching V8's byte for byte is checked against one cached

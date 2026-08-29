@@ -74,6 +74,7 @@ def _fresh_context():
     import js2py
 
     context = js2py.EvalJs()
+    js2py_fixes.unlock_globals(context)
     context.execute("var window = this; var self = this; var globalThis = this;")
     context.execute(js2py_fixes.FIXES_JS)
     context.execute(_read("botguard_shim.js"))
