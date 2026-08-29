@@ -202,6 +202,15 @@ class _Handler(BaseHTTPRequestHandler):
             # somewhere arbitrary with the account's cookies attached.
             self._send(403)
             return
+        # Kept in scope: _resolve_n needs the jar to read the player js off
+        # the page. Routing the fetch through api.credential() took the name
+        # away and left _resolve_n raising NameError inside the patch, which
+        # is caught -- so the manifest was passed through unpatched, n never
+        # got solved, and every segment came back 403.
+        try:
+            cookies = auth.load()
+        except auth.AuthError:
+            cookies = {}
         try:
             credential, _client = api.credential()
             headers = {

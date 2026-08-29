@@ -159,3 +159,11 @@ msgstr ""
 msgctxt "#30055"
 msgid "Google API client secret"
 msgstr ""
+
+msgctxt "#30056"
+msgid "Check what each client identity is served"
+msgstr ""
+
+msgctxt "#30057"
+msgid "Fetches tv.youtube.com once with each client's user agent and writes to the log what client name and version the page declares for it. Three of the identities currently claim the same version, which cannot be right for all of them; this looks for real values instead. Changes nothing."
+msgstr ""
