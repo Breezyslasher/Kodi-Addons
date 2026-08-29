@@ -77,3 +77,27 @@ The open question is whether the 103-character token GenerateIT returns is
 itself usable as a proof-of-origin token. It carries the same `Mk`/`Ml`
 prefix as every token seen in a capture. If it is, the minter is not needed
 at all.
+
+## Where the minter is not
+
+Ruled out against a **fresh** challenge, with a **fresh** integrity token:
+
+* the signal array in every slot of the snapshot arguments, and in both slots
+  of the sixth argument to `vm.a` -- nothing is ever written into any of them;
+* the program-specific export, `FrQ_` today and `grQ_` in the capture. It does
+  take the integrity token and call back with a function, which looks exactly
+  like the minter, and that function called as `f(callback, identifier)`
+  answers with a 2100-character string beginning `$`. That is another
+  snapshot, not a token.
+
+So the only thing shaped like a proof-of-origin token is what GenerateIT
+returns: 103 characters, websafe, beginning `Mk` -- the same prefix as every
+token seen in a browser capture, though those were 114 characters.
+
+## The snapshot fails about one run in three
+
+Nondeterministically, on node 18 and node 22 alike, with `E:v is not a
+function` or `E:O is not a function`. The shim is missing something the VM
+reaches for only on some paths. Whatever finally mints a token needs to check
+for the leading `$` and retry, which `mint.js` half does -- it refuses a bad
+snapshot but does not yet retry.
