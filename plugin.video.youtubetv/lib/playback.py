@@ -10,40 +10,6 @@ ISA_ADDON = "inputstream.adaptive"
 WIDEVINE_SCHEME = "edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
 
 
-# InputStream Adaptive 21 learned to infer the manifest type from the mime
-# type and deprecated the property. Version 20 does not infer: its Open()
-# opens with
-#
-#     if (m_kodiProps.m_manifestType == PROPERTIES::ManifestType::UNKNOWN)
-#       return false;
-#
-# so a stream with no inputstream.adaptive.manifest_type is refused in a few
-# milliseconds, which Kodi reports only as "error opening" with nothing about
-# a property. Setting it on 21 or newer earns a deprecation warning, so it is
-# set only where it is needed.
-ISA_INFERS_MANIFEST_TYPE = (21,)
-
-
-def _isa_version():
-    """(major, minor, patch) of the installed InputStream Adaptive, or ()."""
-    try:
-        import xbmcaddon
-        raw = xbmcaddon.Addon(ISA_ADDON).getAddonInfo("version") or ""
-    except Exception:
-        return ()
-    parts = []
-    for piece in raw.split("."):
-        digits = ""
-        for char in piece:
-            if not char.isdigit():
-                break
-            digits += char
-        if not digits:
-            break
-        parts.append(int(digits))
-    return tuple(parts[:3])
-
-
 def _ensure_widevine():
     """Ask inputstreamhelper to install Widevine if it is missing.
 
@@ -203,12 +169,6 @@ def build_item(player_response, label=None, art=None):
         item.setArt({"thumb": art, "icon": art, "fanart": art})
 
     item.setProperty("inputstream", ISA_ADDON)
-    version = _isa_version()
-    if version and version < ISA_INFERS_MANIFEST_TYPE:
-        item.setProperty("inputstream.adaptive.manifest_type", "mpd")
-        kodiutils.log("inputstream.adaptive %s does not infer the manifest "
-                      "type, so it is named"
-                      % ".".join(str(part) for part in version))
     # No manifest_type: ISA detects it from the response and warns that the
     # property is going away. No manifest_update_parameter either -- ISA 22
     # rejects the "full" value outright ("no longer supported") and refreshes

@@ -84,7 +84,11 @@ retired, is in [docs/youtube-tv-protocol.md](../docs/youtube-tv-protocol.md).
 
 ## Requirements
 
-* Kodi 21 (Omega) or newer
+* Kodi 21 (Omega) or newer. Not 20: it was tried, and getting there needed the
+  manifest type named (ISA 20 requires it, 21 infers it) and a Widevine CDM
+  new enough for YouTube to license at all -- and with both done, ISA 20.3.18
+  crashed on the licence. That crash is ISA's, not something this addon can
+  work around
 * InputStream Adaptive 21.5.22 or newer, with a working Widevine CDM. On ISA
   21 the addon re-describes the audio encryption on the way past -- see
   *Audio on InputStream Adaptive 21* below -- which is on by default and costs
