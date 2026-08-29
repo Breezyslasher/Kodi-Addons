@@ -17,8 +17,10 @@ Cached against its binding until it expires, because the exchange costs a
 couple of seconds and three network round trips, and the token is good for
 twelve hours.
 """
+import base64
 import json
 import os
+import random
 import subprocess
 import threading
 import time
@@ -91,6 +93,36 @@ def _mint(binding):
     return token, int(answer.get("ttl") or 43200)
 
 
+def cold_start(binding, client_state=1):
+    """A token computed here, with no BotGuard and no JavaScript at all.
+
+    YouTube accepts one of these while it reports StreamProtectionStatus 2,
+    and refuses it once that becomes 3 -- so it is a fallback, not a
+    replacement. It exists because a box may have no JavaScript runtime at
+    all: LibreELEC ships Python and nothing else, and minting needs a runtime
+    that BotGuard's interpreter will run in.
+
+    The shape is arithmetic, not cryptography: a two byte prefix, two random
+    keys, a client state, a four byte timestamp, the binding, and then the
+    payload XORed against the keys that precede it.
+    """
+    body = binding.encode("utf-8")
+    now = int(time.time())
+    keys = [random.randrange(256), random.randrange(256)]
+    header = keys + [0, client_state] + [
+        (now >> 24) & 0xFF, (now >> 16) & 0xFF, (now >> 8) & 0xFF, now & 0xFF]
+    packet = bytearray(2 + len(header) + len(body))
+    packet[0] = 34
+    packet[1] = len(header) + len(body)
+    packet[2:2 + len(header)] = bytes(header)
+    packet[2 + len(header):] = body
+    # The payload is everything after the two byte prefix, XORed forward
+    # against the two random keys at its head.
+    for i in range(len(keys), len(packet) - 2):
+        packet[2 + i] ^= packet[2 + (i % len(keys))]
+    return base64.urlsafe_b64encode(bytes(packet)).decode().rstrip("=")
+
+
 def token(binding, force=False):
     """A token for this binding, minted if there is not a live one already.
 
@@ -114,8 +146,15 @@ def token(binding, force=False):
         try:
             minted, ttl = _mint(binding)
         except PoTokenError as exc:
-            kodiutils.log_error("po token: %s" % exc)
-            return ""
+            kodiutils.log("po token: %s" % exc)
+            # No runtime, or the exchange failed. A cold start token is
+            # computed here and needs nothing, and YouTube takes one while it
+            # reports StreamProtectionStatus 2. Short-lived on purpose: it
+            # should be retried for a real one before long.
+            minted, ttl = cold_start(binding), 1800
+            kodiutils.log("po token: falling back to a cold start token, "
+                          "%s... -- it plays while YouTube allows one, and "
+                          "is not a substitute for minting" % minted[:16])
 
         held = {"token": minted, "expires_at": int(now + ttl)}
         _memo[binding] = held
