@@ -652,23 +652,34 @@ class Api(object):
         return response
 
     def heartbeat(self, video_id, cpn, sequence, token, server_data):
-        """Keep a live stream alive.
+        """Keep a playback session alive.
 
-        The response asks to be called again after ``pollDelayMs`` (30 s in
-        every capture) and carries the ``heartbeatServerData`` to echo next
-        time. HEARTBEAT_CHECK_TYPE_YPC is the entitlement check, so a client
-        that stops calling should expect the stream to be cut.
+        The response asks to be called again after ``pollDelayMs`` and carries
+        the ``heartbeatServerData`` to echo next time. This is the shape the
+        web player sends, field for field, from the 2026-08-28 03:10 capture of
+        two minutes of on-demand playback -- two checks and an empty
+        ``unpluggedParams``, no playbackState:
+
+            {"heartbeatChecks": ["HEARTBEAT_CHECK_TYPE_YPC",
+                                 "HEARTBEAT_CHECK_TYPE_UNPLUGGED"],
+             "unpluggedParams": {}}
+
+        HEARTBEAT_CHECK_TYPE_YPC is the entitlement check. The player response
+        that starts a session says how long a client may go quiet --
+        ``intervalMilliseconds`` 30000 and ``maxRetries`` 3 -- and ninety
+        seconds is where playback stops for a client that never calls.
         """
         body = {
             "videoId": video_id,
             "cpn": cpn,
             "sequenceNumber": sequence,
-            "heartbeatRequestParams": {"heartbeatChecks": [
-                "HEARTBEAT_CHECK_TYPE_LIVE_STREAM_STATUS",
-                "HEARTBEAT_CHECK_TYPE_YPC",
-            ]},
-            "playbackState": {"playbackPosition": {
-                "utcTimeMillis": str(int(time.time() * 1000))}},
+            "heartbeatRequestParams": {
+                "heartbeatChecks": [
+                    "HEARTBEAT_CHECK_TYPE_YPC",
+                    "HEARTBEAT_CHECK_TYPE_UNPLUGGED",
+                ],
+                "unpluggedParams": {},
+            },
         }
         if token:
             body["heartbeatToken"] = token

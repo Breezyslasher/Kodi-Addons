@@ -180,13 +180,25 @@ def content_id(drm_params, manifest_url):
     return "%s:%s" % (source_of(manifest_url).upper(), identifier)
 
 
-def pssh_data(content, is_live=True, period_index=None):
+# WidevinePsshData field 2, repeated: the key ids this init data covers.
+F_KEY_ID = 2
+
+
+def pssh_data(content, is_live=True, period_index=None, key_id=None):
     """The WidevinePsshData payload for one stream.
 
     Live streams rotate keys daily, so they carry the period index and its
     duration. On-demand does not rotate and omits both.
+
+    ``key_id`` names the key this init data is for. It is what a conformant
+    packager puts here, and it also makes the audio track's PSSH differ from
+    the video track's -- which is what ISA compares when deciding whether two
+    streams may share one CDM session. See manifest.set_key_ids.
     """
-    parts = [_field_bytes(F_CONTENT_ID, content)]
+    parts = []
+    if key_id:
+        parts.append(_field_bytes(F_KEY_ID, key_id))
+    parts.append(_field_bytes(F_CONTENT_ID, content))
     if is_live:
         parts.append(_field_varint(
             F_CRYPTO_PERIOD_INDEX,
@@ -198,9 +210,10 @@ def pssh_data(content, is_live=True, period_index=None):
     return b"".join(parts)
 
 
-def build_pssh(content, is_live=True, period_index=None):
-    """A complete ``pssh`` box, base64 encoded, for license_data."""
-    data = pssh_data(content, is_live=is_live, period_index=period_index)
+def build_pssh(content, is_live=True, period_index=None, key_id=None):
+    """A complete ``pssh`` box, base64 encoded."""
+    data = pssh_data(content, is_live=is_live, period_index=period_index,
+                     key_id=key_id)
     body = (WIDEVINE_SYSTEM_ID
             + struct.pack(">I", len(data))
             + data)

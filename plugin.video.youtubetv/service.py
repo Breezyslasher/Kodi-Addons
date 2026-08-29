@@ -25,11 +25,17 @@ class Monitor(xbmc.Monitor):
 
 
 class Heartbeat(object):
-    """Polls player/heartbeat while a live stream is playing.
+    """Polls player/heartbeat for as long as something is playing.
 
     YouTube's heartbeat carries HEARTBEAT_CHECK_TYPE_YPC, the entitlement
-    check. A client that stops calling should expect the stream to be cut, so
-    this runs for as long as Kodi is playing something the plugin started.
+    check, and the player response says how long a client may go quiet:
+    ``intervalMilliseconds`` 30000 with ``maxRetries`` 3. Ninety seconds.
+
+    This used to run only for live, on the assumption that on-demand had
+    nothing to keep alive. The 2026-08-28 03:10 capture says otherwise -- two
+    minutes of *on-demand* playback in the web player carries a heartbeat POST
+    every thirty seconds, sequence numbers 0 and 1, each echoing the previous
+    response's heartbeatServerData. So it runs for everything now.
     """
 
     def __init__(self):
@@ -42,19 +48,35 @@ class Heartbeat(object):
         self.token = None
         self.server_data = None
         self.next_due = 0
+        self.interval = HEARTBEAT_DEFAULT_MS
         self._client = None
 
     def adopt(self, context):
-        """Pick up the playback the plugin just armed."""
-        if not context.get("is_live"):
+        """Pick up the playback the plugin just armed.
+
+        The token and the first server data come from the player response's
+        heartbeatParams and are not optional: the web player quotes both on its
+        very first call. Sending neither is how a session goes unrecognised.
+        """
+        if not context.get("video_id"):
             return
         if context.get("video_id") == self.video_id:
             return
         self.reset()
+        params = context.get("heartbeat") or {}
         self.video_id = context.get("video_id")
         self.cpn = context.get("cpn")
-        self.next_due = time.time() + HEARTBEAT_DEFAULT_MS / 1000.0
-        kodiutils.log("heartbeat: following %s" % self.video_id)
+        self.token = params.get("heartbeatToken")
+        self.server_data = params.get("heartbeatServerData")
+        try:
+            self.interval = max(int(params.get("intervalMilliseconds") or
+                                    HEARTBEAT_DEFAULT_MS), 5000)
+        except (TypeError, ValueError):
+            self.interval = HEARTBEAT_DEFAULT_MS
+        self.next_due = time.time() + self.interval / 1000.0
+        kodiutils.log("heartbeat: following %s every %ds, token %s"
+                      % (self.video_id, self.interval / 1000,
+                         "yes" if self.token else "MISSING"))
 
     def tick(self):
         if not self.video_id or time.time() < self.next_due:
@@ -70,8 +92,8 @@ class Heartbeat(object):
                                               self.sequence, self.token,
                                               self.server_data)
         except (auth.AuthError, api.ApiError) as exc:
-            kodiutils.log("heartbeat failed: %s" % exc)
-            self.next_due = time.time() + HEARTBEAT_DEFAULT_MS / 1000.0
+            kodiutils.log_error("heartbeat failed: %s" % exc)
+            self.next_due = time.time() + self.interval / 1000.0
             return
 
         self.sequence += 1
@@ -83,10 +105,12 @@ class Heartbeat(object):
             kodiutils.notify(reason or status, "Stream stopped")
 
         try:
-            delay = int(response.get("pollDelayMs") or HEARTBEAT_DEFAULT_MS)
+            delay = int(response.get("pollDelayMs") or self.interval)
         except (TypeError, ValueError):
-            delay = HEARTBEAT_DEFAULT_MS
+            delay = self.interval
         self.next_due = time.time() + max(delay, 5000) / 1000.0
+        kodiutils.log("heartbeat %d acknowledged (%s), next in %ds"
+                      % (self.sequence - 1, status or "no status", delay / 1000))
 
 
 def main():

@@ -18,6 +18,11 @@
 					<default>false</default>
 					<control type="toggle"/>
 				</setting>
+				<setting id="split_sessions" type="boolean" label="30039" help="30040">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle"/>
+				</setting>
 			</group>
 		</category>
 		<category id="playback" label="30010">

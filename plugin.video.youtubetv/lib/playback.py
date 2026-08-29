@@ -28,6 +28,18 @@ def _ensure_widevine():
         return True
 
 
+# The labels ISA's representation chooser accepts. 2160p is not among them --
+# it answers "Resolution not valid" and falls back to the screen size -- so a
+# ceiling above 1080p is expressed by setting no ceiling at all.
+_CHOOSER_LABELS = (480, 576, 720, 1080)
+
+
+def _chooser_label(cap):
+    """The ISA chooser label for a height cap, or "" for no restriction."""
+    usable = [h for h in _CHOOSER_LABELS if h >= cap]
+    return "%dp" % min(usable) if usable else ""
+
+
 def _quality_cap():
     """Maximum height from settings, 0 meaning unlimited."""
     return kodiutils.get_setting_int("max_height", 0)
@@ -77,6 +89,11 @@ def _dump_manifest(url):
     stream it could not handle, and the manifest is the only place the answer
     lives -- which ContentProtection schemes are declared, and whether they
     carry the PSSH init data ISA needs to open a CDM session.
+
+    Fetched through the proxy, not from YouTube. The upstream copy is the one
+    nobody plays: its n is still as minted, so every segment url in it is a
+    403 by construction, and the probe below spent several builds reporting
+    that as though it were news. What ISA reads is what the proxy returns.
     """
     if not kodiutils.get_setting_bool("dump_manifest", False):
         return
@@ -84,7 +101,8 @@ def _dump_manifest(url):
         import os
 
         import requests
-        response = requests.get(url, timeout=30, headers={
+        response = requests.get(license_proxy.manifest_url(url), timeout=60,
+                                headers={
             "User-Agent": api.UA, "Origin": api.ORIGIN,
             "Referer": api.ORIGIN + "/",
             "Cookie": auth.cookie_header(auth.load()),
@@ -174,20 +192,51 @@ def build_item(player_response, label=None, art=None):
         # id comes out of drmParams and the manifest URL. See lib/widevine.py.
         content = widevine.content_id(streaming.get("drmParams", ""), manifest)
         if content:
-            pssh = widevine.build_pssh(content, is_live=is_live)
             kodiutils.log("pssh content id: %s (live=%s)" % (content, is_live))
-            item.setProperty("inputstream.adaptive.license_data", pssh)
 
-            # No pre_init_data. It was the right answer while nothing ISA
-            # could read carried a key id, but it pins the CDM to one session
-            # for one key -- and the licence grants four. With the SD key
-            # pinned, every audio sample has a key id no session holds, which
-            # is what "Decrypt Sample returns failure!" was reporting fifty
-            # times a second while the video decoded.
+            # Deliberately NOT set as inputstream.adaptive.license_data. The
+            # property looks like "an extra source of init data" and is in fact
+            # a switch, and leaving it on is what silences the audio track.
+            # Three steps, all of them in ISA's source rather than inferred:
             #
-            # The manifest now declares mp4protection with the key id for each
-            # track and the Widevine system id with this PSSH, so ISA opens the
-            # sessions it needs by itself. See manifest.set_key_ids.
+            # 1. src/parser/DASHTree.cpp
+            #        m_isCustomInitPssh = !kodiProps.GetLicenseData().empty();
+            #        ...
+            #        if (m_isCustomInitPssh || GetProtectionData(...))
+            #          InsertPsshSet(..., pssh, kid, licenseUrl);
+            #    With the property set the || never evaluates its right side,
+            #    so pssh and kid are inserted empty and every cenc:default_KID
+            #    this addon computes is discarded before it is read. That is
+            #    the "Cannot convert KID \"\"" line.
+            #
+            # 2. src/decrypters/widevine/WVCencSingleSampleDecrypter.cpp,
+            #    GetCapabilities, which is handed that empty kid:
+            #        m_fragmentPool[poolId].m_key =
+            #            keyId.empty() ? m_keys.front().m_keyId : keyId;
+            #    so the capability probe decrypts a test sample with whichever
+            #    key the licence happened to list first.
+            #
+            # 3. When that probe fails, the same function does:
+            #        if (media == SSD_MEDIA_VIDEO)
+            #          caps.flags |= SSD_SECURE_PATH | SSD_ANNEXB_REQUIRED;
+            #        else
+            #          caps.flags = SSD_INVALID;
+            #    and Session.cpp answers SSD_INVALID with RemovePSSHSet().
+            #    Video falls back to the secure path and plays; audio is
+            #    removed outright. Video with no sound, exactly as reported.
+            #
+            # Unset, GetProtectionData runs and reads the manifest the proxy
+            # serves: a <cenc:pssh> and that track's own cenc:default_KID on
+            # every Representation, so each track probes with its own key.
+            # See manifest.set_key_ids and the licence proxy's manifest
+            # handler.
+            #
+            # Note the cost this shares with the resolution ceiling: the key
+            # ids come from a licence, so the first play of a title still has
+            # an empty kid and may still lose audio. The second play has them.
+            #
+            # No pre_init_data either, for the reason it was removed: it pins
+            # the CDM to one session for one key, and the licence grants four.
             video_id = details.get("videoId") or ""
             known = license_proxy.key_ids_for(video_id)
             if known:
@@ -211,12 +260,20 @@ def build_item(player_response, label=None, art=None):
         kodiutils.log("capping to %dp (%s)"
                       % (cap, "the licence's ceiling" if cap == licensed
                          else "your quality setting"))
-        # Both spellings: the chooser properties are what ISA 21+ reads, and
-        # max_resolution is the older name still honoured by some builds.
-        item.setProperty("inputstream.adaptive.max_resolution", str(cap))
-        item.setProperty("inputstream.adaptive.chooser_resolution_max", "%dp" % cap)
-        item.setProperty("inputstream.adaptive.chooser_resolution_secure_max",
-                         "%dp" % cap)
+        # Only labels ISA actually accepts. It answered "Resolution not valid"
+        # for 2160p and then fell back to the screen size, so the cap was both
+        # noisy and ineffective. A ceiling at or above the tallest label is not
+        # a restriction anyway: leaving the properties unset lets ISA pick
+        # freely, which is what "licensed to 2160p" should mean.
+        label = _chooser_label(cap)
+        if label:
+            item.setProperty("inputstream.adaptive.max_resolution", str(cap))
+            item.setProperty("inputstream.adaptive.chooser_resolution_max", label)
+            item.setProperty("inputstream.adaptive.chooser_resolution_secure_max",
+                             label)
+        else:
+            kodiutils.log("not restricting the chooser: %dp is at or above "
+                          "everything ISA offers to cap" % cap)
 
     headers = "User-Agent=%s&Referer=%s/" % (api.UA, api.ORIGIN)
     item.setProperty("inputstream.adaptive.stream_headers", headers)
@@ -584,6 +641,7 @@ def prepare(client, video_id, label=None, art=None):
         cpn=cpn,
         drm_params=streaming.get("drmParams", ""),
         is_live=bool(details.get("isLive")),
+        heartbeat=response.get("heartbeatParams") or {},
     )
 
     authorized = streaming.get("initialAuthorizedDrmTrackTypes") or []

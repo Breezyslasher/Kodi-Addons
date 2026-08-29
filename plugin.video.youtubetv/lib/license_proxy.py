@@ -29,12 +29,13 @@ import math
 import secrets
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import requests
 
-from . import (api, auth, kodiutils, manifest as manifest_mod, nsig,
+from . import (api, auth, kodiutils, manifest as manifest_mod, mp4, nsig,
                widevine)
 
 LICENSE_URL = api.BASE + "player/get_drm_license"
@@ -58,13 +59,17 @@ def _context():
     return kodiutils.read_json(CONTEXT_FILE, default={}) or {}
 
 
-def set_context(video_id, cpn, drm_params, is_live):
+def set_context(video_id, cpn, drm_params, is_live, heartbeat=None):
     """Record what the next licence exchange needs. Called just before play."""
     kodiutils.write_json(CONTEXT_FILE, {
         "video_id": video_id,
         "cpn": cpn,
         "drm_params": drm_params,
         "is_live": bool(is_live),
+        # heartbeatParams straight out of the player response: the token and
+        # the first heartbeatServerData the session must quote, and how long
+        # it may go quiet. The service reads this file to know what to send.
+        "heartbeat": heartbeat or {},
         # The session id is not ours to invent: the player response mints one
         # and embeds it in drmParams, and the licence exchange has to quote
         # that same string. Falling back to a generated one only keeps things
@@ -211,11 +216,18 @@ class _Handler(BaseHTTPRequestHandler):
             # no way to tell which belongs to which -- so it picks one and
             # every sample fails to decrypt after downloading perfectly well.
             ctx = _context()
+            video_id = ctx.get("video_id", "")
+            content = widevine.content_id(ctx.get("drm_params", ""), target)
+            is_live = bool(ctx.get("is_live"))
+            split = None
+            if kodiutils.get_setting_bool("split_sessions", True):
+                split = (lambda kid: widevine.build_pssh(
+                    content, is_live=is_live, key_id=kid))
             body = manifest_mod.set_key_ids(
-                body, key_ids_for(ctx.get("video_id", "")),
-                pssh=widevine.build_pssh(
-                    widevine.content_id(ctx.get("drm_params", ""), target),
-                    is_live=bool(ctx.get("is_live"))))
+                body, key_ids_for(video_id),
+                pssh=widevine.build_pssh(content, is_live=is_live),
+                kid_by_rep=_read_kids(body, video_id),
+                split_audio=split)
         except Exception as exc:
             # A manifest we failed to repair still beats no manifest.
             kodiutils.log_error("manifest patch failed, passing it through: %s"
@@ -412,6 +424,89 @@ def _secret():
     return _published().get("secret", "")
 
 
+# Init segments are small and immutable, so one fetch per Representation per
+# title is enough for as long as the service runs.
+_INIT_KIDS = {}
+
+
+def _read_kids(body, video_id):
+    """The key id each Representation's own init segment names.
+
+    The alternative was to wait for a licence and remember what it granted,
+    which cannot work on a title's first play -- the licence is fetched during
+    playback, after ISA has already parsed the manifest, so the first play had
+    no key ids at all and lost its audio track. The ids are in the media the
+    whole time: every encrypted track's moov carries a tenc box naming the
+    default_KID its samples use. That is also the id ISA's sample reader takes
+    for decryption, so reading it here means the manifest and the media agree
+    by construction rather than by a height-to-tier guess.
+
+    Costs one ranged GET of about 1.7 kB per Representation, in parallel, once
+    per title. A track we cannot read is simply left out of the map and falls
+    back to the licence-derived id.
+    """
+    cached = _INIT_KIDS.get(video_id)
+    if cached is not None:
+        return cached
+    try:
+        return _read_kids_now(body, video_id)
+    except Exception as exc:
+        # Never let this cost a manifest. Without it the licence-derived ids
+        # still apply, which is where we were before.
+        kodiutils.log_error("init segments: giving up on this title: %s" % exc)
+        return {}
+
+
+def _read_kids_now(body, video_id):
+    targets = manifest_mod.init_targets(body)
+    if not targets:
+        return {}
+
+    headers = {"User-Agent": api.UA, "Origin": api.ORIGIN,
+               "Referer": api.ORIGIN + "/"}
+    session = requests.Session()
+
+    def read(target):
+        ident, url, byte_range = target
+        head = dict(headers)
+        if byte_range:
+            head["Range"] = "bytes=%s" % byte_range
+        response = session.get(url, headers=head, timeout=15)
+        if response.status_code not in (200, 206):
+            raise RuntimeError("HTTP %d" % response.status_code)
+        return ident, mp4.default_kid(response.content)
+
+    found = {}
+    failures = []
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        for target, outcome in zip(targets, pool.map(
+                lambda t: _quiet(read, t), targets)):
+            if isinstance(outcome, Exception):
+                failures.append("%s: %s" % (target[0], outcome))
+            elif outcome[1]:
+                found[outcome[0]] = outcome[1]
+
+    if found:
+        kodiutils.log("init segments: read key ids for %d of %d "
+                      "representation(s): %s"
+                      % (len(found), len(targets),
+                         ", ".join("%s=%s" % (k, v[:8]) for k, v in
+                                   sorted(found.items()))))
+    if failures:
+        kodiutils.log_error("init segments: could not read %s"
+                            % "; ".join(failures[:4]))
+    if video_id:
+        _INIT_KIDS[video_id] = found
+    return found
+
+
+def _quiet(func, arg):
+    try:
+        return func(arg)
+    except Exception as exc:
+        return exc
+
+
 def _resolve_n(body, cookies):
     """Compute n for this manifest and write it back into every BaseURL.
 
@@ -424,8 +519,12 @@ def _resolve_n(body, cookies):
     no better than before, but it leaves the reason in the log rather than
     substituting one silent 403 for another.
     """
+    # Ask the same question the rewrite answers. Checking only for "n=" here
+    # meant live never got as far as fetching the player js: its urls spell n
+    # as a path segment, so the guard said there was nothing to do and the
+    # rewrite -- which handles both spellings -- was never called.
     urls = manifest_mod.base_urls(body)
-    if not any("n=" in url for url in urls):
+    if not any(manifest_mod.carries_n(url) for url in urls):
         return body
     session = requests.Session()
     try:

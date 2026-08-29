@@ -701,3 +701,147 @@ with the function, or it returns its input untouched and silently.
 
 Running it needs a real JavaScript engine. The vendored Python interpreter
 stops on an unbraced `if` body and again on `typeof`.
+
+
+## The license_data property, and why it silenced the audio track
+
+Worth writing down in full, because the property's name suggests it is one more
+place to put init data, and it is really a switch that reaches all the way to
+which tracks survive.
+
+`build_item` used to set `inputstream.adaptive.license_data` to the PSSH built
+from `drmParams`. Three steps follow from that, all read out of ISA's source
+rather than inferred:
+
+1. `src/parser/DASHTree.cpp`
+
+        m_isCustomInitPssh = !CSrvBroker::GetKodiProps().GetLicenseData().empty();
+        ...
+        if (m_isCustomInitPssh || GetProtectionData(adpSet->ProtectionSchemes(),
+                                                    repr->ProtectionSchemes(),
+                                                    pssh, kid, licenseUrl))
+        {
+          uint16_t psshSetPos = InsertPsshSet(..., pssh, kid, licenseUrl);
+
+   With the property set the `||` short-circuits, `GetProtectionData` never
+   runs, and `pssh`/`kid` reach `InsertPsshSet` empty. Every
+   `cenc:default_KID` `manifest.set_key_ids` writes is discarded before it is
+   read, and one PSSH set covers every track. That is the
+   `ConvertKidStrToBytes: Cannot convert KID ""` line, and
+   `Initializing stream with unknown KID!` immediately after it.
+
+2. `src/decrypters/widevine/WVCencSingleSampleDecrypter.cpp`, `GetCapabilities`,
+   which `Session.cpp` calls with that empty kid:
+
+        m_fragmentPool[poolId].m_key = keyId.empty() ? m_keys.front().m_keyId : keyId;
+
+   so the capability probe decrypts its test sample with whichever key the
+   licence happened to list first, not the track's own.
+
+3. The same function, when that probe fails:
+
+        if (media == DecrypterCapabilites::SSD_MEDIA_VIDEO)
+          caps.flags |= (DecrypterCapabilites::SSD_SECURE_PATH |
+                         DecrypterCapabilites::SSD_ANNEXB_REQUIRED);
+        else
+          caps.flags = DecrypterCapabilites::SSD_INVALID;
+
+   and `Session.cpp` answers `SSD_INVALID` with
+   `m_currentPeriod->RemovePSSHSet(ses)`.
+
+Video falls back to the secure path and plays. Audio is removed outright.
+Video with no sound, which is what on-demand did while the property was set.
+
+So the property is gone. `GetProtectionData` now runs and reads what the proxy
+serves: a `<cenc:pssh>` and that Representation's own `cenc:default_KID` on
+every Representation, so each track probes with its own key and gets its own
+CDM session.
+
+Two things this does not change, and one cost:
+
+* Per-sample key selection was never affected. `CFragmentedSampleReader` takes
+  `m_defaultKey` from the track's `tenc` box in the media itself, not from the
+  manifest, and passes it to `SetFragmentInfo`. The manifest's key ids matter
+  for session setup and the capability probe, not for decrypting a sample.
+* The init data ISA opens the session with is the same bytes either way. It
+  used to come from the property; it now comes from the `<cenc:pssh>` the proxy
+  writes into the manifest.
+* The key ids come from a licence, and a licence arrives during playback. The
+  first play of a title therefore still has an empty kid and may still lose
+  audio; the second play has them, the same one-play learning step the
+  resolution ceiling already has. `set_key_ids` declares a Representation even
+  when its key id is unknown, so that first play is no worse than before.
+
+The consequence for live/on-demand parity: there is no DRM asymmetry between
+them. Both take this path. The only live-specific mechanisms are the `n`
+spelling (path, not query -- see above), `cryptoPeriodIndex` on the licence
+request, and the crypto-period fields in the PSSH.
+
+
+## The video keys come back output-restricted, and what follows from it
+
+Measured with Kodi debug logging on, playing an on-demand title on a Linux
+desktop with the Widevine L3 CDM (4.10.3050.0). One licence, four keys, and the
+CDM reports their statuses individually:
+
+    OnSessionKeysChange: KID 92D444F944355272905C8F0FD78FE8DE, Status: 0
+    OnSessionKeysChange: KID 166B5C174CC65406A12921557350A257, Status: 0
+    OnSessionKeysChange: KID 4D3521E29EDF52199C85970D6765E334, Status: 1, System code: 5
+    OnSessionKeysChange: KID 13720FBBF85052649C8AB16DC3E14852, Status: 1, System code: 5
+
+Status 1 is `kOutputRestricted`. Which key is which follows from the probe
+counts, and they match what `set_key_ids` declared for that manifest
+(`AUDIO x1, HD x3, SD x6`):
+
+    92d444f9  probed 3x -> "GetCapabilities: Single decrypt possible"      AUDIO
+    4d3521e2  probed 6x -> "Single decrypt failed, secure path only"       SD
+    13720fbb  probed 3x -> "Single decrypt failed, secure path only"       HD
+
+So audio can be decrypted to the clear and decoded by Kodi; **both video tiers
+cannot**. ISA answers that the only way it can:
+
+    OpenStream(1001): Create secure crypto session
+    Creating video codec with codec id: 27
+    VideoCodec::Open
+
+which is `CVideoCodecAdaptive` -- video decrypted *and decoded inside the CDM*
+(`src/main.cpp`, guarded by `stream->m_isEncrypted &&
+m_session->IsCDMSessionSecurePath(cdmSessionIndex)`).
+
+Three things this rules out, so they are not worth revisiting:
+
+* **It is not something we ask for.** The licence request body we send carries
+  exactly the browser's fields -- `context, cpn, drmParams, drmSystem,
+  drmVideoFeature, licenseRequest, sessionId, videoId` and nothing else --
+  including the `sessionId` taken from drmParams field 5, verified against the
+  2026-08-27 22:53 capture (`-R87LyT0KWAPy-Nh`, matching the request's own
+  `sessionId`).
+* **ISA's "Ignore HDCP status" cannot change it.** That flag only skips ISA's
+  own `CheckHDCP()`, and `Session.cpp` reaches it *after* every capability
+  probe has already been decided.
+* **"Disable secure decoder" cannot change it either.** It clears
+  `SSD_SECURE_DECODER`, not `SSD_SECURE_PATH`, and `main.cpp` tests the latter.
+
+One CDM session serves everything. ISA creates a session for the first PSSH set
+and then shares it, because our licence returns all four keys at once and
+`HasLicenseKey(existing, kid)` is true for each subsequent set -- which is why
+twelve PSSH sets produce exactly one `licence granted` line.
+
+The failure that ends playback follows from that decode path, not from the
+manifest. At 9.5s:
+
+    DecryptAndDecodeVideo: Returned CDM status: 1
+    ffmpeg [aac] channel element 3.11 is not allocated       (hundreds)
+    ffmpeg [aac] Reserved bit set. / Prediction is not allowed in AAC-LC.
+    CDVDAudioCodecFFmpeg::GetChannelMap - FFmpeg reported 33 channels,
+                                          but the layout contains 0
+    CVideoPlayerAudio::Process - stream stalled
+    CVideoPlayer::HandlePlaySpeed - audio stream stalled, triggering re-sync
+
+The CDM's video decode fails and the audio coming out of the same shared
+session stops being valid AAC in the same instant. The `PosTime` / `Seek time`
+pairs that follow every three seconds are Kodi's stall recovery, with the clock
+free-running -- a consequence, not a cause. This is the same "9 seconds" that
+has ended every build since the beginning; it only became audible once the
+audio track stopped being deleted outright.
+
