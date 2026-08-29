@@ -1679,6 +1679,14 @@ to even, and property enumeration order was alphabetical rather than
 integer-keys-first. `tools/js2py/README.md` has how each was found; two of
 them only the differential tracer could have found.
 
+js2py itself only runs on Python 3.11 and older as released: it splices
+arguments into its native methods by rewriting CPython bytecode, and 3.12
+raises from the remapping while 3.13 refuses at import. The vendored copy
+replaces that with a wrapper built by exec -- same signature, no bytecode --
+and `js2py_fixes` gives the translator a `randrange` that still takes a
+float. Checked on 3.10, 3.11, 3.12 and 3.13: all four run the VM to a
+snapshot.
+
 Running the VM costs a few seconds, so the service mints one at start and
 playback finds it waiting. If it has not landed yet, playback cold starts --
 pure arithmetic, instant, good for thirty minutes rather than twelve hours --
