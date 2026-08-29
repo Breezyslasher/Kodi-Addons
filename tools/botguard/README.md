@@ -54,8 +54,26 @@ snapshot arguments, both slots of the sixth argument to `vm.a`, both values of
 function for an integrity token, but that function mints nothing), and the
 att/get challenge as an alternative to Create's.
 
-The likeliest remaining explanation is staleness: every experiment above ran
-against a challenge captured hours earlier, and the challenge is time-bound
-(`c=1787980897&t=21600`). This script asks for a fresh one, which is the
-difference worth testing next and cannot be tested from a machine without
-access to Google.
+Staleness was the theory and it was wrong. `jnn-pa.googleapis.com` turns out
+to be reachable where `tv.youtube.com` is not, so the whole flow now runs
+against a **fresh** challenge -- new interpreter hash, new program -- and the
+signal output is still empty. What did change is the API:
+
+* the capture answered `["<token>", 43200, 100]`, token at index 0, standard
+  base64; today it answers `[null, 43200, null, "<token>"]`, index 3, websafe;
+* the interpreter is not fixed -- a fresh challenge gave hash `Fg54iyAt…`
+  against the capture's `Gwp_J7rW…`, 63605 bytes against 63019, and the
+  program-specific export renamed from `grQ_` to `FrQ_`, following the
+  program's first three characters. Nothing here can be pinned.
+
+Two traps worth knowing. Node 19 puts `crypto` on the global and Node 18 does
+not, and BotGuard calls `getRandomValues`: without the shim's fallback the
+snapshot returns the *string* `"E:v is not a function"`. And GenerateIT
+answers a failed snapshot with a token anyway, so that failure is silent
+unless the response is checked for its leading `$` -- which `mint.js` now
+does, refusing to hand back a token no one should trust.
+
+The open question is whether the 103-character token GenerateIT returns is
+itself usable as a proof-of-origin token. It carries the same `Mk`/`Ml`
+prefix as every token seen in a capture. If it is, the minter is not needed
+at all.

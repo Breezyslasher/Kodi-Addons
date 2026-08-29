@@ -139,12 +139,22 @@ function fromSettings() {
   });
   note('botguard response: %d chars, starts %s',
        String(response).length, String(response).slice(0, 12));
+  // A failed snapshot is a string beginning "E:", and GenerateIT answers one
+  // with a token regardless -- so a run that looks like it worked can hand
+  // back something worthless. Refuse it here instead.
+  if (!String(response).startsWith('$'))
+    throw new Error('the snapshot failed, so no token can be trusted: ' +
+                    String(response).slice(0, 120));
   note('signal output: %d slot(s) [%s]',
        signalOutput.length, signalOutput.map(x => typeof x).join(','));
 
   note('exchanging it for an integrity token...');
   const it = JSON.parse(await post(GOOG + '/GenerateIT', [REQUEST_KEY, String(response)]));
-  const integrityToken = Array.isArray(it) ? it[0] : null;
+  // The token moved. A capture from earlier today answered
+  // ["<token>", 43200, 100] with standard base64; it now answers
+  // [null, 43200, null, "<token>"] websafe, so take the first string rather
+  // than a fixed index.
+  const integrityToken = Array.isArray(it) ? it.find(v => typeof v === 'string') : null;
   if (!integrityToken) throw new Error('GenerateIT returned no token: ' + JSON.stringify(it).slice(0, 200));
   note('integrity token: %d chars, good for %s seconds', integrityToken.length, it[1]);
 
