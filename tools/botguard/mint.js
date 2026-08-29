@@ -70,9 +70,29 @@ const descramble = s =>
 const websafe = b => Buffer.from(b).toString('base64')
   .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
+// Where Kodi keeps the addon's settings in a flatpak install. Saves pasting a
+// five hundred character visitorData into a terminal by hand.
+const SETTINGS = (process.env.HOME || '') +
+  '/.var/app/tv.kodi.Kodi/data/userdata/addon_data/plugin.video.youtubetv/settings.xml';
+
+function fromSettings() {
+  try {
+    const xml = require('fs').readFileSync(SETTINGS, 'utf8');
+    const m = xml.match(/<setting id="visitor_id"[^>]*>([^<]+)<\/setting>/);
+    if (m) { note('read visitor_id from %s', SETTINGS); return m[1]; }
+  } catch (e) { /* not installed there; the argument is the fallback */ }
+  return '';
+}
+
 (async () => {
-  const binding = process.argv[2];
-  if (!binding) { note('usage: node mint.js <visitorData|videoId>'); process.exit(2); }
+  let binding = process.argv[2] || fromSettings();
+  if (!binding) {
+    note('usage: node mint.js <visitorData|videoId>');
+    note('  (with no argument it reads visitor_id from the addon settings at');
+    note('   %s)', SETTINGS);
+    process.exit(2);
+  }
+  note('binding: %d chars, %s...', binding.length, binding.slice(0, 24));
 
   note('asking for a challenge...');
   const created = JSON.parse(await post(GOOG + '/Create', [REQUEST_KEY]));
