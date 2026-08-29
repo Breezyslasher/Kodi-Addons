@@ -236,11 +236,13 @@ def probe_after_licence(video_id=""):
     if not hd:
         return
     from . import sabr
+    tallest = max(f.get("height") or 0 for f in hd)
+    hd = [f for f in hd if (f.get("height") or 0) == tallest]
     body = sabr.build_request(
         session.config,
         audio=session.audio, video=[_entry(f) for f in hd],
         player_time_ms=session.position,
-        max_height=max(f.get("height") or 0 for f in hd),
+        max_height=tallest, target_height=tallest,
         buffered=[],
         context=sabr.streamer_context(info=session.info,
                                       po_token=session.po_token,
@@ -264,13 +266,15 @@ def probe_after_licence(video_id=""):
             if got.get(3) is not None:
                 served.append(got[3])
     if refusal:
-        kodiutils.log("sabr bridge: with a licence in hand the endpoint "
-                      "still refuses HD %s: %s"
-                      % ([f.get("itag") for f in hd], refusal.strip()))
+        kodiutils.log("sabr bridge: the endpoint refuses HD %s even asked "
+                      "for by name at %dp: %s"
+                      % ([f.get("itag") for f in hd], tallest,
+                         refusal.strip()))
     else:
-        kodiutils.log("sabr bridge: WITH A LICENCE THE ENDPOINT SERVES HD -- "
-                      "offered %s and it answered with itag(s) %s (%d bytes)"
-                      % ([f.get("itag") for f in hd],
+        kodiutils.log("sabr bridge: THE ENDPOINT SERVES HD when the height "
+                      "is named -- asked for %dp with %s and it answered "
+                      "with itag(s) %s (%d bytes)"
+                      % (tallest, [f.get("itag") for f in hd],
                          sorted(set(served)) or "none", len(data)))
 
 
@@ -347,33 +351,34 @@ def lookup(key):
                          .rstrip('"').split(".")[0],
                          fmt.get("width"), fmt.get("height"),
                          fmt.get("drmTrackType") or "?"))
-    if authorized:
-        servable = [f for f in avc
-                    if (f.get("drmTrackType") or "") in authorized]
-        if servable and len(servable) != len(avc):
-            kodiutils.log("sabr bridge: %s are not in an authorised tier, so "
-                          "they come off the offer"
-                          % [f.get("itag") for f in avc if f not in servable])
-            avc = servable
+    # No filtering by tier. initialAuthorizedDrmTrackTypes reads AUDIO,SD
+    # and the browser's own capture is served itags 814, 813 and 553 --
+    # 1920x1080, HD tier -- on a session whose player response said exactly
+    # that. So it does not describe what the endpoint will serve, and the
+    # correlation this addon read into it (SD offers accepted, HD offers
+    # refused) was the height fields all along: every accepted offer named
+    # no height and got 480p, every refused one named no height either.
+    # The table above is kept because reading it is what settled this.
 
+    # One height at a time, named in the request, tallest first. The
+    # browser does exactly this -- 1080/1080 with the three 1080p
+    # renditions, 360/360 with the one 360p rendition -- and is served
+    # both. Offering a mixed bag and naming no height is what this addon
+    # did, and it is what the endpoint answered with 480p or refused.
+    ladder = []
+    for height in sorted({f.get("height") or 0 for f in avc}, reverse=True):
+        if height:
+            ladder.append((height, [f for f in avc if f.get("height") == height]))
     floor = _quality_floor()
+    if floor:
+        wanted = [step for step in ladder if step[0] >= floor]
+        if wanted:
+            ladder = wanted
     every_avc = list(avc)
-    if floor and avc:
-        tall = [f for f in avc if (f.get("height") or 0) >= floor]
-        if tall:
-            kodiutils.log("sabr bridge: asking for %dp or better, so "
-                          "offering %s and holding back %s"
-                          % (floor, [f.get("itag") for f in tall],
-                             [f.get("itag") for f in avc if f not in tall]))
-            avc = tall
-        else:
-            # Nothing that tall is servable, and on the token identity that
-            # is the normal case rather than an edge: the tier tops out at
-            # 854x480. Reading the format table instead of asserting it is
-            # what settled that -- see below.
-            kodiutils.log("sabr bridge: nothing this title offers is both "
-                          "%dp and in a tier this session may play, so the "
-                          "whole set stands" % floor)
+    target, avc = (ladder[0] if ladder else (0, avc))
+    if target:
+        kodiutils.log("sabr bridge: asking for %dp, offering %s"
+                      % (target, [f.get("itag") for f in avc]))
 
     session = sabr_session.Session(
         stored["url"], stored.get("config") or "",
@@ -390,10 +395,13 @@ def lookup(key):
     # Each step back, widest last. The H.264 set first: a floor that
     # narrowed too far should land on what has been playing for days, not
     # on AV1.
-    session.fallbacks = [entries for entries in
-                         ([_entry(f) for f in every_avc] if every_avc else [],
-                          [_entry(f) for f in offerable])
-                         if entries and len(entries) != len(session.video)]
+    session.target_height = target
+    # Each step down, with the height it names. The last two name none and
+    # offer everything, which is what played before any of this.
+    session.fallbacks = [([_entry(f) for f in group], height)
+                         for height, group in ladder[1:]]
+    session.fallbacks.append(([_entry(f) for f in every_avc], 0))
+    session.fallbacks.append(([_entry(f) for f in offerable], 0))
     # The manifest reads these as single renditions. A list here is a bug
     # that only surfaces several seconds later, inside the manifest handler,
     # as an AttributeError ISA reports as "Cannot download the stream
@@ -635,16 +643,22 @@ def manifest(key, base):
                 session.prime()
                 break
             except sabr_session.SabrError as exc:
-                wider = session.fallbacks.pop(0) if session.fallbacks else None
+                step = session.fallbacks.pop(0) if session.fallbacks else None
+                wider, height = step if step else (None, 0)
                 if not wider:
                     kodiutils.log_error("sabr bridge: the endpoint refused "
                                         "every set on offer: %s"
                                         % str(exc).strip())
                     return ""
-                kodiutils.log("sabr bridge: the endpoint refused %s (%s); "
-                              "offering %s instead"
+                kodiutils.log("sabr bridge: the endpoint refused %s at %sp "
+                              "(%s); asking for %s instead"
                               % ([e[0] for e in session.video],
-                                 str(exc).strip(), [e[0] for e in wider]))
+                                 session.target_height or "no height",
+                                 str(exc).strip(),
+                                 "%s at %dp" % ([e[0] for e in wider], height)
+                                 if height else
+                                 "%s naming no height" % [e[0] for e in wider]))
+                session.target_height = height
                 session.video = list(wider)
                 session.entries = {entry[0]: entry
                                    for entry in session.audio + session.video}

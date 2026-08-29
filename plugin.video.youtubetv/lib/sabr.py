@@ -105,7 +105,8 @@ def format_id(itag, last_modified=0, xtags=""):
 LIVE_EDGE = 9007199254740991
 
 
-def client_abr_state(player_time_ms=0, max_height=1080, elapsed_ms=0):
+def client_abr_state(player_time_ms=0, max_height=1080, elapsed_ms=0,
+                     target_height=0, bandwidth=0):
     """ClientAbrState, with the fields four captured requests agree on.
 
     Field 29 is not a media-type enum. It was annotated as one here, first
@@ -119,16 +120,40 @@ def client_abr_state(player_time_ms=0, max_height=1080, elapsed_ms=0):
 
     Fields 18 and 19 are 2140 and 1204 in every captured request of every
     session, so they are sent as the constants they appear to be.
+
+    Fields 16 and 21 are the height being asked for, and they are what
+    makes the endpoint serve it. A capture of the browser's own quality
+    selector has them tracking the offered renditions exactly:
+
+        16 / 21     video itags offered
+        720 / 720   [812, 811, 552]   all 1280x720, HD tier
+        480 / 480   [810, 809, 551]   all  854x480
+        360 / 360   [550]             one format, and accepted
+        1080 / 1080 [814, 813, 553]   all 1920x1080, HD tier
+
+    This addon sent neither -- 21 went out as a hardcoded 0 -- and every
+    HD offer it ever made was answered sabr.no_video_selected, including
+    offers of three renditions and of one. The browser makes both of those
+    shapes and is served, so the refusals were never about the tier or the
+    size of the offer. They were a request that named no height.
+
+    Field 59 stays the ceiling: the browser holds it at 1080 while 16 and
+    21 move between 360 and 1080.
     """
-    return (_v(18, 2140)
+    body = (_v(18, 2140)
             + _v(19, 1204)
-            + _v(21, 0)
+            + _v(21, int(target_height))
             + _v(28, int(player_time_ms))
             + _v(29, int(elapsed_ms))
             + _v(59, int(max_height))
             + _v(71, 1)
             + _v(80, 1)
             + _v(85, 1))
+    if target_height:
+        body = _v(16, int(target_height)) + body
+    if bandwidth:
+        body += _v(23, int(bandwidth))
+    return body
 
 
 def client_info(client_id, client_version, locale="en_US", os_name="X11"):
@@ -195,7 +220,8 @@ def buffered_range(entry, start_ms, duration_ms, first_sequence,
 
 
 def build_request(ustreamer_config, audio=(), video=(), player_time_ms=0,
-                  max_height=1080, buffered=(), context=b"", elapsed_ms=0):
+                  max_height=1080, buffered=(), context=b"", elapsed_ms=0,
+                  target_height=0, bandwidth=0):
     """A VideoPlaybackAbrRequest body.
 
     ``ustreamer_config`` is the base64url string from the player response.
@@ -215,7 +241,8 @@ def build_request(ustreamer_config, audio=(), video=(), player_time_ms=0,
     without field 5 is the thing to find out, and it cannot be found out by a
     builder that refuses to make one.
     """
-    body = _b(1, client_abr_state(player_time_ms, max_height, elapsed_ms))
+    body = _b(1, client_abr_state(player_time_ms, max_height, elapsed_ms,
+                                  target_height, bandwidth))
     for held in buffered:
         body += _b(3, held)
     if ustreamer_config:
