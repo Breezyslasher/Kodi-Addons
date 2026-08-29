@@ -1130,6 +1130,42 @@ so the mechanism covers it.
 Nothing in this addon reaches this: the key ids are right, the codecs are
 right, and YouTube decides how it encrypts.
 
+### The clear fragment was not the fault, and that settles it
+
+The one lead the source review turned up was fragment-shaped, so the bridge
+was given a per-itag fragment offset and told to serve audio one fragment on,
+so ISA 21 would never see the clear one. It engaged:
+
+    sabr bridge: serving audio itag 150 one fragment on, so ISA never sees
+    the clear first one.
+
+And the audio broke **immediately** rather than at 9.5 seconds:
+
+    17:44:22.451  Creating audio thread
+    17:44:23.833  [aac] channel element 2.10 is not allocated
+    17:44:25.521  CVideoPlayerAudio::Process - stream stalled
+
+The error count fell from ~2500 to 106 only because playback stalled in three
+seconds instead of flooding for a minute. Same messages, same corruption,
+starting at the first encrypted sample ISA was handed.
+
+So the clear-to-encrypted transition is **not** the fault, and neither is the
+synthetic `senc` difference between the versions -- the only thing this
+media's shape reached differently. **ISA 21.5.22 does not decrypt this audio
+at all**, and the 9.5 seconds that used to play was the clear fragment.
+
+Three independent lines now agree:
+
+1. all three AAC renditions fail identically when each is offered alone, with
+   fragment sizes differing five-fold;
+2. the failure lands on the encryption boundary, not on any byte or bitrate
+   boundary;
+3. removing the clear fragment moves the failure from the tenth second to the
+   first.
+
+Nothing in this addon reaches it. Kodi 21 needs inputstream.adaptive 22.3.20,
+and that is a finding now rather than an inference.
+
 ### What the media actually is
 
 Measured with a probe in the addon rather than inferred. Every init segment:
