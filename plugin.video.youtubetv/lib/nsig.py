@@ -3,24 +3,35 @@
 Every googlevideo URL carries an ``n`` the player mints scrambled and the page
 rewrites before fetching. Measured on a URL known to be served: rotating one
 character of ``n`` turns 15,010,219 bytes into an empty-bodied 403, and
-dropping it does the same. So it is not decoration and it cannot be omitted --
-it has to be computed.
+dropping it does the same. So it has to be computed.
 
-The transform lives in the player JavaScript and is regenerated with each
-release, so there is no algorithm to reimplement, only a language to run.
-Two ways to run it, tried in order:
+The transform is in the player, but only in some builds of it. The two the
+page points at hide it behind an opcode VM; the two ``tce`` builds of the same
+release still contain it as an ordinary function, reached through the value
+handed to ``set("n", ...)``:
 
-* the vendored yt-dlp interpreter in jsinterp.py, which needs nothing
-  installed; and
-* a real JS runtime, if one is on PATH.
+    a.D&&(eO(a),b=a.j.n||null)&&(b=Yma(b),a.set("n",b))
 
-The order is deliberate but the fallback is not decoration either. yt-dlp
-itself stopped using its own interpreter for this: as of 2026.8 every YouTube
-n-challenge provider it ships shells out to deno, node, bun or quickjs, and
-nothing pure-Python remains. That is the project with the most invested in this
-problem saying the interpreter no longer keeps up with the obfuscation. We may
-be luckier -- one player, one function -- but the log says which route
-succeeded, so the answer is a measurement rather than a hope.
+It also opens with a guard on a sentinel global::
+
+    if(typeof Xma==="undefined")return a;
+
+where ``Xma`` is a bare number declared elsewhere in the player. Without it the
+function returns its input untouched -- no error and no clue, which is a far
+worse failure than an exception, because the URL then looks transformed and is
+not. Both are carried into the program we run.
+
+Running it needs a real JavaScript engine. The vendored yt-dlp interpreter in
+jsinterp.py cannot: it stops on an unbraced ``if`` body and again on ``typeof``,
+and patching past those two only reached the transform's own catch block.
+That matches yt-dlp's own conclusion -- as of 2026.8 every YouTube n-challenge
+provider it ships shells out to deno, node, bun or quickjs, and nothing
+pure-Python remains. jsinterp stays because it is sound for the simpler
+signature work, but it is not on this path.
+
+Verified end to end before being wired in: on player 06ab6907, the captured
+``UQpyO2dm0XQSunbyNa`` transforms to ``ygW6YjigTA7D-Q``, which is byte for byte
+what the browser sent.
 """
 
 import json
@@ -37,6 +48,11 @@ class NsigError(Exception):
 
 CACHE_FILE = "nsig_cache.json"
 VARIANTS_FILE = "player_variants.json"
+
+# Engines worth looking for, best first. deno and bun need no package manager
+# and run from a single binary, which matters on LibreELEC where there is no
+# package manager at all.
+_RUNTIMES = ("deno", "node", "bun", "qjs", "quickjs")
 # Keep the solved values, not just the player: n is per-URL, but a playback
 # session reuses the same one across every segment request.
 _MEMO = {}
@@ -293,49 +309,120 @@ def _solve_with_interpreter(js, name, value):
     return JSInterpreter(js).call_function(name, value)
 
 
+def in_flatpak():
+    """Whether we are inside a flatpak sandbox."""
+    return os.path.exists("/.flatpak-info")
+
+
 def _runtime_on_path():
+    """Find a JavaScript engine, and say how it has to be invoked.
+
+    Returns (name, argv-prefix). Three places to look, because Kodi is rarely
+    installed the way a developer's shell is:
+
+    * the setting, for anywhere the other two fail;
+    * PATH and the usual directories; and
+    * the host, through flatpak-spawn.
+
+    That last one is the case that actually bit: a flatpak cannot see
+    /usr/bin/node however plainly the user's terminal can, so a runtime that
+    passes the standalone check still leaves the addon reporting none found.
+    flatpak-spawn --host runs it on the host properly, rather than borrowing
+    the host binary into a sandbox whose libraries it was not built against.
+    """
+    configured = kodiutils.get_setting("js_runtime", "")
+    if configured:
+        if os.path.isfile(configured) and os.access(configured, os.X_OK):
+            return os.path.basename(configured), [configured]
+        kodiutils.log("nsig: configured runtime %r is not executable, "
+                      "looking elsewhere" % configured)
+
+    places = [d for d in os.environ.get("PATH", "").split(os.pathsep) if d]
+    places += ["/usr/bin", "/usr/local/bin", "/bin", "/opt/homebrew/bin",
+               "/var/lib/flatpak/exports/bin", "/snap/bin", "/storage"]
     for name in _RUNTIMES:
-        for directory in os.environ.get("PATH", "").split(os.pathsep):
+        for directory in places:
             candidate = os.path.join(directory, name)
             if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-                return name, candidate
+                return name, [candidate]
+
+    if in_flatpak():
+        spawn = "/usr/bin/flatpak-spawn"
+        if os.path.exists(spawn):
+            for name in _RUNTIMES:
+                try:
+                    probe = subprocess.run([spawn, "--host", name, "--version"],
+                                           capture_output=True, timeout=20)
+                except Exception:
+                    continue
+                if probe.returncode == 0:
+                    kodiutils.log("nsig: using the host's %s through "
+                                  "flatpak-spawn" % name)
+                    return name, [spawn, "--host", name]
     return None, None
 
 
-def _solve_with_runtime(js, name, value):
-    runtime, path = _runtime_on_path()
+def _solve_with_runtime(js, value):
+    """Run the player's own transform in a real JavaScript engine.
+
+    Only the transform: the function sliced out of the player, plus the
+    sentinel globals it checks for. Evaluating two and a half megabytes of
+    YouTube to rewrite one query parameter would be slower and far more
+    fragile.
+    """
+    runtime, argv = _runtime_on_path()
     if not runtime:
-        raise NsigError("no javascript runtime on PATH (tried %s)"
-                        % ", ".join(_RUNTIMES))
-    # The player js is a module-scoped blob; wrap it so the function is
-    # reachable and print only the result.
-    script = "%s\nprocess.stdout.write(String(%s(%s)))" % (
-        js, name, json.dumps(value))
-    if runtime in ("qjs", "quickjs"):
-        script = "%s\nconsole.log(String(%s(%s)))" % (js, name, json.dumps(value))
-    handle = tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=False,
-                                         encoding="utf-8")
+        if in_flatpak():
+            raise NsigError(
+                "no javascript runtime reachable from inside the flatpak "
+                "(tried %s). Kodi cannot see the host's, so grant it the host "
+                "runner: flatpak override --user "
+                "--talk-name=org.freedesktop.Flatpak tv.kodi.Kodi -- then "
+                "restart Kodi. Failing that, put the full path to a runtime "
+                "in the addon's settings." % ", ".join(_RUNTIMES))
+        raise NsigError(
+            "no javascript runtime found (tried %s). Install one -- on Debian "
+            "or Ubuntu, 'sudo apt install nodejs'; on LibreELEC unpack a node "
+            "or deno build under /storage and set its full path in the "
+            "addon's settings." % ", ".join(_RUNTIMES))
+
+    name, program = build_program(js, value)
+    # quickjs has no console.log-to-stdout convention worth relying on.
+    emit = "print(__r);" if runtime in ("qjs", "quickjs") else "console.log(__r);"
+    # The script goes in the addon's own profile directory, not /tmp.
+    # /tmp inside a flatpak is the sandbox's own, so the host's node -- reached
+    # through flatpak-spawn -- is handed a path that does not exist for it and
+    # reports "Cannot find module". The profile directory is a real host path
+    # visible under the same name on both sides, which is exactly what is
+    # needed to pass a filename across that boundary.
     try:
-        handle.write(script)
-        handle.close()
-        result = subprocess.run([path, handle.name], capture_output=True,
-                                timeout=30)
-        if result.returncode != 0:
-            raise NsigError("%s failed: %s"
-                            % (runtime, result.stderr.decode("utf-8", "replace")[:200]))
-        return result.stdout.decode("utf-8", "replace").strip()
+        directory = kodiutils.profile_dir()
+    except Exception:
+        directory = tempfile.gettempdir()
+    script = os.path.join(directory, "nsig_%d.js" % os.getpid())
+    try:
+        with open(script, "w", encoding="utf-8") as handle:
+            handle.write(program + "\n" + emit + "\n")
+        result = subprocess.run(argv + [script], capture_output=True,
+                                timeout=60)
     finally:
         try:
-            os.unlink(handle.name)
+            os.unlink(script)
         except OSError:
             pass
+    if result.returncode != 0:
+        raise NsigError("%s exited %d: %s"
+                        % (runtime, result.returncode,
+                           result.stderr.decode("utf-8", "replace")[:300]))
+    return runtime, name, result.stdout.decode("utf-8", "replace").strip()
 
 
 def solve(js, value, player_id=""):
-    """Transform one ``n``, by whichever route works.
+    """Transform one ``n``.
 
-    Cached per player release and value, because ISA asks for many segments and
-    each one would otherwise reparse a megabyte of JavaScript.
+    Cached per player release and value: ISA asks for many segments and they
+    share the value the player minted, so the engine runs once rather than once
+    per request.
     """
     key = "%s:%s" % (player_id, value)
     if key in _MEMO:
@@ -345,26 +432,23 @@ def solve(js, value, player_id=""):
         _MEMO[key] = stored[key]
         return stored[key]
 
-    js, name = resolve_function(js)
-    kodiutils.log("nsig: player %s uses %s()" % (player_id or "?", name))
-    errors = []
-    for label, solver in (("interpreter", _solve_with_interpreter),
-                          ("js runtime", _solve_with_runtime)):
-        try:
-            result = solver(js, name, value)
-        except Exception as exc:
-            errors.append("%s: %s" % (label, exc))
-            continue
-        if not result or result == value:
-            errors.append("%s: returned the input unchanged" % label)
-            continue
-        kodiutils.log("nsig: %s solved %s -> %s via the %s"
-                      % (player_id or "?", value, result, label))
-        _MEMO[key] = result
-        stored[key] = result
-        kodiutils.write_json(CACHE_FILE, stored)
-        return result
-    raise NsigError("; ".join(errors))
+    runtime, name, result = _solve_with_runtime(js, value)
+    if not result:
+        raise NsigError("%s produced nothing for %s" % (runtime, name))
+    if result == value:
+        # The transform bails to its input when a sentinel global is missing,
+        # silently and without erroring. Treating that as success would put a
+        # url that looks transformed and is not in front of the player.
+        raise NsigError("%s returned the input unchanged -- the transform "
+                        "bailed, most likely a sentinel global it checks for "
+                        "was not carried across" % name)
+
+    kodiutils.log("nsig: %s solved %s -> %s via %s()/%s"
+                  % (player_id or "?", value, result, name, runtime))
+    _MEMO[key] = result
+    stored[key] = result
+    kodiutils.write_json(CACHE_FILE, stored)
+    return result
 
 
 # Builds Google publishes for one player id. The page asks for player_es6 and

@@ -99,3 +99,12 @@ msgstr ""
 msgctxt "#30036"
 msgid "Before playing, sends a request to the streaming endpoint YouTube's own player uses and logs what comes back. This is where the media actually is; the DASH URLs Kodi can play are refused."
 msgstr ""
+
+msgctxt "#30037"
+msgid "JavaScript runtime"
+msgstr ""
+
+msgctxt "#30038"
+msgid "Full path to node, deno, bun or quickjs. Needed to compute the n parameter every media URL carries; without it playback is refused. Leave empty to search PATH and the usual locations. Set it explicitly when Kodi is a flatpak or on LibreELEC, where the runtime lives somewhere Kodi does not look."
+msgstr ""
+

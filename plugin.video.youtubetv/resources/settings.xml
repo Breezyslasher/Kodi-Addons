@@ -22,6 +22,16 @@
 		</category>
 		<category id="playback" label="30010">
 			<group id="1">
+				<setting id="js_runtime" type="path" label="30037" help="30038">
+					<level>0</level>
+					<default></default>
+					<constraints>
+						<allowempty>true</allowempty>
+					</constraints>
+					<control type="button" format="file">
+						<heading>30037</heading>
+					</control>
+				</setting>
 				<setting id="max_height" type="integer" label="30011" help="30012">
 					<level>0</level>
 					<default>0</default>

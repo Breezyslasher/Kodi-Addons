@@ -393,3 +393,124 @@ def rewrite_n(xml, solve):
                       % (len(solved),
                          ", ".join("%s -> %s" % i for i in solved.items())))
     return text.encode("utf-8") if was_bytes else text
+
+
+# YouTube's manifest declares exactly one ContentProtection per AdaptationSet,
+# and it is not one ISA reads:
+#
+#     <ContentProtection schemeIdUri="http://youtube.com/drm/2012/10/10">
+#       <yt:SystemURL type="playready">...</yt:SystemURL>
+#       <yt:SystemURL type="widevine">...</yt:SystemURL>
+#     </ContentProtection>
+#
+# A YouTube-proprietary scheme carrying licence urls -- no cenc:default_KID, no
+# PSSH, and nothing ISA recognises as DRM. Naming a key on that element does
+# nothing at all, which is why "Cannot convert KID" survived doing exactly
+# that. What ISA wants is the standard pair: mp4protection naming the key, and
+# the Widevine system id carrying the init data.
+_ADAPTATION = re.compile(r"<AdaptationSet\b[^>]*>.*?</AdaptationSet>", re.S)
+_REPRESENTATION = re.compile(r"(<Representation\b[^>]*>)(.*?)(</Representation>)", re.S)
+_YT_SCHEME = re.compile(
+    r'<ContentProtection\b[^>]*schemeIdUri\s*=\s*"http://youtube\.com/drm[^"]*"'
+    r'[^>]*(?:/>|>.*?</ContentProtection>)', re.S)
+_MIME = re.compile(r'mimeType\s*=\s*"([^"]+)"')
+_HEIGHT = re.compile(r'\bheight\s*=\s*"(\d+)"')
+
+WIDEVINE_URN = "urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
+
+
+def _as_uuid(key_id):
+    """A 16-byte key id as the dashed form cenc:default_KID wants."""
+    raw = key_id if isinstance(key_id, bytes) else None
+    if raw is None:
+        import base64
+        text = key_id.strip().replace("-", "+").replace("_", "/")
+        try:
+            raw = base64.b64decode(text + "=" * (-len(text) % 4))
+        except Exception:
+            try:
+                raw = bytes.fromhex(key_id)
+            except ValueError:
+                return None
+    if len(raw) != 16:
+        return None
+    hexed = raw.hex()
+    return "%s-%s-%s-%s-%s" % (hexed[:8], hexed[8:12], hexed[12:16],
+                               hexed[16:20], hexed[20:])
+
+
+def _track_for(block):
+    """Which licensed track a chunk of manifest corresponds to."""
+    mime = _MIME.search(block)
+    if mime and mime.group(1).startswith("audio"):
+        return "DRM_TRACK_TYPE_AUDIO"
+    heights = [int(h) for h in _HEIGHT.findall(block)]
+    tallest = max(heights) if heights else 0
+    if tallest > 1080:
+        return "DRM_TRACK_TYPE_UHD1"
+    if tallest > 576:
+        return "DRM_TRACK_TYPE_HD"
+    return "DRM_TRACK_TYPE_SD"
+
+
+def _protection(uuid, pssh):
+    """The ContentProtection pair ISA actually reads."""
+    out = ('<ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011"'
+           ' value="cenc" cenc:default_KID="%s"/>' % uuid)
+    if pssh:
+        out += ('<ContentProtection schemeIdUri="%s">'
+                '<cenc:pssh>%s</cenc:pssh></ContentProtection>'
+                % (WIDEVINE_URN, pssh))
+    return out
+
+
+def set_key_ids(xml, key_ids, pssh=""):
+    """Declare Widevine properly, naming the key each track needs.
+
+    The audio set takes one key for all its Representations; a video set spans
+    several licensed tiers, so each Representation is given the key for its own
+    height rather than the set's tallest -- the account here is licensed for SD
+    and the set runs to 1080p.
+    """
+    if not key_ids:
+        return xml
+    was_bytes = isinstance(xml, bytes)
+    text = xml.decode("utf-8", "replace") if was_bytes else xml
+    if "xmlns:cenc" not in text:
+        text = re.sub(r"(<MPD\b)", r'\1 xmlns:cenc="urn:mpeg:cenc:2013"', text, 1)
+
+    applied = []
+
+    def rewrite(block):
+        body = block.group(0)
+        track = _track_for(body)
+        uuid = _as_uuid(key_ids.get(track, ""))
+        if not uuid:
+            return body
+
+        if track == "DRM_TRACK_TYPE_AUDIO":
+            applied.append("AUDIO")
+            # Keep YouTube's own element -- it is harmless and ISA ignores it --
+            # and add the standard pair in front of it.
+            return _YT_SCHEME.sub(
+                lambda m: _protection(uuid, pssh) + m.group(0), body, count=1)
+
+        def per_representation(rep):
+            head, inner, tail = rep.group(1), rep.group(2), rep.group(3)
+            own = _track_for(head)
+            own_uuid = _as_uuid(key_ids.get(own, ""))
+            if not own_uuid:
+                return rep.group(0)
+            applied.append(own.replace("DRM_TRACK_TYPE_", ""))
+            return head + _protection(own_uuid, pssh) + inner + tail
+
+        return _REPRESENTATION.sub(per_representation, body)
+
+    text = _ADAPTATION.sub(rewrite, text)
+    if applied:
+        counts = {}
+        for name in applied:
+            counts[name] = counts.get(name, 0) + 1
+        kodiutils.log("manifest: declared widevine for %s"
+                      % ", ".join("%s x%d" % kv for kv in sorted(counts.items())))
+    return text.encode("utf-8") if was_bytes else text
