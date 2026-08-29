@@ -1563,3 +1563,51 @@ two are not fully separated. What is not confounded is that audio failed
 this way for many runs while media was flowing normally, and that the CDM
 session is opened for the same KID either way -- `4d3521e2`, the SD key --
 so it is the codec that changed, not the key or the session.
+
+
+## The proof-of-origin token can be minted, and has to be
+
+Every media url wants a `pot`, and it is bound to the `visitorData` that
+minted it and lives hours. Pasting one from a browser capture worked exactly
+as long as the capture was fresh -- a token five minutes old played, one from
+half an hour earlier did not -- and when it lapsed it took *both* playback
+paths down at once, which is a failure that reads like anything but an
+expired token.
+
+It can be minted, with nothing but the JavaScript runtime the addon already
+needs for `n`:
+
+    POST jnn-pa.googleapis.com/$rpc/…/Waa/Create  [requestKey]
+         -> [null, "<scrambled challenge>"]
+
+The second element is scrambled, not a program: base64-decode and add 97 to
+every byte and it becomes JSON carrying BotGuard's interpreter, the real
+program, the global name and the hash. Run the interpreter -- it registers
+`globalThis[globalName]`, `trayride` in every capture -- then
+
+    vm.a(program, setup, true, undefined, telemetry, [[],[]], undefined,
+         false, loggers)
+    asyncSnapshotFunction(cb, [binding, signedTimestamp, signalOutput, skip])
+                                              -> "$…"
+    POST …/Waa/GenerateIT [requestKey, "$…"]  -> [null, 43200, null, "<token>"]
+
+and that token is the `pot`. There is no separate minting step: the
+`signalOutput` array stays empty because nothing is meant to fill it.
+
+BotGuard checks for a browser before it will run, but not a very convincing
+one -- about a hundred and twenty lines of `document`, `navigator`,
+`location`, `screen` and storage, assembled by running the VM and adding only
+what it asked for, one error at a time. No jsdom. The snapshot it produced
+matched a real browser's byte for byte after the leading nonce.
+
+Two things will bite. The snapshot fails about one run in three with `E:v is
+not a function`, and GenerateIT answers a failed snapshot with a token
+regardless -- so a broken run is indistinguishable from a good one unless the
+response is checked for its leading `$`. And the interpreter is not fixed:
+its hash, its size and the name of its program export all change between
+challenges, so none of it can be pinned.
+
+Minting also repairs the pairing problem it used to cause. The token is
+cached against its binding, so when Google rotates `visitorData` in an
+`X-Goog-Visitor-Id` header the next lookup misses and mints a matching token
+by itself, where before a rotation silently unpaired a pasted one.
