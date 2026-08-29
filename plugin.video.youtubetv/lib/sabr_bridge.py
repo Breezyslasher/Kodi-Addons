@@ -35,6 +35,8 @@ from . import (api, auth, cipher, kodiutils, license_proxy,
 # profile, and so does this.
 CONTEXT_FILE = "sabr_context.json"
 TIMEOUT = 30
+# Diagnostics that run inside a request ISA is waiting on.
+PROBE_TIMEOUT = 5
 
 # Live segments are five seconds. Measured: consecutive MEDIA_HEADER start
 # times differ by ~5000 in the media timeline, and captured BufferedRanges
@@ -459,7 +461,10 @@ def compare_against_file(session, url, itag, fmt=None):
     ours = [held[order[0]], held[order[1]]]
     want = len(init) + sum(len(part) for part in ours) + 65536
     try:
-        reply = requests.get(url, timeout=TIMEOUT, headers={
+        # A short timeout, because this runs inside the manifest request and
+        # nothing downstream needs its answer. TIMEOUT here cost live
+        # playback 30 seconds of a 20-second budget.
+        reply = requests.get(url, timeout=PROBE_TIMEOUT, headers={
             "User-Agent": api.UA,
             "Origin": api.ORIGIN,
             "Referer": api.ORIGIN + "/",
@@ -613,7 +618,19 @@ def manifest(key, base):
         stored = kodiutils.read_json(CONTEXT_FILE, default={}) or {}
         audio_url = stored.get("audio_url") or ""
         itag = (formats.get("audio") or {}).get("itag")
-        if audio_url and itag:
+        if getattr(session, "live", True):
+            # Not on live, and the reason is worth stating: this fetch is a
+            # diagnostic that reads the same media as a progressive file and
+            # compares it with what SABR served. A live rendition is not a
+            # file -- the player response gives it no initRange, indexRange
+            # or contentLength -- so the request hangs until it times out,
+            # and it does that *inside the manifest request*. ISA waits 20
+            # seconds for a manifest and this waited 30, so live playback on
+            # a box where the fetch hangs died with "CURLOpen failed" while
+            # the bridge was still holding a perfectly good manifest.
+            kodiutils.log("sabr bridge: live, so not reading itag %s as a "
+                          "file -- there is no file to read" % itag)
+        elif audio_url and itag:
             try:
                 compare_against_file(session, audio_url, itag,
                                      formats.get("audio"))

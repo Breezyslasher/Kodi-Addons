@@ -171,3 +171,48 @@ def delete_file(filename):
             os.remove(path)
     except Exception:
         pass
+
+
+# Certificate authorities, once, at import.
+#
+# Kodi's requests takes its CA bundle from script.module.certifi, and a box
+# where that addon is mid-update or half-installed answers every HTTPS call
+# with "Could not find a suitable TLS CA certificate bundle, invalid path:
+# .../certifi/cacert.pem" -- seen on 2026-08-29, where it broke a diagnostic
+# fetch during live playback and would break anything else asked at that
+# moment.
+#
+# So: if certifi's file is genuinely missing and the system has a bundle,
+# point requests at the system one. Verification is never disabled and an
+# existing REQUESTS_CA_BUNDLE is never overridden -- if someone set that
+# deliberately, they meant it.
+_SYSTEM_CA_BUNDLES = (
+    "/etc/ssl/certs/ca-certificates.crt",       # Debian, Ubuntu, Alpine
+    "/etc/pki/tls/certs/ca-bundle.crt",         # Fedora, RHEL
+    "/etc/ssl/ca-bundle.pem",                   # openSUSE
+    "/etc/ssl/cert.pem",                        # BSD, macOS
+)
+
+
+def _repair_ca_bundle():
+    import os
+    if os.environ.get("REQUESTS_CA_BUNDLE"):
+        return
+    try:
+        import certifi
+        if os.path.exists(certifi.where()):
+            return
+        broken = certifi.where()
+    except Exception as exc:
+        broken = "certifi could not be imported (%s)" % exc
+    for candidate in _SYSTEM_CA_BUNDLES:
+        if os.path.exists(candidate):
+            os.environ["REQUESTS_CA_BUNDLE"] = candidate
+            log("CA bundle: %s is unusable, so HTTPS will verify against %s"
+                % (broken, candidate))
+            return
+    log("CA bundle: %s is unusable and no system bundle was found -- HTTPS "
+        "calls are likely to fail" % broken)
+
+
+_repair_ca_bundle()
