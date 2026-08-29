@@ -598,6 +598,12 @@ def _follow_pages(client, section, limit=10):
             added += 1
         kodiutils.log("%s: page %d added %d item(s)"
                       % (section.title, page, added))
+        if not added:
+            # A page that answered and held nothing readable is the
+            # interesting case: say what its tiles carry, so the key their
+            # endpoint sits under can be read off the log.
+            for line in epg.unreadable_sample(response):
+                kodiutils.log("%s: %s" % (section.title, line))
         following = epg.continuation_token(response)
         if not added or not following or following == token:
             break
@@ -770,6 +776,10 @@ def route_library():
     if not known:
         kodiutils.log("library shape: %s" % epg.describe(response))
         _dump_shape("library-shape.json", response)
+
+    if not sum(len(section.items) for section in shelves + filters):
+        for line in epg.unreadable_sample(response):
+            kodiutils.log("library: %s" % line)
 
     _list_sections(shelves, "library_section")
     _list_sections(filters[1:], "library_section")

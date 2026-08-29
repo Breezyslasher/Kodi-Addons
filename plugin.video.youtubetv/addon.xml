@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.10" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.11" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,14 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.11 - Library tiles
+- The TV client's Library named its nine tabs correctly and every one was
+  empty, though the response holds 26 tiles. A tile's endpoint is now looked
+  for under onSelectCommand, tapCommand and entityPageNavigationEndpoint as
+  well as navigationEndpoint; every capture parses identically to before.
+- When a page answers and holds nothing readable, the keys its tiles carry
+  are logged, which names the key to read next.
+
 2026.8.31.10 - Station names and logos
 - Only 7 of 148 stations carry a name field; the rest are named by the
   accessibility label on their logo. That label and the logo are now

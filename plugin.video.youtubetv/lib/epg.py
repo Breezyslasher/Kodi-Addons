@@ -262,19 +262,39 @@ class Item(object):
         return bool(self.video_id)
 
 
+# Where a tile keeps the endpoint you get by selecting it, in the order to
+# believe them. Still one level deep, deliberately: a renderer's menu carries
+# endpoints for other things entirely ("Go to Rick and Morty", "Add to
+# library"), so the first matching endpoint anywhere below would often be the
+# wrong one.
+#
+# "command" is *not* on this list, and that is the point of the list. It is
+# the key an unpluggedMenuItemRenderer keeps its watchEndpoint under, so
+# accepting it would list the two buttons of a "Join live / Start from
+# beginning" dialog as two rows of their own.
+#
+# entityPageNavigationEndpoint comes last: it is the show page behind a tile
+# that also has somewhere better to go. No renderer in any capture carries it
+# without a navigationEndpoint, so it only ever answers when nothing else has.
+_ENDPOINT_CARRIERS = ("navigationEndpoint", "onSelectCommand", "tapCommand",
+                      "entityPageNavigationEndpoint")
+
+
 def _endpoint_id(node, endpoint, key):
     """The id under a named endpoint, searching only this renderer.
 
-    Deliberately shallow-ish: a renderer's menu carries endpoints for other
-    things entirely ("Go to Rick and Morty", "Add to library"), so the first
-    matching endpoint anywhere below would often be the wrong one. The
-    navigationEndpoint is checked first for that reason.
+    The web client puts it under navigationEndpoint. The TV client answered
+    the Library with nine correctly named tabs holding nothing at all --
+    nineteen unpluggedBrowseItemRenderers that parse_items could not place --
+    which is what a tile whose endpoint is filed elsewhere looks like.
     """
-    nav = node.get("navigationEndpoint")
-    if isinstance(nav, dict):
-        block = nav.get(endpoint)
-        if isinstance(block, dict) and block.get(key):
-            return block[key]
+    for carrier in _ENDPOINT_CARRIERS:
+        block = node.get(carrier)
+        if not isinstance(block, dict):
+            continue
+        found = block.get(endpoint)
+        if isinstance(found, dict) and found.get(key):
+            return found[key]
     block = node.get(endpoint)
     if isinstance(block, dict) and block.get(key):
         return block[key]
@@ -298,12 +318,16 @@ def _popup_video_id(node):
     entirely: it has a title and a thumbnail and, as far as _endpoint_id
     could see, nowhere to go.
     """
-    popup = (node.get("navigationEndpoint") or {}).get("unpluggedPopupEndpoint")
-    if not isinstance(popup, dict):
-        return ""
-    for endpoint in walk(popup, "watchEndpoint"):
-        if isinstance(endpoint, dict) and endpoint.get("videoId"):
-            return endpoint["videoId"]
+    for carrier in _ENDPOINT_CARRIERS:
+        block = node.get(carrier)
+        if not isinstance(block, dict):
+            continue
+        popup = block.get("unpluggedPopupEndpoint")
+        if not isinstance(popup, dict):
+            continue
+        for endpoint in walk(popup, "watchEndpoint"):
+            if isinstance(endpoint, dict) and endpoint.get("videoId"):
+                return endpoint["videoId"]
     return ""
 
 
@@ -479,6 +503,42 @@ def unplayable_count(response):
 
     visit(response)
     return count
+
+
+def unreadable_sample(node, limit=3):
+    """Key names of renderers that look like tiles but name nowhere to go.
+
+    parse_items drops a renderer carrying a title and no endpoint it knows.
+    That is right for an episode the account has no rights to and wrong for a
+    tile whose endpoint is simply filed under a key this addon has not seen,
+    and the two are indistinguishable in a count: the TV client's Library
+    came back as nine correctly named tabs holding nothing, which is what
+    nineteen perfectly good tiles look like when their endpoint is somewhere
+    unexpected.
+
+    Listing the keys such a renderer actually carries names the one to read
+    next, and costs a log line rather than another round trip.
+    """
+    out = []
+
+    def visit(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if (len(out) < limit and key.endswith("Renderer")
+                        and isinstance(value, dict) and _title_of(value)
+                        and value.get("thumbnail")
+                        and not _endpoint_id(value, "watchEndpoint", "videoId")
+                        and not _endpoint_id(value, "browseEndpoint", "browseId")
+                        and not _popup_video_id(value)):
+                    out.append("%s carries [%s]"
+                               % (key, ", ".join(sorted(value.keys()))))
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(node)
+    return out
 
 
 def parse_search(response):
