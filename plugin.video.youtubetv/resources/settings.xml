@@ -15,6 +15,11 @@
 						<close>true</close>
 					</control>
 				</setting>
+				<setting id="prefer_token" type="boolean" label="30058" help="30059">
+					<level>0</level>
+					<default>false</default>
+					<control type="toggle"/>
+				</setting>
 				<setting id="dump_manifest" type="boolean" label="30031" help="30032">
 					<level>0</level>
 					<default>false</default>

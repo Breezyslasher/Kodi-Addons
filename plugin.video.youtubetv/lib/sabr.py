@@ -252,7 +252,14 @@ def _ump_varint(data, pos):
 
 
 def parse_ump(data):
-    """Yield ``(part_type, payload)`` from a UMP response."""
+    """Yield ``(part_type, payload)`` from a UMP response.
+
+    Stops at a zero-typed, zero-length part. A response can be followed by
+    padding -- a captured 1,114,824-byte body has its last real part end at
+    1,016,501 and 98 KB of nulls after it -- and a reader with no guard
+    turns that tail into 49,162 parts of "type 0", which is noise that
+    reads like structure.
+    """
     pos = 0
     while pos < len(data):
         part_type, pos = _ump_varint(data, pos)
@@ -260,6 +267,8 @@ def parse_ump(data):
             return
         size, pos = _ump_varint(data, pos)
         if size is None:
+            return
+        if not part_type and not size:
             return
         payload = data[pos:pos + size]
         pos += size

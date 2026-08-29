@@ -6,6 +6,7 @@ dependency on the rest of yt-dlp. Public domain, as above.
 
 import calendar
 import collections.abc
+import contextlib
 import datetime as dt
 import email.utils
 import functools
@@ -126,6 +127,64 @@ def js_to_json(code, vars={}, *, strict=False):
         [0-9]+(?={SKIP_RE}:)|
         !+
         ''', fix_kv, code)
+
+TIMEZONE_NAMES = {
+    "UT": 0, "UTC": 0, "GMT": 0, "Z": 0,
+    "AST": -4, "ADT": -3, "EST": -5, "EDT": -4, "CST": -6, "CDT": -5,
+    "MST": -7, "MDT": -6, "PST": -8, "PDT": -7,
+}
+
+_TZ_RE = re.compile(
+    r"""^(?P<rest>.*?)\s*
+        (?:(?P<sign>[+-])(?P<hours>[0-9]{2}):?(?P<minutes>[0-9]{2})
+         |(?P<name>Z|[A-Z]{2,5}))\s*$""", re.VERBOSE)
+
+
+def extract_timezone(date_str, default=None):
+    """(offset, date_str without the zone).
+
+    A reduced version of the helper this module was vendored from, which
+    was left behind: unified_timestamp called it and nothing defined it, so
+    every date the JS interpreter parsed raised NameError instead. It
+    handles what the player's own dates carry -- a numeric offset, a Z, or
+    one of the North American abbreviations -- and falls back to `default`
+    rather than inventing an offset for a zone it does not know.
+    """
+    match = _TZ_RE.match(date_str or "")
+    if not match:
+        return (default or dt.timedelta()), date_str
+    if match.group("sign"):
+        offset = dt.timedelta(hours=int(match.group("hours")),
+                              minutes=int(match.group("minutes")))
+        if match.group("sign") == "-":
+            offset = -offset
+        return offset, match.group("rest")
+    name = match.group("name")
+    if name in TIMEZONE_NAMES:
+        return dt.timedelta(hours=TIMEZONE_NAMES[name]), match.group("rest")
+    return (default or dt.timedelta()), date_str
+
+
+_DATE_FORMATS = (
+    "%d %B %Y", "%d %b %Y", "%B %d %Y", "%B %dst %Y", "%B %dnd %Y",
+    "%B %drd %Y", "%B %dth %Y", "%b %d %Y", "%b %dst %Y", "%b %dnd %Y",
+    "%b %drd %Y", "%b %dth %Y", "%b %dst %Y %I:%M", "%Y %m %d",
+    "%Y-%m-%d", "%Y.%m.%d.", "%Y/%m/%d", "%Y/%m/%d %H:%M",
+    "%Y/%m/%d %H:%M:%S", "%Y%m%d%H%M", "%Y%m%d%H%M%S", "%Y%m%d",
+    "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f",
+    "%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f",
+    "%d.%m.%Y %H:%M", "%d.%m.%Y %H.%M", "%H:%M %d-%b-%Y",
+)
+_DAY_FIRST = ("%d-%m-%Y", "%d.%m.%Y", "%d/%m/%Y", "%d/%m/%y",
+              "%d/%m/%Y %H:%M:%S", "%d-%m-%Y %H:%M")
+_MONTH_FIRST = ("%m-%d-%Y", "%m.%d.%Y", "%m/%d/%Y", "%m/%d/%y",
+                "%m/%d/%Y %H:%M:%S")
+
+
+def date_formats(day_first=True):
+    """strptime formats to try, ambiguous ones ordered by the day_first hint."""
+    return _DATE_FORMATS + (_DAY_FIRST if day_first else _MONTH_FIRST)
+
 
 def unified_timestamp(date_str, day_first=True, tz_offset=0):
     if not isinstance(date_str, str):
