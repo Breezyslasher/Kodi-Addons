@@ -84,7 +84,14 @@ def _from_youtube_addon():
     the token and for nothing else.
     """
     try:
+        import xbmc
         import xbmcaddon
+        # Ask before constructing one. xbmcaddon.Addon() on an addon that is
+        # not installed raises, and Kodi logs "EXCEPTION: Unknown addon id"
+        # at error level on the way past -- alarming, in a log, for something
+        # that is only a look.
+        if not xbmc.getCondVisibility("System.HasAddon(plugin.video.youtube)"):
+            return ("", "")
         other = xbmcaddon.Addon("plugin.video.youtube")
         return ((other.getSetting("youtube.api.id") or "").strip(),
                 (other.getSetting("youtube.api.secret") or "").strip())
