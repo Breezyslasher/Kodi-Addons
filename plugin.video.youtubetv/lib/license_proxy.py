@@ -60,7 +60,7 @@ def _context():
 
 
 def set_context(video_id, cpn, drm_params, is_live, heartbeat=None,
-                tracking=None, duration=0, client_name=""):
+                tracking=None, duration=0):
     """Record what the next licence exchange needs. Called just before play."""
     kodiutils.write_json(CONTEXT_FILE, {
         "video_id": video_id,
@@ -72,13 +72,6 @@ def set_context(video_id, cpn, drm_params, is_live, heartbeat=None,
         # The service reads this file, so it has to travel with the rest.
         "tracking": tracking or {},
         "duration": duration or 0,
-        # Which identity the player response came from. The licence request
-        # has to claim the same one -- it is asking for a licence for the
-        # session that response opened -- and it is not always the identity
-        # the credential authenticates as: an OAuth token signs in as
-        # TVHTML5_UNPLUGGED but that client answers SABR only, so the player
-        # call may have been made as another.
-        "client_name": client_name or "",
         # heartbeatParams straight out of the player response: the token and
         # the first heartbeatServerData the session must quote, and how long
         # it may go quiet. The service reads this file to know what to send.
@@ -202,24 +195,14 @@ class _Handler(BaseHTTPRequestHandler):
             # somewhere arbitrary with the account's cookies attached.
             self._send(403)
             return
-        # Kept in scope: _resolve_n needs the jar to read the player js off
-        # the page. Routing the fetch through api.credential() took the name
-        # away and left _resolve_n raising NameError inside the patch, which
-        # is caught -- so the manifest was passed through unpatched, n never
-        # got solved, and every segment came back 403.
         try:
             cookies = auth.load()
-        except auth.AuthError:
-            cookies = {}
-        try:
-            credential, _client = api.credential()
-            headers = {
+            response = requests.get(target, timeout=TIMEOUT, headers={
                 "User-Agent": api.UA,
                 "Origin": api.ORIGIN,
                 "Referer": api.ORIGIN + "/",
-            }
-            headers.update(credential)
-            response = requests.get(target, timeout=TIMEOUT, headers=headers)
+                "Cookie": auth.cookie_header(cookies),
+            })
         except Exception as exc:
             kodiutils.log_error("manifest fetch failed: %s" % exc)
             self._send(502)
@@ -294,23 +277,20 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(200, licence)
 
 
-def _post_license(payload, credential, client_name, session):
-    spec = api.client_spec(client_name)
+def _post_license(payload, cookies, session):
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": spec["context"].get("userAgent", api.UA),
+        "User-Agent": api.UA,
         "Origin": api.ORIGIN,
         "Referer": "%s/watch/%s" % (api.ORIGIN, payload.get("videoId", "")),
         "X-Origin": api.ORIGIN,
-        # The licence request has to claim the same client the player call
-        # did, or it is asking for a licence for a session that never opened.
-        "X-YouTube-Client-Name": spec["id"],
-        "X-YouTube-Client-Version": (
-            kodiutils.get_setting("client_version", api.CLIENT_VERSION)
-            if client_name == api.CLIENT_NAME else spec["version"]),
+        "X-YouTube-Client-Name": api.CLIENT_NAME_ID,
+        "X-YouTube-Client-Version": kodiutils.get_setting(
+            "client_version", api.CLIENT_VERSION) or api.CLIENT_VERSION,
         "X-Goog-AuthUser": "0",
+        "Authorization": auth.authorization(cookies),
+        "Cookie": auth.cookie_header(cookies),
     }
-    headers.update(credential)
     visitor = kodiutils.get_setting("visitor_id", "")
     if visitor:
         headers["X-Goog-Visitor-Id"] = visitor
@@ -333,17 +313,11 @@ def _fetch_license(challenge):
     if not ctx.get("video_id"):
         raise RuntimeError("no playback context -- nothing to license")
 
-    credential, client_name = api.credential()
-    client_name = ctx.get("client_name") or client_name
+    cookies = auth.load()
     session = requests.Session()
 
     payload = {
-        # The context has to name the same client as the headers: on an OAuth
-        # session that is the TV client the token was accepted as, not the web
-        # player. api.context sends the web player's visitorData and rollout
-        # state only for the web identity, which is what the other clients
-        # answer INVALID_ARGUMENT to.
-        "context": api.context(location=False, client_name=client_name),
+        "context": api.context(location=False),
         "drmSystem": "DRM_SYSTEM_WIDEVINE",
         "videoId": ctx["video_id"],
         "cpn": ctx.get("cpn", ""),
@@ -367,7 +341,7 @@ def _fetch_license(challenge):
             attempt["isKeyRotated"] = True
             attempt["cryptoPeriodIndex"] = index
 
-        body = _post_license(attempt, credential, client_name, session)
+        body = _post_license(attempt, cookies, session)
         status = body.get("status")
         if status == "LICENSE_STATUS_OK" and body.get("license"):
             if index is not None and index != candidates[0]:

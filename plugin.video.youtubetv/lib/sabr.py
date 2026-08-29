@@ -106,11 +106,20 @@ def build_request(ustreamer_config, wanted, known=(), player_time_ms=0,
 
     ``ustreamer_config`` is the base64url string from the player response;
     ``wanted`` and ``known`` are (itag, lastModified) pairs.
+
+    The config is omitted when there is none. That is not hypothetical: a
+    TVHTML5_UNPLUGGED response carries serverAbrStreamingUrl and no
+    mediaUstreamerRequestConfig at all -- searched for, not assumed, with no
+    key anywhere in the response even mentioning "ustreamer" -- while a
+    WEB_UNPLUGGED one carries both. Whether the endpoint will serve a request
+    without field 5 is the thing to find out, and it cannot be found out by a
+    builder that refuses to make one.
     """
-    config = base64.urlsafe_b64decode(
-        ustreamer_config + "=" * (-len(ustreamer_config) % 4))
     body = _b(1, client_abr_state(player_time_ms, max_height))
-    body += _b(5, config)
+    if ustreamer_config:
+        config = base64.urlsafe_b64decode(
+            ustreamer_config + "=" * (-len(ustreamer_config) % 4))
+        body += _b(5, config)
     for itag, lmt in ([wanted] if wanted else []):
         body += _b(16, format_id(itag, lmt))
     for itag, lmt in known:
@@ -159,8 +168,26 @@ def parse_ump(data):
         yield part_type, payload
 
 
+def _dump(data, limit=96):
+    """Hex and printable ascii, for a response too small to be media."""
+    head = data[:limit]
+    hexed = " ".join("%02x" % b for b in head)
+    text = "".join(chr(b) if 32 <= b < 127 else "." for b in head)
+    return "    hex %s\n    txt %s" % (hexed, text)
+
+
 def describe_response(data):
-    """A one-line-per-part summary of what the endpoint returned."""
+    """A one-line-per-part summary of what the endpoint returned.
+
+    A short body carrying no media is the interesting case rather than an
+    error: the first SABR request the endpoint ever served came back 200 with
+    31 bytes and no media, and a summary saying only "31 bytes" could not say
+    whether that was a redirect, a refusal or a header with nothing behind it.
+    Thirty-one arbitrary bytes will also parse as a couple of nonsense parts
+    -- one of them even claiming to be media -- so no reading of the parts is
+    a safe trigger. Any body too small to be a real media segment gets dumped
+    whole, and the parse above is left as the guess it is.
+    """
     lines = ["sabr response: %d bytes" % len(data)]
     media = 0
     for part_type, payload in parse_ump(data):
@@ -174,6 +201,9 @@ def describe_response(data):
         lines.append("  %-26s %d bytes%s" % (name, len(payload), detail))
     if media:
         lines.append("  MEDIA (total)              %d bytes" % media)
+    if data and len(data) < 1024:
+        lines.append("  too small to be media -- the whole body:")
+        lines.append(_dump(data, limit=len(data)))
     return "\n".join(lines)
 
 

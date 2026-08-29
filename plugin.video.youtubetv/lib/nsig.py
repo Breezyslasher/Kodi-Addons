@@ -346,19 +346,29 @@ def _runtime_on_path():
             if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
                 return name, [candidate]
 
-    if in_flatpak():
-        spawn = "/usr/bin/flatpak-spawn"
-        if os.path.exists(spawn):
-            for name in _RUNTIMES:
-                try:
-                    probe = subprocess.run([spawn, "--host", name, "--version"],
-                                           capture_output=True, timeout=20)
-                except Exception:
-                    continue
-                if probe.returncode == 0:
-                    kodiutils.log("nsig: using the host's %s through "
-                                  "flatpak-spawn" % name)
-                    return name, [spawn, "--host", name]
+    # Why it failed matters as much as that it did. A run that reported "no
+    # runtime" in under half a second turned out to be a machine where the
+    # flatpak had never been granted --talk-name=org.freedesktop.Flatpak, so
+    # the host probes could not run at all -- which the message could not say
+    # because it recorded nothing about how it looked.
+    trail = []
+    sandboxed = in_flatpak()
+    spawn = "/usr/bin/flatpak-spawn"
+    trail.append("flatpak=%s spawn=%s" % (sandboxed, os.path.exists(spawn)))
+    if sandboxed and os.path.exists(spawn):
+        for name in _RUNTIMES:
+            try:
+                probe = subprocess.run([spawn, "--host", name, "--version"],
+                                       capture_output=True, timeout=20)
+            except Exception as exc:
+                trail.append("%s:%s" % (name, type(exc).__name__))
+                continue
+            if probe.returncode == 0:
+                kodiutils.log("nsig: using the host's %s through "
+                              "flatpak-spawn" % name)
+                return name, [spawn, "--host", name]
+            trail.append("%s:rc=%d" % (name, probe.returncode))
+    kodiutils.log("nsig: no runtime found -- %s" % " ".join(trail))
     return None, None
 
 
