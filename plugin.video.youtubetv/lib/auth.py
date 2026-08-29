@@ -4,13 +4,14 @@ Sign-in is a cookie jar exported from a browser that is already signed in;
 every request is signed with the SAPISIDHASH scheme the web player uses.
 
 An earlier version of this note claimed flatly that no OAuth path exists. That
-was an assertion, not a finding. What is actually established: the tv.youtube.com
-web player authenticates with SAPISIDHASH in every capture taken so far, and
-never with a bearer token. What is not established, and is worth testing, is
-whether the unplugged InnerTube surface would accept the OAuth device-code
-token that plugin.video.youtube uses against ordinary YouTube -- InnerTube does
-take "Authorization: Bearer" in place of SAPISIDHASH, and whether a YouTube TV
-subscription rides on a Data API scope is unknown here rather than ruled out.
+was an assertion, not a finding, and it was wrong: the OAuth device-code token
+plugin.video.youtube uses is accepted here too, as TVHTML5_UNPLUGGED, and
+returned a full lineup. See lib/oauth.py. The web player itself authenticates
+with SAPISIDHASH in every capture and never with a bearer token, which says
+what the web player does and not what the surface allows.
+
+So there are two ways in, and a cookie jar is still the one that needs no
+Google API project of your own.
 
 Two import routes, because typing a 3 KB cookie header on a remote is cruel:
 
@@ -134,30 +135,40 @@ def parse_cookies_txt(path):
     name the youtube.com jar lacks -- a browser signed in on one domain and not
     the other -- and never to add cookies of its own.
     """
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        return parse_cookies_txt_text(handle.read())
+
+
+def parse_cookies_txt_text(text):
+    """The same, for an export pasted rather than saved to disk.
+
+    Split out so the sign-in page can take a cookies.txt someone pasted into
+    a textarea without first asking them to put a file on the Kodi box, which
+    is the whole difficulty being removed.
+    """
     youtube, google = {}, {}
     now = time.time()
-    with open(path, "r", encoding="utf-8", errors="replace") as handle:
-        for line in handle:
-            line = line.strip()
-            if not line or line.startswith("#") and not line.startswith("#HttpOnly_"):
-                continue
-            if line.startswith("#HttpOnly_"):
-                line = line[len("#HttpOnly_"):]
-            fields = line.split("\t")
-            if len(fields) < 7:
-                continue
-            domain, expiry, name, value = (fields[0], fields[4],
-                                           fields[5], fields[6])
-            if expired(expiry, now):
-                continue
-            if domain_matches(domain):
-                # Two entries can carry one name -- .youtube.com and a
-                # host-scoped tv.youtube.com copy. The specific one is the one
-                # that was set for us, so let it win.
-                if name not in youtube or domain.lstrip(".") == HOST:
-                    youtube[name] = value
-            elif domain_matches(domain, "www.google.com"):
-                google[name] = value
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") and not line.startswith("#HttpOnly_"):
+            continue
+        if line.startswith("#HttpOnly_"):
+            line = line[len("#HttpOnly_"):]
+        fields = line.split("\t")
+        if len(fields) < 7:
+            continue
+        domain, expiry, name, value = (fields[0], fields[4],
+                                       fields[5], fields[6])
+        if expired(expiry, now):
+            continue
+        if domain_matches(domain):
+            # Two entries can carry one name -- .youtube.com and a
+            # host-scoped tv.youtube.com copy. The specific one is the one
+            # that was set for us, so let it win.
+            if name not in youtube or domain.lstrip(".") == HOST:
+                youtube[name] = value
+        elif domain_matches(domain, "www.google.com"):
+            google[name] = value
 
     jar = dict(youtube)
     for name in WANTED:

@@ -1,0 +1,154 @@
+"""IPTV Manager integration.
+
+service.iptv.manager turns an addon's channel list and schedule into a real
+Kodi PVR source, so YouTube TV's channels appear in the TV section with a
+proper guide rather than only inside this addon's own menus.
+
+How it works, from the addon's side (add-ons/service.iptv.manager wiki,
+"Integration"): the addon advertises three settings -- ``iptv.enabled``,
+``iptv.channels_uri`` and ``iptv.epg_uri``. IPTV Manager binds a socket on a
+free localhost port, merges ``port=`` into the advertised plugin url with
+``update_qs`` (so an url that already has a query keeps it, which is why the
+addon's existing ``?action=`` routing is enough), and calls it with
+``RunPlugin``. The addon connects back to that port and writes JSON.
+
+Two details from its source that shape the code here. It waits ten seconds
+for the *connection*, then as long as the connection stays open for the data
+-- so the socket is opened before the guide is fetched, not after. And it
+reads until the connection closes, so nothing is framed or terminated.
+
+The wiki is explicit that an addon must never prompt for credentials here: a
+guide refresh happens on IPTV Manager's schedule, and a sign-in dialog
+appearing out of nowhere is worse than no data. So a failure logs and closes
+the socket, which is the documented way to say "nothing this time".
+"""
+
+import json
+import socket
+import time
+
+from urllib.parse import quote
+
+from . import api, auth, epg as epg_mod, kodiutils
+
+# What the guide endpoint reaches for. IPTV Manager refreshes on its own
+# schedule and Google caps the reachable range at a week, so this is a
+# compromise between a useful guide and a response measured in megabytes.
+EPG_HOURS = 24
+EPG_AIRINGS_PER_STATION = 40
+
+
+def _iso(milliseconds):
+    """ISO-8601 UTC, which is what the JSON-EPG format asks for."""
+    return time.strftime("%Y-%m-%dT%H:%M:%S+00:00",
+                         time.gmtime(milliseconds / 1000.0))
+
+
+class IPTVManager(object):
+    """Answers one IPTV Manager request over its callback socket."""
+
+    def __init__(self, port):
+        self.port = int(port)
+
+    def _send(self, build):
+        """Connect first, then do the slow part, then write.
+
+        The order matters: IPTV Manager gives ten seconds for the connection
+        and unlimited time once it has one, and fetching a day of guide takes
+        longer than ten seconds often enough to matter.
+        """
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.connect(("127.0.0.1", self.port))
+        except OSError as exc:
+            kodiutils.log_error("iptv manager: could not connect back on "
+                                "port %d: %s" % (self.port, exc))
+            return
+        try:
+            payload = build()
+        except (auth.AuthError, api.ApiError) as exc:
+            # Closing without writing is how the protocol says "failed". A
+            # dialog here would appear during an unattended guide refresh.
+            kodiutils.log_error("iptv manager: no data this time: %s" % exc)
+            return
+        except Exception as exc:
+            kodiutils.log_error("iptv manager: giving up on this request: %s"
+                                % exc)
+            return
+        else:
+            try:
+                sock.sendall(json.dumps(payload).encode("utf-8"))
+            except OSError as exc:
+                kodiutils.log_error("iptv manager: could not send: %s" % exc)
+        finally:
+            sock.close()
+
+    # -- the two endpoints -------------------------------------------------
+
+    def send_channels(self):
+        self._send(self._channels)
+
+    def send_epg(self):
+        self._send(self._epg)
+
+    def _stations(self, hours):
+        return epg_mod.parse_epg(api.Api().epg(
+            hours=hours, max_airings=EPG_AIRINGS_PER_STATION))
+
+    def _channels(self):
+        """JSON-STREAMS: one entry per station.
+
+        The stream url names the *station*, not the airing playing when the
+        guide was built. IPTV Manager writes these into a playlist that
+        outlives any one programme, so a video id here would be a channel
+        that plays the wrong thing an hour later, and a dead link after that.
+        """
+        streams = []
+        for station in self._stations(hours=2):
+            if not station.station_id or not station.name:
+                continue
+            streams.append({
+                "id": station.station_id,
+                "name": station.name,
+                "logo": station.logo or "",
+                "stream": ("plugin://plugin.video.youtubetv/"
+                           "?action=play_channel&station_id=%s"
+                           % quote(station.station_id)),
+            })
+        kodiutils.log("iptv manager: offering %d channel(s)" % len(streams))
+        return {"version": 1, "streams": streams}
+
+    def _epg(self):
+        """JSON-EPG: the schedule, keyed by the same station id."""
+        guide = {}
+        airings = 0
+        for station in self._stations(hours=EPG_HOURS):
+            if not station.station_id:
+                continue
+            programmes = []
+            for airing in station.airings:
+                if not airing.start_ms or not airing.end_ms:
+                    continue
+                entry = {
+                    "start": _iso(airing.start_ms),
+                    "stop": _iso(airing.end_ms),
+                    "title": airing.title or station.name,
+                }
+                if airing.description:
+                    entry["description"] = airing.description
+                if airing.art:
+                    entry["image"] = airing.art
+                if airing.video_id:
+                    # Lets the guide play a programme directly. Only what is
+                    # on now will actually resolve -- catch-up is a separate
+                    # entitlement -- but the url is right either way.
+                    entry["stream"] = ("plugin://plugin.video.youtubetv/"
+                                       "?action=play&video_id=%s"
+                                       % quote(airing.video_id))
+                programmes.append(entry)
+            if programmes:
+                guide[station.station_id] = programmes
+                airings += len(programmes)
+        kodiutils.log("iptv manager: offering %d airing(s) across %d channel(s)"
+                      % (airings, len(guide)))
+        return {"version": 1, "epg": guide}

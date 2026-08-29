@@ -719,23 +719,124 @@ def prepare(client, video_id, label=None, art=None):
     else:
         survey_clients_once(client, video_id)
     response = client.player(video_id, cpn)
+    response = _with_dash_manifest(client, video_id, cpn, response)
 
     streaming = response.get("streamingData") or {}
     details = response.get("videoDetails") or {}
+    is_live = bool(details.get("isLive"))
+    try:
+        duration = float(details.get("lengthSeconds") or 0)
+    except (TypeError, ValueError):
+        duration = 0.0
     license_proxy.set_context(
         video_id=video_id,
         cpn=cpn,
         drm_params=streaming.get("drmParams", ""),
-        is_live=bool(details.get("isLive")),
+        is_live=is_live,
         heartbeat=response.get("heartbeatParams") or {},
+        tracking=(response.get("playbackTracking") or {}
+                  if kodiutils.get_setting_bool("report_progress", True)
+                  else {}),
+        duration=duration,
+        client_name=response.get("_client_name", ""),
     )
 
     authorized = streaming.get("initialAuthorizedDrmTrackTypes") or []
     kodiutils.log("play %s (%s): live=%s authorized=%s"
-                  % (video_id, details.get("title"), details.get("isLive"),
+                  % (video_id, details.get("title"), is_live,
                      ",".join(authorized) or "none"))
 
-    return response, build_item(response, label=label, art=art)
+    item = build_item(response, label=label, art=art)
+    _resume(item, response, is_live)
+    return response, item
+
+
+DASH_CLIENT_FILE = "dash_client.json"
+
+
+def _with_dash_manifest(client, video_id, cpn, response):
+    """Make sure the player response actually carries a DASH manifest.
+
+    Which identity is served one is not fixed. Signed in with the cookie jar
+    as WEB_UNPLUGGED, every response carries a dashManifestUrl. Signed in with
+    an OAuth token -- which YouTube TV only accepts as TVHTML5_UNPLUGGED --
+    the same two titles came back SABR only, live and on demand alike, and
+    InputStream Adaptive cannot play SABR.
+
+    So when the response has no manifest, the other identities are asked for
+    the same video and the first that answers with one is used, and
+    remembered. The remembered choice is tried first next time and dropped
+    the moment it stops working, so this costs one extra call once rather
+    than a survey per play.
+    """
+    if (response.get("streamingData") or {}).get("dashManifestUrl"):
+        return response
+
+    remembered = (kodiutils.read_json(DASH_CLIENT_FILE, default={})
+                  or {}).get("client")
+    order = [remembered] if remembered else []
+    order += [n for n in ("WEB_UNPLUGGED", "TVHTML5_UNPLUGGED",
+                          "TV_UNPLUGGED_ANDROID", "TV_UNPLUGGED_CAST",
+                          "ANDROID_UNPLUGGED", "IOS_UNPLUGGED")
+              if n != remembered]
+
+    kodiutils.log("player: no dashManifestUrl as %s -- asking the other "
+                  "identities for one" % client.client_name)
+    for name in order:
+        if name == client.client_name or name not in api.UNPLUGGED_CLIENTS:
+            continue
+        try:
+            other = client.player(video_id, cpn, client_name=name)
+        except Exception as exc:
+            kodiutils.log("player: %s refused (%s)" % (name, str(exc)[:120]))
+            continue
+        streaming = other.get("streamingData") or {}
+        if streaming.get("dashManifestUrl"):
+            kodiutils.log("player: %s answered with a DASH manifest" % name)
+            kodiutils.write_json(DASH_CLIENT_FILE, {"client": name})
+            # Carried so the licence exchange claims the same client this
+            # response came from rather than the one we authenticate as.
+            other["_client_name"] = name
+            return other
+        kodiutils.log("player: %s answered SABR only" % name)
+    kodiutils.log_error("player: no identity offered a DASH manifest")
+    return response
+
+
+def _resume(item, response, is_live):
+    """Start where YouTube says this account left off.
+
+    The position is not something we have to remember: the player response
+    states it, in playerConfig.playbackStartConfig.startSeconds. The capture
+    of an on-demand title opens with stats/playback at cmt=797.003 and the
+    same response carries startSeconds 797, so this is the field the web
+    player resumes from and it is already in a response the addon fetches.
+
+    Live has no meaningful resume point and its "position" is a place in the
+    DVR window, so it is left alone.
+
+    StartOffset rather than the ResumeTime/TotalTime pair: Kodi 22 logs a
+    deprecation warning for those and points at setResumePoint, but a resume
+    point on a resolved item is not what starts playback at an offset --
+    GetOptionsAndUpdateItem reads the resolved item's start offset into
+    m_options.starttime (ApplicationPlay.cpp), and setProperty("StartOffset")
+    is the un-deprecated way to set it. It is in seconds; ListItem converts.
+    """
+    if is_live or not kodiutils.get_setting_bool("resume", True):
+        return
+    config = ((response.get("playerConfig") or {})
+              .get("playbackStartConfig") or {})
+    try:
+        start = float(config.get("startSeconds") or 0)
+    except (TypeError, ValueError):
+        return
+    # Under a second is where YouTube says "from the beginning"; seeking there
+    # costs a visible jump and buys nothing.
+    if start < 1:
+        return
+    item.setProperty("StartOffset", "%.3f" % start)
+    kodiutils.log("resuming at %.1fs, where YouTube says this account stopped"
+                  % start)
 
 
 def cross_sabr(client, response):

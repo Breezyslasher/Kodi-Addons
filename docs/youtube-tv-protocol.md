@@ -1101,3 +1101,226 @@ per-Representation `<BaseURL>`, which is exactly what `$Number$` expresses, so
 the two forms carry the same information — but only one of them is the shape
 ISA's live path is written for. That engages the optional (no crash) and lets
 the live-edge code run (no 2.5 hour delay).
+
+### What the manifest actually said, and what the conversion had to be
+
+The saved `last-manifest.mpd` (856 KB) settles the shape:
+
+```xml
+<MPD type="dynamic" availabilityStartTime="2026-08-27T19:24:02"
+     timeShiftBufferDepth="PT14400.000S" minimumUpdatePeriod="PT5.000S" ...>
+ <Period start="PT16270868.153S">
+  <SegmentList presentationTimeOffset="16293497486" startNumber="3258715" timescale="1000">
+   <SegmentTimeline><S d="5005"/><S d="4971"/><S d="4938"/>... 1879 entries
+  </SegmentList>
+  <AdaptationSet id="0" mimeType="audio/mp4">
+   <Representation id="148:ChAKBWFjb250EgdwcmltYXJ5">
+    <BaseURL>https://...googlevideo.com/videoplayback/.../</BaseURL>
+    <SegmentList><SegmentURL media="sq/3258715/lmt/702"/>... 1879 entries
+```
+
+`minimumUpdatePeriod="PT5.000S"` is the five seconds. Eleven Representations,
+each listing the same contiguous 1879 segments, `lmt` constant within a
+Representation, and the subtitle track spelling its media `sq/N` with no
+`lmt` at all. No `<Initialization>` anywhere, and no `<SegmentTemplate>`.
+
+**The cheap workaround does not exist.** The first idea was to add an empty
+`<SegmentTemplate>` purely to engage the optional and leave the SegmentList
+to do the work. It would have broken every url:
+
+```cpp
+if (rep->HasSegmentTemplate())
+  streamUrl = segTpl->FormatUrl(segTpl->GetMedia(), ...);
+else
+  streamUrl = seg.url;
+```
+
+(`AdaptiveStream.cpp:216`.) The moment a Representation has a template, url
+construction stops reading the SegmentList's `media` and formats the
+template's instead.
+
+**And the SegmentList was already producing nothing.** ISA parses a
+`<SegmentTimeline>` only from an *AdaptationSet's* SegmentList
+(`DASHTree.cpp:612`). YouTube states it once on the Period, where nothing
+reads it, and a Representation's SegmentList inherits from its AdaptationSet,
+which here has none. So `duration` fell through to `segList.GetDuration()` —
+zero. Every one of the 1879 segments came out with duration 0, `startPTS_` 0
+and `m_number` 0. That is the real reason playback began at the oldest
+segment of a four-hour window: there was no timeline to seek in, only a list
+walked from the front.
+
+So the conversion is the whole fix, not a workaround for the crash. `patch()`
+now restates the live manifest as one Period-level
+
+```xml
+<SegmentTemplate timescale="1000" startNumber="3258715"><SegmentTimeline>...</SegmentTimeline></SegmentTemplate>
+```
+
+which ISA copies down to every AdaptationSet and Representation (lines 578,
+818), plus one line per Representation naming only its own media:
+
+```xml
+<SegmentTemplate media="sq/$Number$/lmt/702" startNumber="3258715"/>
+```
+
+A template node with no `<SegmentTimeline>` child leaves the inherited one
+intact (`ParseSegmentTemplate`), so each Representation ends up with the
+timeline, real durations, and numbers counting from its own first `sq`.
+
+Checked rather than assumed: replaying ISA's generation (`DASHTree.cpp:1013`)
+and `FormatUrl` over the converted manifest reproduces all 1879 urls of all
+eleven Representations **exactly**, character for character, against the
+`<SegmentURL>` list they replaced. The manifest also drops from 856 KB to
+72 KB, which is 20,669 elements ISA no longer parses five times a minute.
+
+`to_segment_template` refuses and leaves the manifest alone if the timeline
+does not describe exactly as many segments as a Representation lists — a
+template is equivalent to its list only while the two agree, and a manifest
+that plays for five seconds beats one that fetches the wrong urls.
+
+**Known unknown.** The `<S>` elements carry no `t=`, so segment PTS run from
+zero plus the Period start. That is stable while YouTube keeps `startNumber`
+fixed and appends — which is what two captures 25 minutes apart show
+(oldest `sq/3263606` in both, newest moving 3265103 -> 3265401). Once the
+window reaches its 4 hour `timeShiftBufferDepth` and segments start being
+dropped, `startNumber` will advance and every PTS will shift with it, which
+would break the update's `segment.startPTS_ == segStartPTS` lookup. Fixing
+that means anchoring the first `<S t=>`, and choosing the anchor needs a
+manifest from a window that has actually begun dropping. Not guessed at here.
+
+## YouTube TV accepts an OAuth device-code token, as TVHTML5_UNPLUGGED
+
+This was open for as long as the addon has existed. The notes said, honestly,
+that the web player authenticates with `SAPISIDHASH` in every capture and
+never with a bearer token -- all sixty-nine authenticated requests -- and that
+this said what the web player does rather than what the surface allows.
+
+It allows it. The device-code flow the regular YouTube addon uses works
+against YouTube TV:
+
+```
+POST accounts.google.com/o/oauth2/device/code
+     client_id, scope=https://www.googleapis.com/auth/youtube
+  -> device_code, user_code, verification_url, interval
+POST www.googleapis.com/oauth2/v4/token
+     client_id, client_secret, code, grant_type=http://oauth.net/grant_type/device/1.0
+  -> access_token, refresh_token
+```
+
+then `Authorization: Bearer <token>` on InnerTube.
+
+**The identity is half the credential.** The first attempt was refused:
+
+```
+browse -> HTTP 400 as WEB_UNPLUGGED v1.20260825.04.00, 0 cookies / 0 bytes:
+          INVALID_ARGUMENT: Request contains an invalid argument.
+```
+
+That reads like a rejected credential and is not one. Two things were wrong
+with it at once, and both were already written down here. `INVALID_ARGUMENT`
+is this surface's complaint about a malformed *request* -- the note above
+`context()` records the mobile and TV clients answering exactly this when
+sent the web player's `visitorData`/`rolloutToken`/`configInfo` -- and with no
+cookie jar the web context loses that same block, so the one identity tried
+was also the one most likely to be malformed. Beyond that, a device-code token
+is minted for a limited-input client, and `WEB_UNPLUGGED` is the least likely
+identity to be accepted for one.
+
+Asked again across all six identities, TV first:
+
+```
+oauth probe: TVHTML5_UNPLUGGED answered with 150 station(s)
+```
+
+That is the same pairing plugin.video.youtube uses: it sends every bearer
+request as `TVHTML5` (client id 7, a Samsung SmartTV on Tizen), swaps in a
+Cobalt user agent via `_auth_user_agent`, and drops the `key` API-key
+parameter when authorised. We send no `key` at all, and
+`TVHTML5_UNPLUGGED` (client id 65) already carries a Cobalt user agent.
+
+So the accepted identity is stored with the token and every later call is
+made as that client -- a token without it is a valid credential that fails
+every request. Sign-in still proves itself before the token is kept: it asks
+each identity for the account's own lineup and keeps the token only for one
+that answers.
+
+What this does not yet establish is whether `player` returns a DASH manifest
+for a `TVHTML5_UNPLUGGED` bearer session, or only a SABR endpoint. Browsing
+is proven; playback is not, and the addon's client survey exists to answer
+exactly that.
+
+### ...but that identity is served SABR only
+
+Signing in worked; playing did not. With the bearer token accepted as
+`TVHTML5_UNPLUGGED`, `player` answers -- it is not refused, and it names the
+entitlement -- but the response carries no DASH manifest at all:
+
+```
+play yVw6cI5bMXI (WTAE 4): live=True authorized=DRM_TRACK_TYPE_AUDIO,DRM_TRACK_TYPE_SD
+player response has no dashManifestUrl -- SABR only, which InputStream Adaptive cannot play
+play FbNhOJhWHs0 (Field of Dreams): live=False authorized=...
+player response has no dashManifestUrl -- SABR only
+```
+
+Live and on demand alike. The same two titles, signed in with the cookie jar
+as `WEB_UNPLUGGED`, come back with a `dashManifestUrl` every time.
+
+So delivery is chosen per client identity, and the two requirements pull
+apart: OAuth is only accepted as `TVHTML5_UNPLUGGED`, and
+`TVHTML5_UNPLUGGED` is served SABR. Neither is a matter of the credential --
+the token is fine, the entitlement is fine.
+
+`prepare` therefore stops assuming the identity that authenticates is the
+identity that can be played. When a player response arrives without a
+manifest it asks the other identities for the same video, uses the first
+that answers with one, and remembers it; the remembered choice is tried
+first afterwards, so it costs one extra call once rather than a survey per
+play. The licence exchange follows that choice rather than the credential's,
+because a licence request has to claim the session the player response
+opened -- which is why the player's client id now travels in the playback
+context.
+
+Whether any identity gives both a bearer-accepted session and a DASH
+manifest is the thing this measures. If none does, the shape that works is
+OAuth for browsing and a cookie jar for playback, and the addon should say
+so plainly rather than half-play.
+
+### Settled: OAuth can browse, but nothing it is accepted as is served DASH
+
+The search ran over all six identities, for a live channel and an on-demand
+title, on a bearer session:
+
+```
+player: no dashManifestUrl as TVHTML5_UNPLUGGED -- asking the other identities for one
+player -> HTTP 400 as WEB_UNPLUGGED       INVALID_ARGUMENT
+player -> HTTP 403 as TV_UNPLUGGED_ANDROID PERMISSION_DENIED
+player -> HTTP 404 as TV_UNPLUGGED_CAST    NOT_FOUND
+player -> HTTP 400 as ANDROID_UNPLUGGED    INVALID_ARGUMENT
+player -> HTTP 400 as IOS_UNPLUGGED        INVALID_ARGUMENT
+player: no identity offered a DASH manifest
+```
+
+Identical for both titles. So the two requirements never meet: the only
+identity that accepts the token is served SABR, and every identity that might
+be served DASH refuses the token. **OAuth cannot drive playback on this
+surface.**
+
+That is a real answer rather than a dead end, and it bounds what the flow is
+for. Browsing, the guide and search work on a bearer token alone; playback
+needs the cookie jar. The addon says so at sign-in now -- it runs the same
+manifest search once, while the user is still in the sign-in dialog, and
+tells them plainly that playback needs the phone-or-laptop sign-in too --
+rather than letting them find out one "cannot play this" at a time.
+
+Worth noting what this does *not* separate: `WEB_UNPLUGGED` + bearer answers
+INVALID_ARGUMENT, and a bearer session has no cookie jar, so its context is
+also missing the `rolloutToken` and `configInfo` that `_bootstrap` reads off
+the page with cookies. Whether the web client refuses the token or refuses
+the incomplete context cannot be told apart from here -- and it does not
+matter much, because anyone with cookies to complete that context does not
+need OAuth.
+
+One thing this exposed and fixed: a 401/403 on a bearer session used to run
+the cookie page probe and tell the user to "import a fresh cookie export",
+which is advice about something that was not the problem. A bearer session
+has no jar to probe, and now says so.

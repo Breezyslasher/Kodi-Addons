@@ -4,10 +4,11 @@ import sys
 import time
 from urllib.parse import parse_qsl, urlencode
 
+import xbmc
 import xbmcgui
 import xbmcplugin
 
-from lib import api, auth, epg, kodiutils, playback
+from lib import api, auth, epg, kodiutils, oauth, playback, signin
 
 HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 else -1
 BASE_URL = sys.argv[0] if sys.argv else "plugin://plugin.video.youtubetv/"
@@ -64,9 +65,16 @@ def _import_cookies():
     file cannot be got onto the Kodi box easily.
     """
     choice = xbmcgui.Dialog().contextmenu([
+        "Sign in from your phone or laptop",
+        "Sign in with a code (experimental)",
         "Choose a cookies.txt file",
         "Paste a Cookie header",
     ])
+    if choice == 0:
+        return _sign_in_over_the_network()
+    if choice == 1:
+        return _sign_in_with_code()
+    choice -= 2
     try:
         if choice == 0:
             path = xbmcgui.Dialog().browseSingle(1, "Select cookies.txt", "files")
@@ -103,6 +111,186 @@ def _import_cookies():
     return True
 
 
+def _sign_in_over_the_network():
+    """Serve a sign-in page on the LAN and wait for a jar to be pasted into it.
+
+    Typing a three kilobyte Cookie header on a remote is not something anyone
+    does twice, and getting a file onto the box is its own errand. The device
+    that already has the session -- the phone or laptop signed in to
+    tv.youtube.com -- has a keyboard and a clipboard, so the form goes there.
+    """
+    server = signin.SignInServer(verify=_verify)
+    try:
+        server.start()
+    except Exception as exc:
+        kodiutils.ok_dialog("Could not open the sign-in page: %s" % exc,
+                            "Sign-in failed")
+        return False
+
+    host = xbmc.getIPAddress() or "127.0.0.1"
+    progress = xbmcgui.DialogProgress()
+    progress.create(
+        "Sign in from another device",
+        "On a phone or laptop signed in to tv.youtube.com, open:\n\n"
+        "[B]%s[/B]\n\nThis page closes as soon as it has your session."
+        % server.url(host))
+    try:
+        waited = 0
+        # Ten minutes is long enough to find a laptop and short enough that a
+        # page left open by accident does not stay open all evening.
+        while waited < 600 and not server.cookies:
+            if progress.iscanceled():
+                return False
+            xbmc.sleep(500)
+            waited += 0.5
+        cookies = server.cookies
+    finally:
+        progress.close()
+        server.stop()
+
+    if not cookies:
+        kodiutils.notify("Sign-in page closed without a session")
+        return False
+    auth.save(cookies)
+    kodiutils.notify("Signed in")
+    return True
+
+
+def _sign_in_with_code():
+    """The device-code flow, and an honest test of whether it is any use here.
+
+    This is what the regular YouTube addon does: Google shows a short code,
+    the account authorises it on another device, and InnerTube is then called
+    with a bearer token instead of a cookie jar.
+
+    Whether tv.youtube.com honours that is not something the addon can reason
+    its way to. Every authenticated request in every capture of the web player
+    carries SAPISIDHASH and none carries a bearer token -- which says the web
+    player does not use OAuth, not that the surface refuses it. So the token
+    is put straight to work fetching the account's own lineup, and kept only
+    if that works. A stored credential that silently fails is worse than none.
+    """
+    client_id, secret = oauth.credentials()
+    if not client_id:
+        kodiutils.ok_dialog(
+            "This needs the client ID and secret of your own Google API "
+            "project -- the same pair the YouTube add-on uses. Put them in "
+            "this add-on's settings, under Account.", "Nothing to sign in with")
+        return False
+
+    try:
+        started = oauth.request_code(client_id)
+    except oauth.OAuthError as exc:
+        kodiutils.ok_dialog(str(exc), "Sign-in failed")
+        return False
+
+    url = started.get("verification_url") or "https://www.google.com/device"
+    progress = xbmcgui.DialogProgress()
+    progress.create("Sign in with a code",
+                    "On another device, open:\n\n[B]%s[/B]\n\n"
+                    "and enter the code:  [B]%s[/B]"
+                    % (url, started.get("user_code")))
+    deadline = time.time() + min(int(started.get("expires_in") or 300), 900)
+    try:
+        token = oauth.poll_for_token(
+            client_id, secret, started["device_code"],
+            started.get("interval"), deadline,
+            cancelled=progress.iscanceled)
+    except oauth.OAuthError as exc:
+        progress.close()
+        kodiutils.ok_dialog(str(exc), "Sign-in failed")
+        return False
+    finally:
+        progress.close()
+
+    if not token:
+        return False
+
+    oauth.save(token)
+    ok, message, client_name = _verify_bearer()
+    if ok:
+        # Remember which identity answered, so every later call makes the
+        # request that works rather than the one that does not.
+        oauth.save(token, client_name=client_name)
+    if not ok:
+        oauth.forget()
+        kodiutils.ok_dialog(
+            "Google signed us in, but no client identity got a lineup from "
+            "that token:\n\n%s\n\nThe token has been discarded. Sign in "
+            "from your phone or laptop instead." % message,
+            "YouTube TV does not accept this")
+        return False
+    kodiutils.ok_dialog(message, "Signed in")
+    return True
+
+
+def _verify_bearer():
+    """Ask YouTube TV for the lineup with the bearer token, as each client.
+
+    One refusal is not an answer. A device-code token is minted for a
+    limited-input client, so being turned away while claiming to be the *web*
+    player says only that -- and the first run of this came back
+    "INVALID_ARGUMENT: Request contains an invalid argument", which is what a
+    malformed request looks like rather than what a rejected credential looks
+    like. So every identity the addon knows is tried and the outcomes are
+    reported together; the TV ones are the ones OAuth would plausibly suit.
+    """
+    try:
+        client = api.Api()
+    except auth.AuthError as exc:
+        return False, str(exc), ""
+
+    order = ["TVHTML5_UNPLUGGED", "TV_UNPLUGGED_ANDROID", "TV_UNPLUGGED_CAST",
+             "ANDROID_UNPLUGGED", "IOS_UNPLUGGED", "WEB_UNPLUGGED"]
+    tried = []
+    for name in order:
+        if name not in api.UNPLUGGED_CLIENTS:
+            continue
+        try:
+            stations = epg.parse_epg(client.epg(hours=2, client_name=name))
+        except Exception as exc:
+            tried.append("%s: %s" % (name, str(exc)[:160]))
+            kodiutils.log("oauth probe: %s refused -- %s" % (name, exc))
+            continue
+        if stations:
+            kodiutils.log("oauth probe: %s answered with %d station(s)"
+                          % (name, len(stations)))
+            summary = ("Signed in as %s. %d channels in your lineup."
+                       % (name, len(stations)))
+            if not _oauth_can_play(client, stations):
+                summary += (
+                    "\n\nPlayback will not work on this sign-in. YouTube TV "
+                    "only offers a DASH manifest to the web client, and that "
+                    "client does not accept this token -- every identity was "
+                    "asked and none gave both. Browsing and the guide work; "
+                    "to play anything, also sign in from your phone or "
+                    "laptop.")
+            return True, summary, name
+        tried.append("%s: answered, but with an empty lineup" % name)
+        kodiutils.log("oauth probe: %s answered with an empty lineup" % name)
+    return False, "\n".join(tried), ""
+
+
+def _oauth_can_play(client, stations):
+    """Whether this bearer session can get a DASH manifest for anything.
+
+    Asked once at sign-in rather than left for the user to discover one
+    "cannot play this" at a time. It uses the same search playback does, so
+    the answer is the real one and not a second opinion.
+    """
+    airing = next((s.now for s in stations if s.now and s.now.video_id), None)
+    if not airing:
+        return True  # nothing to test with; do not claim a problem
+    try:
+        response = client.player(airing.video_id, api.new_cpn())
+        response = playback._with_dash_manifest(
+            client, airing.video_id, api.new_cpn(), response)
+    except Exception as exc:
+        kodiutils.log_error("oauth playability check failed: %s" % exc)
+        return True
+    return bool((response.get("streamingData") or {}).get("dashManifestUrl"))
+
+
 def _client():
     """An Api bound to the stored session, or None once the user is told why."""
     try:
@@ -118,9 +306,12 @@ def _client():
 # -- routes ----------------------------------------------------------------
 
 def route_root():
-    if not auth.signed_in():
-        add_dir("Sign in", plot="Import cookies from a signed-in browser.",
-                action="signin")
+    # A bearer token counts as signed in too. Checked from the stored file
+    # rather than oauth.access_token(), which may go to Google to refresh --
+    # not something to do while drawing a menu.
+    if not auth.signed_in() and not oauth.load().get("access_token"):
+        add_dir("Sign in", plot="From your phone or laptop, or from a cookie "
+                                "export.", action="signin")
         finish()
         return
 
@@ -343,6 +534,48 @@ def route_play(video_id, label):
     xbmcplugin.setResolvedUrl(HANDLE, True, item)
 
 
+def route_play_channel(station_id):
+    """Play whatever is on this channel now.
+
+    IPTV Manager writes channel urls into a playlist that outlives any one
+    programme, so the url it stores names the station and the airing is
+    looked up here, at the moment of playing. The same route is what makes a
+    channel bookmarkable from inside the addon.
+    """
+    client = _client()
+    if not client:
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    try:
+        stations = _fetch_stations(client, hours=2)
+    except (auth.AuthError, api.ApiError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not load the guide")
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+
+    station = next((s for s in stations if s.station_id == station_id), None)
+    if not station or not station.now or not station.now.video_id:
+        kodiutils.ok_dialog(
+            "Nothing is listed as playing on this channel right now.",
+            "Cannot play this")
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    route_play(station.now.video_id, station.name)
+
+
+def route_iptv(what, port):
+    """Answer service.iptv.manager on the socket it just opened."""
+    if not port:
+        kodiutils.log_error("iptv manager: called with no port")
+        return
+    from lib import iptv
+    manager = iptv.IPTVManager(port)
+    if what == "channels":
+        manager.send_channels()
+    else:
+        manager.send_epg()
+
+
 def main():
     params = dict(parse_qsl(sys.argv[2][1:])) if len(sys.argv) > 2 else {}
     action = params.get("action")
@@ -352,6 +585,7 @@ def main():
     elif action == "signout":
         if xbmcgui.Dialog().yesno("YouTube TV", "Forget the stored session?"):
             auth.sign_out()
+            oauth.forget()
             kodiutils.notify("Signed out")
     elif action == "channels":
         route_channels()
@@ -370,6 +604,14 @@ def main():
         return
     elif action == "play":
         route_play(params.get("video_id", ""), params.get("label", ""))
+        return
+    elif action == "play_channel":
+        route_play_channel(params.get("station_id", ""))
+        return
+    elif action in ("iptv_channels", "iptv_epg"):
+        # RunPlugin, not a directory: there is no handle to finish and
+        # nothing to draw. The answer goes back over IPTV Manager's socket.
+        route_iptv(action.split("_", 1)[1], params.get("port", ""))
         return
 
     route_root()
