@@ -93,6 +93,31 @@ def _from_youtube_addon():
         return ("", "")
 
 
+# Google's own "YouTube on TV" OAuth client, if it is filled in.
+#
+# Asked for deliberately, and it is the one source here that is not the user's
+# own project: the device flow runs against Google's application rather than
+# one they created, so a box needs no setup at all. The account holder still
+# authorises the code on Google's consent screen and still gets a token for
+# their own account and their own subscription -- nothing is bypassed -- but
+# the client presented to Google's identity service is not ours.
+#
+# Two things to know before filling it in. Google has moved against other
+# projects doing this, so expect it to stop working without notice; and it is
+# the last source tried, so a real project in any of the three above it wins
+# and this never runs.
+#
+# Left empty because the pair could not be obtained from where this was
+# written -- every Google host is blocked here, it appears in none of the
+# captures, and writing one from memory is the kind of guess that has cost
+# this project whole days. Fill both halves in and sign-in needs nothing else.
+GOOGLE_TV_CLIENT = ("", "")
+
+
+def _google_tv():
+    return (GOOGLE_TV_CLIENT[0].strip(), GOOGLE_TV_CLIENT[1].strip())
+
+
 def _baked():
     """A project compiled into the build, if there is one.
 
@@ -114,19 +139,21 @@ def _baked():
 def credentials():
     """A Google API project to run the device-code flow against.
 
-    Three places, in order of whose it most clearly is: this addon's own
+    Four places, in order of whose it most clearly is: this addon's own
     settings, then plugin.video.youtube's if that is set up, then one baked
-    into the build. Both halves or nothing -- half a pair fails at Google
-    with an error about the wrong one.
+    into the build, then Google's own TV client if that constant is filled
+    in. Both halves or nothing -- half a pair fails at Google with an error
+    about the wrong one.
 
-    Google's device flow has no anonymous grant, so there is no fourth
-    option: some project has to exist. Which one is a choice about who
-    carries it, not something the addon can conjure.
+    Google's device flow has no anonymous grant, so a project has to exist
+    somewhere; the order above is about whose it is, from most clearly the
+    user's to least.
     """
     for source, (client_id, secret) in (
             ("this addon's settings", _from_settings()),
             ("plugin.video.youtube", _from_youtube_addon()),
-            ("the build", _baked())):
+            ("the build", _baked()),
+            ("Google's own TV client", _google_tv())):
         if client_id and secret:
             if source != "this addon's settings":
                 kodiutils.log("oauth: using the Google API project from %s"

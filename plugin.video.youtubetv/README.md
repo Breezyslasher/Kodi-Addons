@@ -77,7 +77,15 @@ constantly, and the fix was always the same errand of opening a browser,
 exporting again and getting the file onto a TV box. It is gone.
 
 **Where the API project comes from.** Google's device flow has no anonymous
-grant, so a project has to exist somewhere. Three places are tried, in order:
+grant, so a project has to exist somewhere.
+
+The short answer: **set up the YouTube add-on (`plugin.video.youtube`) and this
+one needs nothing.** Follow its own sign-in instructions -- it is the same
+Google API project, it is far better documented than anything here, and this
+addon picks it up by itself. Reusing it costs nothing: this addon never calls
+`googleapis.com` at all, so none of that addon's Data API quota is spent here.
+
+In full, four places are tried in order:
 
 1. this addon's own settings, under **Account**;
 2. **plugin.video.youtube's**, if you have that addon set up -- it is the same
@@ -86,7 +94,9 @@ grant, so a project has to exist somewhere. Three places are tried, in order:
    a bearer token; the project is used to mint that token and for nothing
    else, so none of the Data API quota is spent here;
 3. one built into the build (`lib/baked_oauth.py`, absent from this repository
-   -- see below).
+   -- see below);
+4. Google's own TV client, if `oauth.GOOGLE_TV_CLIENT` is filled in. It is
+   empty in this repository.
 
 If none applies, create one at `https://console.cloud.google.com`: enable the
 *YouTube Data API v3*, make an **OAuth client ID** of type *TVs and Limited
