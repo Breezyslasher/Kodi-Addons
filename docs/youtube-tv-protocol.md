@@ -1620,12 +1620,22 @@ out of each and names its pick in the `MEDIA_HEADER` it answers with. That
 is why the bridge log has always read "the server chose audio 150, video
 223": nothing in the addon chose those.
 
-So a bridge cannot ask for a quality. It can only stop offering the others.
-`Session.want(itag)` records what the player asked for and `_entries()`
-offers that alone; the manifest lists every eligible rendition as a
-`Representation` and each one's `media=` url carries its own `itag`, so the
-itag InputStream Adaptive fetches *is* its choice, and the next exchange
-offers nothing else.
+So a bridge cannot ask for a quality by picking one. Narrowing the offered
+set does not work: a request offering a single video format is answered
+`sabr.no_video_selected`, measured twice, most recently with every key id in
+place and the manifest naming nine renditions -- so it is the shape of the
+request the endpoint objects to, not the rendition.
+
+What a server-driven ABR gives the client is constraints, and the constraint
+lives in `ClientAbrState`. Field 59 is the height cap and the browser sends
+1080 in it. So the manifest lists every eligible rendition as a
+`Representation`, each one's `media=` url carries its own `itag`, and the
+itag InputStream Adaptive fetches is turned into a height: `Session.want`
+moves field 59 to that rendition's height and the whole set stays on offer.
+The server then chooses within the cap, which is the arrangement SABR is
+built around.
+
+Audio has no equivalent field, so an audio itag changes nothing.
 
 Three constraints, each of which cost a rendition:
 
@@ -1647,10 +1657,9 @@ Three constraints, each of which cost a rendition:
   protected title that leaves the served rendition alone in its set, and
   the alternatives appear on a later play.
 
-The setting is off by default. A narrowed set was answered
-`sabr.no_video_selected` once, and if the endpoint refuses one again the
-session clears `wanted`, sets `narrowing = False` and offers the whole set
-for the rest of playback rather than refusing once per segment.
+The setting is off by default. If the endpoint refuses a request carrying a
+moved cap, the session puts field 59 back where it started and stops moving
+it for the rest of playback rather than refusing once per segment.
 
 ## No JavaScript runtime, anywhere in the addon
 

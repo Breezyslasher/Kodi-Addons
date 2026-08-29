@@ -255,13 +255,19 @@ def lookup(key):
         [_entry(f) for f in alternatives(candidates, "audio/")],
         [_entry(f) for f in (avc or offerable)],
         name, spec["id"], api.effective_version(name), _post,
-        live=bool(stored.get("live", True)), po_token=po_token())
+        live=bool(stored.get("live", True)), po_token=po_token(),
+        max_height=max_height)
     if avc and len(avc) != len(offerable):
         kodiutils.log("sabr bridge: offering %d H.264 rendition(s) and "
                       "holding %d other(s) back: %s"
                       % (len(avc), len(offerable) - len(avc),
                          [f.get("itag") for f in offerable if f not in avc]))
     session.every_video = [_entry(f) for f in offerable]
+    # What each itag's height is, so the itag ISA fetches can be turned into
+    # the height the request asks for. Narrowing the offered set is what the
+    # endpoint refuses; the height cap is what it is built to take.
+    session.heights = {f.get("itag"): f.get("height") or 0
+                       for f in candidates if f.get("height")}
     # Adaptive switching is off by default: the single-rendition path is
     # the one that plays, and a narrowed set has been refused before.
     session.adaptive = kodiutils.get_setting_bool("sabr_adaptive")
