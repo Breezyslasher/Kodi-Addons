@@ -1682,11 +1682,28 @@ was accepted happened to contain 480p renditions, because 480p is what a
 request naming no height gets. Nothing was being refused for its tier or
 its size.
 
-So the bridge now asks for one height at a time, names it in 16 and 21,
-and offers the renditions at that height -- tallest first, stepping down
-on a refusal, and finally falling back to the old shape that named
-nothing. A post-licence probe confirmed the licence was never the missing
-piece: with one in hand, an unnamed HD offer is refused exactly as before.
+Naming the height turned out to be necessary and not sufficient: 1080p
+and 720p were still refused. Two more fields settle it, and a matrix run
+in one playback says so plainly:
+
+    avc1 at 1080p, height named                     REFUSED
+    avc1 at 1080p, + fields 72 and 79               SERVED itag 146
+    av01 at 1080p, + fields 72 and 79               SERVED itag 814
+    vp9  at 1080p, + fields 72 and 79               SERVED itag 360
+    ... plus a bandwidth in field 23                byte for byte the same
+
+Field 79 is a repeated `{1: n, 2: 0}` for n = 3, 4, 2, 1 -- a capability
+list. Field 72 carries the height in two slots; both are the height, since
+a 1920x1080 rendition would put 1920 in one of them if either were a
+width, and `viewport(1080)` reproduces the captured bytes exactly. Neither
+is optional: without them the endpoint serves 480p and refuses anything
+taller, whatever the codec.
+
+So every request carries 16, 21, 72 and 79 now, and the bridge asks for
+one height at a time, tallest first, stepping down on a refusal.
+
+A post-licence probe ruled the licence out on the way: with one in hand,
+an HD offer that named no height was refused exactly as before.
 
 ## No JavaScript runtime, anywhere in the addon
 

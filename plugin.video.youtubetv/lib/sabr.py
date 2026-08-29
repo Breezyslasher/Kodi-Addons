@@ -105,12 +105,33 @@ def format_id(itag, last_modified=0, xtags=""):
 LIVE_EDGE = 9007199254740991
 
 
-# Two ClientAbrState fields the browser sends verbatim on every request,
-# lifted from a capture rather than reconstructed. 72 is a viewport
-# ({1:0, 2:1080, 3:0, 4:0, 5:1080, 6:0}); 79 is a repeated {1: n, 2: 0}
-# for n = 3, 4, 2, 1, which has the shape of a codec capability list.
-VIEWPORT_1080 = bytes.fromhex("080010b8081800200028b8083000")
+# The two ClientAbrState fields that decide whether HD is served at all.
+#
+# Field 79 is a repeated {1: n, 2: 0} for n = 3, 4, 2, 1 -- a capability
+# list -- and field 72 carries the height twice. Sending the height in 16
+# and 21 and stopping there is answered sabr.no_video_selected for every
+# codec at 1080p; adding these two is answered with the media, measured
+# three ways in one playback:
+#
+#   avc1 at 1080p, height named                     REFUSED
+#   avc1 at 1080p, + these two fields               SERVED itag 146
+#   av01 at 1080p, + these two fields               SERVED itag 814
+#   vp9  at 1080p, + these two fields               SERVED itag 360
+#
+# A bandwidth in field 23 changed nothing: byte for byte the same answer.
 CAPABILITIES = bytes.fromhex("0a04080310000a04080410000a04080210000a0408011000")
+
+
+def viewport(height):
+    """ClientAbrState field 72, which carries the height in two slots.
+
+    Read out of a capture as {1:0, 2:1080, 3:0, 4:0, 5:1080, 6:0} for a
+    1080p request. Both filled slots are the height -- a 1920x1080
+    rendition would put 1920 in one of them if either were the width.
+    """
+    height = int(height or 0)
+    return (_v(1, 0) + _v(2, height) + _v(3, 0)
+            + _v(4, 0) + _v(5, height) + _v(6, 0))
 
 
 def client_abr_state(player_time_ms=0, max_height=1080, elapsed_ms=0,
@@ -161,6 +182,10 @@ def client_abr_state(player_time_ms=0, max_height=1080, elapsed_ms=0,
         body = _v(16, int(target_height)) + body
     if bandwidth:
         body += _v(23, int(bandwidth))
+    # Not optional, and not only when a height is named: without these the
+    # endpoint serves 480p and refuses anything taller.
+    body += _b(72, viewport(target_height or max_height))
+    body += _b(79, CAPABILITIES)
     return body + extras
 
 
