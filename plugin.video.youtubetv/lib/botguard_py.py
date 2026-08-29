@@ -56,20 +56,6 @@ class BotGuardError(Exception):
     """The exchange did not produce a snapshot."""
 
 
-def _vendor():
-    """Put the vendored js2py on the path, behind anything installed.
-
-    Appended rather than inserted: Kodi runs every addon in one Python
-    process and sys.path is shared, so putting `six` at the front of it
-    would hand our copy to every other addon on the box. At the back,
-    ours is only reached when nothing else provides the name.
-    """
-    here = os.path.dirname(os.path.abspath(__file__))
-    path = os.path.join(here, "vendor")
-    if path not in sys.path:
-        sys.path.append(path)
-
-
 def _read(name):
     here = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(here, name), "r", encoding="utf-8") as handle:
@@ -82,8 +68,8 @@ def _fresh_context():
     A new one per mint: the interpreter defines itself onto the global and
     a second challenge's interpreter would land on top of the first.
     """
-    _vendor()
     from . import js2py_fixes
+    # Puts the vendored engine on the path as well as correcting it.
     js2py_fixes.apply()
     import js2py
 
