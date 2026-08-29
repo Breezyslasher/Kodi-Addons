@@ -128,6 +128,13 @@ class Session(object):
         self.video = list(video or [])
         self.entries = {entry[0]: entry
                         for entry in self.audio + self.video}
+        # itag -> how many fragments to skip past when a segment is asked
+        # for. Diagnostic, and it desynchronises the tracks by whatever it
+        # skips: the question it answers is whether ISA can decrypt a track
+        # at all when it never sees the clear first fragment, and one second
+        # of playback answers that. Set by sabr_bridge; see the
+        # skip_clear_audio setting.
+        self.skip = {}
         self.post = post
         self.info = sabr.client_info(client_id, client_version)
         self.client_name = client_name
@@ -418,6 +425,7 @@ class Session(object):
         the way, so the cache is checked before every exchange rather than
         only before the first.
         """
+        sequence += self.skip.get(itag, 0)
         for attempt in range(PUMP_LIMIT):
             held = self.segments.get(itag) or {}
             if sequence in held:
