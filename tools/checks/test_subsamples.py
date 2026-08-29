@@ -104,5 +104,67 @@ again, why2 = mp4.explicit_subsamples(out)
 check("running it twice changes nothing", again, out)
 check("and says why", why2, "it already carries a senc")
 
+
+# Live AC-3: every sample the same length, said once in tfhd, and trun
+# carrying no per-sample sizes at all. This is what "0 sample sizes for 156
+# encrypted samples" was, and the whole reason live audio was noise on ISA 21.
+def build_tfhd_default():
+    SIZE = 768
+    n = 4
+    ivs = [bytes([i + 9]) * IV_SIZE for i in range(n)]
+    # tfhd: track_ID + default-sample-duration + default-sample-size
+    tfhd = box(b"tfhd", b"\x00" + (0x000018).to_bytes(3, "big")
+               + (1).to_bytes(4, "big")
+               + (1024).to_bytes(4, "big")          # default_sample_duration
+               + SIZE.to_bytes(4, "big"))           # default_sample_size
+    tfdt = box(b"tfdt", b"\x00\x00\x00\x00" + (0).to_bytes(4, "big"))
+    # trun: data-offset only. No sample sizes at all.
+    trun_body = (b"\x00" + (0x000001).to_bytes(3, "big")
+                 + n.to_bytes(4, "big") + b"\x00\x00\x00\x00")
+    saiz_body = (b"\x00" + (0).to_bytes(3, "big") + bytes([IV_SIZE])
+                 + n.to_bytes(4, "big"))
+    saio_body = (b"\x00" + (0).to_bytes(3, "big") + (1).to_bytes(4, "big")
+                 + b"\x00\x00\x00\x00")
+
+    def assemble(data_offset, aux_offset):
+        t = trun_body[:8] + struct.pack(">I", data_offset)
+        o = saio_body[:8] + struct.pack(">I", aux_offset)
+        traf = box(b"traf", tfhd + tfdt + box(b"trun", t)
+                   + box(b"saiz", saiz_body) + box(b"saio", o))
+        return box(b"moof", box(b"mfhd", b"\x00\x00\x00\x00"
+                                + (1).to_bytes(4, "big")) + traf)
+
+    moof = assemble(0, 0)
+    aux_offset = len(moof) + 8
+    moof = assemble(aux_offset + n * IV_SIZE, aux_offset)
+    mdat = b"".join(ivs) + b"".join(bytes([0xBB]) * SIZE for _ in range(n))
+    return moof + box(b"mdat", mdat), n, SIZE, ivs
+
+live, n, SIZE, ivs = build_tfhd_default()
+tfhd, _ = mp4.find_box(live, [b"moof", b"traf", b"tfhd"])
+check("tfhd names a default sample size", mp4._tfhd_default_sample_size(live, tfhd), SIZE)
+trun2, _ = mp4.find_box(live, [b"moof", b"traf", b"trun"])
+check("trun names none", mp4._trun_sample_sizes(live, trun2), [])
+out2, why3 = mp4.explicit_subsamples(live)
+check("it is rewritten anyway", why3, "")
+senc2, senc2_size = mp4.find_box(out2, [b"moof", b"traf", b"senc"])
+check("senc counts every sample",
+      int.from_bytes(out2[senc2 + 12:senc2 + 16], "big"), n)
+at2 = senc2 + 16
+for i in range(n):
+    iv = out2[at2:at2 + IV_SIZE]; at2 += IV_SIZE
+    subs = int.from_bytes(out2[at2:at2 + 2], "big"); at2 += 2
+    clear = int.from_bytes(out2[at2:at2 + 2], "big"); at2 += 2
+    cipher = int.from_bytes(out2[at2:at2 + 4], "big"); at2 += 4
+    check("live sample %d uses the tfhd default" % i,
+          (iv, subs, clear, cipher), (ivs[i], 1, 0, SIZE))
+check("live senc is exactly consumed", at2, senc2 + senc2_size)
+m2, _ = mp4.find_box(out2, [b"moof"])
+t2, _ = mp4.find_box(out2, [b"moof", b"traf", b"trun"])
+check("live samples are byte-identical",
+      out2[m2 + mp4._trun_data_offset(out2, t2)[1]:],
+      live[mp4.find_box(live, [b"moof"])[0] + mp4._trun_data_offset(live, trun2)[1]:])
+check("live boxes walk cleanly", walks(out2), True)
+
 print("failures:", fails)
 sys.exit(1 if fails else 0)
