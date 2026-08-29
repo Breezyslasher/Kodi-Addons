@@ -23,7 +23,7 @@ import time
 import requests
 
 from . import (api, auth, cipher, kodiutils, license_proxy,
-               manifest as manifest_mod, mp4, nsig, sabr_session,
+               manifest as manifest_mod, mp4, nsig, potoken, sabr_session,
                widevine)
 
 # Where the plugin leaves the session for the service to pick up. The two
@@ -696,13 +696,15 @@ def po_token():
     # could not be told from one that had not picked up a new token, because
     # nothing ever named the value being sent.
     setting = kodiutils.get_setting("po_token", "")
-    text = setting or _baked("PO_TOKEN")
+    minted = "" if setting else potoken.token(api.visitor_data())
+    text = setting or minted or _baked("PO_TOKEN")
     if not _said.get("po_token"):
         _said["po_token"] = True
+        where = ("the setting" if setting else
+                 "minting" if minted else
+                 "the build" if text else "nowhere")
         kodiutils.log("sabr bridge: proof-of-origin token from %s: %s (%d chars)"
-                      % ("the setting" if setting else
-                         ("the build" if text else "nowhere"),
-                         (text[:16] + "...") if text else "-", len(text)))
+                      % (where, (text[:16] + "...") if text else "-", len(text)))
     if not text:
         return b""
     import base64
