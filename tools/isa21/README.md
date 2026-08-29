@@ -42,7 +42,14 @@ CDM for each of the first 24 samples, and what comes back:
     ytv-probe: pool 1 in=1024 subs=1 [0/1024] scheme=1 pattern=0/0 kid=... iv=...
     ytv-probe: Decrypt -> status 0, out=1024
 
-`build.sh` fetches Kodi Omega and ISA 21.5.22, applies it, and builds.
+`build.sh` fetches Kodi Omega and ISA 21.5.22, applies it, and builds. Keep
+both files together, or point at the patch directly:
+
+    PATCH=~/Downloads/0001-probe-the-cdm-call.patch ./build.sh
+
+**Build it on the machine that will run it.** A library built against one
+distro or runtime will not load in another -- and if the Kodi 21 box is not
+the one you build on, that includes it.
 
 The patch has been checked to apply cleanly to a fresh 21.5.22 checkout, and
 every API it uses was read out of that tree (`cdm::Pattern::crypt_byte_block`,
