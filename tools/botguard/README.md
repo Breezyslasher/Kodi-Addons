@@ -76,3 +76,44 @@ Node 19 puts `crypto` on the global and node 18 does not, and BotGuard calls
 anyway. So a broken run looks exactly like a working one unless the response
 is checked for its leading `$`. It fails about one run in three regardless,
 which is why the addon retries.
+
+## Can this be pure Python? Measured, not guessed
+
+A pure-Python JavaScript engine exists -- js2py, ES5.1, no native code, so it
+would install on LibreELEC where node will not. It gets a long way:
+
+* it parses and runs the 63 KB obfuscated interpreter (0.7 s),
+* `globalThis.trayride` is registered,
+* `vm.a(program, setup, ...)` completes its setup (2.4 s),
+* `asyncSnapshotFunction` returns.
+
+It returns a failure, every time, and the shim is not the reason. The same
+ES5 shim the js2py driver uses was run under node against the same endpoint
+and minted a `$...` snapshot, so the fake browser is adequate; the
+interpreter is the difference.
+
+The difference is `Function.prototype.toString`. js2py discards the source
+text when it translates JS to Python, so every function -- the VM's own
+included -- answers
+
+    function name(args) { [python code] }
+
+where V8 answers the real source, and native functions answer
+`{ [native code] }`. BotGuard reads that.
+
+The control run, back to back against the same endpoint:
+
+    unblinded                         $duk56bNRAAY6jxFaGo_eWOHFqwkr..   works
+    Function.prototype.toString
+      blinded to "{ [python code] }"  E:...                            fails
+
+That is V8 -- everything else identical, the same shim, the same program --
+failing the moment it can no longer show a function its own source. So this
+is not a shim gap that can be filled one error at a time. It is structural:
+an engine that cannot hand back the source it was given cannot pass BotGuard,
+and js2py throws that source away at translation time.
+
+Patching js2py to carry each function's source through the translator is the
+only route left, and it is a real change to a vendored, unmaintained library
+-- against which the cold-start token already plays, in pure Python, with
+nothing vendored at all.
