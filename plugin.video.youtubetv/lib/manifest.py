@@ -429,9 +429,6 @@ def rewrite_n(xml, solve):
 # the Widevine system id carrying the init data.
 _ADAPTATION = re.compile(r"<AdaptationSet\b[^>]*>.*?</AdaptationSet>", re.S)
 _REPRESENTATION = re.compile(r"(<Representation\b[^>]*>)(.*?)(</Representation>)", re.S)
-_YT_SCHEME = re.compile(
-    r'<ContentProtection\b[^>]*schemeIdUri\s*=\s*"http://youtube\.com/drm[^"]*"'
-    r'[^>]*(?:/>|>.*?</ContentProtection>)', re.S)
 _MIME = re.compile(r'mimeType\s*=\s*"([^"]+)"')
 _HEIGHT = re.compile(r'\bheight\s*=\s*"(\d+)"')
 
@@ -502,22 +499,67 @@ def _protection(uuid, pssh):
         out += ('<ContentProtection schemeIdUri="%s"%s>'
                 '<cenc:pssh>%s</cenc:pssh></ContentProtection>'
                 % (WIDEVINE_URN, kid, pssh))
+    else:
+        # The system id with no init data under it, which only marks the
+        # Representation encrypted. ISA 22 will not open a session on this
+        # alone -- an empty initData reaches CreateSession and it refuses with
+        # "PSSH init data has unexpected size (0)" -- so a caller that leaves
+        # pssh empty is relying on the stream carrying its own. On demand
+        # does; live does not.
+        out += ('<ContentProtection schemeIdUri="%s"%s/>' % (WIDEVINE_URN, kid))
     return out
 
 
 _REP_ID = re.compile(r'\bid\s*=\s*"([^"]+)"')
 _INIT_RANGE = re.compile(r'<Initialization\b[^>]*\brange\s*=\s*"([^"]+)"')
 _INIT_SOURCE = re.compile(r'<Initialization\b[^>]*\bsourceURL\s*=\s*"([^"]+)"')
+_SEGMENT_URL = re.compile(r'<SegmentURL\b[^>]*\bmedia\s*=\s*"([^"]+)"')
+
+# How much of a live segment to pull when looking for its moov. On demand
+# states the init segment's exact length (about 1.7 kB); live states nothing,
+# so this is a head big enough to hold ftyp+moov and small enough that eleven
+# of them cost less than one segment.
+LIVE_HEAD_BYTES = 16384
+
+
+_INDEX_RANGE = re.compile(r'<SegmentBase\b[^>]*\bindexRange\s*=\s*"(\d+)-(\d+)"')
+
+
+def index_targets(xml):
+    """(id, url, sidx first byte, sidx last byte) per Representation.
+
+    Only the on-demand shape has a SegmentIndex to read; live lists its
+    segments outright and needs none.
+    """
+    text = xml.decode("utf-8", "replace") if isinstance(xml, bytes) else xml
+    out = []
+    for rep in _REPRESENTATION.finditer(text):
+        head, body = rep.group(1), rep.group(2)
+        ident = _REP_ID.search(head)
+        base = _BASEURL_TAG.search(body)
+        index = _INDEX_RANGE.search(body)
+        if ident and base and index:
+            out.append((ident.group(1), _unescape(base.group(2).strip()),
+                        int(index.group(1)), int(index.group(2))))
+    return out
 
 
 def init_targets(xml):
-    """Where each Representation's init segment lives: (id, url, byte range).
+    """Where each Representation's moov lives: (id, url, byte range).
 
-    On-demand names it as a range into the one BaseURL
-    (``<Initialization range="0-1729"/>``); live gives it a relative
-    ``sourceURL`` under an absolute BaseURL. Both forms appear here so the
-    caller can fetch a track's moov without knowing which it is; the range is
-    "" when the whole sourceURL is the segment.
+    Three shapes, because YouTube uses all three. On demand names the init
+    segment as a range into the one BaseURL
+    (``<Initialization range="0-1729"/>``). Some manifests give a relative
+    ``sourceURL`` under an absolute BaseURL. Live gives neither: its
+    ``<SegmentList>`` is nothing but ``<SegmentURL media="sq/N/lmt/M"/>``
+    entries, and the moov travels at the head of each of them -- which is how
+    ISA gets a sample description on live at all, having no init segment to
+    fetch. So the first listed segment stands in, read by a range rather than
+    whole.
+
+    That first entry is the oldest in the DVR window, not the live edge, and
+    it is served: the segment probe fetched sq/3263606 with HTTP 200 while
+    the newest was sq/3265103.
 
     Call this after n has been rewritten -- these are real, fetchable urls and
     an unsolved n makes every one of them a 403.
@@ -538,10 +580,15 @@ def init_targets(xml):
         source = _INIT_SOURCE.search(body)
         if source:
             out.append((ident.group(1), url + _unescape(source.group(1)), ""))
+            continue
+        segment = _SEGMENT_URL.search(body)
+        if segment:
+            out.append((ident.group(1), url + _unescape(segment.group(1)),
+                        "0-%d" % (LIVE_HEAD_BYTES - 1)))
     return out
 
 
-def set_key_ids(xml, key_ids, pssh="", kid_by_rep=None, split_audio=None):
+def set_key_ids(xml, key_ids, pssh="", kid_by_rep=None, pssh_for=None):
     """Declare Widevine properly, naming the key each track needs.
 
     The audio set takes one key for all its Representations; a video set spans
@@ -562,19 +609,20 @@ def set_key_ids(xml, key_ids, pssh="", kid_by_rep=None, split_audio=None):
     and it is available on a title's first play, where a licence-derived id is
     not.
 
-    ``split_audio``, when given, is called with the audio track's key id as
-    raw bytes and returns the PSSH to declare on the audio Representations. It
-    splits the presentation into two CDM sessions.
-    ISA reuses a decrypter whenever an earlier one already holds the key id it
-    is about to open (Session.cpp, HasLicenseKey), and YouTube returns all four
-    keys in one licence -- so audio and video land on a single CDM session,
-    with the audio track's decrypt-only calls and the video track's
-    decrypt-and-decode calls reaching it from two threads at once. Naming no
-    key id on the video sets sends ISA down its other branch, which reuses a
-    decrypter only when the init data matches byte for byte, so a different
-    PSSH there gives video a session of its own. Video can afford a missing key
-    id and audio cannot: a failed capability probe gives video the secure path,
-    but gives audio SSD_INVALID, which deletes the track.
+    ``pssh_for``, when given, is called with a Representation's key id as raw
+    bytes (or None when it has none) and returns the PSSH to declare on that
+    Representation, so each track's init data names its own key the way a
+    conformant packager would.
+
+    An earlier version of this also blanked the key id on video, to stop ISA
+    putting audio and video on one CDM session. That was ISA 21's rule --
+    reuse whenever an earlier decrypter already held the key (Session.cpp,
+    HasLicenseKey) -- and YouTube returns all four keys in one licence, so the
+    two tracks did land together. ISA 22 reuses a session only when the key id
+    matches or the media type does as well (DrmEngine.cpp, InitializeSession),
+    and audio and video agree on neither, so they are already separate. The
+    blanking now only costs: ISA 22 warns "Cannot get default KID from DRM
+    info, decryption can fail" and probes capabilities with an empty key.
     """
     if not key_ids and not pssh and not kid_by_rep:
         return xml
@@ -594,14 +642,6 @@ def set_key_ids(xml, key_ids, pssh="", kid_by_rep=None, split_audio=None):
     def rewrite(block):
         body = block.group(0)
         track = _track_for(body)
-        uuid = _as_uuid(key_ids.get(track, "")) or ""
-
-        if track == "DRM_TRACK_TYPE_AUDIO" and not kid_by_rep:
-            applied.append(label(track, uuid))
-            # Keep YouTube's own element -- it is harmless and ISA ignores it --
-            # and add the standard pair in front of it.
-            return _YT_SCHEME.sub(
-                lambda m: _protection(uuid, pssh) + m.group(0), body, count=1)
 
         def per_representation(rep):
             head, inner, tail = rep.group(1), rep.group(2), rep.group(3)
@@ -614,12 +654,9 @@ def set_key_ids(xml, key_ids, pssh="", kid_by_rep=None, split_audio=None):
             own_uuid = (_as_uuid(kid_by_rep.get(ident.group(1), "") if ident else "")
                         or _as_uuid(key_ids.get(own, "")) or "")
             own_pssh = pssh
-            if split_audio:
-                if own == "DRM_TRACK_TYPE_AUDIO":
-                    own_pssh = (split_audio(bytes.fromhex(
-                        own_uuid.replace("-", ""))) if own_uuid else pssh)
-                else:
-                    own_uuid = ""
+            if pssh_for:
+                own_pssh = pssh_for(bytes.fromhex(own_uuid.replace("-", ""))
+                                    if own_uuid else None) or pssh
             applied.append(label(own, own_uuid))
             return head + _protection(own_uuid, own_pssh) + inner + tail
 

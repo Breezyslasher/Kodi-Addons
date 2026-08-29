@@ -845,3 +845,259 @@ free-running -- a consequence, not a cause. This is the same "9 seconds" that
 has ended every build since the beginning; it only became audible once the
 audio track stopped being deleted outright.
 
+
+## Why on-demand played for 9.5 seconds, and what actually fixed it
+
+The answer is InputStream Adaptive's version, and the route to it is worth
+keeping because six other answers looked right first.
+
+The shape of the failure: on-demand audio played for about 9.5 seconds and then
+became invalid AAC -- hundreds of `channel element ... is not allocated`,
+`Reserved bit set`, `Number of bands exceeds limit` -- and Kodi answered with
+`CVideoPlayerAudio::Process - stream stalled`, a flush, and a re-seek every
+three seconds forever. The video track's `DecryptAndDecodeVideo` returned
+kNoKey in the same instant, sixteen milliseconds after the flush, which made it
+look like a second fault and was only ever a consequence of the first.
+
+### What the media actually is
+
+Measured with a probe in the addon rather than inferred. Every init segment:
+
+    ftyp moov mvhd pssh pssh mvex trex trak tkhd mdia mdhd hdlr minf dinf
+    stbl stsd enca esds sinf frma schm schi tenc ...
+
+`enca` for audio and `encv` for video, a complete sinf/schm/schi/tenc chain, and
+two pssh boxes of YouTube's own. The fragments:
+
+    #0  moof mfhd traf tfhd tfdt trun mdat                 -- no saiz, no saio
+    #1  moof mfhd traf tfhd tfdt trun saiz saio mdat       -- 8 byte IVs
+
+**The first fragment of each audio track is a clear lead.** The 9.5 seconds that
+always played is the part that needs no key; audio had never once been
+decrypted. `saio` offsets are 1001 and 1861 against fragments at 64783 and
+324973, so they are relative to their own moof, and `tfhd` sets
+default-base-is-moof and no base_data_offset. The file is impeccable.
+
+### Ruled out, each by a measurement
+
+* **Wrong key ids** -- read from each track's own tenc, identical to what the
+  CDM then reported.
+* **A shared CDM session** -- split so audio had its own; two sessions and two
+  licences in the log, same failure at the same instant.
+* **Resolution and decoder load** -- 640x360 died exactly where 1280x720 did,
+  to the same PTS.
+* **The licence request** -- matches the browser's captured body field for
+  field, including the sessionId from drmParams field 5.
+* **The `pot`** -- fragment 1 is a valid moof with it and without it.
+* **Absolute `saio` offsets** -- measured relative.
+* **The PSSH source** -- ISA prefers a manifest pssh and stops looking
+  (`if (!sessionPsshset.pssh_.empty()) initData = sessionPsshset.pssh_`), so
+  inlining ours suppressed `ExtractStreamProtectionData`. Removing it let the
+  stream's own pssh and tenc through, and changed nothing.
+
+### The answer
+
+Kodi 22.0-BETA1 with **inputstream.adaptive 22.3.20**: zero AAC errors, zero
+stalls, zero PosTime re-seeks, zero kNoKey, and ninety seconds of on-demand
+playback with audio, ended by the user rather than by a stall. The capability
+split is unchanged between the two versions -- `Single decrypt possible` for
+audio, `Single decrypt failed, secure path only` for video, the same
+output-restricted video keys -- so nothing about the account, the licence or
+the manifest differs. ISA 21.5.22 could not decrypt those audio fragments;
+22.3.20 can.
+
+`addon.xml` therefore requires inputstream.adaptive 22.3.20. On Kodi 21 the
+video track plays and the audio track is silent or noise, and no change to this
+addon fixes it.
+
+### What the session's fixes were worth
+
+All of them still matter and all are visible in the working log: key ids read
+from init segments for 12 of 12 representations on a title's first play, per
+-Representation ContentProtection, the stream's own PSSH, separate CDM sessions,
+and the playback heartbeat. The heartbeat in particular is independent of the
+ISA bug and proven in the same run -- `heartbeat 0 acknowledged (OK)` and
+`heartbeat 1 acknowledged (OK)` across ninety seconds, where the player
+response's `intervalMilliseconds` 30000 and `maxRetries` 3 had been ending
+playback at 1:26.
+
+
+## Live has no init segment, so the manifest must carry the PSSH
+
+On-demand played clean on Kodi 22 in the same session where live failed
+immediately, on the same account, with the same build. The live attempt
+(KDKA-TV, `z0sfuXTVx8g`) got as far as a parsed manifest and then lost its
+video track:
+
+```
+Manifest successfully parsed (Periods: 1, Streams in first period: 4, Type: live)
+Created AdaptiveStream [AS-0] video / [AS-1] audio / [AS-2] audio / [AS-3] subtitle
+OpenStream(1001)
+UpdateSampleDescription: Codec fourcc: avc1 (1635148593)
+Initialize crypto session
+SelectDRM: Selected DRM key system: com.widevine.alpha
+error: CreateSession: Cannot request license, PSSH init data has unexpected size (0)
+error: InitializeSession: Failed to create the DRM session
+error: CVideoPlayerVideo::OpenStream: Codec id 27 require extradata.
+warning: OpenStream - Unsupported stream 1001. Stream disabled.
+```
+
+Audio opened; with no video, the player closed everything.
+
+### Where the init data comes from in ISA 22
+
+ISA 22 replaced the DRM code this project had been reading. There is no
+`ExtractStreamProtectionData` any more, and no `sessionPsshset.pssh_`.
+`CSession::PrepareStream` now collects two lists and hands both to the engine
+(`src/Session.cpp`):
+
+```cpp
+std::vector<DRM::DRMInfo> manifestDrmInfo = repr->DrmInfos();
+std::vector<DRM::DRMInfo> mediaDrmInfo = stream.GetReader()->GetInitDRMInfo();
+... m_drmEngine.InitializeSession(manifestDrmInfo, mediaDrmInfo, drmMediaType, ...)
+```
+
+`GetInitDRMInfo` (`src/samplereader/FragmentedSampleReader.cpp`) reads the
+track it has parsed: it produces nothing unless the sample description is
+`TYPE_PROTECTED`, and one `DRMInfo` per `pssh` box in the moov.
+`DrmInfosUnion` puts the media entries first and appends the manifest ones,
+and `InitializeSession` walks that list and stops at the first session that
+opens. So where a stream carries its own `pssh`, the file still wins —
+a manifest PSSH does not suppress it, which is what ISA 21 did and what the
+comments in `manifest.py` used to describe.
+
+### Live carries neither
+
+An on-demand Representation names its init segment
+(`<Initialization range="0-1729"/>`) and ISA fetches it. A live one names
+nothing: its `<SegmentList>` is a run of `<SegmentURL media="sq/N/lmt/M"/>`
+and no more. In the log ISA's first download for AS-0 is `sq/3263606`, a
+1.4 MB media segment — there is no init fetch, and the moov ISA parsed came
+out of the head of that segment. Whatever is in it, it yielded no `DRMInfo`:
+`mediaDrmInfo` was empty, so the only entry left was ours from the manifest,
+and after the change below it carried no `<cenc:pssh>`. Empty init data
+reaches `CWVCencSingleSampleDecrypter::CreateSession`, which rejects anything
+under 4 bytes — the "unexpected size (0)".
+
+The addon's own logs say the same from the other side. On demand:
+
+```
+init segments: read key ids for 12 of 12 representation(s): 142=4d3521e2, ...
+```
+
+On live that line is absent entirely, and so is its failure counterpart:
+`init_targets` returned nothing to fetch, because it only understood
+`<Initialization range=>` and `<Initialization sourceURL=>`.
+
+### What changed
+
+* The PSSH is inlined in the manifest again, unconditionally, and the
+  `manifest_pssh` setting is gone. On demand it costs nothing (the media
+  entry is still first); live has nowhere else to get init data.
+* `init_targets` gained a third shape: with no `<Initialization>`, the first
+  `<SegmentURL media=>` stands in, read as a 16 kB range rather than whole.
+  The first entry is the oldest in the DVR window and is served — the segment
+  probe fetched `sq/3263606` with HTTP 200 while the newest was `sq/3265103`.
+  This gives live per-track key ids from the media, as on demand.
+* `_read_kids` now logs the two cases it used to pass over in silence: no
+  Representation names an init segment, and every fetch succeeded but no moov
+  carried a `tenc`. The second is the one that would say the live media is not
+  signalling cenc where we look.
+* The video key id is no longer blanked. That existed to stop ISA 21 putting
+  audio and video on one CDM session, since `HasLicenseKey` matched on the key
+  alone and YouTube returns all four keys in one licence. ISA 22 reuses a
+  session only when the key id matches, or when the licence holds the key
+  **and** the media type is the same (`InitializeSession`) — audio and video
+  agree on neither, so they are already separate. Blanking now only draws
+  "Cannot get default KID from DRM info, decryption can fail". The
+  `split_sessions` setting is gone with it; each Representation's PSSH names
+  its own key, which is what a conformant packager emits anyway.
+
+Still unmeasured: whether the moov at the head of a live segment declares
+`encv`/`enca` and a `tenc` at all. If it does not, a licence alone will not
+be enough, because `m_protectedDesc` stays null and the sample reader never
+decrypts. The new `init segments:` log lines answer it on the next live play.
+
+## Live plays, then ISA dereferences an empty optional on the first MPD update
+
+The manifest PSSH did it. On the `livepssh` build KDKA-TV opened a Widevine
+session, took a licence carrying twelve keys, opened both a video and an audio
+decoder, and rendered. It also confirmed the third init-target shape works:
+
+```
+init segments: read key ids for 10 of 11 representation(s): 142=43991063,
+  143=43991063, 144=43991063, 145=eef784dd, 146=eef784dd,
+  148:ChAKBWFjb250EgdwcmltYXJ5=c190a14d, ... 161=43991063
+```
+
+So the moov at the head of a live segment does carry `enca`/`encv` and a
+`tenc` — the question left open above is answered, and live Representation
+ids are not bare itags but `<itag>:<base64 audio track>`. ISA agreed:
+
+```
+ParseMoofPssh: Found 2 PSSH on media segment
+ParseTrafSgpd: Found TRAF/SGPD/SEIG boxes with 1 entries
+ParseTrafSgpd: Protected SEIG box entry have 1 key sets
+```
+
+`SEIG` is a sample-group entry — live rotates keys per fragment, which is why
+twelve keys arrive for eleven Representations.
+
+Then, about five seconds in, Kodi died. The log has no shutdown sequence, no
+error and no final line: the last entry is our proxy answering ISA's **first
+live manifest refresh**, six milliseconds earlier.
+
+### DASHTree.cpp:1666
+
+`CDashTree::OnUpdateSegments` merges the refreshed MPD into the live tree.
+The first thing it does with each matched Representation is:
+
+```cpp
+auto repr = (*itRepr).get();
+
+if (!repr->GetSegmentTemplate()->HasTimeline() || repr->Timeline().IsEmpty())
+```
+
+`GetSegmentTemplate()` returns `std::optional<CSegmentTemplate>&`
+(`src/common/CommonSegAttribs.h:30`), and a Representation is only given one
+when the manifest carries a `<SegmentTemplate>` on it or above it
+(`DASHTree.cpp:818`). YouTube's live MPD carries `<SegmentList>` — that is
+what we push a timescale onto, eleven times, on every fetch — so the optional
+is empty for every Representation and `operator->` walks off an
+uninitialised object. The identical call thirty lines further down is
+guarded (`if (!rep->HasSegmentTemplate() || rep->GetSegmentTemplate()->
+HasTimeline())`, line 1897), which is what makes this a bug rather than an
+assumption: ISA knows a Representation may have no template and forgot here.
+
+It fires on the first refresh, so any SegmentList-based live stream gets a
+few seconds of playback and then takes Kodi down with it.
+
+### The same missing template also starts us 2.5 hours late
+
+The segment probe listed 1796 segments, oldest `sq/3263606`, newest
+`sq/3265401`. ISA's first video download is `itag/145 sq/3263606` and it
+walks forward from there — it began at the *oldest* segment in the DVR
+window, about two and a half hours behind the live edge.
+
+That is the same cause. ISA's live-edge machinery is gated on the template:
+
+```cpp
+// Generate segments to templated representation with no defined timeline only
+if (!rep->HasSegmentTemplate() || rep->GetSegmentTemplate()->HasTimeline())
+  continue;
+...
+const uint64_t liveEdgeScaled = liveEdgeMs * rep->GetSegmentTemplate()->GetTimescale() / 1000;
+rep->Timeline().PruneToTime(liveEdgeScaled);
+```
+
+With no template there is no `PruneToTime`, no `GenerateTemplatedSegments`,
+and nothing positions the stream at the live edge.
+
+### The fix both point at
+
+Rewrite the live `<SegmentList>` as `<SegmentTemplate>` + `<SegmentTimeline>`
+in the proxy. The media urls are `sq/$Number$/lmt/<lmt>` under a
+per-Representation `<BaseURL>`, which is exactly what `$Number$` expresses, so
+the two forms carry the same information — but only one of them is the shape
+ISA's live path is written for. That engages the optional (no crash) and lets
+the live-edge code run (no 2.5 hour delay).
