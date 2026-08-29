@@ -43,6 +43,28 @@ vendored ES5 engine with seven corrections to it, so the addon needs no Node
 and no JavaScript runtime on the box. A token takes about eight seconds to mint
 and lasts twelve hours.
 
+### Audio on InputStream Adaptive 21
+
+ISA 21.5.22 decodes this audio to noise and reports no error at all, while
+playing the video track perfectly. ISA 22.3.20 plays the same bytes clean, so
+it is ISA's code and not the media, the licence or the CDM (identical in both,
+4.10.3050.0).
+
+The difference between the two tracks is how they are encrypted. Video is
+subsample encrypted -- a clear header and an encrypted payload, with an entry
+per sample. Audio is encrypted whole-sample: the auxiliary data is one IV per
+sample and nothing else, which CENC spells as a subsample count of zero.
+
+CENC can say that the other way round, and the bridge now does: one subsample
+per sample, no clear bytes, the whole sample encrypted. Identical meaning,
+identical ciphertext, different spelling -- and ISA 21 decrypts it. Measured:
+103 seconds with zero audio errors on Kodi 21.3 with ISA 21.5.22, where every
+earlier run died at 9.5 seconds; and Kodi 22 with ISA 22.3.20 unaffected, 51
+seconds clean with it on.
+
+The rewrite is `mp4.explicit_subsamples`, applied to the audio track as the
+bridge serves it. It never touches the encrypted bytes.
+
 What is not done: 4K. No format above 1920x1080 has ever been offered to this
 addon or to a browser on the same account, and no format has ever carried
 `DRM_TRACK_TYPE_UHD1` -- the licence grants a UHD1 key, but there is no UHD1
@@ -53,20 +75,11 @@ retired, is in [docs/youtube-tv-protocol.md](../docs/youtube-tv-protocol.md).
 
 ## Requirements
 
-* Kodi 22 (Piers) or newer
-* **InputStream Adaptive 22.3.20 or newer**, with a working Widevine CDM.
-  Not 21, and measured rather than assumed: a build differing only in
-  `addon.xml` was run on Kodi 21.3 with ISA 21.5.22, and the audio track turned
-  to invalid AAC 9.46 seconds in -- one audio subsegment -- while the addon
-  itself was clean, licence and all. 22.3.20 plays the same media with zero
-  audio errors. Three lines of evidence, not one: all three AAC renditions
-  fail identically when offered one at a time; the failure lands on the
-  encryption boundary rather than any byte or bitrate one; and hiding the
-  clear first fragment moves the failure from the tenth second to the first,
-  which is what "never decrypts" looks like. ISA 22 is a binary addon
-  built against Kodi 22, which is why the Kodi requirement moves with it;
-  `addon.xml` requires 22.3.20, so on Kodi 21 the addon will not resolve its
-  dependencies rather than half-playing
+* Kodi 21 (Omega) or newer
+* InputStream Adaptive 21.5.22 or newer, with a working Widevine CDM. On ISA
+  21 the addon re-describes the audio encryption on the way past -- see
+  *Audio on InputStream Adaptive 21* below -- which is on by default and costs
+  nothing on ISA 22
 * A paid YouTube TV subscription
 * The addon's **service must be enabled** -- the licence proxy runs there, and
   protected playback fails without it

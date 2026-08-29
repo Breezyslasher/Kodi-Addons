@@ -1130,6 +1130,46 @@ so the mechanism covers it.
 Nothing in this addon reaches this: the key ids are right, the codecs are
 right, and YouTube decides how it encrypts.
 
+### Resolved: it was the subsample spelling, and the addon can fix it
+
+Everything below stands as measurement and is wrong as a conclusion. "Nothing
+in this addon reaches it" was written three times in this document and it was
+false each time: the bridge writes every byte ISA reads, the manifest and the
+fragments both.
+
+The one difference between the track ISA 21.5.22 plays and the track it
+destroys was measured early and then explained away:
+
+    VIDEO 146   saiz default=0  count=160  sizes[:4]=[16, 16, 16, 16]
+    AUDIO 150   saiz default=8  count=430
+
+Sixteen bytes per video sample is an IV plus a subsample count plus an entry:
+subsample encryption. Eight bytes per audio sample is the IV alone -- the whole
+sample encrypted, which CENC spells as a subsample count of zero. Reading ISA
+21's `DecryptSampleData` showed it handling a count of zero correctly, and that
+reading was taken as ruling the difference out. It ruled out one function, not
+the difference.
+
+CENC can say the same thing explicitly: one subsample per sample, zero clear
+bytes, the whole sample encrypted. `mp4.explicit_subsamples` rewrites `saiz`
+and `saio` into a `senc` that says it that way, leaving the ciphertext and the
+mdat untouched, and the bridge applies it to audio as it serves it. Measured
+the same evening, on the same box that had failed a dozen times:
+
+    Kodi 21.3, inputstream.adaptive 21.5.22, rewrite on
+      0 aac errors, 0 stalls, 48 audio segments, 103.9s of playback
+    Kodi 22.0, inputstream.adaptive 22.3.20, rewrite on
+      0 aac errors, 0 stalls, 23 audio segments, 50.9s of playback
+
+So ISA 21.5.22 mishandles whole-sample CENC audio somewhere other than the
+function that was read, ISA 22 handles both spellings, and the addon can
+simply choose the spelling that works. It is on by default, and `addon.xml`
+asks for inputstream.adaptive 21.5.22 again rather than 22.3.20.
+
+Two lessons worth keeping. Reading one function is not ruling out a mechanism.
+And when a fault is in a component you do not control, the question to ask is
+what you *do* control that feeds it -- here, every byte of it.
+
 ### The clear fragment was not the fault, and that settles it
 
 The one lead the source review turned up was fragment-shaped, so the bridge

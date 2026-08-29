@@ -134,7 +134,6 @@ class Session(object):
         # at all when it never sees the clear first fragment, and one second
         # of playback answers that. Set by sabr_bridge; see the
         # skip_clear_audio setting.
-        self.skip = {}
         # itags whose fragments are re-signalled on the way out: whole-sample
         # encryption rewritten as one explicit subsample per sample. The
         # ciphertext is untouched. See mp4.explicit_subsamples.
@@ -429,7 +428,6 @@ class Session(object):
         the way, so the cache is checked before every exchange rather than
         only before the first.
         """
-        sequence += self.skip.get(itag, 0)
         if itag in self.respell:
             return mp4.explicit_subsamples(self._segment(itag, sequence))
         return self._segment(itag, sequence)

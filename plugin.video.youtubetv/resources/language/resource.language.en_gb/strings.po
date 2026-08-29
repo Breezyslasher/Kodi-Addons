@@ -228,18 +228,10 @@ msgctxt "#30078"
 msgid "381 -- AC-3"
 msgstr ""
 
-msgctxt "#30079"
-msgid "Hide the clear first audio fragment"
-msgstr ""
-
-msgctxt "#30080"
-msgid "Diagnostic, and it has already answered its question -- there is no reason to turn it on. YouTube TV's audio arrives with its first fragment unencrypted and everything after it encrypted, and on inputstream.adaptive 21.5.22 the audio was destroyed 9.5 seconds in, which is exactly one fragment. This hides the clear fragment so the first audio ISA decodes is encrypted. Result: the audio is noise from the first second instead of the tenth. So ISA 21 never decrypts this audio at all, the 9.5 seconds that used to play was simply the clear fragment, and the clear-to-encrypted transition is not the fault. Nothing in this add-on fixes ISA 21; it needs 22.3.20."
-msgstr ""
-
 msgctxt "#30081"
 msgid "Describe audio encryption as subsamples"
 msgstr ""
 
 msgctxt "#30082"
-msgid "For inputstream.adaptive 21, where this account's audio decodes to noise. YouTube TV encrypts audio whole-sample: the auxiliary data is one IV per sample and nothing else, which CENC spells as a subsample count of zero. Video is encrypted with subsamples -- a clear header and an encrypted payload -- and that is the one difference between the track ISA 21.5.22 plays and the track it destroys. This says the same thing the other way: one subsample per sample, no clear bytes, the whole sample encrypted. The encrypted bytes are not touched, only how they are described, so it is safe to leave on -- but it does nothing on ISA 22, which plays either spelling."
+msgid "Leave this on. YouTube TV encrypts audio whole-sample: the auxiliary data is one IV per sample and nothing else, which CENC spells as a subsample count of zero. inputstream.adaptive 21.5.22 decodes that to noise -- silently, reporting no error at all -- while it plays the video track, which is subsample encrypted, perfectly. Saying the same thing the other way round fixes it: one subsample per sample, no clear bytes, the whole sample encrypted. The encrypted bytes are never touched, only how they are described. Measured on both: ISA 21.5.22 plays 103 seconds with zero audio errors where it used to die at 9.5, and ISA 22.3.20 is unaffected either way. Turn it off only to reproduce the old failure."
 msgstr ""
