@@ -429,6 +429,17 @@ def _resolve_n(body, cookies):
     except Exception as exc:
         kodiutils.log_error("nsig: could not solve n, leaving it as minted: %s"
                             % exc)
+        # The build the page points at is not the only build of this release.
+        # Surveyed once per player, because if some other variant still names
+        # its functions the transform is readable without a JS engine, and if
+        # none do that is worth knowing rather than assuming.
+        marker = kodiutils.read_json(nsig.VARIANTS_FILE, default={}) or {}
+        if marker.get("player") != player_id:
+            try:
+                kodiutils.log(nsig.survey_variants(session, player_id, api.UA))
+            except Exception as survey_exc:
+                kodiutils.log_error("variant survey failed: %s" % survey_exc)
+            kodiutils.write_json(nsig.VARIANTS_FILE, {"player": player_id})
         return body
 
 
