@@ -259,11 +259,10 @@ def _verify_bearer():
                        % (name, len(stations)))
             if not _oauth_can_play(client, stations):
                 summary += (
-                    "\n\nPlayback will not work on this sign-in. YouTube TV "
-                    "only offers a DASH manifest to the web client, and that "
-                    "client does not accept this token -- every identity was "
-                    "asked and none gave both. Browsing and the guide work; "
-                    "to play anything, also sign in from your phone or "
+                    "\n\nBrowsing and the guide work. Playback does not yet: "
+                    "no request this add-on knows how to build gets both a "
+                    "session this token is accepted for and a DASH manifest. "
+                    "To play anything, also sign in from your phone or "
                     "laptop.")
             return True, summary, name
         tried.append("%s: answered, but with an empty lineup" % name)
@@ -525,9 +524,17 @@ def route_play(video_id, label):
         return
 
     if item is None:
+        signed_in_by_code = bool(oauth.load().get("access_token")) \
+            and not auth.signed_in()
         kodiutils.ok_dialog(
-            "YouTube did not offer a DASH manifest for this stream, only its "
-            "own SABR endpoint, which Kodi cannot play.", "Cannot play this")
+            ("You are signed in with a code, and that sign-in cannot play. "
+             "YouTube TV serves a DASH manifest only to its web client, which "
+             "refuses this token whatever the request looks like. Sign in "
+             "from your phone or laptop as well and playback will work."
+             if signed_in_by_code else
+             "YouTube did not offer a DASH manifest for this stream, only its "
+             "own SABR endpoint, which Kodi cannot play."),
+            "Cannot play this")
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
 
@@ -561,6 +568,27 @@ def route_play_channel(station_id):
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     route_play(station.now.video_id, station.name)
+
+
+def route_probe_versions():
+    """Log what tv.youtube.com serves each client's user agent.
+
+    Run from the diagnostics settings rather than during playback: it fetches
+    the page once per identity and writes the answers to the log, and changes
+    nothing.
+    """
+    cookies = None
+    try:
+        cookies = auth.load()
+    except auth.AuthError:
+        pass
+    try:
+        api.probe_client_versions(cookies=cookies)
+    except Exception as exc:
+        kodiutils.log_error("client version probe failed: %s" % exc)
+        kodiutils.notify("Client version probe failed")
+        return
+    kodiutils.notify("Client versions written to the log")
 
 
 def route_iptv(what, port):
@@ -607,6 +635,9 @@ def main():
         return
     elif action == "play_channel":
         route_play_channel(params.get("station_id", ""))
+        return
+    elif action == "probe_versions":
+        route_probe_versions()
         return
     elif action in ("iptv_channels", "iptv_epg"):
         # RunPlugin, not a directory: there is no handle to finish and

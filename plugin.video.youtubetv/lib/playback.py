@@ -800,7 +800,100 @@ def _with_dash_manifest(client, video_id, cpn, response):
             return other
         kodiutils.log("player: %s answered SABR only" % name)
     kodiutils.log_error("player: no identity offered a DASH manifest")
+    # The probe below has had its answer; it stays behind the diagnostics
+    # toggle rather than spending six calls on every play that fails.
+    if client.bearer and kodiutils.get_setting_bool("probe_clients", False):
+        probe_oauth_dash(client, video_id)
     return response
+
+
+OAUTH_PROBE_FILE = "oauth_dash_probe.json"
+
+
+def probe_oauth_dash(client, video_id):
+    """Why does WEB_UNPLUGGED refuse a bearer token, and can it be talked round?
+
+    WEB_UNPLUGGED is the only identity ever served a DASH manifest, and on a
+    bearer session it answers 400 INVALID_ARGUMENT. It would be easy to read
+    that as "the web client does not take OAuth" and stop. The survey already
+    in these notes says otherwise: on a *cookie* session TVHTML5_UNPLUGGED
+    also answered 400 INVALID_ARGUMENT, and on a bearer session that same
+    identity answers 200. So a 400 here is InnerTube rejecting the request,
+    not the credential -- and it declines to name the argument it dislikes.
+
+    The obvious suspect is the context. A bearer session has no cookie jar, so
+    _bootstrap reads a signed-out page, and the web context is assembled from
+    whatever that page carries -- possibly without rolloutToken, configInfo or
+    visitorData, all three of which the real web player sends every time.
+
+    So this varies one thing at a time and logs what each gets.
+
+    It has been run, and the context theory is dead. The bearer session's web
+    context carried all three fields -- ``the web context carries visitorData,
+    rolloutToken, configInfo`` -- because _bootstrap reads them off a
+    signed-out page perfectly well, and WEB_UNPLUGGED answered 400 to every
+    shape: full context, session state stripped, visitorData alone, and each
+    of those without ``params``. ``params`` is not what selects SABR either:
+    TVHTML5_UNPLUGGED without it still answered ``dash=False sabr=True``.
+
+    A refusal that survives every variation of the request is a refusal of the
+    credential. Kept behind the diagnostics toggle for the day Google changes
+    something.
+    """
+    done = kodiutils.read_json(OAUTH_PROBE_FILE, default={}) or {}
+    if done.get("video_id") == video_id:
+        return
+    kodiutils.write_json(OAUTH_PROBE_FILE, {"video_id": video_id})
+
+    full = api.context(client_name="WEB_UNPLUGGED")
+    bare = {"client": dict(full.get("client") or {})}
+    for key in ("rolloutToken", "configInfo", "visitorData"):
+        bare["client"].pop(key, None)
+    only_visitor = {"client": dict(bare["client"])}
+    if (full.get("client") or {}).get("visitorData"):
+        only_visitor["client"]["visitorData"] = full["client"]["visitorData"]
+
+    present = [k for k in ("visitorData", "rolloutToken", "configInfo")
+               if (full.get("client") or {}).get(k)]
+    kodiutils.log("oauth dash probe: the web context carries %s"
+                  % (", ".join(present) or "none of visitorData/rolloutToken/"
+                                           "configInfo"))
+
+    variants = [
+        ("WEB_UNPLUGGED", "context as built", full, True),
+        ("WEB_UNPLUGGED", "context without session state", bare, True),
+        ("WEB_UNPLUGGED", "context with visitorData only", only_visitor, True),
+        ("WEB_UNPLUGGED", "no params, context as built", full, False),
+        ("WEB_UNPLUGGED", "no params, bare context", bare, False),
+        ("TVHTML5_UNPLUGGED", "no params", None, False),
+    ]
+    for name, what, ctx, with_params in variants:
+        body = {
+            "videoId": video_id,
+            "playbackContext": {"contentPlaybackContext": {
+                "html5Preference": "HTML5_PREF_WANTS",
+                "signatureTimestamp": api._signature_timestamp(),
+                "referer": "%s/watch/%s" % (api.ORIGIN, video_id),
+            }},
+            "cpn": api.new_cpn(),
+            "racyCheckOk": True,
+        }
+        if with_params:
+            body["params"] = api.PLAYER_PARAMS
+        if ctx is not None:
+            body["context"] = ctx
+        try:
+            response = client.call("player", body,
+                                   params={"prettyPrint": "false"},
+                                   client_name=name)
+        except Exception as exc:
+            kodiutils.log("oauth dash probe [%s / %s]: %s"
+                          % (name, what, str(exc)[:130]))
+            continue
+        streaming = response.get("streamingData") or {}
+        kodiutils.log("oauth dash probe [%s / %s]: 200 dash=%s sabr=%s"
+                      % (name, what, bool(streaming.get("dashManifestUrl")),
+                         bool(streaming.get("serverAbrStreamingUrl"))))
 
 
 def _resume(item, response, is_live):
