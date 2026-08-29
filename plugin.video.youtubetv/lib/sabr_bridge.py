@@ -666,6 +666,10 @@ def solve_n(url):
     return rewritten[len("<BaseURL>"):-len("</BaseURL>")]
 
 
+# Things worth saying once per service run rather than per request.
+_said = {}
+
+
 def _baked(name):
     """A value baked into a personal build, or "".
 
@@ -688,7 +692,17 @@ def po_token():
     wants the bytes themselves. A captured browser request carries 85 of
     them under subfield 2, which is the 116 character setting decoded.
     """
-    text = kodiutils.get_setting("po_token", "") or _baked("PO_TOKEN")
+    # Say which token is in play and where it came from. A run that worked
+    # could not be told from one that had not picked up a new token, because
+    # nothing ever named the value being sent.
+    setting = kodiutils.get_setting("po_token", "")
+    text = setting or _baked("PO_TOKEN")
+    if not _said.get("po_token"):
+        _said["po_token"] = True
+        kodiutils.log("sabr bridge: proof-of-origin token from %s: %s (%d chars)"
+                      % ("the setting" if setting else
+                         ("the build" if text else "nowhere"),
+                         (text[:16] + "...") if text else "-", len(text)))
     if not text:
         return b""
     import base64
