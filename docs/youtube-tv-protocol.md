@@ -1363,3 +1363,96 @@ tested with a placeholder challenge -- a 400 means the credential was
 accepted, not that a real Widevine exchange completes on a token. And
 InputStream Adaptive cannot speak SABR, so playing this requires a bridge
 that serves it synthetic DASH.
+
+## Driving a SABR session: the continuation token
+
+A SABR request is not a segment fetch. Sent on its own it returns the same
+bytes every time -- the same sequence numbers, six seconds apart, whatever
+position or buffer it claims. That is not a cache and not a clamp. The
+request says "I have nothing, I am starting" every time, and the server
+answers it correctly every time.
+
+What makes a session a session is an echo. Every response carries a
+`NEXT_REQUEST_POLICY` (UMP part 35) whose **field 7** is an opaque blob, and
+the next request sends that blob verbatim as **streamerContext field 3**.
+Taken from response 1 of a captured session and compared against request 2
+of the same session, byte for byte:
+
+    response 1, NEXT_REQUEST_POLICY.7 : 08bf843d10003a0308e702421d0895... (44 bytes)
+    request 2,  streamerContext.3     : 08bf843d10003a0308e702421d0895... (44 bytes)
+
+Identical. With it, sequence numbers climb -- 2220056, 2220057 -- and a
+round that claims a track the server considers complete gets the other
+track alone in reply. Without it, five separate attempts to make the stream
+advance all failed, and every explanation offered for that was wrong.
+
+### The request, field by field, from four consecutive captured requests
+
+    1  ClientAbrState
+         18 = 2140, 19 = 1204 in every captured request
+         28   position: 9007199254740991 (MAX_SAFE_INTEGER) for the live
+              edge on the first request, an absolute media timestamp after
+         29   a counter: 2, 3, 490, 1579 across one session. Annotated here
+              twice as a media-type enum, in both directions, from reading
+              a single request. It is not one.
+         59   max height
+    3  BufferedRange, repeated per track -- what we already hold
+         1: FormatId  2: startTimeMs  3: durationMs
+         4: firstSequence  5: lastSequence
+    5  the ustreamer config
+    16 audio FormatIds (itag, lastModified, xtags)
+    17 video FormatIds
+    19 StreamerContext
+         1: ClientInfo {1 locale, 16 client id, 17 version, 18 os}
+         2: a poToken, 85 bytes -- not sent by us, and media arrives anyway
+         3: the echo above
+
+A BufferedRange claim must only ever grow. Responses repeat a sequence
+already held and arrive out of order between tracks, so taking the newest
+header as "last" walks the claim backwards and asks for the same segment
+again.
+
+### What this means for a bridge
+
+Segments are addressable, but by claim rather than by index: holding up to
+N-1 is how you ask for N. That is enough to map InputStream Adaptive's
+"fetch segment N" onto a SABR session, which is the piece a synthetic-DASH
+bridge needs.
+
+### The walk, measured
+
+With the echo sent and the claim held correctly, a token session walks:
+
+    round 1: 2220135              holding 2220135..2220135    92 KB
+    round 2: 2220134 (backfill)   holding 2220134..2220135   112 KB
+    round 3: 2220136              holding 2220134..2220136   105 KB
+    round 4: 2220137              holding 2220134..2220137   109 KB
+    round 5: 2220138              holding 2220134..2220138   113 KB
+    round 6: nothing, 131 bytes, 0 media
+
+The server answers the live edge with N and then backfills N-1 before
+walking forward, so a claim that only grows forwards discards the backfill,
+stops changing, and the response stops changing with it -- four identical
+rounds, which looked like a protocol wall and was a bookkeeping bug.
+
+Round 6 is not a failure. At the live edge there is no next segment until
+one exists; the round that waited three seconds got 2220146. A bridge has
+to treat an empty response as "wait", not as "end of stream".
+
+### SABR delivers the initialisation segment inline
+
+The first MEDIA part of a session opens with an `ftyp` box:
+
+    0000001c 66747970 64617368 00000000     ....ftypdash....
+
+So a segment arrives with its own initialisation rather than needing one
+fetched separately, which is one thing a bridge does not have to solve.
+
+### Minting a browser session from the token: refused so far
+
+`OAuthLogin`, given the addon's bearer token, answers **HTTP 403
+`Error=badauth`** -- the accounts service's terse refusal, naming neither a
+scope nor a client. The token carries `.../auth/youtube` alone while that
+route wants `https://www.google.com/accounts/OAuthLogin`, so the open
+question is whether the client may request that scope at all; the
+device-code endpoint answers it without anyone signing in.
