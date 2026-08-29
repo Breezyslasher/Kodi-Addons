@@ -450,6 +450,17 @@ def _baked_visitor_id():
     return getattr(baked_cookies, "VISITOR_ID", "") or ""
 
 
+def visitor_data():
+    """The visitorData this session presents, for anything bound to it.
+
+    A proof-of-origin token is bound to it, so the two have to be asked for
+    together or the token is minted against an identity we do not use.
+    """
+    return (kodiutils.get_setting("visitor_id", "")
+            or _bootstrap().get("visitor_data")
+            or _baked_visitor_id())
+
+
 def _client_version():
     """The version we claim to be.
 

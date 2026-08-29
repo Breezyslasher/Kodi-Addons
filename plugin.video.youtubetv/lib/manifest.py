@@ -72,7 +72,20 @@ _BASEURL_TAG = re.compile(r"(<BaseURL\b[^>]*>)([^<]+)(</BaseURL>)")
 
 
 def _baked_po_token():
-    """The token a personal build carries, or ""."""
+    """A token to attach: minted if it can be, baked if not.
+
+    The DASH path needs one on every BaseURL exactly as the bridge needs one
+    in its request, so both ask the same way -- mint against the visitorData
+    we present, and fall back to whatever the build carries.
+    """
+    try:
+        from . import api, potoken
+        minted = potoken.token(api.visitor_data())
+    except Exception as exc:
+        kodiutils.log("manifest: no minted token (%s)" % exc)
+        minted = ""
+    if minted:
+        return minted
     try:
         from . import baked_session
     except ImportError:
