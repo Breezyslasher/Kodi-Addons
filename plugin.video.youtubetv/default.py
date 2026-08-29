@@ -488,16 +488,18 @@ def _expand_sections(client, response, items):
     def fetch(pair):
         label, token = pair
         try:
-            return label, epg.parse_items(client.continuation(token))
+            shelf = client.continuation(token)
         except (auth.AuthError, api.ApiError) as exc:
             kodiutils.log("could not open %s: %s" % (label or "a shelf", exc))
-            return label, []
+            return label, [], 0
+        return label, epg.parse_items(shelf), epg.unplayable_count(shelf)
 
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=min(6, len(sections))) as pool:
         fetched = list(pool.map(fetch, sections))
 
-    for label, found in fetched:
+    barred = 0
+    for label, found, unplayable in fetched:
         added = 0
         for item in found:
             key = item.video_id or item.browse_id
@@ -506,9 +508,18 @@ def _expand_sections(client, response, items):
             seen.add(key)
             items.append(item)
             added += 1
-        kodiutils.log("%s: %d of %d were new"
-                      % (label or "shelf", added, len(found)))
-    kodiutils.log("listing %d item(s) in all" % len(items))
+        barred += unplayable
+        # An empty shelf and a shelf of episodes this account has no rights
+        # to both used to log "0 of 0", and only one of those is a show you
+        # cannot watch.
+        kodiutils.log("%s: %d of %d were new%s"
+                      % (label or "shelf", added, len(found),
+                         ", and %d listed that this account cannot play"
+                         % unplayable if unplayable else ""))
+    kodiutils.log("listing %d item(s) in all%s"
+                  % (len(items),
+                     " -- %d more are listed but not playable on this "
+                     "account" % barred if barred else ""))
     return _in_episode_order(items)
 
 
