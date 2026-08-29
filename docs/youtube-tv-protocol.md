@@ -1612,54 +1612,47 @@ cached against its binding, so when Google rotates `visitorData` in an
 `X-Goog-Visitor-Id` header the next lookup misses and mints a matching token
 by itself, where before a rotation silently unpaired a pasted one.
 
-## Adaptive switching on the bridge: the player picks, the server obeys
+## Adaptive switching on the bridge cannot be done, and here is the proof
 
-SABR chooses server-side. Fields 16 and 17 of a `VideoPlaybackAbrRequest`
-are *sets* — every rendition the client can play — and the server picks one
-out of each and names its pick in the `MEDIA_HEADER` it answers with. That
-is why the bridge log has always read "the server chose audio 150, video
-223": nothing in the addon chose those.
+DASH addresses media by Representation. SABR lets the server choose. Both
+cannot be true at once, and two different attempts to make them true both
+failed on the same box against the same title.
 
-So a bridge cannot ask for a quality by picking one. Narrowing the offered
-set does not work: a request offering a single video format is answered
-`sabr.no_video_selected`, measured twice, most recently with every key id in
-place and the manifest naming nine renditions -- so it is the shape of the
-request the endpoint objects to, not the rendition.
+**Narrowing the offered set.** Fields 16 and 17 are what the client can
+play; offer only the wanted itag and the server has nothing else to pick.
+The endpoint answers `sabr.no_video_selected`. Measured twice, the second
+time with every key id in place and the manifest naming nine renditions --
+so it is the shape of the request the endpoint objects to, not the
+rendition.
 
-What a server-driven ABR gives the client is constraints, and the constraint
-lives in `ClientAbrState`. Field 59 is the height cap and the browser sends
-1080 in it. So the manifest lists every eligible rendition as a
-`Representation`, each one's `media=` url carries its own `itag`, and the
-itag InputStream Adaptive fetches is turned into a height: `Session.want`
-moves field 59 to that rendition's height and the whole set stays on offer.
-The server then chooses within the cap, which is the arrangement SABR is
-built around.
+**Moving the height cap instead.** `ClientAbrState` field 59 is a height
+cap and the browser sends 1080 in it, so: name every rendition in the
+manifest, turn the itag ISA fetches into a cap, leave the whole set on
+offer. ISA fetched itag 224, the cap moved to 720 -- and the server went on
+serving 223, because a cap is a constraint and not a request. `/sabr/segment`
+then had no bytes for the itag ISA had asked for:
 
-Audio has no equivalent field, so an audio itag changes nothing.
+    the player fetched itag 224 (720p), so the abr state asks for 720p
+    ISA asked itag 224 for 1 -> 0 bytes
+    Download failed, HTTP error 503   (x3)
+    CreateStreamReader: No MOOV atom in stream
+    OpenStream - Unsupported stream 1001. Stream disabled.
 
-Three constraints, each of which cost a rendition:
+-- and the video track was gone for the rest of playback. Audio carried on
+alone for forty-five segments.
 
-* **Same AdaptationSet, same decoder.** `siblings()` keeps only renditions
-  with the same container and the same codec family as the served one, so
-  AV1 never lands beside H.264 — a switch across that boundary is one the
-  decoder cannot carry through, and the AV1 rendition is the one that would
-  not decrypt anyway.
-* **One timeline for the set.** `startNumber` and `duration` are taken from
-  the served rendition and used for every Representation in its set. There
-  is nothing else to take them from — a rendition the server has not served
-  yet holds no segments — and there should be nothing else: renditions of
-  one track are cut at the same instants, which is what `segmentAlignment`
-  claims.
-* **A Representation with no key id is a manifest ISA refuses whole**, not
-  a rendition it skips. A rendition is only listed once its key can be
-  named: read out of its own `tenc`, which needs the server to have served
-  it, or out of a licence this title has already been granted. On a fresh
-  protected title that leaves the served rendition alone in its set, and
-  the alternatives appear on a later play.
+So the manifest names exactly the renditions the session holds, which is
+one per track, and that is not a limitation to be worked around: a
+Representation the bridge cannot serve does not degrade to a lower quality,
+it removes the track.
 
-The setting is off by default. If the endpoint refuses a request carrying a
-moved cap, the session puts field 59 back where it started and stops moving
-it for the rest of playback rather than refusing once per segment.
+What is left is influencing the server's single choice, and the cap is now
+part of that: it was hardcoded to 1080 in the request builder and nothing
+ever passed one, so a licence allowing 2160 still asked for 1080. It asks
+for the real ceiling now. That alone does not move the server -- it chose
+223 with the cap at 2160 -- so what does is the remaining question, and the
+place to look is the eight `ClientAbrState` fields the browser sends and
+this does not.
 
 ## No JavaScript runtime, anywhere in the addon
 

@@ -192,34 +192,6 @@ def key_id_hex(value):
     return raw.hex() if len(raw) == 16 else ""
 
 
-def siblings(session, formats, kind, chosen):
-    """The other renditions of one track that can share its AdaptationSet.
-
-    A Representation is only switchable against its neighbours if the
-    decoder can carry on through the switch, so this is narrower than "the
-    formats we offered": same container, same codec family, and offered in
-    the same field of the request -- the server cannot serve a rendition it
-    was never told we could play.
-    """
-    offered = session.video if kind == "video" else session.audio
-    known = {f.get("itag"): f for f in (formats.get("candidates") or [])}
-    mime = (chosen.get("mimeType") or "")
-    container = mime.split(";")[0]
-    family = mime.split('codecs="', 1)[-1].split(".")[0] if 'codecs="' in mime else ""
-    out = []
-    for entry in offered:
-        fmt = known.get(entry[0])
-        if not fmt or fmt.get("itag") == chosen.get("itag"):
-            continue
-        other = (fmt.get("mimeType") or "")
-        if other.split(";")[0] != container:
-            continue
-        if family and other.split('codecs="', 1)[-1].split(".")[0] != family:
-            continue
-        out.append(fmt)
-    return sorted(out, key=lambda f: f.get("bitrate") or 0)
-
-
 def lookup(key):
     """The session for this id, opening it from the stored context if needed."""
     with _lock:
@@ -263,14 +235,6 @@ def lookup(key):
                       % (len(avc), len(offerable) - len(avc),
                          [f.get("itag") for f in offerable if f not in avc]))
     session.every_video = [_entry(f) for f in offerable]
-    # What each itag's height is, so the itag ISA fetches can be turned into
-    # the height the request asks for. Narrowing the offered set is what the
-    # endpoint refuses; the height cap is what it is built to take.
-    session.heights = {f.get("itag"): f.get("height") or 0
-                       for f in candidates if f.get("height")}
-    # Adaptive switching is off by default: the single-rendition path is
-    # the one that plays, and a narrowed set has been refused before.
-    session.adaptive = kodiutils.get_setting_bool("sabr_adaptive")
     # The manifest reads these as single renditions. A list here is a bug
     # that only surfaces several seconds later, inside the manifest handler,
     # as an AttributeError ISA reports as "Cannot download the stream
@@ -612,28 +576,6 @@ def manifest(key, base):
         return manifest_mod._protection(
             uuid, widevine.build_pssh(content, is_live=True, key_id=kid))
 
-    def has_key_id(itag, kind, fmt):
-        """Whether this rendition's key can be named without guessing.
-
-        A Representation whose PSSH names no key is init data ISA refuses
-        outright -- "No KID found in PSSH" -- and it refuses the whole
-        manifest, not that one rendition. The served track is described
-        either way because it is the one that has to play; a rendition
-        offered only so the player can switch to it is dropped instead.
-        """
-        if not content:
-            return True
-        head = (session.initialisation.get(itag)
-                or (session.segments.get(itag) or {}).get(
-                    min(session.segments.get(itag) or {0}), b""))
-        if len(mp4.default_kid(head) if head else "") == 32:
-            return True
-        known = license_proxy.key_ids_for(formats.get("video_id") or "")
-        tier = ("DRM_TRACK_TYPE_AUDIO" if kind == "audio"
-                else "DRM_TRACK_TYPE_HD" if (fmt.get("height") or 0) >= 720
-                else "DRM_TRACK_TYPE_SD")
-        return len(key_id_hex(known.get(tier) or "")) == 32
-
     # What the server actually served, rather than what was asked for.
     by_itag = {f.get("itag"): f for f in (formats.get("candidates") or [])}
     served = []
@@ -676,7 +618,6 @@ def manifest(key, base):
                   % ", ".join("%s %s" % (kind, fmt.get("itag"))
                               for kind, fmt in served))
 
-    adaptive = bool(getattr(session, "adaptive", False))
     sets = []
     for kind, fmt in served:
         itag = fmt["itag"]
@@ -684,34 +625,14 @@ def manifest(key, base):
         if not start:
             continue
         mime = (fmt.get("mimeType") or "").split(";")[0]
-        # One timeline for the whole AdaptationSet. The renditions the
-        # server has not served yet hold no segments, so there is nothing
-        # to measure on them -- and there should be nothing to measure:
-        # switching only works if every rendition of a track is cut at the
-        # same instants, which is what segmentAlignment says.
-        length = segment_ms(session, itag)
-        others = siblings(session, formats, kind, fmt) if adaptive else []
-        dropped = [o for o in others if not has_key_id(o["itag"], kind, o)]
-        if dropped:
-            kodiutils.log("sabr bridge: leaving %s out of the %s set -- "
-                          "nothing names their key, and a Representation "
-                          "with no key id in its PSSH is a manifest ISA "
-                          "refuses whole"
-                          % ([o["itag"] for o in dropped], kind))
-            others = [o for o in others if o not in dropped]
-        every = sorted([fmt] + others, key=lambda f: f.get("bitrate") or 0)
-        reps = [_representation(
-            one, base, key, one["itag"], start,
-            bool(session.initialisation.get(one["itag"])),
-            length, protection_for(one["itag"], kind, one))
-            for one in every]
-        if others:
-            kodiutils.log("sabr bridge: %s offers %d renditions: %s"
-                          % (kind, len(reps), [o["itag"] for o in every]))
         sets.append(
             '<AdaptationSet id="%d" contentType="%s" mimeType="%s" '
             'segmentAlignment="true" startWithSAP="1">%s</AdaptationSet>'
-            % (len(sets), kind, mime, "".join(reps)))
+            % (len(sets), kind, mime,
+               _representation(fmt, base, key, itag, start,
+                               bool(session.initialisation.get(itag)),
+                               segment_ms(session, itag),
+                               protection_for(itag, kind, fmt))))
 
     if not sets:
         return ""
