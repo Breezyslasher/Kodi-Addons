@@ -240,7 +240,33 @@ def _guide_census(stations, response):
         kodiutils.log("guide: %d station(s) have a programme with no video "
                       "id, so Live channels drops them: %s"
                       % (len(silent), some(silent)))
-    if not playable or len(empty) + len(silent) > len(stations) / 2:
+    # A station with no name and no logo is not dropped -- it lists as its
+    # own id -- so the counts above would call that lineup healthy. Counted
+    # separately, and when many are nameless the field names the stations
+    # actually carry are logged: only 7 of the 148 in the web capture have a
+    # "name" at all, the rest being named by the accessibility label on
+    # their logo, so a client that files that logo under another key loses
+    # the name and the picture together.
+    nameless = [s for s in stations if s.name == s.station_id]
+    logoless = [s for s in stations if not s.logo]
+    if nameless or logoless:
+        kodiutils.log("guide: %d station(s) with no name and %d with no logo"
+                      % (len(nameless), len(logoless)))
+        fields = {}
+        for count, renderer in enumerate(epg.walk(response,
+                                                  "epgStationRenderer")):
+            if count >= 40 or not isinstance(renderer, dict):
+                break
+            for key in renderer:
+                fields[key] = fields.get(key, 0) + 1
+        kodiutils.log("guide: station fields (first %d) -- %s"
+                      % (min(40, len(stations)),
+                         ", ".join("%s x%d" % pair for pair in
+                                   sorted(fields.items(), key=lambda p: -p[1]))
+                         or "none"))
+
+    if not playable or len(empty) + len(silent) > len(stations) / 2 \
+            or len(nameless) > len(stations) / 2:
         kodiutils.log("guide shape: %s" % epg.describe(response))
         _dump_shape("guide-shape.json", response)
 

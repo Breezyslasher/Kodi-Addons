@@ -187,14 +187,30 @@ def parse_epg(response):
                     airings.append(airing)
         airings.sort(key=lambda a: a.start_ms or 0)
 
+        # Searched across the whole station renderer rather than under
+        # "icon". Only 7 of the 148 stations in the 2026-08-29 guide carry
+        # a name or a callSign at all; the other 141 are named solely by the
+        # accessibility label on their logo. Naming the key that logo sits
+        # under is therefore the difference between a lineup and 141 rows
+        # called UC5M1ACzZ9iIL42YKinxZrFQ -- and a client that files it
+        # under any other key loses the name and the logo together, which is
+        # what "mostly missing station names and no logos" looks like.
+        # "icon" is still preferred where it exists -- four of the 148 have
+        # a secondaryIcon nearer 400px and would otherwise swap to it -- and
+        # the whole renderer is only the fallback. thumbnail() and
+        # accessibility_label() both already search at any depth, so that
+        # fallback costs nothing and assumes no key name.
         stations.append(Station(
             station_id=station_id,
             name=(text(renderer.get("name"))
                   or text(renderer.get("callSign"))
+                  or text(renderer.get("title"))
                   or accessibility_label(renderer.get("icon") or {})
+                  or accessibility_label(renderer)
                   or station_id),
             call_sign=text(renderer.get("callSign")),
-            logo=thumbnail(renderer.get("icon") or {}, prefer_width=400),
+            logo=(thumbnail(renderer.get("icon") or {}, prefer_width=400)
+                  or thumbnail(renderer, prefer_width=400)),
             airings=airings,
         ))
 

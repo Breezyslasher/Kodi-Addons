@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.9" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.10" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,14 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.10 - Station names and logos
+- Only 7 of 148 stations carry a name field; the rest are named by the
+  accessibility label on their logo. That label and the logo are now
+  searched for across the whole station renderer instead of under one key,
+  so a client that files the logo elsewhere no longer loses both.
+- Guide and Live channels count nameless and logoless stations apart from
+  dropped ones, and log the fields the stations actually carry.
+
 2026.8.31.9 - The Library reads on the TV client
 - The TV client sends the Library in unpluggedLibraryContinuation with a
   chip row of nine tabs against nine cells, where the web client sends a
