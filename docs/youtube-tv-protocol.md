@@ -291,7 +291,41 @@ counts are identical to before, so the widening costs nothing on known data.
 would list the two buttons of a "Join live / Start from beginning" dialog as
 two rows of their own.
 
-Whether `onSelectCommand` is actually the TV client's key is unverified.
+That was not it either. The sampler, once it was capable of firing, named the
+tile exactly:
+
+    library: unpluggedBrowseItemRenderer x19 carries [contentType,
+      navigationEndpoint, primaryText, secondaryContainer, style,
+      tertiaryText, thumbnail, trackingParams]
+
+It has a `primaryText`, a `thumbnail` and a `navigationEndpoint` — everything a
+tile needs, under the keys the addon already reads — and was dropped nineteen
+times anyway. So what sits *inside* that endpoint is called neither
+`watchEndpoint` nor `browseEndpoint`.
+
+Rather than guess at a third name, `_endpoint_id` now falls back to accepting
+**any** endpoint under a carrier that names the id it is looking for. A
+`navigationEndpoint` has exactly one destination, so an endpoint under it
+holding a `videoId` *is* the video and one holding a `browseId` *is* the page,
+whatever Google has called it this year. It looks one level down only, so it
+cannot reach into an `unpluggedPopupEndpoint`'s dialog — still read by
+`_popup_video_id`, which picks the right one of its two buttons — or into a
+menu. And it stays silent on endpoints that name no id at all, so the ten buy
+prompts below are still dropped. All six captures parse identically.
+
+The chips' own tokens are a dead end, incidentally: following one answers with
+the chip list again and no contents.
+
+    New for you: page 1 added 0 item(s)
+    New for you: unpluggedSelectableSectionRenderer x1 carries [selectors, ...]
+    New for you: unpluggedHorizontalChipListRenderer x1 carries [trackingParams]
+
+The items were never behind the token — they are inline in each cell's
+`gridRenderer`, which the sampler also confirmed (`gridRenderer x9 carries
+[continuations, items, trackingParams]`).
+
+Whether `onSelectCommand` is actually used by the TV client remains
+unverified.
 `epg.unreadable_sample` therefore logs the keys carried by renderers that look
 like tiles and name nowhere to go, whenever a page answers and holds nothing
 readable — which names the key to read next off one log line.

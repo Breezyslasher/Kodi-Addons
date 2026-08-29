@@ -254,5 +254,53 @@ sec["contents"] = sec["contents"][:2]
 check("a chip row that does not match the cells is declined",
       epg.library_filters(SHORT), [])
 
+# -- an endpoint by a name this addon has never seen -----------------------
+# The TV client's tiles carry primaryText, thumbnail and navigationEndpoint
+# -- everything a tile needs -- and were dropped nineteen times because what
+# sits inside that endpoint is called neither watchEndpoint nor
+# browseEndpoint. A navigationEndpoint has one destination, so an endpoint
+# under it naming an id is that destination whatever it is called. An
+# endpoint naming no id at all still means "nowhere to go": those ten Rick
+# and Morty episodes are buy prompts, whose
+# unpluggedInitiateInlinePurchaseCommand carries only params.
+STRANGE = {"contents": [
+    {"unpluggedBrowseItemRenderer": {
+        "primaryText": _runs("A show"),
+        "thumbnail": {"thumbnails": [{"url": "//x/y", "width": 100}]},
+        "navigationEndpoint": {"someFutureBrowseEndpoint": {"browseId": "UCX"}}}},
+    {"unpluggedBrowseItemRenderer": {
+        "primaryText": _runs("A video"),
+        "thumbnail": {"thumbnails": [{"url": "//x/y", "width": 100}]},
+        "navigationEndpoint": {"someFutureWatchEndpoint": {"videoId": "VX"}}}},
+    {"unpluggedCompactVideoRenderer": {
+        "primaryText": _runs("Buy me"),
+        "thumbnail": {"thumbnails": [{"url": "//x/y", "width": 100}]},
+        "navigationEndpoint": {"unpluggedInitiateInlinePurchaseCommand": {
+            "params": "ChAKAzUwOBIF"}}}},
+]}
+
+found = epg.parse_items(STRANGE)
+check("an unknown endpoint naming a browseId is followed",
+      [i.browse_id for i in found if i.browse_id], ["UCX"])
+check("an unknown endpoint naming a videoId is played",
+      [i.video_id for i in found if i.video_id], ["VX"])
+check("an endpoint naming no id is still nowhere to go", len(found), 2)
+check("and is still counted unplayable", epg.unplayable_count(STRANGE), 1)
+
+# A menu item's watchEndpoint must not become a row of its own.
+MENU = {"contents": [
+    {"unpluggedGridVideoRenderer": {
+        "primaryText": _runs("On now"),
+        "thumbnail": {"thumbnails": [{"url": "//x/y", "width": 100}]},
+        "navigationEndpoint": {"unpluggedPopupEndpoint": {"popupRenderer": {
+            "unpluggedSelectionMenuDialogRenderer": {"items": [
+                {"unpluggedMenuItemRenderer": {
+                    "primaryText": _runs("Join live"),
+                    "thumbnail": {"thumbnails": [{"url": "//x/y", "width": 9}]},
+                    "command": {"watchEndpoint": {"videoId": "LIVE"}}}}]}}}}}},
+]}
+check("a dialog button is not a row",
+      [i.title for i in epg.parse_items(MENU)], ["On now"])
+
 print("failures:", len(failures))
 sys.exit(1 if failures else 0)

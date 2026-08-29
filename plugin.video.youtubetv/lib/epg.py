@@ -298,6 +298,32 @@ def _endpoint_id(node, endpoint, key):
     block = node.get(endpoint)
     if isinstance(block, dict) and block.get(key):
         return block[key]
+
+    # Nothing under the name this addon knows. Take any endpoint that names
+    # the id instead, rather than guess at another name.
+    #
+    # The TV client's unpluggedBrowseItemRenderer carries a primaryText, a
+    # thumbnail and a navigationEndpoint -- everything a tile needs -- and
+    # was still dropped, nineteen times over, because what sits inside that
+    # endpoint is called neither watchEndpoint nor browseEndpoint. A
+    # navigationEndpoint has exactly one destination, so an endpoint under
+    # it holding a videoId *is* the video and one holding a browseId *is*
+    # the page, whatever Google decided to call it this year.
+    #
+    # Only one level down, so this cannot reach into an
+    # unpluggedPopupEndpoint's dialog (still read by _popup_video_id, which
+    # picks the right one of its two buttons) or a menu. And it stays silent
+    # on the endpoints that name no id at all, so the ten Rick and Morty buy
+    # prompts, whose unpluggedInitiateInlinePurchaseCommand carries only
+    # params, are still correctly dropped.
+    for carrier in _ENDPOINT_CARRIERS:
+        block = node.get(carrier)
+        if not isinstance(block, dict):
+            continue
+        for name, value in block.items():
+            if (name.endswith("Endpoint") and isinstance(value, dict)
+                    and value.get(key)):
+                return value[key]
     return ""
 
 
@@ -530,8 +556,16 @@ def unreadable_sample(node, limit=3):
                         and not _endpoint_id(value, "watchEndpoint", "videoId")
                         and not _endpoint_id(value, "browseEndpoint", "browseId")
                         and not _popup_video_id(value)):
-                    out.append("%s carries [%s]"
-                               % (key, ", ".join(sorted(value.keys()))))
+                    inside = []
+                    for carrier in _ENDPOINT_CARRIERS:
+                        block = value.get(carrier)
+                        if isinstance(block, dict):
+                            inside.append("%s -> [%s]"
+                                          % (carrier,
+                                             ", ".join(sorted(block.keys()))))
+                    out.append("%s carries [%s]%s"
+                               % (key, ", ".join(sorted(value.keys())),
+                                  "; " + "; ".join(inside) if inside else ""))
                 visit(value)
         elif isinstance(node, list):
             for value in node:
