@@ -105,3 +105,15 @@ globalThis.XMLHttpRequest = function () {
   return { open() {}, send() {}, setRequestHeader() {}, addEventListener() {},
            readyState: 0, status: 0, responseText: '' };
 };
+
+// Node 19 exposes crypto on the global; Node 18 does not, and BotGuard calls
+// getRandomValues. Without this the snapshot comes back as the string
+// "E:v is not a function" -- an error where a response should be, which
+// GenerateIT then answers with a token anyway, so the failure is silent
+// unless the response is checked for its leading "$".
+if (!globalThis.crypto) {
+  try { globalThis.crypto = require('crypto').webcrypto; } catch (e) { /* older node */ }
+}
+if (!globalThis.btoa) globalThis.btoa = s => Buffer.from(s, 'binary').toString('base64');
+if (!globalThis.atob) globalThis.atob = s => Buffer.from(s, 'base64').toString('binary');
+if (!globalThis.structuredClone) globalThis.structuredClone = v => JSON.parse(JSON.stringify(v));
