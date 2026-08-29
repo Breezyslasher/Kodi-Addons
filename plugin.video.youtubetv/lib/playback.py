@@ -164,9 +164,32 @@ def build_item(player_response, label=None, art=None):
         # id comes out of drmParams and the manifest URL. See lib/widevine.py.
         content = widevine.content_id(streaming.get("drmParams", ""), manifest)
         if content:
+            pssh = widevine.build_pssh(content, is_live=is_live)
             kodiutils.log("pssh content id: %s (live=%s)" % (content, is_live))
-            item.setProperty("inputstream.adaptive.license_data",
-                             widevine.build_pssh(content, is_live=is_live))
+            item.setProperty("inputstream.adaptive.license_data", pssh)
+
+            # ISA has been opening every session with an unknown KID, because
+            # nothing it can read carries one: YouTube's ContentProtection has
+            # no cenc:default_KID and a content-id PSSH has no key ids. The
+            # licence response does name them, so a previous play of this title
+            # leaves them behind for this one. pre_init_data is the property
+            # that takes both halves.
+            video_id = details.get("videoId") or ""
+            known = license_proxy.key_ids_for(video_id)
+            key_id = (known.get("DRM_TRACK_TYPE_SD")
+                      or known.get("DRM_TRACK_TYPE_AUDIO")
+                      or next(iter(known.values()), ""))
+            if key_id:
+                kodiutils.log("pre_init_data: supplying key id from the "
+                              "previous licence (%d known for this title)"
+                              % len(known))
+                item.setProperty("inputstream.adaptive.pre_init_data",
+                                 "%s|%s" % (pssh, key_id))
+            else:
+                kodiutils.log("no key id known for %s yet -- ISA will open "
+                              "with an unknown KID; the licence this play "
+                              "fetches will supply one for next time"
+                              % (video_id or "this title"))
         else:
             kodiutils.log_error("no content id could be derived -- ISA will "
                                 "have no PSSH and will refuse the stream")

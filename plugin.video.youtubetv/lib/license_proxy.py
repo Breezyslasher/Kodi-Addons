@@ -74,6 +74,44 @@ def set_context(video_id, cpn, drm_params, is_live):
     })
 
 
+KEY_ID_FILE = "key_ids.json"
+
+
+def _remember_key_ids(video_id, granted):
+    """Keep the key ids the licence server named, per track type.
+
+    ISA reports `ConvertKidStrToBytes: Cannot convert KID ""` on every stream,
+    because YouTube's ContentProtection carries no cenc:default_KID and the
+    content-id PSSH carries no key ids either -- so ISA opens a session not
+    knowing which key belongs to which track. The licence response is the only
+    place those ids appear, and it arrives too late for the manifest ISA has
+    already parsed.
+
+    Storing them makes the *next* play of the same title able to supply them up
+    front. For on-demand the ids are stable, so one failed play teaches the
+    next. Live rotates daily, so a stored id is good for the day.
+    """
+    if not video_id or not granted:
+        return
+    known = kodiutils.read_json(KEY_ID_FILE, default={}) or {}
+    ids = {}
+    for entry in granted:
+        track, key_id = entry.get("trackType"), entry.get("keyId")
+        if track and key_id and track not in ids:
+            ids[track] = key_id
+    if not ids:
+        return
+    if known.get(video_id) != ids:
+        known[video_id] = ids
+        kodiutils.write_json(KEY_ID_FILE, known)
+        kodiutils.log("licence: recorded key ids for %s [%s]"
+                      % (video_id, ", ".join(sorted(ids))))
+
+
+def key_ids_for(video_id):
+    return (kodiutils.read_json(KEY_ID_FILE, default={}) or {}).get(video_id) or {}
+
+
 def _crypto_period_index(now=None):
     """The current key period.
 
@@ -280,6 +318,7 @@ def _fetch_license(challenge):
                           % (len(licence), len(granted),
                              ", ".join(sorted({f.get("trackType", "?")
                                                for f in granted}))))
+            _remember_key_ids(ctx.get("video_id", ""), granted)
             return licence
         last_status = status
         kodiutils.log("licence: status %s at cryptoPeriodIndex %s"
