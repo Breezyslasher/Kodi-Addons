@@ -77,38 +77,42 @@ anyway. So a broken run looks exactly like a working one unless the response
 is checked for its leading `$`. It fails about one run in three regardless,
 which is why the addon retries.
 
-## Can this be pure Python? Where it stands
+## It is pure Python now
 
-A pure-Python JavaScript engine exists -- js2py, ES5.1, no native code, so it
-would install on LibreELEC where node will not. It gets a long way:
+js2py -- an ES5 interpreter written in Python, no native code, so it
+installs where node will not -- runs the interpreter, registers the VM,
+completes `vm.a`'s setup and returns a snapshot that GenerateIT answers with
+a real token. The addon ships it vendored and needs nothing installed.
 
-* it parses and runs the 63 KB obfuscated interpreter (0.7 s),
-* `globalThis.trayride` is registered,
-* `vm.a(program, setup, ...)` completes its setup (2.4 s),
-* `asyncSnapshotFunction` returns.
+Four corrections to js2py were needed, each found by running the same thing
+under node and under js2py and diffing rather than by reading the spec.
+`tools/js2py/README.md` has the method and the two that only the
+differential tracer could have found:
 
-It returns a failure, and it does so on every run -- four in a row, the same
-`[object, 30, 264]` every time -- so this is a semantic divergence and not
-the endpoint's own flakiness.
+* **`Date.now()` returns a Date object**, not a number. BotGuard sets its
+  clock baseline from `performance.timeOrigin`, so every reading after it
+  was string concatenation.
+* **`eval` takes its scope from `inspect.stack()[3]`**, a fixed depth.
+  BotGuard calls `(0, eval)(code)`, and an indirect eval runs in *global*
+  scope; the caller's scope leaks the VM's own minified locals, so a probe
+  that has to throw `O is not defined` quietly succeeds and the VM skips
+  the two instructions that follow it.
+* **`Math.round` rounds half to even**, Python-style, where JS rounds half
+  up: `round(-1.5)` was -2 and `round(2.5)` was 2.
+* **Property order**: `for-in` sorted every key alphabetically and
+  `Object.keys` used insertion order, where JS puts integer-like keys first
+  and the rest in insertion order, both times.
 
-The shim is not the reason. The same ES5 shim the js2py driver uses was run
-under node against the same endpoint and minted, so the fake browser is
-adequate; the interpreter is the difference.
+Two more the shim covers rather than js2py: there is no `Symbol`, `Map`,
+`Set`, `Promise`, `Reflect` or `TextEncoder` in ES5, and
+`Object.getOwnPropertyNames` handed JavaScript a Python view with no length
+and no array methods on it.
 
-**`Function.prototype.toString` is not the reason either**, though one run
-said it was. js2py discards the source text when it translates JS to Python,
-so every function -- the VM's own included -- answers
-
-    function name(args) { [python code] }
-
-where V8 answers the real source. Blinding V8's toString exactly that way
-looked decisive: unblinded minted, blinded failed. It was a single run of
-each, and this flow fails about one run in three on its own. Eight runs each
-say otherwise:
-
-    toString unblinded   5 minted, 3 failed
-    toString blinded     7 minted, 1 failed
-
--- the same distribution. BotGuard does not read function sources here, or
-does not act on them. One run is not a measurement in a flow with a one in
-three failure rate, which is the same trap the leading `$` check exists for.
+**`Function.prototype.toString` is not among them**, though one run said it
+was. js2py answers `function name(args) { [python code] }` where V8 answers
+the real source, and blinding V8's toString exactly that way looked
+decisive: unblinded minted, blinded failed. It was a single run of each, and
+this flow fails about one run in three on its own. Eight runs each say the
+distribution is the same -- 5/8 minted unblinded, 7/8 blinded. One run is
+not a measurement here, which is the same trap the leading `$` check exists
+for.

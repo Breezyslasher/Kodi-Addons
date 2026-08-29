@@ -7,11 +7,13 @@ minutes old still played, and one from half an hour earlier did not. That is
 not a thing a person can keep up with by hand, and it took both playback
 paths down when it lapsed.
 
-So mint it. `botguard.js` does the whole exchange in the JavaScript runtime
-the addon already finds for the n transform -- ask jnn-pa.googleapis.com for a
-challenge, unscramble it, run BotGuard's own interpreter against a small
-browser shim, and trade the snapshot for a token. Verified end to end: a
-token from here plays where one lifted from a browser used to be required.
+So mint it. `botguard_py` does the whole exchange with nothing installed --
+ask jnn-pa.googleapis.com for a challenge, unscramble it, run BotGuard's own
+interpreter against a small browser shim inside a JavaScript engine written
+in Python, and trade the snapshot for a token. Verified end to end: a token
+from here plays where one lifted from a browser used to be required, and the
+snapshot it produces is byte for byte the one V8 produces from the same
+challenge.
 
 Cached against its binding until it expires, because the exchange costs a
 couple of seconds and three network round trips, and the token is good for
@@ -21,20 +23,22 @@ import base64
 import json
 import os
 import random
-import subprocess
 import threading
 import time
 
-from . import kodiutils, nsig
+from . import kodiutils
 
 CACHE_FILE = "potoken_cache.json"
-SCRIPT = "botguard.js"
 
 # A minute of slack, so a token that expires mid-playback is not a mystery.
 SLACK = 60
 
 _lock = threading.Lock()
 _memo = {}
+# Bindings a mint is already running for, so two playbacks starting at once
+# do not each run the VM.
+_minting = set()
+_mint_lock = threading.Lock()
 # How the token in hand was come by, for anything that wants to say so.
 last = {"source": ""}
 
@@ -43,56 +47,23 @@ class PoTokenError(Exception):
     """No token could be minted."""
 
 
-def _script_path():
-    """Where the runtime can read the minter from.
-
-    The addon's own lib directory is inside the flatpak, and the host's node
-    -- reached through flatpak-spawn -- cannot see it. The profile directory
-    is a real host path under the same name on both sides, which is why nsig
-    writes its programs there too.
-    """
-    source = os.path.join(os.path.dirname(os.path.abspath(__file__)), SCRIPT)
-    with open(source, "r", encoding="utf-8") as handle:
-        body = handle.read()
-    try:
-        directory = kodiutils.profile_dir()
-    except Exception:
-        import tempfile
-        directory = tempfile.gettempdir()
-    target = os.path.join(directory, SCRIPT)
-    try:
-        if not os.path.exists(target) or open(target, encoding="utf-8").read() != body:
-            with open(target, "w", encoding="utf-8") as handle:
-                handle.write(body)
-    except OSError as exc:
-        raise PoTokenError("could not write %s: %s" % (target, exc))
-    return target
-
-
 def _mint(binding):
-    """Run the exchange once, and return (token, ttl)."""
-    runtime, argv = nsig._runtime_on_path()
-    if not runtime:
-        raise PoTokenError("no JavaScript runtime, so no token can be minted "
-                           "-- the same runtime the n transform needs")
-    script = _script_path()
+    """Run the exchange once, and return (token, ttl).
+
+    Nothing here shells out and nothing here needs a runtime: the setting
+    that says to behave as though none were installed only stops the mint
+    so the cold start path can be exercised on purpose.
+    """
+    if kodiutils.get_setting_bool("no_js_runtime"):
+        raise PoTokenError("minting is turned off, so a cold started token "
+                           "it is")
+    from . import botguard_py
     try:
-        result = subprocess.run(argv + [script, binding],
-                                capture_output=True, timeout=180)
+        return botguard_py.mint(binding)
+    except botguard_py.BotGuardError as exc:
+        raise PoTokenError(str(exc))
     except Exception as exc:
-        raise PoTokenError("%s could not be run: %s" % (runtime, exc))
-    if result.returncode != 0:
-        raise PoTokenError("%s exited %d: %s"
-                           % (runtime, result.returncode,
-                              result.stderr.decode("utf-8", "replace").strip()[-300:]))
-    try:
-        answer = json.loads(result.stdout.decode("utf-8", "replace").strip().splitlines()[-1])
-    except Exception as exc:
-        raise PoTokenError("could not read what %s printed: %s" % (runtime, exc))
-    token = answer.get("token") or ""
-    if not token:
-        raise PoTokenError("the exchange produced no token")
-    return token, int(answer.get("ttl") or 43200)
+        raise PoTokenError("%s: %s" % (type(exc).__name__, exc))
 
 
 def short_visitor(value):
@@ -160,6 +131,85 @@ def cold_start(binding, client_state=1):
     return base64.urlsafe_b64encode(bytes(packet)).decode().rstrip("=")
 
 
+def _start_mint(binding):
+    """Run the exchange on a thread, and keep what it returns.
+
+    Returns without doing anything if one is already running for this
+    binding: ISA opens the manifest from more than one thread and both ask
+    for a token.
+    """
+    with _mint_lock:
+        if binding in _minting:
+            return
+        _minting.add(binding)
+
+    def run():
+        try:
+            minted, ttl = _mint(binding)
+        except PoTokenError as exc:
+            kodiutils.log("po token: %s" % exc)
+            return
+        except Exception as exc:
+            kodiutils.log_error("po token: minting fell over: %s: %s"
+                                % (type(exc).__name__, exc))
+            return
+        finally:
+            with _mint_lock:
+                _minting.discard(binding)
+        _remember(binding, minted, ttl, "minted")
+
+    thread = threading.Thread(target=run, name="potoken-mint")
+    thread.daemon = True
+    thread.start()
+
+
+def _remember(binding, minted, ttl, how):
+    """Hold a token in memory and on disk, and say so."""
+    now = time.time()
+    held = {"token": minted, "expires_at": int(now + ttl), "source": how}
+    with _lock:
+        # Never downgrade. The cold start and the mint race by design --
+        # the cold start answers the caller and the mint lands a few
+        # seconds later -- and on a fast box the mint can land first.
+        standing = _memo.get(binding)
+        if how != "minted" and standing \
+                and standing.get("source") == "minted" \
+                and standing.get("expires_at", 0) > now + SLACK:
+            last["source"] = "minted"
+            return standing.get("token") or ""
+        _memo[binding] = held
+        stored = kodiutils.read_json(CACHE_FILE, default={}) or {}
+        # Only the ones still alive: the file should not grow a row per
+        # video id ever played.
+        stored = {k: v for k, v in stored.items()
+                  if isinstance(v, dict) and v.get("expires_at", 0) > now}
+        stored[binding] = held
+        kodiutils.write_json(CACHE_FILE, stored)
+    last["source"] = how
+    kodiutils.log("po token: %s %s... for %s..., good for %s"
+                  % (how, minted[:16], binding[:12],
+                     ("%d hours" % (ttl // 3600)) if ttl >= 3600
+                     else ("%d minutes" % (ttl // 60))))
+    return minted
+
+
+def prime(binding):
+    """Have a minted token ready before anything asks for one.
+
+    Called at service start. Playback then finds a twelve hour token in the
+    cache instead of cold starting and waiting for the mint to catch up.
+    """
+    if not binding:
+        return
+    now = time.time()
+    stored = kodiutils.read_json(CACHE_FILE, default={}) or {}
+    held = _memo.get(binding) or stored.get(binding)
+    if held and held.get("source") == "minted" \
+            and held.get("expires_at", 0) > now + SLACK:
+        return
+    _start_mint(binding)
+
+
 def token(binding, force=False):
     """A token for this binding, minted if there is not a live one already.
 
@@ -181,34 +231,20 @@ def token(binding, force=False):
             last["source"] = held.get("source") or "cached"
             return held.get("token") or ""
 
-        how = "minted"
+        # Cold start now, mint in the background. Running the VM costs
+        # seconds -- four here, and this box is not a LibreELEC one --
+        # and that would be four seconds of black screen on the first
+        # play. The cold start token is arithmetic, costs nothing, and
+        # YouTube takes one while it reports StreamProtectionStatus 2;
+        # the minted one replaces it a few seconds later and is good for
+        # twelve hours rather than thirty minutes.
         try:
-            minted, ttl = _mint(binding)
+            minted, ttl, how = cold_start(binding), 1800, "cold started"
         except PoTokenError as exc:
-            kodiutils.log("po token: %s" % exc)
-            # No runtime, or the exchange failed. A cold start token is
-            # computed here and needs nothing, and YouTube takes one while it
-            # reports StreamProtectionStatus 2. Short-lived on purpose: it
-            # should be retried for a real one before long.
-            try:
-                minted, ttl, how = cold_start(binding), 1800, "cold started"
-            except PoTokenError as second:
-                kodiutils.log_error("po token: %s" % second)
-                return ""
+            kodiutils.log_error("po token: %s" % exc)
+            minted, ttl, how = "", 0, ""
+        _start_mint(binding)
+        if not minted:
+            return ""
 
-
-        held = {"token": minted, "expires_at": int(now + ttl), "source": how}
-        _memo[binding] = held
-        stored = kodiutils.read_json(CACHE_FILE, default={}) or {}
-        # Only this binding's, and only the ones still alive: the file should
-        # not grow a row per video id ever played.
-        stored = {k: v for k, v in stored.items()
-                  if isinstance(v, dict) and v.get("expires_at", 0) > now}
-        stored[binding] = held
-        kodiutils.write_json(CACHE_FILE, stored)
-        last["source"] = how
-        kodiutils.log("po token: %s %s... for %s..., good for %s"
-                      % (how, minted[:16], binding[:12],
-                         ("%d hours" % (ttl // 3600)) if ttl >= 3600
-                         else ("%d minutes" % (ttl // 60))))
-        return minted
+    return _remember(binding, minted, ttl, how)

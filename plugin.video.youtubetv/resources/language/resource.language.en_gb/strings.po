@@ -197,11 +197,11 @@ msgid "Diagnostic. A url pasted here is used instead of the one the player respo
 msgstr ""
 
 msgctxt "#30065"
-msgid "Never use a JavaScript runtime"
+msgid "Cold start the proof-of-origin token"
 msgstr ""
 
 msgctxt "#30066"
-msgid "Behave as though no runtime were installed. n is solved by the bundled Python interpreter either way; this stops a machine that has node from quietly covering for it, and makes the proof-of-origin token cold started rather than minted. Turn it on to see what a box with Python and nothing else will do."
+msgid "Nothing in this addon needs a JavaScript runtime any more: n is solved by the bundled Python interpreter, and the proof-of-origin token is minted by running BotGuard's own interpreter inside a JavaScript engine written in Python. Turn this on to skip the mint and compute a token arithmetically instead -- it costs nothing and works while YouTube reports StreamProtectionStatus 2, but it is good for thirty minutes rather than twelve hours."
 msgstr ""
 
 msgctxt "#30067"

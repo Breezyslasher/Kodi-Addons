@@ -1651,3 +1651,36 @@ The setting is off by default. A narrowed set was answered
 `sabr.no_video_selected` once, and if the endpoint refuses one again the
 session clears `wanted`, sets `narrowing = False` and offers the whole set
 for the rest of playback rather than refusing once per segment.
+
+## No JavaScript runtime, anywhere in the addon
+
+Two things needed one, and neither does now.
+
+**`n`** was ported to the bundled Python interpreter and is solved there
+first, with a runtime only as a fallback that never fires.
+
+**The proof-of-origin token** needs BotGuard's VM run, and that VM cannot be
+ported: it is 63 KB of obfuscated bytecode interpreter that arrives fresh
+with every challenge, different hash, size and export name each time. But it
+does not need a JavaScript *runtime*, only a JavaScript *engine*, and js2py
+is one written in Python. The addon vendors it (952 KB trimmed of babel and
+the npm importer, which this path never takes) and runs the VM inside it.
+
+The snapshot it produces is byte for byte the one V8 produces from the same
+challenge -- checked by running both against one cached challenge with the
+randomness pinned and diffing. GenerateIT answers it with an ordinary token,
+43200s ttl.
+
+Four corrections to js2py were needed and are applied at run time by
+`lib/js2py_fixes.py` rather than by forking it: `Date.now()` returned a Date
+object rather than a number, `eval` took its scope from a fixed stack depth
+where an indirect eval has to run in global scope, `Math.round` rounded half
+to even, and property enumeration order was alphabetical rather than
+integer-keys-first. `tools/js2py/README.md` has how each was found; two of
+them only the differential tracer could have found.
+
+Running the VM costs a few seconds, so the service mints one at start and
+playback finds it waiting. If it has not landed yet, playback cold starts --
+pure arithmetic, instant, good for thirty minutes rather than twelve hours --
+and the minted token replaces it when it arrives. Neither path asks for
+anything to be installed.
