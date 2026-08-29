@@ -195,3 +195,11 @@ msgstr ""
 msgctxt "#30064"
 msgid "Diagnostic. A url pasted here is used instead of the one the player response carries, exactly as pasted. Paste one a browser was served and this answers whether the urls we are issued are refused or our client is: the same url that returned megabytes to the browser either works here or it does not. Leave empty for normal playback."
 msgstr ""
+
+msgctxt "#30065"
+msgid "Never use a JavaScript runtime"
+msgstr ""
+
+msgctxt "#30066"
+msgid "Behave as though no runtime were installed. n is solved by the bundled Python interpreter either way; this stops a machine that has node from quietly covering for it, and makes the proof-of-origin token cold started rather than minted. Turn it on to see what a box with Python and nothing else will do."
+msgstr ""
