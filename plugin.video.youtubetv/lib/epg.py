@@ -393,6 +393,46 @@ def parse_items(response):
     return items
 
 
+def unplayable_count(response):
+    """How many things a response names that cannot be opened.
+
+    parse_items drops a renderer with a title and no endpoint, which is what
+    an episode the account has no rights to looks like: YouTube TV lists it,
+    greyed, with no watchEndpoint. That is the correct thing to drop and the
+    wrong thing to drop silently -- a shelf holding ten unplayable episodes
+    and a shelf holding nothing both logged "0 of 0", and only one of those
+    is a show you cannot watch.
+
+    Counted the same way parse_items decides, so the two always agree.
+    """
+    count = 0
+    seen = set()
+
+    def visit(node):
+        nonlocal count
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key.endswith("Renderer") and isinstance(value, dict):
+                    title = _title_of(value)
+                    # A thumbnail is what separates a tile from a badge or a
+                    # menu entry, which also carry a title and no endpoint.
+                    if (title and value.get("thumbnail")
+                            and not _endpoint_id(value, "watchEndpoint",
+                                                 "videoId")
+                            and not _endpoint_id(value, "browseEndpoint",
+                                                 "browseId")
+                            and title not in seen):
+                        seen.add(title)
+                        count += 1
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(response)
+    return count
+
+
 def parse_search(response):
     """Search hits.
 
