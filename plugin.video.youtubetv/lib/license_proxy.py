@@ -34,7 +34,8 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import requests
 
-from . import api, auth, kodiutils, manifest as manifest_mod, widevine
+from . import (api, auth, kodiutils, manifest as manifest_mod, nsig,
+               widevine)
 
 LICENSE_URL = api.BASE + "player/get_drm_license"
 CONTEXT_FILE = "playback_context.json"
@@ -204,6 +205,7 @@ class _Handler(BaseHTTPRequestHandler):
             body = manifest_mod.patch(response.content)
             body = manifest_mod.add_po_token(
                 body, kodiutils.get_setting("po_token", ""))
+            body = _resolve_n(body, cookies)
         except Exception as exc:
             # A manifest we failed to repair still beats no manifest.
             kodiutils.log_error("manifest patch failed, passing it through: %s"
@@ -398,6 +400,36 @@ def _secret():
     if _SECRET:
         return _SECRET
     return _published().get("secret", "")
+
+
+def _resolve_n(body, cookies):
+    """Compute n for this manifest and write it back into every BaseURL.
+
+    Measured rather than assumed: on a url the edge does serve, rotating one
+    character of n turns 15,010,219 bytes into an empty-bodied 403, and
+    removing n does the same. So it has to be right, and the only thing that
+    knows how to make it right is the player's own JavaScript.
+
+    A failure is logged and the manifest passed through untouched. That plays
+    no better than before, but it leaves the reason in the log rather than
+    substituting one silent 403 for another.
+    """
+    urls = manifest_mod.base_urls(body)
+    if not any("n=" in url for url in urls):
+        return body
+    session = requests.Session()
+    try:
+        player_id, js = api.player_js(session, cookies)
+    except Exception as exc:
+        kodiutils.log_error("nsig: no player js, leaving n as minted: %s" % exc)
+        return body
+    try:
+        return manifest_mod.rewrite_n(
+            body, lambda value: nsig.solve(js, value, player_id))
+    except Exception as exc:
+        kodiutils.log_error("nsig: could not solve n, leaving it as minted: %s"
+                            % exc)
+        return body
 
 
 def manifest_url(real_url):

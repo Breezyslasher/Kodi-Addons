@@ -517,3 +517,73 @@ python3 tools/youtube_tv_check_dash.py cookies.txt --save-mpd live.mpd
 Exit status 0 means the addon is worth building. It also doubles as a check of
 the auth chain: if `player` returns anything other than `OK`, the cookie or
 `SAPISIDHASH` handling is wrong before DRM ever enters the picture.
+
+## The `n` parameter is the gate on media
+
+Every googlevideo URL minted by our session is refused with `HTTP 403`,
+`Content-Length: 0`, while the browser is served from the same IP in the same
+minute. The refusal is not about us as a client: the browser's own captured
+SABR request, POSTed from the Kodi box, returns `HTTP 200, 15010219 bytes`.
+
+Crossing the two requests names the half that is wrong:
+
+| | result |
+|---|---|
+| their url + their body (the replay) | 200, 15,010,219 bytes |
+| their url + our body | 200, 31 bytes |
+| our url + their body | 403, empty |
+| our url + our body (the probe) | 403, empty |
+
+So the body is accepted and the URL is refused. Diffing the player response's
+`serverAbrStreamingUrl` against the URL the browser actually POSTs shows two
+kinds of difference:
+
+* four parameters the browser appends itself -- `cpn` (the playback nonce from
+  the player call), `cver`, `alr=yes`, and `rn` counting up per request; and
+* **`n`, which the browser rewrites**:
+
+```
+player response :  UQpyO2dm0XQSunbyNa
+browser posted  :  ygW6YjigTA7D-Q
+```
+
+Everything else -- `sig`, `lsig`, `sparams`, `spc`, the opaque per-session
+`id` -- is byte-identical. `n` is not listed in `sparams`, so changing it does
+not invalidate `sig`; the edge checks it separately. The transform is the
+`nsig` challenge: a function in the player JS, keyed to that player release,
+which yt-dlp solves by interpreting the JavaScript. Adding `cpn`/`cver`/`alr`/
+`rn` alone does not lift the 403, which leaves `n` as the remaining
+explanation.
+
+The same scrambled `n` appears on the DASH URLs InputStream Adaptive fetches,
+which is why that path returns 403 too.
+
+### Confirmed by breaking a URL that works
+
+Rather than infer, damage the captured browser request in one place. Same
+length, same alphabet, one character of `n` rotated:
+
+```
+sabr replay [verbatim ]: HTTP 200, 15010219 bytes
+sabr replay [n altered]: HTTP 403, 0 bytes
+sabr replay [n dropped]: HTTP 403, 0 bytes
+```
+
+So `n` is the gate, it cannot be omitted, and it has to be computed.
+
+### Computing it
+
+The transform is generated afresh in each player release, so there is no
+algorithm to reimplement -- only a language to run. `lib/jsinterp.py` is
+yt-dlp's JavaScript interpreter, vendored verbatim (Unlicense, public domain),
+with `lib/nsig.py` on top to find the player JS, locate the transform, and run
+it.
+
+One caveat, recorded because it predicts how this ends. **yt-dlp no longer uses
+that interpreter for YouTube.** As of 2026.8 every n-challenge provider it
+ships -- deno, node, bun, quickjs -- shells out to a real JavaScript runtime,
+and no pure-Python path remains. That is the project with the most invested in
+this problem concluding the interpreter cannot keep up with the obfuscation.
+Our case is narrower (one player, one function), so it is worth trying, and
+`nsig.solve` falls back to a runtime on PATH if the interpreter fails. The log
+says which route worked.

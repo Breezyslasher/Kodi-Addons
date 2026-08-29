@@ -310,7 +310,7 @@ def probe_cipher(client, video_id, response):
             kodiutils.log_error("cipher probe [%s] failed: %s" % (name, exc))
 
 
-def probe_sabr(client, response):
+def probe_sabr(client, response, cpn):
     """POST to the SABR endpoint and report what the server says.
 
     This is where the media actually is. The DASH URLs are refused; the web
@@ -359,25 +359,43 @@ def probe_sabr(client, response):
                   % (wanted.get("itag"), wanted.get("mimeType", "")[:24],
                      len(body)))
 
-    try:
-        import requests
-        reply = requests.post(url, data=body, timeout=30, headers={
-            "User-Agent": api.UA,
-            "Origin": api.ORIGIN,
-            "Referer": api.ORIGIN + "/",
-            "Content-Type": "application/x-protobuf",
-            "Accept": "*/*",
-        })
-    except Exception as exc:
-        kodiutils.log_error("sabr probe: request failed: %s" % exc)
-        return
+    # The browser rewrites n before it fetches: the player hands out a
+    # scrambled value and the page's JS transforms it. n is not in sparams, so
+    # changing it does not invalidate sig -- the edge checks it separately, and
+    # refuses a value it did not expect. We have no JS engine, so measure what
+    # the alternatives cost: dropping n entirely is how ordinary YouTube
+    # degrades to throttled-but-served, and if that holds here there is nothing
+    # left to solve.
+    import requests
+    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+    base = sabr.playback_url(url, cpn, api._client_version(), api.CLIENT_NAME)
+    parts = urlparse(base)
+    query = parse_qs(parts.query, keep_blank_values=True)
+    kodiutils.log("sabr probe: n=%s (as the player minted it)"
+                  % (query.get("n") or ["-"])[0])
 
-    kodiutils.log("sabr probe: HTTP %d, %d bytes returned"
-                  % (reply.status_code, len(reply.content)))
-    if reply.status_code != 200:
-        kodiutils.log_error("sabr probe: %r" % reply.content[:200])
-        return
-    kodiutils.log(sabr.describe_response(reply.content))
+    def variant(label, mutate):
+        altered = {k: list(v) for k, v in query.items()}
+        mutate(altered)
+        target = urlunparse(parts._replace(query=urlencode(altered, doseq=True)))
+        try:
+            reply = requests.post(target, data=body, timeout=30, headers={
+                "User-Agent": api.UA,
+                "Origin": api.ORIGIN,
+                "Referer": api.ORIGIN + "/",
+                "Accept": "*/*",
+            })
+        except Exception as exc:
+            kodiutils.log_error("sabr probe [%s]: %s" % (label, exc))
+            return
+        kodiutils.log("sabr probe [%-16s]: HTTP %d, %d bytes"
+                      % (label, reply.status_code, len(reply.content)))
+        if reply.status_code == 200 and len(reply.content) > 1000:
+            kodiutils.log(sabr.describe_response(reply.content))
+
+    variant("n as minted", lambda q: None)
+    variant("n removed", lambda q: q.pop("n", None))
+    variant("n and ns removed", lambda q: (q.pop("n", None), q.pop("ns", None)))
 
 
 def replay_captured_sabr():
@@ -425,27 +443,54 @@ def replay_captured_sabr():
     kodiutils.log("sabr replay: posting the browser's own request verbatim "
                   "(%d bytes, url valid for %d more minutes)"
                   % (len(body), remaining // 60))
-    try:
-        import requests
-        reply = requests.post(url, data=body, timeout=30, headers={
-            "User-Agent": getattr(baked_sabr, "USER_AGENT", api.UA),
-            "Origin": api.ORIGIN,
-            "Referer": api.ORIGIN + "/",
-            "Accept": "*/*",
-        })
-    except Exception as exc:
-        kodiutils.log_error("sabr replay: %s" % exc)
+
+    # A url known to be served is worth more than another refused one: break it
+    # in one place at a time and the refusal names its own cause. n is the only
+    # difference between our url and theirs that is not simply session state,
+    # and it is the expensive one to fix -- solving it means interpreting the
+    # player's JavaScript. Damaging n on a url that otherwise works says
+    # whether that expense buys anything, before it is spent.
+    import requests
+    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+    parts = urlparse(url)
+    query = parse_qs(parts.query, keep_blank_values=True)
+    original = (query.get("n") or [""])[0]
+
+    def attempt(label, params):
+        target = urlunparse(parts._replace(query=urlencode(params, doseq=True)))
+        try:
+            reply = requests.post(target, data=body, timeout=30, headers={
+                "User-Agent": getattr(baked_sabr, "USER_AGENT", api.UA),
+                "Origin": api.ORIGIN,
+                "Referer": api.ORIGIN + "/",
+                "Accept": "*/*",
+            })
+        except Exception as exc:
+            kodiutils.log_error("sabr replay [%s]: %s" % (label, exc))
+            return None
+        kodiutils.log("sabr replay [%-14s]: HTTP %d, %d bytes"
+                      % (label, reply.status_code, len(reply.content)))
+        return reply
+
+    verbatim = attempt("verbatim", query)
+    if not verbatim or verbatim.status_code != 200:
+        kodiutils.log("sabr replay: the captured url is no longer served, so "
+                      "the variants below prove nothing")
         return
-    kodiutils.log("sabr replay: HTTP %d, %d bytes"
-                  % (reply.status_code, len(reply.content)))
-    if reply.status_code == 200:
-        kodiutils.log("sabr replay: SERVED -- the browser's url works from "
-                      "here, so the refusal is about how our urls are minted, "
-                      "not about us as a client")
-        kodiutils.log(sabr.describe_response(reply.content))
-    else:
-        kodiutils.log("sabr replay: refused too -- we are rejected whatever "
-                      "url we present, so nothing in the request can fix it")
+
+    # Same length and alphabet, one character rotated: if the edge cared only
+    # that n is present and well formed, this would still be served.
+    damaged = dict(query)
+    if original:
+        swapped = ("b" if original[0] != "b" else "c") + original[1:]
+        damaged["n"] = [swapped]
+        attempt("n altered", damaged)
+    attempt("n dropped", {k: v for k, v in query.items() if k != "n"})
+
+    kodiutils.log("sabr replay: SERVED verbatim -- read the variants above: if "
+                  "altering n alone loses the 200, n is the gate and computing "
+                  "it from the player js is the remaining work")
+    kodiutils.log(sabr.describe_response(verbatim.content))
 
 
 def prepare(client, video_id, label=None, art=None):
@@ -455,7 +500,11 @@ def prepare(client, video_id, label=None, art=None):
         probe_clients(client, video_id)
     response = client.player(video_id, cpn)
     if kodiutils.get_setting_bool("probe_sabr", False):
-        probe_sabr(client, response)
+        # The replay and the cross have delivered their answer -- our body is
+        # accepted, our url is refused, and n is the parameter that differs --
+        # so they no longer run on every play. They stay as functions because
+        # the next unexplained refusal will want them again.
+        probe_sabr(client, response, cpn)
         replay_captured_sabr()
 
     streaming = response.get("streamingData") or {}
@@ -473,3 +522,117 @@ def prepare(client, video_id, label=None, art=None):
                      ",".join(authorized) or "none"))
 
     return response, build_item(response, label=label, art=art)
+
+
+def cross_sabr(client, response):
+    """Cross the browser's request with ours and see which half is refused.
+
+    The replay settled the question the two of them were built to settle: the
+    browser's captured URL, POSTed from this machine, is served 15 MB. So we
+    are not blocked as a client, and the difference is somewhere in what we
+    send. There are only two halves to send.
+
+        browser url + browser body  -- known 200, the replay
+        browser url + our body      -- if this fails, our body is wrong
+        our url     + browser body  -- if this fails, our url is wrong
+        our url     + our body      -- known 403, the probe
+
+    The bodies address the same title, so the cross is meaningful rather than
+    two unrelated requests. Nothing here plays anything; it narrows the search
+    to one half of one request.
+    """
+    try:
+        from . import baked_sabr
+    except ImportError:
+        return
+    their_url = getattr(baked_sabr, "URL", "")
+    their_body = getattr(baked_sabr, "BODY", b"")
+    if not their_url or not their_body:
+        return
+
+    streaming = response.get("streamingData") or {}
+    our_url = streaming.get("serverAbrStreamingUrl") or ""
+    try:
+        config = (response["playerConfig"]["mediaCommonConfig"]
+                  ["mediaUstreamerRequestConfig"]["videoPlaybackUstreamerConfig"])
+    except (KeyError, TypeError):
+        config = None
+    formats = streaming.get("adaptiveFormats") or []
+    audio = min((f for f in formats if "audio/" in (f.get("mimeType") or "")),
+                key=lambda f: f.get("bitrate") or 1 << 30, default=None)
+    our_body = b""
+    if config and audio:
+        our_body = sabr.build_request(
+            config, wanted=(audio["itag"], audio.get("lastModified") or 0))
+
+    # Which query parameters each side carries. The browser's working request
+    # has no pot at all, and carries c/cver/cpn/rn/alr/sabr/svpuc; a missing
+    # or extra parameter here is a far likelier cause of an empty-bodied 403
+    # than anything in the protobuf.
+    from urllib.parse import parse_qs, urlparse
+    def keys(url):
+        return set(parse_qs(urlparse(url).query))
+    if our_url:
+        theirs, ours = keys(their_url), keys(our_url)
+        kodiutils.log("sabr cross: our url lacks %s; carries extra %s"
+                      % (sorted(theirs - ours) or "nothing",
+                         sorted(ours - theirs) or "nothing"))
+    else:
+        kodiutils.log("sabr cross: no serverAbrStreamingUrl to compare")
+
+    import requests
+    headers = {
+        "User-Agent": getattr(baked_sabr, "USER_AGENT", api.UA),
+        "Origin": api.ORIGIN,
+        "Referer": api.ORIGIN + "/",
+        "Accept": "*/*",
+    }
+    for label, url, body in (("their url + our body", their_url, our_body),
+                             ("our url + their body", our_url, their_body)):
+        if not url or not body:
+            kodiutils.log("sabr cross: %s -- skipped, nothing to send" % label)
+            continue
+        try:
+            reply = requests.post(url, data=body, timeout=30, headers=headers)
+        except Exception as exc:
+            kodiutils.log_error("sabr cross: %s -- %s" % (label, exc))
+            continue
+        kodiutils.log("sabr cross: %-20s HTTP %d, %d bytes"
+                      % (label, reply.status_code, len(reply.content)))
+
+
+def probe_dash_params(response, cpn):
+    """Try a DASH url with the four parameters the SABR url was missing.
+
+    Worth one measurement before committing to a SABR bridge. If googlevideo
+    serves the DASH urls once they carry cpn/cver/alr/rn, InputStream Adaptive
+    can play them as they stand and nothing else is needed. If it still
+    refuses, the DASH urls are not a path at all -- the browser never fetches
+    them, so there is no working example to match -- and the media has to come
+    through SABR.
+    """
+    streaming = response.get("streamingData") or {}
+    formats = streaming.get("adaptiveFormats") or []
+    pick = next((f for f in formats if f.get("url")), None)
+    if not pick:
+        kodiutils.log("dash probe: every format is ciphered, no plain url to try")
+        return
+    import requests
+    headers = {
+        "User-Agent": api.UA,
+        "Origin": api.ORIGIN,
+        "Referer": api.ORIGIN + "/",
+        "Range": "bytes=0-2047",
+    }
+    for label, url in (
+            ("as minted", pick["url"]),
+            ("with cpn/cver/alr/rn",
+             sabr.playback_url(pick["url"], cpn, api._client_version(),
+                               api.CLIENT_NAME))):
+        try:
+            reply = requests.get(url, timeout=30, headers=headers)
+        except Exception as exc:
+            kodiutils.log_error("dash probe: %s -- %s" % (label, exc))
+            continue
+        kodiutils.log("dash probe: %-22s HTTP %d, %d bytes"
+                      % (label, reply.status_code, len(reply.content)))
