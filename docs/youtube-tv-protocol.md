@@ -1165,7 +1165,21 @@ So the CDM is the variable, and an out-of-date one is the first thing to
 suspect when a licence is refused outright.
 
 The refusal now says so rather than surfacing as an HTTP 502 with nothing
-attached.
+attached -- and updating the CDM on that box proved it: `CDM version:
+4.10.3050.0`, `licence granted: 949 bytes, 4 formats`, zero decrypt failures,
+zero AAC errors, where every run before it was refused four times.
+
+**And then Kodi crashed, on the licence.** The log ends two lines after the
+grant, mid-playback-start, with nothing after it. So ISA 20.3.18 has a further
+fault of its own, past the point where every earlier obstacle was cleared.
+
+Kodi 20 is not supported, and the floor stays at inputstream.adaptive 21.5.22.
+Reaching this far took two addon changes -- naming the manifest type, which
+ISA 20 requires and 21 infers, and an old CDM that YouTube would not license --
+and both were worth finding, but the crash after them is ISA's and not
+something this addon can reach. The manifest-type gate has been removed again:
+with the floor at 21 it can never run, and dead code that looks like support
+is worse than none.
 
 One incidental measurement from those runs, since the rewrite was toggled
 across them: with it off, 51 decrypt failures and 5387 AAC errors; with it on,
