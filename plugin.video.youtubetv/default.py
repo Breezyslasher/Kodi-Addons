@@ -176,10 +176,15 @@ def route_root():
         finish()
         return
 
+    add_dir("Home", plot="What YouTube TV puts on its own front page: "
+                         "resume watching, top picks, and the genre rows.",
+            action="home")
     add_dir("Live channels", plot="Every channel in your lineup, playing now.",
             action="channels")
     add_dir("Guide", plot="What is on across the next few hours.",
             action="guide")
+    add_dir("Library", plot="Your recordings, purchases and what is "
+                            "scheduled to record.", action="library")
     add_dir("Search", action="search")
     # Offered while already signed in, not only before, so a session that
     # has gone wrong can be replaced without signing out first.
@@ -303,10 +308,26 @@ def route_station(station_id, name):
     finish("videos")
 
 
+def _label_of(item):
+    """The title, with the airing time in front when the row has one.
+
+    Two scheduled recordings of one show list as the same word twice --
+    "Phineas and Ferb", "Phineas and Ferb", an hour apart -- and the start
+    time is the only thing that tells them apart in a menu that shows
+    labels and not plots. Rows with no start time (episodes, films,
+    channels) are left exactly as they are.
+    """
+    if not item.start_ms:
+        return item.title
+    when = time.localtime(item.start_ms / 1000.0)
+    fmt = "%H:%M" if when[:3] == time.localtime()[:3] else "%a %H:%M"
+    return "%s  %s" % (time.strftime(fmt, when), item.title)
+
+
 def _add_items(items, content="videos"):
     """List parsed items: playable ones resolve, folders browse deeper."""
     for item in items:
-        listitem = xbmcgui.ListItem(label=item.title)
+        listitem = xbmcgui.ListItem(label=_label_of(item))
         listitem.setArt({"thumb": item.art, "fanart": item.art})
         info = listitem.getVideoInfoTag()
         info.setTitle(item.title)
@@ -453,6 +474,218 @@ def route_browse(browse_id, name):
     _add_items(items)
 
 
+def _follow_pages(client, section, limit=10):
+    """Everything behind a row's continuation token, page after page.
+
+    One token covers two cases and they are handled the same way: a filter
+    whose selected sort came back empty because YouTube TV deferred it, and a
+    row whose first page arrived with more behind it. Stops when a page adds
+    nothing new, repeats its own token, or the limit is reached, so a server
+    that keeps handing back the same token cannot spin here.
+    """
+    items = list(section.items)
+    seen = {(item.video_id or item.browse_id, item.start_ms) for item in items}
+    token = section.token
+    page = 0
+    while token and page < limit:
+        page += 1
+        try:
+            response = client.continuation(token)
+        except (auth.AuthError, api.ApiError) as exc:
+            kodiutils.log("%s: page %d did not open: %s"
+                          % (section.title, page, exc))
+            break
+        added = 0
+        for item in epg.parse_items(response):
+            key = (item.video_id or item.browse_id, item.start_ms)
+            if key in seen:
+                continue
+            seen.add(key)
+            items.append(item)
+            added += 1
+        kodiutils.log("%s: page %d added %d item(s)"
+                      % (section.title, page, added))
+        following = epg.continuation_token(response)
+        if not added or not following or following == token:
+            break
+        token = following
+    return items
+
+
+def _whole_page(client, fetch, limit=4):
+    """A page and the pages of rows it defers, merged into one response list.
+
+    Home arrives four rows at a time: the first response carries "Top picks
+    for you", "Resume watching", "Shows" and "Add to membership", and hangs
+    the other twenty behind one token on the section list itself. Following
+    it is what turns a four-row front page into the twenty-four rows the web
+    client shows.
+    """
+    try:
+        response = fetch()
+    except (auth.AuthError, api.ApiError) as exc:
+        return None, [], str(exc)
+
+    pages = [response]
+    token = epg.page_continuation(response)
+    while token and len(pages) < limit:
+        try:
+            page = client.continuation(token)
+        except (auth.AuthError, api.ApiError) as exc:
+            kodiutils.log("page %d did not open: %s" % (len(pages) + 1, exc))
+            break
+        pages.append(page)
+        following = epg.page_continuation(page)
+        if not following or following == token:
+            break
+        token = following
+    return response, pages, ""
+
+
+def _sections_of(pages):
+    """Every named row across the pages, first occurrence winning."""
+    sections = []
+    seen = set()
+    for page in pages:
+        for section in epg.page_shelves(page):
+            if section.title in seen:
+                continue
+            seen.add(section.title)
+            sections.append(section)
+    return sections
+
+
+def _list_sections(sections, action, extra=None):
+    for section in sections:
+        add_dir(section.title,
+                art=section.items[0].art if section.items else "",
+                plot="%d item(s)" % len(section.items),
+                action=action, name=section.title)
+    return bool(sections)
+
+
+def route_home():
+    """The front page: resume watching, top picks, and the genre rows.
+
+    Every row becomes a folder rather than being flattened: Home holds five
+    hundred titles across two dozen rows, and one list of five hundred is not
+    a menu.
+    """
+    client = _client()
+    if not client:
+        finish()
+        return
+    first_page, pages, error = _whole_page(client, client.home)
+    if error:
+        kodiutils.ok_dialog(error, "Could not open the front page")
+        finish()
+        return
+
+    sections = _sections_of(pages)
+    kodiutils.log("home: %d page(s), %d row(s) -- %s"
+                  % (len(pages), len(sections),
+                     ", ".join("%s (%d)" % (s.title, len(s.items))
+                               for s in sections) or "nothing"))
+    if sections:
+        _list_sections(sections, "home_row")
+        finish()
+        return
+
+    # No row this addon recognises. Rather than show an empty folder, list
+    # whatever the page names -- and say so in the log, because the shape
+    # having changed is the thing worth knowing.
+    kodiutils.log("home: no rows recognised; listing the page flat")
+    _add_items(epg.parse_items(first_page))
+
+
+def route_home_row(name):
+    """One row of the front page, in full."""
+    client = _client()
+    if not client:
+        finish()
+        return
+    _first, pages, error = _whole_page(client, client.home)
+    if error:
+        kodiutils.ok_dialog(error, "Could not open the front page")
+        finish()
+        return
+    section = next((s for s in _sections_of(pages) if s.title == name), None)
+    if section is None:
+        kodiutils.notify("%s is no longer on the front page"
+                         % (name or "That row"))
+        finish()
+        return
+    _add_items(_follow_pages(client, section))
+
+
+def route_library():
+    """Recordings, purchases and scheduled recordings.
+
+    The page answers with its curated rows -- "New in your library", "Most
+    watched", "Scheduled recordings" -- and a grid filtered All / Shows /
+    Movies / Sports / Events / Purchased. "All" is the library itself, so its
+    contents are listed here rather than hidden one click down; everything
+    else becomes a folder. Filters the account has nothing under never
+    appear: library_filters drops the empty-state cards.
+    """
+    client = _client()
+    if not client:
+        finish()
+        return
+    try:
+        response = client.library()
+    except (auth.AuthError, api.ApiError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open your library")
+        finish()
+        return
+
+    shelves, filters = epg.parse_library(response)
+    kodiutils.log("library: %d row(s) and %d filter(s) -- %s"
+                  % (len(shelves), len(filters),
+                     ", ".join("%s (%d)" % (s.title, len(s.items))
+                               for s in shelves + filters) or "nothing"))
+
+    _list_sections(shelves, "library_section")
+    _list_sections(filters[1:], "library_section")
+
+    if filters:
+        _add_items(_follow_pages(client, filters[0]))
+        return
+    if shelves:
+        finish("videos")
+        return
+    # The grid did not come back in a shape this addon knows. List what the
+    # page names anyway; the log above says what arrived instead.
+    kodiutils.log("library: no filters recognised; listing the page flat")
+    items = epg.parse_items(response)
+    if not items:
+        kodiutils.notify("Nothing in your library yet")
+    _add_items(items)
+
+
+def route_library_section(name):
+    """One row or one filter of the library, in full."""
+    client = _client()
+    if not client:
+        finish()
+        return
+    try:
+        response = client.library()
+    except (auth.AuthError, api.ApiError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open your library")
+        finish()
+        return
+
+    shelves, filters = epg.parse_library(response)
+    section = next((s for s in shelves + filters if s.title == name), None)
+    if section is None:
+        kodiutils.notify("%s is no longer in your library"
+                         % (name or "That row"))
+        finish()
+        return
+    _add_items(_follow_pages(client, section))
+
+
 def route_play(video_id, label):
     client = _client()
     if not client:
@@ -540,6 +773,18 @@ def main():
     elif action == "station":
         route_station(params.get("station_id", ""), params.get("name", ""))
         return
+    elif action == "home":
+        route_home()
+        return
+    elif action == "home_row":
+        route_home_row(params.get("name", ""))
+        return
+    elif action == "library":
+        route_library()
+        return
+    elif action == "library_section":
+        route_library_section(params.get("name", ""))
+        return
     elif action == "search":
         route_search()
         return
@@ -551,7 +796,6 @@ def main():
         return
     elif action == "play_channel":
         route_play_channel(params.get("station_id", ""))
-        return
         return
     elif action in ("iptv_channels", "iptv_epg"):
         # RunPlugin, not a directory: there is no handle to finish and

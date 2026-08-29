@@ -265,6 +265,32 @@ def _endpoint_id(node, endpoint, key):
     return ""
 
 
+def _popup_video_id(node):
+    """The video a tile hides behind a "how would you like to watch?" dialog.
+
+    A scheduled recording that is on the air right now carries no
+    watchEndpoint at all: its navigationEndpoint is an
+    unpluggedPopupEndpoint whose dialog offers "Join live" and "Start from
+    beginning". Both name the same videoId, so either will do, and the
+    params that separate them are not something route_play carries anyway.
+
+    Every recording that has not started yet carries a plain browseEndpoint
+    instead -- measured across the seven tiles in the Library capture, where
+    only the one then on the air had the popup. So the popup's presence is
+    YouTube TV's own statement that this one is playable now, and no clock
+    arithmetic is needed here. Without this the live tile was dropped
+    entirely: it has a title and a thumbnail and, as far as _endpoint_id
+    could see, nowhere to go.
+    """
+    popup = (node.get("navigationEndpoint") or {}).get("unpluggedPopupEndpoint")
+    if not isinstance(popup, dict):
+        return ""
+    for endpoint in walk(popup, "watchEndpoint"):
+        if isinstance(endpoint, dict) and endpoint.get("videoId"):
+            return endpoint["videoId"]
+    return ""
+
+
 def _title_of(node):
     for field in ("primaryText", "title", "headline", "label"):
         value = text(node.get(field))
@@ -370,12 +396,17 @@ def parse_items(response):
         title = _title_of(renderer)
         if not title:
             return
-        video_id = _endpoint_id(renderer, "watchEndpoint", "videoId")
+        video_id = (_endpoint_id(renderer, "watchEndpoint", "videoId")
+                    or _popup_video_id(renderer))
         browse_id = "" if video_id else _endpoint_id(renderer, "browseEndpoint",
                                                      "browseId")
         if not video_id and not browse_id:
             return
-        key = video_id or browse_id
+        # Keyed by destination *and* start time. Destination alone collapsed
+        # two Phineas and Ferb recordings an hour apart into one row, because
+        # both point at the same show page; two airings are two rows. Nothing
+        # without a start time is affected, which is every show page.
+        key = (video_id or browse_id, _seconds_ms(renderer, "startTimeSeconds"))
         if key in seen:
             return
         seen.add(key)
@@ -421,6 +452,7 @@ def unplayable_count(response):
                                                  "videoId")
                             and not _endpoint_id(value, "browseEndpoint",
                                                  "browseId")
+                            and not _popup_video_id(value)
                             and title not in seen):
                         seen.add(title)
                         count += 1
@@ -442,3 +474,175 @@ def parse_search(response):
     playable come back playable.
     """
     return parse_items(response)
+
+
+class Section(object):
+    """A named row of a page: what it holds, and how to ask for more."""
+
+    __slots__ = ("title", "items", "token")
+
+    def __init__(self, title, items, token=""):
+        self.title = title
+        self.items = items
+        self.token = token
+
+
+def _section_list(response):
+    """The page's own top-level list of rows.
+
+    A first request answers with sectionListRenderer; the Library arrives as
+    a continuation, so it answers with sectionListContinuation. Only the
+    direct entries are wanted -- searching the whole tree for shelfRenderer
+    would also find the nineteen cells inside the filter grid below, which
+    are shelves too and are not rows of this page.
+    """
+    for key in ("sectionListContinuation", "sectionListRenderer"):
+        block = first(response, key)
+        if isinstance(block, dict) and isinstance(block.get("contents"), list):
+            return block["contents"]
+    return []
+
+
+def _dropdown(block):
+    """(label, is_selected) for each entry of a dropdownRenderer."""
+    entries = []
+    for entry in (block.get("entries") or []):
+        if not isinstance(entry, dict):
+            continue
+        item = entry.get("dropdownItemRenderer")
+        if isinstance(item, dict):
+            entries.append((text(item.get("label")), bool(item.get("isSelected"))))
+    return entries
+
+
+def library_filters(response):
+    """The Library's filter tabs, each with the row behind it.
+
+    The Library is not a page of shelves like a show page; it is a grid. One
+    unpluggedSelectableSectionRenderer carries a filter dropdown -- All,
+    Shows, Movies, Sports, Events, Purchased -- and one *sort* dropdown per
+    filter, and ``contents`` holds the cross product of the two flattened row
+    by row: four cells for All's four sorts, then six for Shows, then Movies'
+    single cell, and so on. Nineteen cells for six filters in the capture
+    this was written against, and 4+6+1+4+1+3 is exactly nineteen, which is
+    what makes the row-major reading below a measurement rather than a guess.
+
+    Only the sort YouTube TV had selected arrives with its items inline; the
+    other cells hold a continuation token and nothing else. So each filter is
+    represented by its selected sort, and the cells are indexed by walking
+    the sort lists in order.
+
+    section_continuations, which a show page uses, pairs selectors[i] with
+    contents[i]. That is right for a show and wrong here: it would pair
+    "Shows" with All's second sort. Hence a reader of its own.
+
+    A filter with nothing in it comes back as an unpluggedEmptyStateRenderer
+    ("No movies in your library") -- no items and no token -- and is dropped,
+    so an empty tab never becomes an empty folder.
+    """
+    sections = []
+    for block in walk(response, "unpluggedSelectableSectionRenderer"):
+        if not isinstance(block, dict):
+            continue
+        selector = first(block, "unpluggedFilterSortSelectorRenderer")
+        if not isinstance(selector, dict):
+            continue
+        filters = _dropdown((selector.get("filterSelector") or {})
+                            .get("dropdownRenderer") or {})
+        sorts = [_dropdown(entry.get("dropdownRenderer") or {})
+                 for entry in (selector.get("sortSelectors") or [])
+                 if isinstance(entry, dict)]
+        contents = block.get("contents") or []
+        # The row-major walk only holds while the three agree. If Google
+        # reshapes this, say so and list nothing rather than pair a name with
+        # somebody else's row.
+        if len(sorts) != len(filters) or sum(len(row) for row in sorts) != len(contents):
+            kodiutils.log("library: %d filter(s), %d sort list(s) totalling %d, "
+                          "but %d cell(s) -- the grid has changed shape"
+                          % (len(filters), len(sorts),
+                             sum(len(row) for row in sorts), len(contents)))
+            continue
+
+        at = 0
+        for index, (name, _selected) in enumerate(filters):
+            row = sorts[index]
+            chosen = next((i for i, (_l, s) in enumerate(row) if s), 0)
+            cell = contents[at + chosen]
+            at += len(row)
+            items = parse_items(cell)
+            token = first(cell, "continuation") or ""
+            if not items and not token:
+                continue
+            sections.append(Section(name or "Library", items,
+                                    token if isinstance(token, str) else ""))
+    return sections
+
+
+# The renderers a page uses for a named row, and where each keeps its name.
+# The Library calls them shelfRenderer with a "title"; Home calls them
+# unpluggedHomeShelfRenderer with a "primaryText". Same thing, twice named.
+_SHELVES = (("shelfRenderer", "title"),
+            ("unpluggedHomeShelfRenderer", "primaryText"))
+
+
+def page_shelves(response):
+    """The named rows of a page, in the page's own order.
+
+    The Library's "New in your library", "Most watched" and "Scheduled
+    recordings"; Home's "Resume watching", "Top picks for you", "Sports" and
+    the twenty genre rows behind them.
+
+    A row with a name and nothing in it is dropped -- Home answers with
+    "Add to your library" and "Upcoming games" holding no items at all, and
+    an empty folder is worse than no folder.
+    """
+    sections = []
+    for entry in _section_list(response):
+        if not isinstance(entry, dict):
+            continue
+        for name, title_key in _SHELVES:
+            shelf = entry.get(name)
+            if not isinstance(shelf, dict):
+                continue
+            title = text(shelf.get(title_key))
+            items = parse_items(shelf)
+            if not title or not items:
+                continue
+            token = first(shelf, "continuation") or ""
+            sections.append(Section(title, items,
+                                    token if isinstance(token, str) else ""))
+            break
+    return sections
+
+
+def page_continuation(response):
+    """The token for the page's *next* page, and nothing else.
+
+    Deliberately not continuation_token, which searches the whole tree: the
+    first nextContinuationData in a Home response belongs to the first
+    shelf, not to the page, and following it would fetch more of "Top picks
+    for you" while believing it had fetched the next twenty rows. The page's
+    own token sits in the section list's ``continuations``, alongside a
+    timedContinuationData (a refresh timer) and a reloadContinuationData
+    (the page again), neither of which is a next page.
+    """
+    for key in ("sectionListContinuation", "sectionListRenderer"):
+        block = first(response, key)
+        if not isinstance(block, dict):
+            continue
+        for entry in (block.get("continuations") or []):
+            if not isinstance(entry, dict):
+                continue
+            data = entry.get("nextContinuationData")
+            if isinstance(data, dict) and data.get("continuation"):
+                return data["continuation"]
+    return None
+
+
+def parse_library(response):
+    """(shelves, filters) for the Library page.
+
+    Kept apart because they are read differently and shown differently: the
+    shelves are curated rows, the filters are one collection sliced six ways.
+    """
+    return page_shelves(response), library_filters(response)
