@@ -57,11 +57,17 @@ class BotGuardError(Exception):
 
 
 def _vendor():
-    """Put the vendored js2py on the path, ahead of anything installed."""
+    """Put the vendored js2py on the path, behind anything installed.
+
+    Appended rather than inserted: Kodi runs every addon in one Python
+    process and sys.path is shared, so putting `six` at the front of it
+    would hand our copy to every other addon on the box. At the back,
+    ours is only reached when nothing else provides the name.
+    """
     here = os.path.dirname(os.path.abspath(__file__))
     path = os.path.join(here, "vendor")
     if path not in sys.path:
-        sys.path.insert(0, path)
+        sys.path.append(path)
 
 
 def _read(name):
