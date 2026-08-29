@@ -246,6 +246,41 @@ class _Handler(BaseHTTPRequestHandler):
             return
         self._send(404)
 
+    def do_POST(self):
+        """The licence exchange. ISA posts the raw challenge here.
+
+        Without this method BaseHTTPRequestHandler answers 501 Unsupported
+        method, ISA reports "License server returned failure (HTTP error
+        501)", the CDM session never opens, and the video stream is dropped
+        with "Codec id 27 require extradata" -- three messages, none of them
+        naming the missing handler.
+        """
+        parsed = urlparse(self.path)
+        if not self._authorized(parsed.query):
+            self._send(403)
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0:
+            self._send(400)
+            return
+
+        challenge = self.rfile.read(length)
+        try:
+            licence = _fetch_license(challenge)
+        except auth.AuthError as exc:
+            kodiutils.log_error("licence: session rejected: %s" % exc)
+            self._send(403)
+            return
+        except Exception as exc:
+            kodiutils.log_error("licence exchange failed: %s" % exc)
+            self._send(502)
+            return
+        self._send(200, licence)
+
+
 def _post_license(payload, session, bearer):
     headers = {
         "Content-Type": "application/json",
