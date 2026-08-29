@@ -59,26 +59,39 @@ def _authorized_cap(streaming, video_id=""):
     """The tallest track this account is actually licensed to decrypt.
 
     Two sources disagree, and the field name says which to believe:
-    streamingData carries *initial*AuthorizedDrmTrackTypes, commonly just AUDIO
-    and SD, while the licence that comes back a moment later grants AUDIO, SD,
-    HD and UHD1 for the same title. The initial list is a hint from before the
-    exchange; the licence is the answer.
+    streamingData carries *initial*AuthorizedDrmTrackTypes, and the licence
+    that comes back a moment later grants the real set. The initial list is a
+    hint from before the exchange; the licence is the answer.
 
-    So prefer what the licence granted, which the proxy records per title on
-    its way past. The first play of a title has none yet and falls back to the
-    hint -- one play at a lower resolution, then the real ceiling.
+    The hint used to stand in on the first play of a title, which cost that
+    play its HD stream. It has now read AUDIO,SD on every title measured --
+    on both credentials -- while every licence that followed granted AUDIO,
+    SD, HD and UHD1, so it was not a conservative ceiling, it was a wrong
+    one; the browser reads the same hint and is served HD-tier formats
+    regardless. So it is no longer treated as a ceiling: with no licence
+    recorded yet there is no ceiling from here, and the quality setting is
+    the only limit.
+
+    The cost of being wrong the other way is a title that really is SD-only:
+    we would fetch HD media the CDM has no key for. Nothing measured has
+    behaved that way, and the licence arrives before the first encrypted
+    fragment does, so the following play corrects itself either way.
     """
     granted = list(license_proxy.key_ids_for(video_id)) if video_id else []
-    source = "the licence"
     if not granted:
-        granted = streaming.get("initialAuthorizedDrmTrackTypes") or []
-        source = "the player response (no licence seen for this title yet)"
+        hint = streaming.get("initialAuthorizedDrmTrackTypes") or []
+        kodiutils.log("no licence recorded for %s yet, so no ceiling from "
+                      "here -- the player response only hints at %s, which "
+                      "has never yet matched the licence that follows it"
+                      % (video_id or "this title",
+                         ", ".join(sorted(hint)) or "nothing"))
+        return 0
     heights = [TRACK_TYPE_HEIGHTS[t] for t in granted if t in TRACK_TYPE_HEIGHTS]
     if not heights:
         return 0
     tallest = max(heights)
-    kodiutils.log("licensed up to %dp according to %s: %s"
-                  % (tallest, source, ", ".join(sorted(granted))))
+    kodiutils.log("licensed up to %dp according to the licence: %s"
+                  % (tallest, ", ".join(sorted(granted))))
     return tallest
 
 
