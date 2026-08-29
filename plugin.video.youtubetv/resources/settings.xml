@@ -3,6 +3,11 @@
 	<section id="plugin.video.youtubetv">
 		<category id="diagnostics" label="30030">
 			<group id="1">
+				<setting id="probe_sabr" type="boolean" label="30035" help="30036">
+					<level>0</level>
+					<default>false</default>
+					<control type="toggle"/>
+				</setting>
 				<setting id="probe_clients" type="boolean" label="30033" help="30034">
 					<level>0</level>
 					<default>false</default>

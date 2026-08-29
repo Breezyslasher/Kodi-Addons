@@ -1,9 +1,16 @@
 """Google session auth for the YouTube TV private API.
 
-There is no OAuth path here. YouTube TV grants no device-code scopes, and
-Google stopped accepting scripted password login years ago, so the only way in
-is the cookie jar of a browser that is already signed in. The user exports it
-once; we sign every request with the SAPISIDHASH scheme the web player uses.
+Sign-in is a cookie jar exported from a browser that is already signed in;
+every request is signed with the SAPISIDHASH scheme the web player uses.
+
+An earlier version of this note claimed flatly that no OAuth path exists. That
+was an assertion, not a finding. What is actually established: the tv.youtube.com
+web player authenticates with SAPISIDHASH in every capture taken so far, and
+never with a bearer token. What is not established, and is worth testing, is
+whether the unplugged InnerTube surface would accept the OAuth device-code
+token that plugin.video.youtube uses against ordinary YouTube -- InnerTube does
+take "Authorization: Bearer" in place of SAPISIDHASH, and whether a YouTube TV
+subscription rides on a Data API scope is unknown here rather than ruled out.
 
 Two import routes, because typing a 3 KB cookie header on a remote is cruel:
 
@@ -29,7 +36,6 @@ ORIGIN = "https://tv.youtube.com"
 # The jar the API actually needs. SAPISID and SID do the authenticating; the
 # 1P/3P variants are hashed alongside them; LOGIN_INFO and the VISITOR_* pair
 # keep YouTube from treating the session as a brand new anonymous client.
-# Everything else in a browser jar is analytics and consent state.
 WANTED = (
     "SAPISID", "__Secure-1PAPISID", "__Secure-3PAPISID",
     "SID", "__Secure-1PSID", "__Secure-3PSID",
@@ -40,6 +46,13 @@ WANTED = (
     "PREF", "YSC", "__Secure-YNID", "__Secure-ROLLOUT_TOKEN",
 )
 
+# A note for the next person tempted to prune this list. SIDCC and the SIDTS
+# pair rotate every few minutes, and dropping them looked like an obvious way
+# to stop an imported jar going stale. It is not: a jar captured from a request
+# that provably authenticated -- a 200 on browse or player -- contains them and
+# works, and the 401s that prompted the pruning came from somewhere else
+# entirely. Carry what the working request carried.
+
 REQUIRED = ("SAPISID", "SID")
 
 
@@ -48,7 +61,18 @@ class AuthError(Exception):
 
 
 def _filter(cookies):
-    return {name: value for name, value in cookies.items() if name in WANTED}
+    """Keep the jar as the browser sent it.
+
+    There used to be an allow-list here, and every round of trimming it cost a
+    day: first the session-integrity cookies were pruned on a hunch, then a
+    capture turned out to carry names the list had never heard of --
+    __Secure-BUCKET, YTV_CLC, NID, ST-* -- which were silently dropped from a
+    jar that had provably authenticated seconds earlier. Whether Google needs
+    each one is not knowable from here, and guessing wrong looks exactly like
+    an expired session. Send what worked. WANTED survives only to describe the
+    names that matter for REQUIRED and for the docs.
+    """
+    return dict(cookies)
 
 
 def parse_cookie_header(header):
@@ -69,11 +93,15 @@ def parse_cookies_txt(path):
     MozillaCookieJar rejects outright, and a strict parser fails the whole file
     over one bad line.
 
-    Google keeps a copy of the session under both .google.com and .youtube.com.
-    The values normally agree, but they can diverge -- on a browser signed in
-    to several accounts, or after one domain has been re-authed and the other
-    has not. The API we call lives on youtube.com, so where both carry the same
-    cookie the youtube.com copy wins.
+    Google keeps a copy of the session under both .google.com and .youtube.com,
+    and the values can diverge -- on a browser signed in to several accounts,
+    or after one domain has been re-authed and the other has not.
+
+    Only the youtube.com jar is carried wholesale, because that is precisely
+    what a browser sends to tv.youtube.com. The google.com jar fills in
+    authenticating names that youtube.com happens to lack, and nothing else:
+    once the allow-list came off, merging both domains would have sent every
+    unrelated google.com cookie to a host the browser never shows them to.
     """
     google, youtube = {}, {}
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
@@ -91,8 +119,11 @@ def parse_cookies_txt(path):
                 youtube[name] = value
             elif "google.com" in domain:
                 google[name] = value
-    google.update(youtube)
-    return _filter(google)
+    jar = dict(youtube)
+    for name in WANTED:
+        if name not in jar and name in google:
+            jar[name] = google[name]
+    return jar
 
 
 def save(cookies):

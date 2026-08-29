@@ -2,7 +2,7 @@
 
 import xbmcgui
 
-from . import api, auth, cipher, kodiutils, license_proxy, manifest as manifest_mod, widevine
+from . import api, auth, cipher, kodiutils, license_proxy, manifest as manifest_mod, sabr, widevine
 
 ISA_ADDON = "inputstream.adaptive"
 
@@ -310,14 +310,153 @@ def probe_cipher(client, video_id, response):
             kodiutils.log_error("cipher probe [%s] failed: %s" % (name, exc))
 
 
+def probe_sabr(client, response):
+    """POST to the SABR endpoint and report what the server says.
+
+    This is where the media actually is. The DASH URLs are refused; the web
+    player POSTs to serverAbrStreamingUrl, which the player response hands us
+    verbatim, and gets 15 MB back. The request body is mostly the ustreamer
+    config out of the same response, so it can be built rather than guessed.
+
+    A probe, not a player: it asks for one format and reports the UMP parts
+    that come back. A 200 with MEDIA parts means the endpoint is reachable and
+    the remaining work is feeding those bytes to ISA. An error part means the
+    server has said, in its own words, what is missing.
+    """
+    streaming = response.get("streamingData") or {}
+    url = streaming.get("serverAbrStreamingUrl")
+    if not url:
+        kodiutils.log("sabr probe: no serverAbrStreamingUrl offered")
+        return
+    try:
+        config = (response["playerConfig"]["mediaCommonConfig"]
+                  ["mediaUstreamerRequestConfig"]["videoPlaybackUstreamerConfig"])
+    except (KeyError, TypeError):
+        kodiutils.log("sabr probe: no ustreamer config in the player response")
+        return
+
+    formats = streaming.get("adaptiveFormats") or []
+    def pick(kind):
+        matches = [f for f in formats if kind in (f.get("mimeType") or "")]
+        if not matches:
+            return None
+        # The smallest, since only reachability is being tested.
+        return min(matches, key=lambda f: f.get("bitrate") or 1 << 30)
+
+    audio, video = pick("audio/"), pick("video/")
+    if not audio and not video:
+        kodiutils.log("sabr probe: no formats to ask for")
+        return
+    wanted = audio or video
+    known = [(f["itag"], f.get("lastModified") or 0)
+             for f in (video, audio) if f and f is not wanted and f.get("itag")]
+
+    body = sabr.build_request(
+        config,
+        wanted=(wanted["itag"], wanted.get("lastModified") or 0),
+        known=known)
+    kodiutils.log("sabr probe: asking for itag %s (%s), %d byte request"
+                  % (wanted.get("itag"), wanted.get("mimeType", "")[:24],
+                     len(body)))
+
+    try:
+        import requests
+        reply = requests.post(url, data=body, timeout=30, headers={
+            "User-Agent": api.UA,
+            "Origin": api.ORIGIN,
+            "Referer": api.ORIGIN + "/",
+            "Content-Type": "application/x-protobuf",
+            "Accept": "*/*",
+        })
+    except Exception as exc:
+        kodiutils.log_error("sabr probe: request failed: %s" % exc)
+        return
+
+    kodiutils.log("sabr probe: HTTP %d, %d bytes returned"
+                  % (reply.status_code, len(reply.content)))
+    if reply.status_code != 200:
+        kodiutils.log_error("sabr probe: %r" % reply.content[:200])
+        return
+    kodiutils.log(sabr.describe_response(reply.content))
+
+
+def replay_captured_sabr():
+    """POST a request the browser made, verbatim, and see if we are served.
+
+    Every googlevideo URL our own session mints is refused -- DASH GET and SABR
+    POST alike, always HTTP 403 with an empty body, which is a rejection at the
+    edge rather than anything SABR said. The browser, from the same IP and
+    account in the same minute, is served 15 MB from its own SABR URL.
+
+    That leaves exactly two possibilities, and replaying the browser's own
+    request separates them:
+
+      200 -- the URL is fine and ours are not. Something about how our player
+             call is made produces URLs that will not be served, and that is
+             a difference worth hunting.
+      403 -- the URL is irrelevant and we are refused as a client, whatever we
+             present. Nothing in the addon can change that.
+
+    A personal build supplies lib/baked_sabr.py with URL and BODY captured from
+    a browser session; it is absent from the repository, and without it this is
+    a no-op.
+    """
+    try:
+        from . import baked_sabr
+    except ImportError:
+        return
+    url = getattr(baked_sabr, "URL", "")
+    body = getattr(baked_sabr, "BODY", b"")
+    if not url or not body:
+        return
+    import time
+    from urllib.parse import parse_qs, urlparse
+    expires = (parse_qs(urlparse(url).query).get("expire") or ["0"])[0]
+    try:
+        remaining = int(expires) - int(time.time())
+    except ValueError:
+        remaining = 0
+    if remaining <= 0:
+        kodiutils.log("sabr replay: the captured url expired %d minutes ago; "
+                      "capture a fresh browser play to retry"
+                      % (-remaining // 60))
+        return
+
+    kodiutils.log("sabr replay: posting the browser's own request verbatim "
+                  "(%d bytes, url valid for %d more minutes)"
+                  % (len(body), remaining // 60))
+    try:
+        import requests
+        reply = requests.post(url, data=body, timeout=30, headers={
+            "User-Agent": getattr(baked_sabr, "USER_AGENT", api.UA),
+            "Origin": api.ORIGIN,
+            "Referer": api.ORIGIN + "/",
+            "Accept": "*/*",
+        })
+    except Exception as exc:
+        kodiutils.log_error("sabr replay: %s" % exc)
+        return
+    kodiutils.log("sabr replay: HTTP %d, %d bytes"
+                  % (reply.status_code, len(reply.content)))
+    if reply.status_code == 200:
+        kodiutils.log("sabr replay: SERVED -- the browser's url works from "
+                      "here, so the refusal is about how our urls are minted, "
+                      "not about us as a client")
+        kodiutils.log(sabr.describe_response(reply.content))
+    else:
+        kodiutils.log("sabr replay: refused too -- we are rejected whatever "
+                      "url we present, so nothing in the request can fix it")
+
+
 def prepare(client, video_id, label=None, art=None):
     """Call player, arm the licence proxy, and return a ListItem."""
     cpn = api.new_cpn()
     if kodiutils.get_setting_bool("probe_clients", False):
         probe_clients(client, video_id)
     response = client.player(video_id, cpn)
-    if kodiutils.get_setting_bool("probe_clients", False):
-        probe_cipher(client, video_id, response)
+    if kodiutils.get_setting_bool("probe_sabr", False):
+        probe_sabr(client, response)
+        replay_captured_sabr()
 
     streaming = response.get("streamingData") or {}
     details = response.get("videoDetails") or {}
