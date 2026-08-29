@@ -302,9 +302,33 @@ def lookup(key):
         kodiutils.log("sabr bridge: asking for %dp, offering %s"
                       % (target, [f.get("itag") for f in avc]))
 
+    # The audio offer, narrowed the same way the video one is.
+    #
+    # Naming a rendition in _pick was not enough and the log said so: the
+    # setting asked for 148, the session opened "audio itag 148", and the
+    # server answered "the server chose video 146, audio 150" -- because
+    # every audio rendition was still in the offer and the endpoint picks
+    # from what it is given. Exactly the video problem, in the other track.
+    every_audio = alternatives(candidates, "audio/")
+    audio_offer = every_audio
+    asked_audio = _audio_itag()
+    if asked_audio:
+        named = [f for f in every_audio
+                 if int(f.get("itag") or 0) == asked_audio]
+        if named:
+            audio_offer = named
+            kodiutils.log("sabr bridge: offering audio itag %d alone, so the "
+                          "server has nothing else to choose" % asked_audio)
+        else:
+            kodiutils.log("sabr bridge: this title has no audio itag %d -- "
+                          "offering %s"
+                          % (asked_audio,
+                             sorted(int(f.get("itag") or 0)
+                                    for f in every_audio)))
+
     session = sabr_session.Session(
         stored["url"], stored.get("config") or "",
-        [_entry(f) for f in alternatives(candidates, "audio/")],
+        [_entry(f) for f in audio_offer],
         [_entry(f) for f in (avc or offerable)],
         name, spec["id"], api.effective_version(name), _post,
         live=bool(stored.get("live", True)), po_token=po_token(),
@@ -883,17 +907,6 @@ def _pick(formats, kind, max_height=1080):
     if kind == "audio/":
         primary = [f for f in wanted if "primary" in (f.get("xtags") or "")]
         wanted = primary or wanted
-        asked = _audio_itag()
-        if asked:
-            named = [f for f in wanted if int(f.get("itag") or 0) == asked]
-            if named:
-                kodiutils.log("sabr bridge: audio itag %d, because the "
-                              "setting asks for it" % asked)
-                return named[0]
-            kodiutils.log("sabr bridge: this title has no itag %d, so the "
-                          "usual choice stands -- offered %s"
-                          % (asked, sorted(int(f.get("itag") or 0)
-                                           for f in wanted)))
     return max(wanted, key=_preference)
 
 
@@ -909,6 +922,17 @@ def _audio_itag():
     separated, because nothing else has ever been offered.
 
     A setting rather than a probe, so one playback answers it.
+
+    Applied to the SABR offer, not to the manifest: the endpoint chooses
+    from what it is given, so the only way to be served a rendition is to
+    offer nothing else. Naming one in _pick did nothing at all -- the log
+    read "session ... audio itag 148" and then "the server chose ... audio
+    150" in the same second.
+
+    If the endpoint refuses an offer of one audio rendition -- which is what
+    it did to single-rendition *video* offers before the request named a
+    height -- playback fails outright rather than quietly widening. That is
+    the honest failure for a diagnostic: set it back to automatic.
     """
     try:
         return int(kodiutils.get_setting("audio_itag", "0") or 0)
