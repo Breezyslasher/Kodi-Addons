@@ -217,5 +217,42 @@ check("describe names the renderers it saw",
       "shelfRenderer x3" in described, True)
 check("describe names the biggest list", "(3:" in described, True)
 
+# -- the shape the TV client actually sends --------------------------------
+# Paths and counts taken from the 2026-08-29 19:39 shape dump on a real
+# account: continuationContents/unpluggedLibraryContinuation/content/
+# unpluggedSelectableSectionRenderer, whose selectors[0] is an
+# unpluggedHorizontalChipListRenderer of chips and whose contents holds one
+# cell per chip -- nine and nine, no cross product. The web reader found
+# nothing here, and the flat fallback listed a single item.
+def _chip(label):
+    return {"unpluggedChipRenderer": {"chipId": "1", "title": _runs(label)}}
+
+
+TV = {"continuationContents": {"unpluggedLibraryContinuation": {"content": {
+    "unpluggedSelectableSectionRenderer": {
+        "selectors": [{"unpluggedHorizontalChipListRenderer": {
+            "items": [_chip("All"), _chip("Scheduled"), _chip("Purchased")]}}],
+        "contents": [
+            _cell(items=[_tile("A", browse_id="B1"), _tile("B", browse_id="B2")]),
+            _cell(items=[_tile("C", browse_id="B3")]),
+            _cell(token="PURCHASED"),
+        ]}}}}}
+
+rows, tabs = epg.parse_library(TV)
+check("the TV container yields no page-level rows", rows, [])
+check("chips name the tabs", [t.title for t in tabs],
+      ["All", "Scheduled", "Purchased"])
+check("each tab took its own cell",
+      [len(t.items) for t in tabs], [2, 1, 0])
+check("a tab with only a token keeps it", tabs[2].token, "PURCHASED")
+
+# Nine chips against eight cells is a shape change, not something to guess at.
+SHORT = copy.deepcopy(TV)
+sec = SHORT["continuationContents"]["unpluggedLibraryContinuation"]["content"] \
+    ["unpluggedSelectableSectionRenderer"]
+sec["contents"] = sec["contents"][:2]
+check("a chip row that does not match the cells is declined",
+      epg.library_filters(SHORT), [])
+
 print("failures:", len(failures))
 sys.exit(1 if failures else 0)

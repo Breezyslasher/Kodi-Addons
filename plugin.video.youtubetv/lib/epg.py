@@ -496,10 +496,18 @@ def _section_list(response):
     would also find the nineteen cells inside the filter grid below, which
     are shelves too and are not rows of this page.
     """
-    for key in ("sectionListContinuation", "sectionListRenderer"):
+    for key in ("sectionListContinuation", "sectionListRenderer",
+                "unpluggedLibraryContinuation"):
         block = first(response, key)
-        if isinstance(block, dict) and isinstance(block.get("contents"), list):
+        if not isinstance(block, dict):
+            continue
+        if isinstance(block.get("contents"), list):
             return block["contents"]
+        # unpluggedLibraryContinuation, which the TV client answers the
+        # Library with, holds one renderer under "content" rather than a
+        # list of rows: the whole page is a single selectable section.
+        if isinstance(block.get("content"), dict):
+            return [block["content"]]
     return []
 
 
@@ -515,60 +523,96 @@ def _dropdown(block):
     return entries
 
 
-def library_filters(response):
-    """The Library's filter tabs, each with the row behind it.
+def _chip_labels(selectors):
+    """The names on a chip row.
 
-    The Library is not a page of shelves like a show page; it is a grid. One
-    unpluggedSelectableSectionRenderer carries a filter dropdown -- All,
-    Shows, Movies, Sports, Events, Purchased -- and one *sort* dropdown per
-    filter, and ``contents`` holds the cross product of the two flattened row
-    by row: four cells for All's four sorts, then six for Shows, then Movies'
-    single cell, and so on. Nineteen cells for six filters in the capture
-    this was written against, and 4+6+1+4+1+3 is exactly nineteen, which is
-    what makes the row-major reading below a measurement rather than a guess.
-
-    Only the sort YouTube TV had selected arrives with its items inline; the
-    other cells hold a continuation token and nothing else. So each filter is
-    represented by its selected sort, and the cells are indexed by walking
-    the sort lists in order.
-
-    section_continuations, which a show page uses, pairs selectors[i] with
-    contents[i]. That is right for a show and wrong here: it would pair
-    "Shows" with All's second sort. Hence a reader of its own.
-
-    A filter with nothing in it comes back as an unpluggedEmptyStateRenderer
-    ("No movies in your library") -- no items and no token -- and is dropped,
-    so an empty tab never becomes an empty folder.
+    The TV client puts the Library's tabs in an
+    unpluggedHorizontalChipListRenderer rather than the web client's filter
+    and sort dropdowns. Read explicitly rather than through
+    _selector_labels, which stops at the first renderer carrying a title:
+    if the chip list itself ever gains one, that would return a single
+    label for nine tabs and the pairing below would rightly refuse to run.
     """
-    sections = []
-    for block in walk(response, "unpluggedSelectableSectionRenderer"):
-        if not isinstance(block, dict):
-            continue
-        selector = first(block, "unpluggedFilterSortSelectorRenderer")
-        if not isinstance(selector, dict):
-            continue
+    labels = []
+    for chip in walk(selectors, "unpluggedChipRenderer"):
+        if isinstance(chip, dict):
+            labels.append(text(chip.get("title")) or text(chip.get("label")))
+    return labels
+
+
+def _filter_cells(section):
+    """(label, cell) for each tab of a selectable section, or None.
+
+    Two selectors, two pairings, and getting them the wrong way round names
+    a tab with somebody else's row -- so each is checked against the number
+    of cells before it is used, and a mismatch returns None rather than a
+    best effort.
+
+    The web client sends an unpluggedFilterSortSelectorRenderer: a filter
+    dropdown and one sort dropdown per filter, with ``contents`` holding the
+    cross product flattened row by row. Six filters, 4+6+1+4+1+3 sorts,
+    nineteen cells. Each filter is represented by its selected sort.
+
+    The TV client sends an unpluggedHorizontalChipListRenderer instead --
+    nine chips, nine cells, one each -- so there is no cross product to
+    unpick and the pairing is positional.
+    """
+    contents = section.get("contents") or []
+    selector = first(section, "unpluggedFilterSortSelectorRenderer")
+    if isinstance(selector, dict):
         filters = _dropdown((selector.get("filterSelector") or {})
                             .get("dropdownRenderer") or {})
         sorts = [_dropdown(entry.get("dropdownRenderer") or {})
                  for entry in (selector.get("sortSelectors") or [])
                  if isinstance(entry, dict)]
-        contents = block.get("contents") or []
-        # The row-major walk only holds while the three agree. If Google
-        # reshapes this, say so and list nothing rather than pair a name with
-        # somebody else's row.
-        if len(sorts) != len(filters) or sum(len(row) for row in sorts) != len(contents):
-            kodiutils.log("library: %d filter(s), %d sort list(s) totalling %d, "
-                          "but %d cell(s) -- the grid has changed shape"
-                          % (len(filters), len(sorts),
-                             sum(len(row) for row in sorts), len(contents)))
-            continue
-
+        total = sum(len(row) for row in sorts)
+        if len(sorts) != len(filters) or total != len(contents):
+            kodiutils.log("library: %d filter(s), %d sort list(s) totalling "
+                          "%d, but %d cell(s) -- the grid has changed shape"
+                          % (len(filters), len(sorts), total, len(contents)))
+            return None
+        pairs = []
         at = 0
         for index, (name, _selected) in enumerate(filters):
             row = sorts[index]
             chosen = next((i for i, (_l, s) in enumerate(row) if s), 0)
-            cell = contents[at + chosen]
+            pairs.append((name, contents[at + chosen]))
             at += len(row)
+        return pairs
+
+    labels = _chip_labels(section.get("selectors"))
+    if not labels:
+        labels = _selector_labels(section.get("selectors"))
+    if not labels or len(labels) != len(contents):
+        kodiutils.log("library: %d tab name(s) but %d cell(s) -- the "
+                      "selector has changed shape" % (len(labels), len(contents)))
+        return None
+    return list(zip(labels, contents))
+
+
+def library_filters(response):
+    """The Library's filter tabs, each with the row behind it.
+
+    The Library is not a page of shelves like a show page. One
+    unpluggedSelectableSectionRenderer carries the tabs and one cell of
+    ``contents`` per tab, and the two clients spell the tabs differently --
+    dropdowns on the web, a chip row on the TV. _filter_cells pairs them,
+    and refuses rather than mispair.
+
+    A tab with nothing in it comes back as an unpluggedEmptyStateRenderer
+    ("No movies in your library") -- no items and no token -- and is dropped,
+    so an empty tab never becomes an empty folder. A tab YouTube TV has not
+    selected arrives with only a continuation token, which the caller
+    follows.
+    """
+    sections = []
+    for block in walk(response, "unpluggedSelectableSectionRenderer"):
+        if not isinstance(block, dict):
+            continue
+        pairs = _filter_cells(block)
+        if not pairs:
+            continue
+        for name, cell in pairs:
             items = parse_items(cell)
             token = first(cell, "continuation") or ""
             if not items and not token:

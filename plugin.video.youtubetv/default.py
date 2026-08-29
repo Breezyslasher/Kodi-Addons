@@ -196,7 +196,53 @@ def route_root():
 
 def _fetch_stations(client, hours=3):
     response = client.epg(hours=hours)
-    return epg.parse_epg(response)
+    stations = epg.parse_epg(response)
+    _guide_census(stations, response)
+    return stations
+
+
+def _guide_census(stations, response):
+    """Say what the guide gave and, precisely, what got dropped.
+
+    route_channels skips any station whose current airing has no video id,
+    and route_guide skips any station with no airings, both without a word.
+    A lineup that lists eighty channels where the web app shows a hundred
+    and fifty looks the same in the log as one that works. These are three
+    different faults and they are counted apart:
+
+      * no station parsed at all -- the guide's own shape has changed;
+      * a station with no airings -- it parsed, but its row carried no
+        programme, so Guide drops it;
+      * a station whose airing has no video id -- it has a programme with
+        nowhere to play from, so Live channels drops it.
+
+    The response is kept only when nothing at all is playable, or when more
+    than half the lineup is being dropped. It is a couple of megabytes, and
+    writing it on every guide open would be its own problem.
+    """
+    airings = sum(len(station.airings) for station in stations)
+    empty = [s.name for s in stations if not s.airings]
+    silent = [s.name for s in stations
+              if s.airings and not (s.now and s.now.video_id)]
+    playable = len(stations) - len(empty) - len(silent)
+    kodiutils.log("guide: %d station(s), %d airing(s), %d playable now"
+                  % (len(stations), airings, playable))
+
+    def some(names):
+        shown = ", ".join(names[:20])
+        return shown + (" ... and %d more" % (len(names) - 20)
+                        if len(names) > 20 else "")
+
+    if empty:
+        kodiutils.log("guide: %d station(s) came back with no airings at all, "
+                      "so Guide drops them: %s" % (len(empty), some(empty)))
+    if silent:
+        kodiutils.log("guide: %d station(s) have a programme with no video "
+                      "id, so Live channels drops them: %s"
+                      % (len(silent), some(silent)))
+    if not playable or len(empty) + len(silent) > len(stations) / 2:
+        kodiutils.log("guide shape: %s" % epg.describe(response))
+        _dump_shape("guide-shape.json", response)
 
 
 def route_channels():
@@ -668,39 +714,6 @@ def _library_sections(response):
     return epg.any_rows(response), [], False
 
 
-def _library_response(client):
-    """The Library page, from whichever client identity can describe it.
-
-    The addon speaks as TVHTML5_UNPLUGGED everywhere, and Home comes back
-    from it in the shape the web captures showed. The Library does not: on a
-    real account it answered with no rows, no filters and one item that
-    parse_items could reach. The grid readers were written from a
-    WEB_UNPLUGGED capture, so that identity is asked second, and its answer
-    is used only if it actually parses. If the token is not accepted for it,
-    or its answer is no better, the first answer stands.
-    """
-    response = client.library()
-    _rows, filters, known = _library_sections(response)
-    if known and (filters or _rows):
-        return response, client.client_name
-
-    for name in ("WEB_UNPLUGGED",):
-        if name == client.client_name or name not in api.UNPLUGGED_CLIENTS:
-            continue
-        try:
-            second = client.library(client_name=name)
-        except (auth.AuthError, api.ApiError) as exc:
-            kodiutils.log("library: %s did not answer: %s" % (name, exc))
-            continue
-        rows, filters, known = _library_sections(second)
-        kodiutils.log("library: as %s -- %d row(s), %d filter(s), %s"
-                      % (name, len(rows), len(filters),
-                         "a known container" if known else "nothing known"))
-        if known and (rows or filters):
-            return second, name
-    return response, client.client_name
-
-
 def route_library():
     """Recordings, purchases and scheduled recordings.
 
@@ -716,14 +729,13 @@ def route_library():
         finish()
         return
     try:
-        response, as_client = _library_response(client)
+        response = client.library()
     except (auth.AuthError, api.ApiError) as exc:
         kodiutils.ok_dialog(str(exc), "Could not open your library")
         finish()
         return
 
     shelves, filters, known = _library_sections(response)
-    kodiutils.log("library: read as %s" % as_client)
     kodiutils.log("library: %d row(s) and %d filter(s)%s -- %s"
                   % (len(shelves), len(filters),
                      "" if known else " (by shape: no known container)",
@@ -758,7 +770,7 @@ def route_library_section(name):
         finish()
         return
     try:
-        response, _as_client = _library_response(client)
+        response = client.library()
     except (auth.AuthError, api.ApiError) as exc:
         kodiutils.ok_dialog(str(exc), "Could not open your library")
         finish()

@@ -210,7 +210,7 @@ Note that `section_continuations`, which the show pages use, is *wrong* here and
 would pair "Shows" with All's second sort. That is why the Library has a reader
 of its own.
 
-#### The TV client does not answer the Library the way the web client does
+#### The TV client answers the Library in its own container
 
 Measured on a real account, 2026-08-29 19:33, as `TVHTML5_UNPLUGGED`:
 
@@ -222,26 +222,63 @@ came back in exactly the shape the web capture showed — 22 rows of
 `unpluggedHomeShelfRenderer`, including three the web capture did not have
 ("Watch in multiview", "Horror movies", "Networks", the last with 256 items) —
 so the client identity is fine and it is the Library page specifically that
-differs. What it returns instead is not yet known; every shape above was read
-off a `WEB_UNPLUGGED` capture.
+differs. The dump answered it. The TV client sends a different container **and** a
+different selector:
 
-Three things follow from that, all in place now rather than waiting on a
-capture:
+| | Web (`WEB_UNPLUGGED`) | TV (`TVHTML5_UNPLUGGED`) |
+| --- | --- | --- |
+| Container | `sectionListContinuation`, a list of rows | `unpluggedLibraryContinuation`, one renderer under `content` |
+| Page-level shelves | New in your library, Most watched, Scheduled recordings | none — the whole page is the section |
+| Selector | `unpluggedFilterSortSelectorRenderer`: 6 filters × their sorts | `unpluggedHorizontalChipListRenderer`: 9 chips |
+| `contents` | 19 cells, the cross product flattened row-major | 9 cells, one per chip |
+
+So on the TV client the pairing is positional — chip *i* names cell *i*, no
+cross product to unpick — and the cells are the same
+`unpluggedSelectableSectionContentsRenderer` → `shelfRenderer` → `gridRenderer`
+as the web client's. `_filter_cells` picks the pairing from the selector it
+finds and checks the count either way, returning nothing rather than naming a
+tab with somebody else's row.
+
+Asking as `WEB_UNPLUGGED` is not a way round this, and was tried: the bearer is
+rejected for it outright.
+
+    browse -> HTTP 400 as WEB_UNPLUGGED v1.20260826.04.00:
+      INVALID_ARGUMENT: Request contains an invalid argument.
+
+Two things written while the shape was unknown have been kept, because the next
+page to differ will not announce itself either:
 
 * `epg.any_rows` finds named rows **by shape** — any renderer carrying a title
   and two or more things `parse_items` can reach — with no container name
   needed. Only the innermost such renderer counts, tracked with an ancestor
-  stack, because a page is itself a titled renderer holding every row. On the
-  web captures it recovers the same rows the named readers do, plus the grid's
-  own "Recordings & purchases".
-* The Library is asked a second time as `WEB_UNPLUGGED` when the first answer
-  cannot be read, and that answer is used only if it actually parses. The
-  bearer may not be accepted for that identity; if it is not, the first answer
-  stands.
-* An unreadable page is written to `library-shape.json` in the add-on's profile
-  directory, minus `responseContext`, and `epg.describe` logs the renderer
-  names and the lists they sit in. A log line can say which renderers came
-  back; it cannot say what they held.
+  stack, because a page is itself a titled renderer holding every row. It found
+  nothing on the TV Library, since the chips carry the names and the shelves
+  under them are untitled, but on the web captures it recovers the same rows
+  the named readers do.
+* An unreadable page is written to `library-shape.json` (or `home-shape.json`,
+  or `guide-shape.json`) in the add-on's profile directory, minus
+  `responseContext`, and `epg.describe` logs the renderer names and the lists
+  they sit in. That log — nine chips against nine
+  `unpluggedSelectableSectionContentsRenderer`, under
+  `unpluggedLibraryContinuation` — is what settled the shape above, in one
+  round trip and without a capture.
+
+### The guide census
+
+`route_channels` skips any station whose current airing has no video id, and
+`route_guide` skips any station with no airings — both silently. A lineup
+showing eighty channels where the web app shows a hundred and fifty logged
+exactly the same as one that worked. `_guide_census` now counts the three
+faults apart on every guide fetch:
+
+* no station parsed at all — the guide's own shape has changed;
+* a station with no airings — Guide drops it;
+* a station whose airing has no video id — Live channels drops it.
+
+Against the 19:20 web capture: 148 stations, 144 airings, 144 playable, and 4
+dropped for having no airings (three NBCSN Extra feeds and Cartoon Network).
+The response is kept only when nothing is playable or more than half the
+lineup is dropped; it is a couple of megabytes.
 
 #### A scheduled recording that is on the air has no watchEndpoint
 
