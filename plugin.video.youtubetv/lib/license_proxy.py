@@ -219,15 +219,24 @@ class _Handler(BaseHTTPRequestHandler):
             video_id = ctx.get("video_id", "")
             content = widevine.content_id(ctx.get("drm_params", ""), target)
             is_live = bool(ctx.get("is_live"))
-            split = None
-            if kodiutils.get_setting_bool("split_sessions", True):
-                split = (lambda kid: widevine.build_pssh(
-                    content, is_live=is_live, key_id=kid))
+            # Always inlined. On demand does not need it -- those init
+            # segments carry two pssh boxes of their own -- but live has no
+            # init segment at all: its SegmentList lists media urls and
+            # nothing else, so ISA parses a moov out of the first media
+            # segment and that moov yields no pssh. The manifest is then the
+            # only place init data can come from, and without it ISA 22 says
+            # "PSSH init data has unexpected size (0)" and disables the
+            # stream. Inlining costs on-demand nothing: ISA 22 keeps the
+            # media's DRMInfo and the manifest's side by side, media first
+            # (DrmInfosUnion in src/decrypters/DrmEngine.cpp), and stops at
+            # the first session that opens -- so the file's own pssh still
+            # wins wherever the file has one.
             body = manifest_mod.set_key_ids(
                 body, key_ids_for(video_id),
                 pssh=widevine.build_pssh(content, is_live=is_live),
                 kid_by_rep=_read_kids(body, video_id),
-                split_audio=split)
+                pssh_for=(lambda kid: widevine.build_pssh(
+                    content, is_live=is_live, key_id=kid)))
         except Exception as exc:
             # A manifest we failed to repair still beats no manifest.
             kodiutils.log_error("manifest patch failed, passing it through: %s"
@@ -460,6 +469,11 @@ def _read_kids(body, video_id):
 def _read_kids_now(body, video_id):
     targets = manifest_mod.init_targets(body)
     if not targets:
+        # Silence here used to be indistinguishable from success. It was not:
+        # on live nothing was read at all, because a live SegmentList names no
+        # init segment and init_targets had no third shape to fall back on.
+        kodiutils.log("init segments: no representation names one, so no key "
+                      "ids can be read from the media")
         return {}
 
     headers = {"User-Agent": api.UA, "Origin": api.ORIGIN,
@@ -492,6 +506,13 @@ def _read_kids_now(body, video_id):
                       % (len(found), len(targets),
                          ", ".join("%s=%s" % (k, v[:8]) for k, v in
                                    sorted(found.items()))))
+    elif not failures:
+        # Every fetch succeeded and not one moov named a key. That is worth
+        # saying out loud: it means the media is not signalling cenc where we
+        # looked, which is a different problem from a manifest we mislabelled.
+        kodiutils.log("init segments: fetched %d of %d but none carries a "
+                      "tenc box -- no key ids from the media"
+                      % (len(targets) - len(failures), len(targets)))
     if failures:
         kodiutils.log_error("init segments: could not read %s"
                             % "; ".join(failures[:4]))

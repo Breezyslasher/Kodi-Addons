@@ -123,6 +123,91 @@ def _dump_manifest(url):
         kodiutils.log_error("could not save the manifest: %s" % exc)
 
 
+def probe_subsegments(manifest_url):
+    """Ask what is actually at the second subsegment's offset.
+
+    Not wired into playback any more: this answered its question -- the
+    fragments and their crypto boxes were sound, the decrypter was not -- and
+    it costs a handful of ranged GETs per play. Kept for the next time a
+    fragment needs looking at; call it by hand from prepare().
+
+    Playback dies one subsegment in: audio turns to invalid AAC and the CDM
+    answers kNoKey for video, both at about 9.5 seconds, which is one audio
+    subsegment. Every explanation tried so far -- the key id, the CDM session,
+    the resolution -- has been ruled out by a measurement, so this measures the
+    remaining one. If the bytes at that offset are not the start of a movie
+    fragment, nothing downstream could have worked, and the question becomes
+    why the range came back wrong rather than why decryption failed.
+
+    Reads each track's SegmentIndex, then fetches subsegment 1 and subsegment 2
+    and reports the box each one begins with. Subsegment 2 is fetched a second
+    time without the pot, because that is the one parameter this addon adds to
+    a URL YouTube signed and the browser never sends it on this path.
+    """
+    import requests
+
+    from . import mp4
+    proxied = license_proxy.manifest_url(manifest_url)
+    headers = {"User-Agent": api.UA, "Origin": api.ORIGIN,
+               "Referer": api.ORIGIN + "/"}
+    body = requests.get(proxied, timeout=60, headers=dict(
+        headers, Cookie=auth.cookie_header(auth.load()))).content
+
+    def fetch(url, first, last):
+        response = requests.get(url, timeout=30, headers=dict(
+            headers, Range="bytes=%d-%d" % (first, last)))
+        return response.status_code, response.content
+
+    for ident, url, index_first, index_last in manifest_mod.index_targets(body)[:4]:
+        try:
+            # The init segment is everything before the index. Whether its
+            # sample entry is enca/encv or mp4a/avc1 decides whether ISA
+            # believes the track is encrypted at all -- and the fragments say
+            # it is, from the second one on.
+            status, moov = fetch(url, 0, index_first - 1)
+            protected, iv_size, kid = mp4.track_encryption(moov)
+            kodiutils.log("subsegment probe [%s init @0+%d]: HTTP %d, "
+                          "tenc protected=%s iv_size=%s kid=%s"
+                          % (ident, index_first, status, protected, iv_size,
+                             kid[:8]))
+            kodiutils.log("subsegment probe [%s init] boxes: %s"
+                          % (ident, " ".join(b.strip() for b in
+                                             mp4.box_tree(moov, limit=80))))
+            status, sidx = fetch(url, index_first, index_last)
+            subs = mp4.subsegments(sidx, index_first)
+            kodiutils.log("subsegment probe [%s]: sidx HTTP %d, %d bytes, "
+                          "%d subsegments" % (ident, status, len(sidx), len(subs)))
+            for number in (0, 1):
+                if number >= len(subs):
+                    break
+                offset, size, _ = subs[number]
+                status, head = fetch(url, offset, offset + 8191)
+                kodiutils.log("subsegment probe [%s #%d @%d+%d]: HTTP %d, "
+                              "boxes: %s"
+                              % (ident, number, offset, size, status,
+                                 " ".join(b.strip() for b in
+                                          mp4.box_tree(head))))
+                note = mp4.crypto_info(head, offset) or "nothing"
+                if "saiz default_size=" in note and iv_size is not None:
+                    declared = int(note.split("saiz default_size=")[1]
+                                   .split()[0])
+                    note += ("; tenc iv_size=%d vs saiz %d -> %s"
+                             % (iv_size, declared,
+                                "AGREE" if iv_size == declared
+                                else "DISAGREE"))
+                kodiutils.log("subsegment probe [%s #%d] crypto: %s"
+                              % (ident, number, note))
+            if len(subs) > 1:
+                offset = subs[1][0]
+                bare = manifest_mod._strip_param(url, "pot")
+                status, head = fetch(bare, offset, offset + 63)
+                kodiutils.log("subsegment probe [%s #1 no pot]: HTTP %d, "
+                              "starts with %r"
+                              % (ident, status, mp4.first_box_type(head)))
+        except Exception as exc:
+            kodiutils.log_error("subsegment probe [%s] failed: %s" % (ident, exc))
+
+
 def build_item(player_response, label=None, art=None):
     """A ListItem wired to InputStream Adaptive, or None if unplayable."""
     streaming = player_response.get("streamingData") or {}
@@ -447,6 +532,10 @@ def probe_sabr(client, response, cpn):
     that come back. A 200 with MEDIA parts means the endpoint is reachable and
     the remaining work is feeding those bytes to ISA. An error part means the
     server has said, in its own words, what is missing.
+    
+    Not wired into playback any more: the answer is known -- our body is
+    accepted, our url is refused, and n is the parameter that differs -- so
+    it only drew HTTP 403s on every play. Kept for the next refusal.
     """
     streaming = response.get("streamingData") or {}
     url = streaming.get("serverAbrStreamingUrl")
@@ -543,6 +632,10 @@ def replay_captured_sabr():
     A personal build supplies lib/baked_sabr.py with URL and BODY captured from
     a browser session; it is absent from the repository, and without it this is
     a no-op.
+    
+    Not wired into playback any more: the answer is known -- our body is
+    accepted, our url is refused, and n is the parameter that differs -- so
+    it only drew HTTP 403s on every play. Kept for the next refusal.
     """
     try:
         from . import baked_sabr
@@ -626,13 +719,6 @@ def prepare(client, video_id, label=None, art=None):
     else:
         survey_clients_once(client, video_id)
     response = client.player(video_id, cpn)
-    if kodiutils.get_setting_bool("probe_sabr", False):
-        # The replay and the cross have delivered their answer -- our body is
-        # accepted, our url is refused, and n is the parameter that differs --
-        # so they no longer run on every play. They stay as functions because
-        # the next unexplained refusal will want them again.
-        probe_sabr(client, response, cpn)
-        replay_captured_sabr()
 
     streaming = response.get("streamingData") or {}
     details = response.get("videoDetails") or {}
