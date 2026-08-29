@@ -117,6 +117,7 @@ GRID = {"continuationContents": {"sectionListContinuation": {"contents": [
         ]}}}},
     {"unpluggedContentDetailsRenderer": {"contents": [
         {"unpluggedSelectableSectionRenderer": {
+            "title": _runs("Recordings & purchases"),
             "selectors": [{"unpluggedFilterSortSelectorRenderer": {
                 "filterSelector": _dropdown(FILTERS),
                 "sortSelectors": [_dropdown(["Recent", "A to Z"]),
@@ -184,6 +185,37 @@ check("next page is the page's token, not the first shelf's",
       epg.page_continuation(HOME), "PAGE-TOKEN")
 check("continuation_token still finds the shelf's, tree-first",
       epg.continuation_token(HOME), "SHELF-TOKEN")
+
+# -- the reader that needs no container name -------------------------------
+# The TV client answers the Library with a container neither reader above
+# knows, so rows are found by shape instead. The page is itself a titled
+# renderer holding every row, so only the innermost titled renderer counts --
+# otherwise the page is listed alongside its own children.
+NESTED = {"contents": {"pageRenderer": {
+    "title": _runs("Recordings & purchases"),
+    "contents": [
+        {"shelfRenderer": {"title": _runs("Row one"), "content": {"gridRenderer": {
+            "items": [_tile("A", browse_id="B1"), _tile("B", browse_id="B2")]}}}},
+        {"shelfRenderer": {"title": _runs("Row two"), "content": {"gridRenderer": {
+            "items": [_tile("C", browse_id="B3"), _tile("D", browse_id="B4")]}}}},
+        # A titled renderer with one item is a tile, not a row.
+        {"shelfRenderer": {"title": _runs("Not a row"), "content": {"gridRenderer": {
+            "items": [_tile("E", browse_id="B5")]}}}},
+    ]}}}
+
+rows = epg.any_rows(NESTED)
+check("rows found by shape, innermost only",
+      [r.title for r in rows], ["Row one", "Row two"])
+check("the page itself is not one of them",
+      "Recordings & purchases" in [r.title for r in rows], False)
+check("rows by shape on the Library grid",
+      [r.title for r in epg.any_rows(GRID)],
+      ["Scheduled recordings", "Recordings & purchases"])
+
+described = epg.describe(NESTED)
+check("describe names the renderers it saw",
+      "shelfRenderer x3" in described, True)
+check("describe names the biggest list", "(3:" in described, True)
 
 print("failures:", len(failures))
 sys.exit(1 if failures else 0)
