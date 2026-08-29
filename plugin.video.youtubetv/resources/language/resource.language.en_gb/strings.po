@@ -75,3 +75,19 @@ msgstr ""
 msgctxt "#30025"
 msgid "Visitor ID (set automatically)"
 msgstr ""
+
+msgctxt "#30026"
+msgid "Proof-of-origin token"
+msgstr ""
+
+msgctxt "#30027"
+msgid "Google requires a proof-of-origin token on media requests. Without one the CDN refuses every segment. Tokens are tied to a browser session and expire after a few hours."
+msgstr ""
+
+msgctxt "#30033"
+msgid "Compare YouTube TV client identities"
+msgstr ""
+
+msgctxt "#30034"
+msgid "Before playing, asks every YouTube TV client (web, Android, iOS, TV) for the same video and logs what each is offered. Used to find a client served plain URLs rather than SABR."
+msgstr ""

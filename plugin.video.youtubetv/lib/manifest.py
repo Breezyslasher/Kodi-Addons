@@ -62,6 +62,48 @@ def _attributes(tag_body):
     return found
 
 
+# BaseURL is not always a bare tag: YouTube's on-demand manifests annotate it
+# as <BaseURL yt:contentLength="65569922">. Matching only the bare form meant
+# both the pot injection and the segment probe silently did nothing on
+# on-demand, and the log said so only by the absence of their lines.
+_BASEURL_TAG = re.compile(r"(<BaseURL\b[^>]*>)([^<]+)(</BaseURL>)")
+
+
+def add_po_token(xml, token):
+    """Append an unsigned ``pot`` to every BaseURL.
+
+    Only useful once a token is known to work; it is what turns the probe
+    result into actual playback, because ISA fetches segments itself and this
+    is the only place we can reach those URLs.
+    """
+    if not token:
+        return xml
+    was_bytes = isinstance(xml, bytes)
+    text = xml.decode("utf-8", "replace") if was_bytes else xml
+
+    def rewrite(match):
+        url = match.group(2)
+        if "pot=" in url or "/pot/" in url:
+            return match.group(0)
+        joined = _add_param(url.rstrip("/") if "?" not in url else url,
+                            "pot", token)
+        # A SegmentList BaseURL is a prefix and must keep its trailing slash.
+        if url.endswith("/") and not joined.endswith("/") and "?" not in joined:
+            joined += "/"
+        # We are writing back into XML, where a bare "&" is not legal. The URL
+        # already carries its separators as &amp;, so the one _add_param just
+        # introduced has to match -- otherwise ISA fails to parse the manifest
+        # and the injection breaks more than it fixes.
+        if "&amp;" in url or "?" in joined:
+            joined = joined.replace("&amp;", "&").replace("&", "&amp;")
+        return match.group(1) + joined + match.group(3)
+
+    patched, count = _BASEURL_TAG.subn(rewrite, text)
+    if count:
+        kodiutils.log("manifest: added pot to %d BaseURLs" % count)
+    return patched.encode("utf-8") if was_bytes else patched
+
+
 def patch(xml):
     """Push the Period's segment attributes onto every bare SegmentList.
 
@@ -95,15 +137,28 @@ def patch(xml):
 
 # -- diagnostics ---------------------------------------------------------
 
-_BASE_URL = re.compile(r"<BaseURL>([^<]+)</BaseURL>")
+_BASE_URL = re.compile(r"<BaseURL\b[^>]*>([^<]+)</BaseURL>")
 _SEGMENT_URL = re.compile(r'<SegmentURL\s+media="([^"]+)"')
 
 
-def segment_urls(xml, limit=None):
-    """Every segment URL of the first Representation, in manifest order.
+def _unescape(url):
+    return (url.replace("&amp;", "&").replace("&lt;", "<")
+               .replace("&gt;", ">").replace("&quot;", '"'))
 
-    YouTube writes an absolute BaseURL per Representation with relative
-    SegmentURLs beneath it, so the two concatenate.
+
+def segment_urls(xml, limit=None):
+    """Fetchable URLs for the first Representation, in manifest order.
+
+    Two layouts, and YouTube uses one for live and the other for on-demand:
+
+    * SegmentList -- an absolute BaseURL with relative SegmentURLs beneath it,
+      which concatenate. This is the live manifest.
+    * SegmentBase -- one BaseURL holding the whole file, read with ranged
+      requests. This is on-demand, and it has no SegmentURL at all, so an
+      earlier version of this reported "no BaseURL/SegmentURL pair found" and
+      skipped every check.
+
+    In the SegmentBase case the BaseURL is itself the URL to test.
     """
     if isinstance(xml, bytes):
         xml = xml.decode("utf-8", "replace")
@@ -112,10 +167,16 @@ def segment_urls(xml, limit=None):
         return []
     # Stop at the next Representation so we do not pair one BaseURL with
     # another stream's segments.
-    end = xml.find("<BaseURL>", base.end())
+    next_base = _BASE_URL.search(xml, base.end())
+    end = next_base.start() if next_base else -1
     region = xml[base.end():end if end != -1 else len(xml)]
     prefix = base.group(1).strip()
     urls = [prefix + m.group(1) for m in _SEGMENT_URL.finditer(region)]
+    if not urls:
+        urls = [prefix]
+    # These came out of XML, where the query separators are written &amp;.
+    # Fetching them without unescaping would test a URL nobody serves.
+    urls = [_unescape(u) for u in urls]
     return urls[:limit] if limit else urls
 
 
@@ -124,9 +185,29 @@ def first_segment_url(xml):
     return urls[0] if urls else ""
 
 
-def _strip_path_param(url, name):
-    """Drop an unsigned ``/name/value/`` pair from a path-style URL."""
-    return re.sub(r"/%s/[^/]+" % re.escape(name), "", url, count=1)
+def _strip_param(url, name):
+    """Drop an unsigned parameter, in whichever spelling the URL uses.
+
+    Live hands us path style (``/n/VALUE/``), on-demand query style
+    (``&n=VALUE``). Both are unsigned when the name is absent from sparams.
+    """
+    url = re.sub(r"/%s/[^/?]+" % re.escape(name), "", url, count=1)
+    url = re.sub(r"([?&])%s=[^&]*&?" % re.escape(name),
+                 lambda m: m.group(1), url, count=1)
+    return url.rstrip("?&")
+
+
+# Kept under the old name for the path-style callers.
+_strip_path_param = _strip_param
+
+
+def _add_param(url, name, value):
+    """Append an unsigned parameter in the URL's own spelling."""
+    if "?" in url:
+        return "%s&%s=%s" % (url, name, value)
+    if "/sq/" in url:
+        return url.replace("/sq/", "/%s/%s/sq/" % (name, value), 1)
+    return "%s/%s/%s" % (url.rstrip("/"), name, value)
 
 
 def _to_query_style(url):
@@ -160,16 +241,29 @@ def probe_variations(url, headers, cookie_header=""):
     cpn = "".join(__import__("random").choice(
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
         for _ in range(16))
+    # A ranged request on everything: on-demand BaseURLs are the whole file
+    # (65 MB in one capture), and we only want to know the status code.
+    ranged = {"Range": "bytes=0-131071"}
+    no_n = _strip_param(url, "n")
     variants = [
-        ("as-is", url, {}),
-        ("no n", _strip_path_param(url, "n"), {}),
-        ("with cpn", url.replace("/sq/", "/cpn/%s/sq/" % cpn, 1), {}),
-        ("no n + cpn",
-         _strip_path_param(url, "n").replace("/sq/", "/cpn/%s/sq/" % cpn, 1), {}),
-        ("query style", _to_query_style(url), {}),
-        ("query style, no n", _to_query_style(_strip_path_param(url, "n")), {}),
-        ("ranged", url, {"Range": "bytes=0-1048575"}),
+        ("as-is", url, ranged),
+        ("no n", no_n, ranged),
+        ("with cpn", _add_param(url, "cpn", cpn), ranged),
+        ("query style", _to_query_style(url), ranged),
+        ("no range", url, {}),
     ]
+    # Every media request the browser makes carries a proof-of-origin token,
+    # and none of ours does. pot is absent from sparams, so it can be added
+    # without breaking the signature. If this is the one that returns 200, the
+    # whole 403 wall is PO token enforcement and nothing else.
+    token = kodiutils.get_setting("po_token", "")
+    if token:
+        variants.extend([
+            ("with pot", _add_param(url, "pot", token), ranged),
+            ("no n + pot", _add_param(no_n, "pot", token), ranged),
+        ])
+    else:
+        kodiutils.log("segment variant [pot]: skipped, no po_token configured")
     for name, candidate, extra in variants:
         attempt = dict(headers)
         attempt.update(extra)
