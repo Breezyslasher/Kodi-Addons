@@ -278,7 +278,40 @@ faults apart on every guide fetch:
 Against the 19:20 web capture: 148 stations, 144 airings, 144 playable, and 4
 dropped for having no airings (three NBCSN Extra feeds and Cartoon Network).
 The response is kept only when nothing is playable or more than half the
-lineup is dropped; it is a couple of megabytes.
+lineup is dropped or unnamed; it is a couple of megabytes.
+
+### Station names live on the logo, not in a name field
+
+Of the 148 stations in that capture, **7 carry `name` and 7 carry `callSign`.**
+Every one of the other 141 is named solely by the accessibility label on its
+logo:
+
+```json
+"icon": { "thumbnails": [ { "url": "//yt3.ggpht.com/…", "width": 500 } ],
+          "accessibility": { "accessibilityData": { "label": "YouTube TV Zen" } } }
+```
+
+So the key that logo sits under is the difference between a lineup and 141 rows
+called `UC5M1ACzZ9iIL42YKinxZrFQ`, and a client that files it anywhere else
+loses the name and the picture *together* — which is what "mostly missing
+station names and no logos" looks like from the sofa.
+
+`parse_epg` still prefers `icon` where it exists (four stations have a
+`secondaryIcon` nearer 400px and would otherwise swap to it; with the
+preference, all 148 logos are byte-identical to before) and falls back to
+searching the whole station renderer. `thumbnail` and `accessibility_label`
+both already search at any depth, so the fallback assumes no key name at all.
+Renaming `icon` to `stationIcon` across the capture now costs neither a name
+nor a logo.
+
+The census counts nameless and logoless stations apart from dropped ones — a
+station listed as its own id is not dropped, so the drop counts would call that
+lineup healthy — and when many are nameless it logs the field names the
+stations actually carry:
+
+    guide: 141 station(s) with no name and 148 with no logo
+    guide: station fields (first 40) -- navigationEndpoint x40, trackingParams x40,
+      stationId x40, isDiscreteStation x40, tenxId x39, name x4, callSign x4
 
 #### A scheduled recording that is on the air has no watchEndpoint
 
