@@ -328,3 +328,68 @@ def probe_segments(xml, headers, cookie_header=""):
 def probe_first_segment(xml, headers):
     """Kept for callers that only want the quick check."""
     probe_segments(xml, headers)
+
+
+def base_urls(xml):
+    """Every BaseURL in the manifest, XML entities already resolved."""
+    text = xml.decode("utf-8", "replace") if isinstance(xml, bytes) else xml
+    return [_unescape(m.group(2)) for m in _BASEURL_TAG.finditer(text)]
+
+
+def drop_param(xml, name):
+    """Remove a query parameter from every BaseURL.
+
+    Written for ``n``. The player mints n scrambled and the web page's JS
+    rewrites it before fetching -- comparing the player's serverAbrStreamingUrl
+    against the request the browser actually made shows every other parameter
+    byte-identical and n alone changed, 18 characters in and 14 out. n is not
+    listed in sparams, so removing it does not invalidate sig; whether the edge
+    will serve a request without it is the question this exists to answer.
+    """
+    was_bytes = isinstance(xml, bytes)
+    text = xml.decode("utf-8", "replace") if was_bytes else xml
+
+    def rewrite(match):
+        url = match.group(2)
+        stripped = re.sub(r"(&amp;|&|\?)%s=[^&\"'<]*" % re.escape(name),
+                          lambda m: "?" if m.group(1) == "?" else "", url)
+        # Removing the first parameter can leave a dangling separator.
+        stripped = stripped.replace("?&amp;", "?").replace("?&", "?")
+        return match.group(1) + stripped.rstrip("?") + match.group(3)
+
+    text = _BASEURL_TAG.sub(rewrite, text)
+    return text.encode("utf-8") if was_bytes else text
+
+
+def rewrite_n(xml, solve):
+    """Replace ``n`` in every BaseURL with the value ``solve`` returns.
+
+    One transform per distinct n rather than per URL: a manifest carries a
+    dozen BaseURLs sharing the value the player minted, so solving once and
+    substituting is the difference between one pass over a megabyte of
+    JavaScript and twelve.
+    """
+    was_bytes = isinstance(xml, bytes)
+    text = xml.decode("utf-8", "replace") if was_bytes else xml
+    solved = {}
+
+    def rewrite(match):
+        url = match.group(2)
+        found = re.search(r"(?:[?&]|&amp;)n=([^&\"'<]+)", url)
+        if not found:
+            return match.group(0)
+        original = found.group(1)
+        if original not in solved:
+            solved[original] = solve(original)
+        replacement = solved[original]
+        if not replacement:
+            return match.group(0)
+        rebuilt = url[:found.start(1)] + replacement + url[found.end(1):]
+        return match.group(1) + rebuilt + match.group(3)
+
+    text = _BASEURL_TAG.sub(rewrite, text)
+    if solved:
+        kodiutils.log("manifest: rewrote n on %d distinct value(s): %s"
+                      % (len(solved),
+                         ", ".join("%s -> %s" % i for i in solved.items())))
+    return text.encode("utf-8") if was_bytes else text

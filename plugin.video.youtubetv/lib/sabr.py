@@ -25,6 +25,9 @@ reports what comes back, so the question "is the SABR endpoint reachable at
 all" gets an answer from the server rather than from reasoning.
 """
 
+import itertools
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
 import base64
 import struct
 
@@ -172,3 +175,32 @@ def describe_response(data):
     if media:
         lines.append("  MEDIA (total)              %d bytes" % media)
     return "\n".join(lines)
+
+
+_request_number = itertools.count(1)
+
+
+def playback_url(url, cpn, client_version, client_name=None):
+    """Add the parameters the player appends before it POSTs.
+
+    serverAbrStreamingUrl arrives signed but incomplete: the browser appends
+    cpn, cver, alr and rn itself, and googlevideo refuses the bare url with an
+    empty-bodied 403. Crossing the two requests is what showed this -- the
+    browser's url carrying our body was served, ours carrying the browser's
+    body was refused, so the difference was never in the protobuf.
+
+      cpn   the playback nonce, the same one the player call was made with,
+            which is what binds this fetch to that playback session
+      cver  the client version, matching the one the player call claimed
+      alr   allow redirects, which the edge uses to hand off to another host
+      rn    request number, counting up across a playback session
+    """
+    parts = urlparse(url)
+    query = parse_qs(parts.query, keep_blank_values=True)
+    query["cpn"] = [cpn]
+    query["cver"] = [client_version]
+    query["alr"] = ["yes"]
+    query["rn"] = [str(next(_request_number))]
+    if client_name and "c" not in query:
+        query["c"] = [client_name]
+    return urlunparse(parts._replace(query=urlencode(query, doseq=True)))

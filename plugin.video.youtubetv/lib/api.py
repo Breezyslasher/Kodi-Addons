@@ -157,12 +157,19 @@ _PAGE_STS = re.compile(r'"STS"\s*:\s*(\d+)')
 _PAGE_VISITOR = re.compile(r'"visitorData"\s*:\s*"([^"]+)"')
 _PAGE_ROLLOUT = re.compile(r'"rolloutToken"\s*:\s*"([^"]+)"')
 _PAGE_INSTALL = re.compile(r'"appInstallData"\s*:\s*"([^"]+)"')
+# Where the player JavaScript lives. Needed to compute n -- see nsig.py.
+_PAGE_JS_URL = re.compile(r'"jsUrl"\s*:\s*"([^"]+base\.js)"')
 # The page says outright whether Google considers the jar signed in. This is
 # the one fact that separates "the cookies are dead" from "the cookies are
 # fine and our InnerTube request is wrong", and every 401 explanation offered
 # so far was a guess made without it.
 _PAGE_LOGGED_IN = re.compile(r'"(?:LOGGED_IN|loggedIn)"\s*:\s*(true|false)')
 BOOTSTRAP_FILE = "client_bootstrap.json"
+# Bumped whenever a new field is read off the page. Without this the day-long
+# cache serves a copy written before the field existed, and the caller sees a
+# page that "does not name a player js" when the page names one perfectly well
+# -- a stale cache wearing the costume of a parsing failure.
+BOOTSTRAP_SCHEMA = 2
 
 
 def refresh_bootstrap(session, cookies):
@@ -179,7 +186,9 @@ def refresh_bootstrap(session, cookies):
     breaking a client that currently works.
     """
     cached = kodiutils.read_json(BOOTSTRAP_FILE, default=None) or {}
-    if cached.get("fetched", 0) > time.time() - 86400 and cached.get("version"):
+    if (cached.get("schema") == BOOTSTRAP_SCHEMA
+            and cached.get("fetched", 0) > time.time() - 86400
+            and cached.get("version")):
         return cached
 
     try:
@@ -194,11 +203,12 @@ def refresh_bootstrap(session, cookies):
         visitor = _PAGE_VISITOR.search(page.text)
         rollout = _PAGE_ROLLOUT.search(page.text)
         install = _PAGE_INSTALL.search(page.text)
+        js_url = _PAGE_JS_URL.search(page.text)
     except Exception as exc:
         kodiutils.log("bootstrap: could not refresh from the page: %s" % exc)
         return cached
 
-    found = {"fetched": int(time.time())}
+    found = {"fetched": int(time.time()), "schema": BOOTSTRAP_SCHEMA}
     if version:
         found["version"] = version.group(1)
     if sts:
@@ -209,6 +219,8 @@ def refresh_bootstrap(session, cookies):
         found["rollout_token"] = rollout.group(1)
     if install:
         found["app_install_data"] = install.group(1)
+    if js_url:
+        found["js_url"] = js_url.group(1).replace("\\/", "/")
     if not found.get("version") and not found.get("sts"):
         return cached
 
@@ -223,6 +235,62 @@ def refresh_bootstrap(session, cookies):
     merged.update(found)
     kodiutils.write_json(BOOTSTRAP_FILE, merged)
     return merged
+
+
+_PLAYER_JS = {}
+
+
+def player_js(session, cookies):
+    """The player JavaScript, fetched once and kept for the session.
+
+    A megabyte of it, so it is held in memory rather than re-fetched per
+    segment. Returns (player_id, source); the id is the release hash out of the
+    url, which is what the solved values are cached against -- a new player
+    means new answers.
+    """
+    boot = refresh_bootstrap(session, cookies)
+    path = boot.get("js_url")
+    if not path:
+        raise ApiError("the page does not name a player js")
+    if path.startswith("//"):
+        url = "https:" + path
+    elif path.startswith("/"):
+        url = ORIGIN + path
+    else:
+        url = path
+    player_id = ""
+    match = re.search(r"/player/([0-9a-fA-F]+)/", url)
+    if match:
+        player_id = match.group(1)
+    if player_id in _PLAYER_JS:
+        return player_id, _PLAYER_JS[player_id]
+
+    # The page points at player_es6, and that build defeated every extraction
+    # pattern: its only .get("n") is a url-rewriting helper, and the markers the
+    # patterns look for appear nowhere in it. Google publishes the same player
+    # id as player_ias as well -- the ES5 build, and the one every published
+    # pattern was written against -- so ask for that first and keep the page's
+    # own url as the fallback.
+    candidates = []
+    if "player_es6.vflset" in url:
+        candidates.append(url.replace("player_es6.vflset", "player_ias.vflset"))
+    candidates.append(url)
+
+    last = None
+    for candidate in candidates:
+        try:
+            response = session.get(candidate, timeout=TIMEOUT,
+                                   headers={"User-Agent": UA})
+        except Exception as exc:
+            kodiutils.log("player js: %s -> %s" % (candidate, exc))
+            continue
+        kodiutils.log("player js: %s -> HTTP %d, %d bytes"
+                      % (candidate, response.status_code, len(response.content)))
+        if response.status_code == 200:
+            _PLAYER_JS[player_id] = response.text
+            return player_id, response.text
+        last = response.status_code
+    raise ApiError("no player js could be fetched (last HTTP %s)" % last)
 
 
 def session_probe(session, cookies):
@@ -427,10 +495,15 @@ class Api(object):
                     detail = ("%s: %s" % (status, detail)).strip(": ")
             except ValueError:
                 detail = (response.text or "")[:400]
-            kodiutils.log("%s -> HTTP %d as %s v%s%s"
+            # The jar's size belongs in this line: a 413 here is Google
+            # refusing the request for bulk, and the Cookie header is the only
+            # part of it that grows without bound.
+            jar = auth.cookie_header(self.cookies)
+            kodiutils.log("%s -> HTTP %d as %s v%s, %d cookies / %d bytes%s"
                           % (endpoint, response.status_code,
                              client_name or CLIENT_NAME, _client_version(),
-                             ": %s" % detail if detail else ""))
+                             len(self.cookies), len(jar),
+                             ": %s" % detail[:300] if detail else ""))
 
         if response.status_code in (401, 403):
             # Four different explanations have been offered for a 401 here --

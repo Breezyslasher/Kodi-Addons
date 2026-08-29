@@ -85,25 +85,57 @@ def parse_cookie_header(header):
     return _filter(cookies)
 
 
+HOST = "tv.youtube.com"
+
+
+def domain_matches(domain, host=HOST):
+    """The cookie domain-match rule, as a browser applies it.
+
+    A cookies.txt export holds every domain the browser knows, and youtube.com
+    alone spans www, music, studio, m and tv -- each with its own host-scoped
+    cookies. Sending the lot to tv.youtube.com is not "what the browser sent";
+    it is several times what the browser sent, and Google answers 413.
+
+    So match the way a browser does: a cookie scoped to youtube.com travels to
+    any subdomain, one scoped to www.youtube.com travels only there.
+    """
+    domain = domain.lstrip(".")
+    return host == domain or host.endswith("." + domain)
+
+
+def expired(expiry, now=None):
+    """Whether a cookies.txt row is one a browser would no longer send.
+
+    An export is a dump of the cookie store, not of what gets sent: it keeps
+    rows long past their expiry. That is not academic here. A real export
+    carried 113 ST-* cookies totalling 101 KB, nearly all of them expired two
+    weeks earlier, and sending them produced HTTP 413 from Google -- a failure
+    with no obvious connection to the cookie the request actually needed.
+
+    Expiry 0 means a session cookie, which the browser does still send.
+    """
+    try:
+        stamp = int(float(expiry))
+    except (TypeError, ValueError):
+        return False
+    return stamp != 0 and stamp < (now if now is not None else time.time())
+
+
 def parse_cookies_txt(path):
-    """Read a Netscape cookies.txt, keeping only Google/YouTube domains.
+    """Read a Netscape cookies.txt and keep what tv.youtube.com would receive.
 
     Hand-rolled rather than http.cookiejar because the exports in the wild are
     not always well formed -- extensions emit a ``#HttpOnly_`` prefix that
     MozillaCookieJar rejects outright, and a strict parser fails the whole file
     over one bad line.
 
-    Google keeps a copy of the session under both .google.com and .youtube.com,
-    and the values can diverge -- on a browser signed in to several accounts,
-    or after one domain has been re-authed and the other has not.
-
-    Only the youtube.com jar is carried wholesale, because that is precisely
-    what a browser sends to tv.youtube.com. The google.com jar fills in
-    authenticating names that youtube.com happens to lack, and nothing else:
-    once the allow-list came off, merging both domains would have sent every
-    unrelated google.com cookie to a host the browser never shows them to.
+    Google keeps a copy of the session under .google.com as well, which no
+    browser shows tv.youtube.com. It is used only to fill in an authenticating
+    name the youtube.com jar lacks -- a browser signed in on one domain and not
+    the other -- and never to add cookies of its own.
     """
-    google, youtube = {}, {}
+    youtube, google = {}, {}
+    now = time.time()
     with open(path, "r", encoding="utf-8", errors="replace") as handle:
         for line in handle:
             line = line.strip()
@@ -114,11 +146,19 @@ def parse_cookies_txt(path):
             fields = line.split("\t")
             if len(fields) < 7:
                 continue
-            domain, name, value = fields[0], fields[5], fields[6]
-            if "youtube.com" in domain:
-                youtube[name] = value
-            elif "google.com" in domain:
+            domain, expiry, name, value = (fields[0], fields[4],
+                                           fields[5], fields[6])
+            if expired(expiry, now):
+                continue
+            if domain_matches(domain):
+                # Two entries can carry one name -- .youtube.com and a
+                # host-scoped tv.youtube.com copy. The specific one is the one
+                # that was set for us, so let it win.
+                if name not in youtube or domain.lstrip(".") == HOST:
+                    youtube[name] = value
+            elif domain_matches(domain, "www.google.com"):
                 google[name] = value
+
     jar = dict(youtube)
     for name in WANTED:
         if name not in jar and name in google:
