@@ -156,6 +156,17 @@ class Session(object):
         self._announced = set()
         self._boxed = {}
         self._reinit = {}
+        # kind -> the itag the player asked for, when it is choosing rather
+        # than the server. Only consulted when the bridge has turned
+        # adaptive switching on: with it off the manifest names one
+        # rendition per track, so narrowing would only ever repeat the
+        # choice the server had already made, at the risk of a refusal.
+        self.wanted = {}
+        self.adaptive = False
+        # Set once the endpoint has refused a narrowed set, after which the
+        # whole set is offered for the rest of the session rather than
+        # narrowing again on the next segment and refusing again.
+        self.narrowing = True
         # ISA reads audio and video on separate threads and both drive this
         # one session. Two fetches at once interleave their MEDIA parts
         # through the same _open map and the same echo, so a segment can be
@@ -166,7 +177,44 @@ class Session(object):
     # -- the conversation ------------------------------------------------
 
     def _entries(self):
-        return self.audio, self.video
+        """The sets to offer, narrowed to a track that has been asked for.
+
+        SABR is server-driven: fields 16 and 17 are what the client can play
+        and the server picks, which is why the log says "the server chose".
+        For the player to do the choosing instead, the set has to be narrowed
+        to the rendition it asked for -- so `want` records one and this
+        offers that alone, with the rest still there to fall back to.
+        """
+        audio, video = self.audio, self.video
+        for entry in self.audio:
+            if entry[0] == self.wanted.get("audio"):
+                audio = [entry]
+        for entry in self.video:
+            if entry[0] == self.wanted.get("video"):
+                video = [entry]
+        return audio, video
+
+    def want(self, itag):
+        """Ask the server for this rendition from here on.
+
+        Returns True if anything changed. Offering a single video format was
+        answered sabr.no_video_selected once, though that was before FormatId
+        sent its empty fields; offering nine H.264 renditions alone is
+        answered normally now. If it is refused again the session stops
+        narrowing altogether rather than refusing once per segment.
+        """
+        if not self.adaptive or not self.narrowing:
+            return False
+        entry = self.entries.get(itag)
+        if not entry:
+            return False
+        kind = "audio" if entry in self.audio else "video"
+        if self.wanted.get(kind) == itag:
+            return False
+        self.wanted[kind] = itag
+        kodiutils.log("sabr session: the player asked for %s %s"
+                      % (kind, itag))
+        return True
 
     def _buffered(self):
         """What we hold, with the duration measured rather than assumed.
@@ -205,6 +253,22 @@ class Session(object):
             return self._fetch()
 
     def _fetch(self):
+        try:
+            return self._exchange()
+        except SabrError as exc:
+            if not self.wanted:
+                raise
+            # The narrowed set was refused. Everything the session has done
+            # so far was answered with the whole set, so go back to it and
+            # let the server choose again rather than failing the segment.
+            kodiutils.log("sabr session: the endpoint refused the rendition "
+                          "the player asked for (%s): %s -- offering the "
+                          "whole set again" % (self.wanted, str(exc).strip()))
+            self.wanted = {}
+            self.narrowing = False
+            return self._exchange()
+
+    def _exchange(self):
         audio, video = self._entries()
         body = sabr.build_request(
             self.config, audio=audio, video=video,

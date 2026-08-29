@@ -1611,3 +1611,43 @@ Minting also repairs the pairing problem it used to cause. The token is
 cached against its binding, so when Google rotates `visitorData` in an
 `X-Goog-Visitor-Id` header the next lookup misses and mints a matching token
 by itself, where before a rotation silently unpaired a pasted one.
+
+## Adaptive switching on the bridge: the player picks, the server obeys
+
+SABR chooses server-side. Fields 16 and 17 of a `VideoPlaybackAbrRequest`
+are *sets* — every rendition the client can play — and the server picks one
+out of each and names its pick in the `MEDIA_HEADER` it answers with. That
+is why the bridge log has always read "the server chose audio 150, video
+223": nothing in the addon chose those.
+
+So a bridge cannot ask for a quality. It can only stop offering the others.
+`Session.want(itag)` records what the player asked for and `_entries()`
+offers that alone; the manifest lists every eligible rendition as a
+`Representation` and each one's `media=` url carries its own `itag`, so the
+itag InputStream Adaptive fetches *is* its choice, and the next exchange
+offers nothing else.
+
+Three constraints, each of which cost a rendition:
+
+* **Same AdaptationSet, same decoder.** `siblings()` keeps only renditions
+  with the same container and the same codec family as the served one, so
+  AV1 never lands beside H.264 — a switch across that boundary is one the
+  decoder cannot carry through, and the AV1 rendition is the one that would
+  not decrypt anyway.
+* **One timeline for the set.** `startNumber` and `duration` are taken from
+  the served rendition and used for every Representation in its set. There
+  is nothing else to take them from — a rendition the server has not served
+  yet holds no segments — and there should be nothing else: renditions of
+  one track are cut at the same instants, which is what `segmentAlignment`
+  claims.
+* **A Representation with no key id is a manifest ISA refuses whole**, not
+  a rendition it skips. A rendition is only listed once its key can be
+  named: read out of its own `tenc`, which needs the server to have served
+  it, or out of a licence this title has already been granted. On a fresh
+  protected title that leaves the served rendition alone in its set, and
+  the alternatives appear on a later play.
+
+The setting is off by default. A narrowed set was answered
+`sabr.no_video_selected` once, and if the endpoint refuses one again the
+session clears `wanted`, sets `narrowing = False` and offers the whole set
+for the rest of playback rather than refusing once per segment.

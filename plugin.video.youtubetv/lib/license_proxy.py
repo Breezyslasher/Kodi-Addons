@@ -241,6 +241,11 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         itag = int((query.get("itag") or ["0"])[0] or 0)
+        # Which itag ISA asks for is the only statement it makes about
+        # quality: SABR chooses server-side out of the set we offer, so the
+        # set is narrowed to what was asked for and the server has nothing
+        # else to pick. A no-op unless adaptive switching is on.
+        session.want(itag)
         try:
             if path == "/sabr/init":
                 head = session.initialisation_for(itag)
