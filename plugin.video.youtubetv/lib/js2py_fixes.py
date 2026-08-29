@@ -26,6 +26,24 @@ def apply():
     if _applied:
         return
     _applied = True
+    # -- Python 3.12 --------------------------------------------------
+    # The translator names a try/catch's temporaries with
+    # random.randrange(1e8), and 3.12 stopped taking a float there. Before
+    # importing anything that translates, give that module a randrange
+    # that takes one. (fix_js_args is the other 3.12 casualty, and that one
+    # is replaced outright in lib/vendor/js2py/utils/injector.py.)
+    import random as _random
+    import js2py.translators.translating_nodes as _nodes
+
+    class _Random(object):
+        def __getattr__(self, name):
+            return getattr(_random, name)
+
+        def randrange(self, *args, **kwargs):
+            return _random.randrange(*[int(a) for a in args], **kwargs)
+
+    _nodes.random = _Random()
+
     import js2py.base as base
     import js2py.constructors.jsobject as jsobject
     from js2py.base import Js, undefined
