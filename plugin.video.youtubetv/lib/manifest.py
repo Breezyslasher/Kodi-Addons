@@ -361,6 +361,16 @@ def drop_param(xml, name):
     return text.encode("utf-8") if was_bytes else text
 
 
+# Where n hides in a media url. On-demand spells it as a query parameter, live
+# as a path segment; a check for only the first skips live entirely.
+_N_IN_URL = re.compile(r"""(?:[?&]|&amp;)n=([^&"'<]+)|/n/([^/"'<]+)""")
+
+
+def carries_n(url):
+    """Whether a url has an n to rewrite, in either spelling."""
+    return bool(_N_IN_URL.search(url))
+
+
 def rewrite_n(xml, solve):
     """Replace ``n`` in every BaseURL with the value ``solve`` returns.
 
@@ -368,6 +378,13 @@ def rewrite_n(xml, solve):
     dozen BaseURLs sharing the value the player minted, so solving once and
     substituting is the difference between one pass over a megabyte of
     JavaScript and twelve.
+
+    Both spellings, because YouTube uses both. On-demand puts n in the query as
+    ``n=...``; live puts it in the path as ``/n/.../``. Matching only the query
+    form left every live segment carrying the value the player minted, which is
+    the one googlevideo refuses. The player's own o5_ exists to keep the two in
+    step -- it rewrites a /n/ path segment to match the query n -- which is as
+    direct a statement as one could ask for that both forms are real.
     """
     was_bytes = isinstance(xml, bytes)
     text = xml.decode("utf-8", "replace") if was_bytes else xml
@@ -375,16 +392,18 @@ def rewrite_n(xml, solve):
 
     def rewrite(match):
         url = match.group(2)
-        found = re.search(r"(?:[?&]|&amp;)n=([^&\"'<]+)", url)
+        found = _N_IN_URL.search(url)
         if not found:
             return match.group(0)
-        original = found.group(1)
+        group = 1 if found.group(1) else 2
+        original = found.group(group)
         if original not in solved:
             solved[original] = solve(original)
         replacement = solved[original]
         if not replacement:
             return match.group(0)
-        rebuilt = url[:found.start(1)] + replacement + url[found.end(1):]
+        rebuilt = (url[:found.start(group)] + replacement
+                   + url[found.end(group):])
         return match.group(1) + rebuilt + match.group(3)
 
     text = _BASEURL_TAG.sub(rewrite, text)
@@ -419,18 +438,27 @@ _HEIGHT = re.compile(r'\bheight\s*=\s*"(\d+)"')
 WIDEVINE_URN = "urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"
 
 
+_HEX_KID = re.compile(r"\A[0-9a-fA-F]{32}\Z")
+
+
 def _as_uuid(key_id):
-    """A 16-byte key id as the dashed form cenc:default_KID wants."""
+    """A 16-byte key id as the dashed form cenc:default_KID wants.
+
+    Hex is tried first, and the order matters: 32 hex characters are also
+    valid base64, so decoding base64 first turns a hex key id into 24 bytes
+    and this returns None for a key id that was perfectly good. The licence
+    gives base64url; init segments give hex.
+    """
     raw = key_id if isinstance(key_id, bytes) else None
     if raw is None:
-        import base64
-        text = key_id.strip().replace("-", "+").replace("_", "/")
-        try:
-            raw = base64.b64decode(text + "=" * (-len(text) % 4))
-        except Exception:
+        if _HEX_KID.match(key_id.strip()):
+            raw = bytes.fromhex(key_id.strip())
+        else:
+            import base64
+            text = key_id.strip().replace("-", "+").replace("_", "/")
             try:
-                raw = bytes.fromhex(key_id)
-            except ValueError:
+                raw = base64.b64decode(text + "=" * (-len(text) % 4))
+            except Exception:
                 return None
     if len(raw) != 16:
         return None
@@ -454,26 +482,104 @@ def _track_for(block):
 
 
 def _protection(uuid, pssh):
-    """The ContentProtection pair ISA actually reads."""
+    """The ContentProtection pair ISA actually reads.
+
+    The key id goes on both elements, not just mp4protection. ISA picks the
+    scheme matching the key system first and reads *its* kid, falling back to
+    mp4protection's only when that one is empty (GetProtectionData in
+    src/parser/DASHTree.cpp). Naming it twice takes the fallback out of the
+    path, and is what conformant packagers emit anyway.
+
+    A track whose key id is not known yet still gets both elements, without the
+    attribute. That is what marks the Representation encrypted and hands ISA
+    the init data -- and with the license_data property gone, this manifest is
+    the only place either can now come from.
+    """
+    kid = ' cenc:default_KID="%s"' % uuid if uuid else ""
     out = ('<ContentProtection schemeIdUri="urn:mpeg:dash:mp4protection:2011"'
-           ' value="cenc" cenc:default_KID="%s"/>' % uuid)
+           ' value="cenc"%s/>' % kid)
     if pssh:
-        out += ('<ContentProtection schemeIdUri="%s">'
+        out += ('<ContentProtection schemeIdUri="%s"%s>'
                 '<cenc:pssh>%s</cenc:pssh></ContentProtection>'
-                % (WIDEVINE_URN, pssh))
+                % (WIDEVINE_URN, kid, pssh))
     return out
 
 
-def set_key_ids(xml, key_ids, pssh=""):
+_REP_ID = re.compile(r'\bid\s*=\s*"([^"]+)"')
+_INIT_RANGE = re.compile(r'<Initialization\b[^>]*\brange\s*=\s*"([^"]+)"')
+_INIT_SOURCE = re.compile(r'<Initialization\b[^>]*\bsourceURL\s*=\s*"([^"]+)"')
+
+
+def init_targets(xml):
+    """Where each Representation's init segment lives: (id, url, byte range).
+
+    On-demand names it as a range into the one BaseURL
+    (``<Initialization range="0-1729"/>``); live gives it a relative
+    ``sourceURL`` under an absolute BaseURL. Both forms appear here so the
+    caller can fetch a track's moov without knowing which it is; the range is
+    "" when the whole sourceURL is the segment.
+
+    Call this after n has been rewritten -- these are real, fetchable urls and
+    an unsolved n makes every one of them a 403.
+    """
+    text = xml.decode("utf-8", "replace") if isinstance(xml, bytes) else xml
+    out = []
+    for rep in _REPRESENTATION.finditer(text):
+        head, body = rep.group(1), rep.group(2)
+        ident = _REP_ID.search(head)
+        base = _BASEURL_TAG.search(body)
+        if not ident or not base:
+            continue
+        url = _unescape(base.group(2).strip())
+        ranged = _INIT_RANGE.search(body)
+        if ranged:
+            out.append((ident.group(1), url, ranged.group(1)))
+            continue
+        source = _INIT_SOURCE.search(body)
+        if source:
+            out.append((ident.group(1), url + _unescape(source.group(1)), ""))
+    return out
+
+
+def set_key_ids(xml, key_ids, pssh="", kid_by_rep=None, split_audio=None):
     """Declare Widevine properly, naming the key each track needs.
 
     The audio set takes one key for all its Representations; a video set spans
     several licensed tiers, so each Representation is given the key for its own
     height rather than the set's tallest -- the account here is licensed for SD
     and the set runs to 1080p.
+
+    A track with no key id yet is still declared, without the attribute. This
+    used to return the manifest untouched, which was survivable only while ISA
+    was getting its init data from the license_data property; now that the
+    property is gone, an undeclared Representation is one ISA does not consider
+    encrypted at all.
+
+    ``kid_by_rep`` maps a Representation id to the key id read out of that
+    track's own init segment, and wins over the per-track-type map when it has
+    an answer. It is the better source twice over: it is the id the samples are
+    actually encrypted with rather than one inferred from the picture height,
+    and it is available on a title's first play, where a licence-derived id is
+    not.
+
+    ``split_audio``, when given, is called with the audio track's key id as
+    raw bytes and returns the PSSH to declare on the audio Representations. It
+    splits the presentation into two CDM sessions.
+    ISA reuses a decrypter whenever an earlier one already holds the key id it
+    is about to open (Session.cpp, HasLicenseKey), and YouTube returns all four
+    keys in one licence -- so audio and video land on a single CDM session,
+    with the audio track's decrypt-only calls and the video track's
+    decrypt-and-decode calls reaching it from two threads at once. Naming no
+    key id on the video sets sends ISA down its other branch, which reuses a
+    decrypter only when the init data matches byte for byte, so a different
+    PSSH there gives video a session of its own. Video can afford a missing key
+    id and audio cannot: a failed capability probe gives video the secure path,
+    but gives audio SSD_INVALID, which deletes the track.
     """
-    if not key_ids:
+    if not key_ids and not pssh and not kid_by_rep:
         return xml
+    key_ids = key_ids or {}
+    kid_by_rep = kid_by_rep or {}
     was_bytes = isinstance(xml, bytes)
     text = xml.decode("utf-8", "replace") if was_bytes else xml
     if "xmlns:cenc" not in text:
@@ -481,15 +587,17 @@ def set_key_ids(xml, key_ids, pssh=""):
 
     applied = []
 
+    def label(track, uuid):
+        name = track.replace("DRM_TRACK_TYPE_", "")
+        return name if uuid else name + "(no key yet)"
+
     def rewrite(block):
         body = block.group(0)
         track = _track_for(body)
-        uuid = _as_uuid(key_ids.get(track, ""))
-        if not uuid:
-            return body
+        uuid = _as_uuid(key_ids.get(track, "")) or ""
 
-        if track == "DRM_TRACK_TYPE_AUDIO":
-            applied.append("AUDIO")
+        if track == "DRM_TRACK_TYPE_AUDIO" and not kid_by_rep:
+            applied.append(label(track, uuid))
             # Keep YouTube's own element -- it is harmless and ISA ignores it --
             # and add the standard pair in front of it.
             return _YT_SCHEME.sub(
@@ -497,12 +605,23 @@ def set_key_ids(xml, key_ids, pssh=""):
 
         def per_representation(rep):
             head, inner, tail = rep.group(1), rep.group(2), rep.group(3)
-            own = _track_for(head)
-            own_uuid = _as_uuid(key_ids.get(own, ""))
-            if not own_uuid:
-                return rep.group(0)
-            applied.append(own.replace("DRM_TRACK_TYPE_", ""))
-            return head + _protection(own_uuid, pssh) + inner + tail
+            # A Representation inside an audio set carries neither mimeType nor
+            # height, so asking _track_for about it alone answers SD. The set
+            # already knows; only a video set spans more than one track type.
+            own = (track if track == "DRM_TRACK_TYPE_AUDIO"
+                   else _track_for(head))
+            ident = _REP_ID.search(head)
+            own_uuid = (_as_uuid(kid_by_rep.get(ident.group(1), "") if ident else "")
+                        or _as_uuid(key_ids.get(own, "")) or "")
+            own_pssh = pssh
+            if split_audio:
+                if own == "DRM_TRACK_TYPE_AUDIO":
+                    own_pssh = (split_audio(bytes.fromhex(
+                        own_uuid.replace("-", ""))) if own_uuid else pssh)
+                else:
+                    own_uuid = ""
+            applied.append(label(own, own_uuid))
+            return head + _protection(own_uuid, own_pssh) + inner + tail
 
         return _REPRESENTATION.sub(per_representation, body)
 

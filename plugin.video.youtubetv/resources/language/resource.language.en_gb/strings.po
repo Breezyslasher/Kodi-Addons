@@ -108,3 +108,11 @@ msgctxt "#30038"
 msgid "Full path to node, deno, bun or quickjs. Needed to compute the n parameter every media URL carries; without it playback is refused. Leave empty to search PATH and the usual locations. Set it explicitly when Kodi is a flatpak or on LibreELEC, where the runtime lives somewhere Kodi does not look."
 msgstr ""
 
+msgctxt "#30039"
+msgid "Give audio its own DRM session"
+msgstr ""
+
+msgctxt "#30040"
+msgid "InputStream Adaptive puts every track on one Widevine session when a single licence carries all the keys, so the audio track's decryption shares a session with the video track's in-CDM decoding. Naming the key id on audio only splits them. Turn this off to put both back on one session."
+msgstr ""
+
