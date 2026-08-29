@@ -160,55 +160,6 @@ def parse_airing(renderer):
     )
 
 
-def _unwrap(node):
-    """A renderer wrapper is a dict with one key ending in Renderer."""
-    while isinstance(node, dict) and len(node) == 1:
-        key, value = next(iter(node.items()))
-        if not key.endswith("Renderer") or not isinstance(value, dict):
-            break
-        node = value
-    return node if isinstance(node, dict) else {}
-
-
-# What a station's display name is called, in order of preference. Several
-# spellings because the web and TV clients do not agree, and a station that
-# lists as its own channel id is worse than one named by any of these.
-_NAME_KEYS = ("name", "callSign", "title", "primaryText", "displayName")
-_LOGO_KEYS = ("icon", "thumbnail", "logo", "avatar")
-
-
-def _station_name(node):
-    for key in _NAME_KEYS:
-        found = text(node.get(key))
-        if found:
-            return found
-    # Nested a level or two down in some shapes; the keys are distinctive
-    # enough that the first match is the station's own.
-    for key in _NAME_KEYS:
-        for value in walk(node, key):
-            found = text(value)
-            if found:
-                return found
-    for key in _LOGO_KEYS:
-        found = accessibility_label(node.get(key) or {})
-        if found:
-            return found
-    return ""
-
-
-def _station_logo(node):
-    for key in _LOGO_KEYS:
-        found = thumbnail(node.get(key) or {}, prefer_width=400)
-        if found:
-            return found
-    for key in _LOGO_KEYS:
-        for value in walk(node, key):
-            found = thumbnail(value or {}, prefer_width=400)
-            if found:
-                return found
-    return ""
-
-
 def parse_epg(response):
     """Stations, in the order the guide returned them.
 
@@ -218,21 +169,12 @@ def parse_epg(response):
     """
     stations = []
     seen = set()
-    nameless = 0
-    shape_logged = False
 
     for row in walk(response, "epgRowRenderer"):
         renderer = first(row, "epgStationRenderer")
         if not isinstance(renderer, dict):
-            # Not every response spells it epgStationRenderer. The TV client
-            # hangs the same thing off the row as "station", which is why 143
-            # of 150 channels listed as raw ids: the metadata was there and
-            # under another name. So take the row's own station node, and
-            # unwrap it if it is a single renderer wrapper.
-            renderer = row.get("station")
-            renderer = _unwrap(renderer) if renderer else {}
-        station_id = (renderer.get("stationId") or renderer.get("tenxId")
-                      or row.get("stationId") or "")
+            continue
+        station_id = renderer.get("stationId") or renderer.get("tenxId") or ""
         if not station_id or station_id in seen:
             continue
         seen.add(station_id)
@@ -245,34 +187,20 @@ def parse_epg(response):
                     airings.append(airing)
         airings.sort(key=lambda a: a.start_ms or 0)
 
-        name = _station_name(renderer)
-        logo = _station_logo(renderer)
-        if not name:
-            nameless += 1
-            if not shape_logged:
-                shape_logged = True
-                # Say what did arrive, so the next person does not have to
-                # guess which key moved. Keys only -- the values are the
-                # account's own guide.
-                kodiutils.log("guide: a station row carried no name. Row keys "
-                              "%s; station keys %s"
-                              % (sorted(row), sorted(renderer) or "none"))
-
         stations.append(Station(
             station_id=station_id,
-            name=name or station_id,
+            name=(text(renderer.get("name"))
+                  or text(renderer.get("callSign"))
+                  or accessibility_label(renderer.get("icon") or {})
+                  or station_id),
             call_sign=text(renderer.get("callSign")),
-            logo=logo,
+            logo=thumbnail(renderer.get("icon") or {}, prefer_width=400),
             airings=airings,
         ))
 
     if not stations:
         kodiutils.log("no epgRowRenderer in the guide response -- the EPG "
                       "shape may have changed")
-    elif nameless:
-        kodiutils.log("guide: %d of %d stations came back with no name or "
-                      "logo, so their ids are standing in"
-                      % (nameless, len(stations)))
     return stations
 
 

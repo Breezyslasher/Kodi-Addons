@@ -255,39 +255,11 @@ def _verify_bearer():
         if stations:
             kodiutils.log("oauth probe: %s answered with %d station(s)"
                           % (name, len(stations)))
-            summary = ("Signed in as %s. %d channels in your lineup."
-                       % (name, len(stations)))
-            if not _oauth_can_play(client, stations):
-                summary += (
-                    "\n\nBrowsing and the guide work. Playback does not yet: "
-                    "no request this add-on knows how to build gets both a "
-                    "session this token is accepted for and a DASH manifest. "
-                    "To play anything, also sign in from your phone or "
-                    "laptop.")
-            return True, summary, name
+            return True, ("Signed in as %s. %d channels in your lineup."
+                          % (name, len(stations))), name
         tried.append("%s: answered, but with an empty lineup" % name)
         kodiutils.log("oauth probe: %s answered with an empty lineup" % name)
     return False, "\n".join(tried), ""
-
-
-def _oauth_can_play(client, stations):
-    """Whether this bearer session can get a DASH manifest for anything.
-
-    Asked once at sign-in rather than left for the user to discover one
-    "cannot play this" at a time. It uses the same search playback does, so
-    the answer is the real one and not a second opinion.
-    """
-    airing = next((s.now for s in stations if s.now and s.now.video_id), None)
-    if not airing:
-        return True  # nothing to test with; do not claim a problem
-    try:
-        response = client.player(airing.video_id, api.new_cpn())
-        response = playback._with_dash_manifest(
-            client, airing.video_id, api.new_cpn(), response)
-    except Exception as exc:
-        kodiutils.log_error("oauth playability check failed: %s" % exc)
-        return True
-    return bool((response.get("streamingData") or {}).get("dashManifestUrl"))
 
 
 def _client():
@@ -524,17 +496,9 @@ def route_play(video_id, label):
         return
 
     if item is None:
-        signed_in_by_code = bool(oauth.load().get("access_token")) \
-            and not auth.signed_in()
         kodiutils.ok_dialog(
-            ("You are signed in with a code, and that sign-in cannot play. "
-             "YouTube TV serves a DASH manifest only to its web client, which "
-             "refuses this token whatever the request looks like. Sign in "
-             "from your phone or laptop as well and playback will work."
-             if signed_in_by_code else
-             "YouTube did not offer a DASH manifest for this stream, only its "
-             "own SABR endpoint, which Kodi cannot play."),
-            "Cannot play this")
+            "YouTube did not offer a DASH manifest for this stream, only its "
+            "own SABR endpoint, which Kodi cannot play.", "Cannot play this")
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
 
@@ -570,25 +534,33 @@ def route_play_channel(station_id):
     route_play(station.now.video_id, station.name)
 
 
-def route_probe_versions():
-    """Log what tv.youtube.com serves each client's user agent.
+def route_probe_sabr():
+    """Answer the three questions that gate a SABR player.
 
-    Run from the diagnostics settings rather than during playback: it fetches
-    the page once per identity and writes the answers to the log, and changes
-    nothing.
+    Needs something playable to ask about, so it takes whatever is on the
+    first channel in the lineup. Logs and changes nothing.
     """
-    cookies = None
-    try:
-        cookies = auth.load()
-    except auth.AuthError:
-        pass
-    try:
-        api.probe_client_versions(cookies=cookies)
-    except Exception as exc:
-        kodiutils.log_error("client version probe failed: %s" % exc)
-        kodiutils.notify("Client version probe failed")
+    client = _client()
+    if not client:
         return
-    kodiutils.notify("Client versions written to the log")
+    try:
+        stations = _fetch_stations(client, hours=2)
+    except (auth.AuthError, api.ApiError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not load the guide")
+        return
+    airing = next((s.now for s in stations if s.now and s.now.video_id), None)
+    if not airing:
+        kodiutils.ok_dialog("Nothing is playing on any channel right now.",
+                            "Nothing to test with")
+        return
+    from lib import probes
+    try:
+        probes.run(client, airing.video_id)
+    except Exception as exc:
+        kodiutils.log_error("sabr feasibility failed: %s" % exc)
+        kodiutils.notify("SABR check failed -- see the log")
+        return
+    kodiutils.notify("SABR check written to the log")
 
 
 def route_iptv(what, port):
@@ -636,8 +608,8 @@ def main():
     elif action == "play_channel":
         route_play_channel(params.get("station_id", ""))
         return
-    elif action == "probe_versions":
-        route_probe_versions()
+    elif action == "probe_sabr":
+        route_probe_sabr()
         return
     elif action in ("iptv_channels", "iptv_epg"):
         # RunPlugin, not a directory: there is no handle to finish and

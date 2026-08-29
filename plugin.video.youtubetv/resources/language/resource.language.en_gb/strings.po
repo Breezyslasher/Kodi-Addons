@@ -161,9 +161,9 @@ msgid "Google API client secret"
 msgstr ""
 
 msgctxt "#30056"
-msgid "Check what each client identity is served"
+msgid "Check whether SABR could replace the cookie sign-in"
 msgstr ""
 
 msgctxt "#30057"
-msgid "Fetches tv.youtube.com once with each client's user agent and writes to the log what client name and version the page declares for it. Three of the identities currently claim the same version, which cannot be right for all of them; this looks for real values instead. Changes nothing."
+msgid "Asks three things and writes the answers to the log: whether the Widevine licence server accepts the credential you are signed in with, whether this session is offered a SABR endpoint, and whether that endpoint serves a request once the n parameter is solved. Plays nothing and changes nothing."
 msgstr ""

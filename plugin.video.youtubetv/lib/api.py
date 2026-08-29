@@ -393,79 +393,6 @@ def _baked_visitor_id():
     return getattr(baked_cookies, "VISITOR_ID", "") or ""
 
 
-TV_SHELL_URL = "https://www.youtube.com/tv"
-TV_BOOTSTRAP_FILE = "tv_bootstrap.json"
-
-
-def tv_client_version(session=None):
-    """The version the real TV build states, rather than one we made up.
-
-    TVHTML5_UNPLUGGED shipped claiming version "6.36", which is the Android
-    unplugged app's number copied across three unrelated clients. A TVHTML5
-    version is date-shaped, and the probe found today's by asking for the TV
-    shell with a Cobalt user agent:
-
-        www.youtube.com/tv  ->  TVHTML5  7.20260826.15.00  id 7  (185 kB)
-
-    Only the Cobalt agent is served it -- every other agent got a 5.7 kB stub
-    -- so the user agent already in this spec is what unlocks it.
-
-    Read honestly: that is plain YouTube's TVHTML5, client 7, not
-    TVHTML5_UNPLUGGED, client 65. Whether the unplugged variant rides the same
-    version stream is unknown. What is known is that a date-shaped version is
-    the right shape and "6.36" is not, so this is a measured guess replacing
-    an invented one -- and it is cached and falls back, so a bad day costs
-    nothing.
-    """
-    cached = kodiutils.read_json(TV_BOOTSTRAP_FILE, default=None) or {}
-    if (cached.get("fetched", 0) > time.time() - 86400
-            and cached.get("version")):
-        return cached["version"]
-
-    spec = UNPLUGGED_CLIENTS["TVHTML5_UNPLUGGED"]
-    session = session or requests
-    try:
-        page = session.get(TV_SHELL_URL, timeout=TIMEOUT, headers={
-            "User-Agent": spec["context"].get("userAgent", UA),
-            "Accept": ("text/html,application/xhtml+xml,application/xml;"
-                       "q=0.9,*/*;q=0.8"),
-        })
-        if page.status_code != 200:
-            return cached.get("version", "")
-        found = _PAGE_CLIENT_VERSION.search(page.text)
-        served = _PAGE_CLIENT_NAME.search(page.text)
-    except Exception as exc:
-        kodiutils.log("tv bootstrap: could not read the TV shell: %s" % exc)
-        return cached.get("version", "")
-
-    if not found or not served or served.group(1) != "TVHTML5":
-        # A stub, or a build that is not the TV one. Keeping the old value
-        # beats adopting whatever a redirect happened to serve.
-        return cached.get("version", "")
-    version = found.group(1)
-    if version != cached.get("version"):
-        kodiutils.log("tv bootstrap: the TV shell states TVHTML5 %s" % version)
-    kodiutils.write_json(TV_BOOTSTRAP_FILE,
-                         {"version": version, "fetched": int(time.time())})
-    return version
-
-
-def effective_version(name):
-    """The version a request as ``name`` actually carries.
-
-    Three callers needed this and each worked it out for itself, which is how
-    a survey came to log "v6.36" for a request that carried 7.20260826.15.00
-    -- the log read the static spec while context and headers read the fetched
-    value. A result that looks like it disproves the change it is testing is
-    worse than no result.
-    """
-    if name == CLIENT_NAME:
-        return _client_version()
-    if name == "TVHTML5_UNPLUGGED":
-        return tv_client_version() or client_spec(name)["version"]
-    return client_spec(name)["version"]
-
-
 def _client_version():
     """The version we claim to be.
 
@@ -476,6 +403,52 @@ def _client_version():
     if override and override != CLIENT_VERSION:
         return override
     return _bootstrap().get("version") or CLIENT_VERSION
+
+
+def effective_version(name=None):
+    """The version we would actually send for a client.
+
+    Three call sites used to work this out for themselves, and one of them
+    once printed the table's version while the headers carried the page's --
+    a log line that lied about the request beside it. One reader keeps them
+    honest, and gives probes something public to ask.
+    """
+    name = name or CLIENT_NAME
+    if name == CLIENT_NAME:
+        return _client_version()
+    return client_spec(name)["version"]
+
+
+def player_body(video_id, cpn):
+    """The player request body, as the working play path sends it.
+
+    Hoisted out of Api.player because a probe that hand-rolls its own body
+    measures the body, not the server: an abbreviated one -- no
+    playbackContext, no signatureTimestamp -- came back UNPLAYABLE with zero
+    formats for the same client and credential that this one gets 25 formats
+    from. Any comparison between clients has to hold the request still.
+    """
+    return {
+        "videoId": video_id,
+        "params": PLAYER_PARAMS,
+        "playbackContext": {
+            "contentPlaybackContext": {
+                "html5Preference": "HTML5_PREF_WANTS",
+                "signatureTimestamp": _signature_timestamp(),
+                "referer": "%s/watch/%s" % (ORIGIN, video_id),
+                "autonavState": "STATE_OFF",
+                "autoCaptionsDefaultOn": False,
+                "mdxContext": {},
+            },
+            "devicePlaybackCapabilities": {
+                "supportsVp9Encoding": True,
+                "supportXhr": True,
+            },
+        },
+        "cpn": cpn,
+        "racyCheckOk": True,
+        "captionParams": {},
+    }
 
 
 def new_cpn():
@@ -535,127 +508,6 @@ def context(location=True, client_name=None):
     if boot.get("app_install_data"):
         client["configInfo"] = {"appInstallData": boot["app_install_data"]}
     return {"client": client}
-
-
-# Where to ask. tv.youtube.com only names a client once a cookie jar signs it
-# in, which is no use on a token session -- but the app shells on
-# www.youtube.com are served to anyone, and a TV user agent is what makes
-# Google hand over the TV build. That build names itself, which is the whole
-# point: a real version rather than one copied between three clients.
-#
-# Read honestly, /tv is plain YouTube's TVHTML5 (client 7), not
-# TVHTML5_UNPLUGGED (65). It settles what a TVHTML5 version looks like and
-# what today's is; whether the unplugged variant shares it is a further
-# question, but "6.36" cannot be right either way.
-PROBE_PAGES = (
-    ("YouTube TV, needs cookies", ORIGIN + "/"),
-    ("YouTube TV app shell", ORIGIN + "/tv"),
-    ("YouTube TV app shell", "https://www.youtube.com/tv"),
-    ("YouTube, anonymous", "https://www.youtube.com/"),
-)
-
-_PAGE_CLIENT_NAME = re.compile(r'"INNERTUBE_CLIENT_NAME"\s*:\s*"([\w]+)"')
-_PAGE_CONTEXT_NAME = re.compile(
-    r'"INNERTUBE_CONTEXT_CLIENT_NAME"\s*:\s*"?([\w]+)"?')
-
-
-def probe_client_versions(session=None, cookies=None):
-    """Ask tv.youtube.com what client it thinks each user agent is.
-
-    Three of the addon's client identities claim version 6.36 -- an Android
-    app, an iOS app and a TVHTML5 client, which cannot all be true and is
-    plainly one number copied three times. Only WEB_UNPLUGGED was ever built
-    from a capture, and it is the only one that has ever answered 200. So the
-    three INVALID_ARGUMENT refusals may be about the version rather than the
-    client, and the way to find out is to stop inventing versions.
-
-    The page bootstrap already gives the web client its real version by
-    reading INNERTUBE_CLIENT_VERSION off the page. This asks the same page
-    with each client's user agent: if Google serves a TV build to a Cobalt
-    agent, that build states its own client name and version, and those are
-    real values rather than made-up ones.
-
-    Logs what each agent was served and changes nothing. If every agent gets
-    the same web values, this route is empty and the versions have to come
-    from a capture of the real apps instead.
-    """
-    session = session or requests.Session()
-    header = auth.cookie_header(cookies) if cookies else ""
-    kodiutils.log("client versions: asking what each user agent is served%s"
-                  % ("" if header else " (no cookie jar -- the signed-out "
-                                       "pages are the ones that can answer)"))
-    for label, url in PROBE_PAGES:
-        kodiutils.log("client versions: -- %s (%s)" % (label, url))
-        _probe_page(session, header, url)
-
-
-def _probe_page(session, header, url):
-    for name in sorted(UNPLUGGED_CLIENTS):
-        spec = client_spec(name)
-        agent = spec["context"].get("userAgent", UA)
-        headers = {"User-Agent": agent,
-                   "Accept": ("text/html,application/xhtml+xml,"
-                              "application/xml;q=0.9,*/*;q=0.8")}
-        if header:
-            headers["Cookie"] = header
-        try:
-            page = session.get(url, timeout=TIMEOUT, headers=headers,
-                               allow_redirects=True)
-        except Exception as exc:
-            kodiutils.log("client versions: %-22s fetch failed: %s"
-                          % (name, str(exc)[:120]))
-            continue
-        if page.status_code != 200:
-            kodiutils.log("client versions: %-22s HTTP %d"
-                          % (name, page.status_code))
-            continue
-        served = _PAGE_CLIENT_NAME.search(page.text)
-        version = _PAGE_CLIENT_VERSION.search(page.text)
-        ctx_name = _PAGE_CONTEXT_NAME.search(page.text)
-        # Where the fetch actually landed matters as much as what it said. A
-        # signed-out session is redirected to /welcome, which answers 200 and
-        # carries none of these fields -- so all six reading "-" says nothing
-        # about the agents and everything about the session. Without this the
-        # first run of this probe looked like a result.
-        landed = str(getattr(page, "url", "") or "")
-        kodiutils.log(
-            "client versions: %-22s we send id=%-3s v=%-18s | page says "
-            "name=%-16s version=%-18s contextName=%-4s | %d bytes from %s"
-            % (name, spec["id"], spec["version"],
-               served.group(1) if served else "-",
-               version.group(1) if version else "-",
-               ctx_name.group(1) if ctx_name else "-",
-               len(page.text), landed[:90]))
-        if not version and "/welcome" in landed:
-            kodiutils.log("client versions:   ^ that is the signed-out page; "
-                          "tv.youtube.com states no client version without a "
-                          "cookie jar, so this row says nothing about the "
-                          "agent")
-
-
-def credential():
-    """How this session authenticates, for callers outside Api.
-
-    Returns ``(headers, client_name)``. The licence proxy and the manifest
-    fetch talk to Google directly rather than through Api -- they build their
-    own requests around ISA's -- and both were signing with the cookie jar
-    unconditionally. On an OAuth session there is no jar, so both raised
-    "not signed in" and playback failed after a sign-in that had worked.
-
-    Raises AuthError when there is neither credential, which is what the
-    callers already expect.
-    """
-    from . import oauth
-    try:
-        cookies = auth.load()
-    except auth.AuthError:
-        token = oauth.access_token()
-        if not token:
-            raise
-        name = oauth.load().get("client_name") or OAUTH_CLIENT_NAME
-        return {"Authorization": "Bearer " + token}, name
-    return ({"Authorization": auth.authorization(cookies),
-             "Cookie": auth.cookie_header(cookies)}, CLIENT_NAME)
 
 
 class Api(object):
@@ -802,15 +654,6 @@ class Api(object):
                              len(self.cookies), len(jar),
                              ": %s" % detail[:300] if detail else ""))
 
-        if response.status_code in (401, 403) and self.bearer:
-            # Nothing to probe: the page probe asks whether a cookie jar is
-            # still alive, and a bearer session has no jar. Saying "import a
-            # fresh cookie export" here told the user to fix something that
-            # was not the problem.
-            raise auth.AuthError(
-                "%s returned HTTP %d for the OAuth session as %s.%s"
-                % (endpoint, response.status_code, asked,
-                   " (%s)" % detail if detail else ""))
         if response.status_code in (401, 403):
             # Four different explanations have been offered for a 401 here --
             # rotation, staleness, integrity cookies, a bad extraction -- all
@@ -896,27 +739,9 @@ class Api(object):
     # -- playback ---------------------------------------------------------
 
     def player(self, video_id, cpn, client_name=None):
-        response = self.call("player", {
-            "videoId": video_id,
-            "params": PLAYER_PARAMS,
-            "playbackContext": {
-                "contentPlaybackContext": {
-                    "html5Preference": "HTML5_PREF_WANTS",
-                    "signatureTimestamp": _signature_timestamp(),
-                    "referer": "%s/watch/%s" % (ORIGIN, video_id),
-                    "autonavState": "STATE_OFF",
-                    "autoCaptionsDefaultOn": False,
-                    "mdxContext": {},
-                },
-                "devicePlaybackCapabilities": {
-                    "supportsVp9Encoding": True,
-                    "supportXhr": True,
-                },
-            },
-            "cpn": cpn,
-            "racyCheckOk": True,
-            "captionParams": {},
-        }, params={"prettyPrint": "false"}, client_name=client_name)
+        response = self.call("player", player_body(video_id, cpn),
+                             params={"prettyPrint": "false"},
+                             client_name=client_name)
 
         status = response.get("playabilityStatus", {}) or {}
         if status.get("status") != "OK":
