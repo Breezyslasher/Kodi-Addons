@@ -2,7 +2,7 @@
 
 import xbmcgui
 
-from . import api, auth, kodiutils, license_proxy, manifest as manifest_mod, widevine
+from . import api, auth, cipher, kodiutils, license_proxy, manifest as manifest_mod, widevine
 
 ISA_ADDON = "inputstream.adaptive"
 
@@ -159,16 +159,17 @@ def build_item(player_response, label=None, art=None):
                          "%s|Content-Type=application/octet-stream|R{SSM}|" % licence)
 
         # YouTube's manifests carry no PSSH ISA can open a session from, which
-        # is what "Unhandled encrypted stream" means. Hand it the one the web
-        # player builds for itself; see lib/widevine.py. Live only -- the
-        # on-demand content-id prefix is not yet known, and a wrong PSSH is
-        # worse than none, since ISA would try it and fail on the licence
-        # instead of falling back.
-        if is_live:
-            video_id = details.get("videoId") or ""
-            if video_id:
-                item.setProperty("inputstream.adaptive.license_data",
-                                 widevine.build_pssh(video_id))
+        # is what "Unhandled encrypted stream" means, on live and on-demand
+        # alike. Hand it the one the web player builds for itself; the content
+        # id comes out of drmParams and the manifest URL. See lib/widevine.py.
+        content = widevine.content_id(streaming.get("drmParams", ""), manifest)
+        if content:
+            kodiutils.log("pssh content id: %s (live=%s)" % (content, is_live))
+            item.setProperty("inputstream.adaptive.license_data",
+                             widevine.build_pssh(content, is_live=is_live))
+        else:
+            kodiutils.log_error("no content id could be derived -- ISA will "
+                                "have no PSSH and will refuse the stream")
 
     # The lower of what the user asked for and what the licence covers.
     caps = [c for c in (_quality_cap(), _authorized_cap(streaming)) if c]
@@ -193,10 +194,107 @@ def build_item(player_response, label=None, art=None):
     return item
 
 
+def probe_clients(client, video_id):
+    """Ask every YouTube TV client identity for the same video and compare.
+
+    We have only ever used WEB_UNPLUGGED, which answers with SABR delivery and
+    formats whose URLs are locked behind a signatureCipher. On ordinary YouTube
+    the mobile and TV clients are commonly served plain URLs instead, which is
+    the whole reason the regular Kodi YouTube addon still works. If any
+    Unplugged client does the same here, that is a far shorter road than
+    implementing SABR.
+
+    Logs one line per client: whether formats carry a usable url, a
+    signatureCipher, or nothing but a SABR endpoint.
+    """
+    for name in sorted(api.UNPLUGGED_CLIENTS):
+        try:
+            response = client.player(video_id, api.new_cpn(), client_name=name)
+        except api.NotPlayable as exc:
+            kodiutils.log("client %-22s unplayable: %s" % (name, exc))
+            continue
+        except Exception as exc:
+            kodiutils.log("client %-22s failed: %s" % (name, exc))
+            continue
+        streaming = response.get("streamingData") or {}
+        formats = streaming.get("adaptiveFormats") or []
+        plain = sum(1 for f in formats if f.get("url"))
+        ciphered = sum(1 for f in formats if f.get("signatureCipher"))
+        kodiutils.log(
+            "client %-22s formats=%-3d url=%-3d cipher=%-3d dash=%-5s sabr=%-5s drm=%s"
+            % (name, len(formats), plain, ciphered,
+               bool(streaming.get("dashManifestUrl")),
+               bool(streaming.get("serverAbrStreamingUrl")),
+               bool(streaming.get("licenseInfos"))))
+
+
+def probe_cipher(client, video_id, response):
+    """Descramble a format's signatureCipher and see if the CDN serves it.
+
+    Every format comes as a signatureCipher rather than a URL, and we have only
+    ever used the DASH manifest's pre-signed segment URLs, which are refused.
+    These are a different family -- their sparams carry aitags and bui, matching
+    the requests the browser gets 200s for -- so whether they are served is the
+    open question this answers.
+    """
+    formats = (response.get("streamingData") or {}).get("adaptiveFormats") or []
+    ciphered = [f for f in formats
+                if f.get("signatureCipher") and "video/" in f.get("mimeType", "")]
+    if not ciphered:
+        kodiutils.log("cipher probe: no ciphered video formats to try")
+        return
+
+    headers = {"User-Agent": api.UA, "Cookie": auth.cookie_header(client.cookies)}
+    watch = "%s/watch/%s" % (api.ORIGIN, video_id)
+    try:
+        _url, plan = cipher.fetch_plan(client.session, headers, watch)
+    except cipher.CipherError as exc:
+        kodiutils.log_error("cipher probe: %s" % exc)
+        return
+    except Exception as exc:
+        kodiutils.log_error("cipher probe: could not read the player: %s" % exc)
+        return
+
+    chosen = min(ciphered, key=lambda f: f.get("height") or 9999)
+    try:
+        resolved = cipher.resolve(chosen["signatureCipher"], plan)
+    except cipher.CipherError as exc:
+        kodiutils.log_error("cipher probe: %s" % exc)
+        return
+
+    token = kodiutils.get_setting("po_token", "")
+    attempts = [("descrambled", resolved)]
+    if token:
+        attempts.append(("descrambled + pot",
+                         manifest_mod._add_param(resolved, "pot", token)))
+    attempts.append(("descrambled, no n",
+                     manifest_mod._strip_param(resolved, "n")))
+
+    import requests
+    for name, candidate in attempts:
+        try:
+            reply = requests.get(candidate, timeout=20, stream=True, headers={
+                "User-Agent": api.UA,
+                "Origin": api.ORIGIN,
+                "Referer": api.ORIGIN + "/",
+                "Range": "bytes=0-131071",
+            })
+            kodiutils.log("cipher probe [%-18s itag %s]: HTTP %d, %s bytes"
+                          % (name, chosen.get("itag"), reply.status_code,
+                             reply.headers.get("Content-Length", "?")))
+            reply.close()
+        except Exception as exc:
+            kodiutils.log_error("cipher probe [%s] failed: %s" % (name, exc))
+
+
 def prepare(client, video_id, label=None, art=None):
     """Call player, arm the licence proxy, and return a ListItem."""
     cpn = api.new_cpn()
+    if kodiutils.get_setting_bool("probe_clients", False):
+        probe_clients(client, video_id)
     response = client.player(video_id, cpn)
+    if kodiutils.get_setting_bool("probe_clients", False):
+        probe_cipher(client, video_id, response)
 
     streaming = response.get("streamingData") or {}
     details = response.get("videoDetails") or {}

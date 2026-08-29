@@ -42,9 +42,14 @@ PROTECTION_SCHEME_CENC = 0x63656E63  # 'cenc'
 
 WIDEVINE_SYSTEM_ID = bytes.fromhex("edef8ba979d64acea3c827dcd51d21ed")
 
-# YouTube TV live streams. On-demand uses a different content-id prefix that no
-# capture has pinned down yet, so build_pssh() is only trusted for live.
-LIVE_CONTENT_PREFIX = "YT_TV_BROADCAST:"
+# The content id is the manifest's own /id/ value, prefixed with its /source/
+# in upper case. Both halves are readable from data we already hold: the id is
+# drmParams field 1, and the source is in the manifest URL. Confirmed on live,
+# where "yt_tv_broadcast" + "z0sfuXTVx8g.0" reproduces the browser's PSSH
+# exactly; applied to on-demand, where the same two fields agree
+# ("youtube" + "15b3613898561ecd") but no captured licence request confirms
+# the result.
+DEFAULT_SOURCE = "yt_tv_broadcast"
 
 
 def decode_b64(value):
@@ -145,20 +150,57 @@ def crypto_period_index(now=None):
     return int(math.ceil((now or time.time()) / float(CRYPTO_PERIOD_SECONDS)))
 
 
-def pssh_data(video_id, period_index=None):
-    """The WidevinePsshData payload for a live YouTube TV stream."""
-    content_id = "%s%s.0" % (LIVE_CONTENT_PREFIX, video_id)
-    return (_field_bytes(F_CONTENT_ID, content_id)
-            + _field_varint(F_CRYPTO_PERIOD_INDEX,
-                            period_index if period_index is not None
-                            else crypto_period_index())
-            + _field_varint(F_PROTECTION_SCHEME, PROTECTION_SCHEME_CENC)
-            + _field_varint(F_CRYPTO_PERIOD_SECONDS, CRYPTO_PERIOD_SECONDS))
+def source_of(manifest_url):
+    """The ``/source/`` value out of a manifest URL."""
+    if not manifest_url or "/source/" not in manifest_url:
+        return DEFAULT_SOURCE
+    return manifest_url.split("/source/", 1)[1].split("/", 1)[0]
 
 
-def build_pssh(video_id, period_index=None):
+def content_id(drm_params, manifest_url):
+    """The PSSH content id: SOURCE:<id>.
+
+    drmParams field 1 carries the id, and it matches the manifest URL's own
+    /id/ in both a live and an on-demand capture.
+    """
+    identifier = ""
+    if drm_params:
+        try:
+            raw = decode_b64(_unquote(drm_params))
+        except Exception:
+            raw = b""
+        for field, value in read_fields(raw):
+            if field == 1 and isinstance(value, (bytes, bytearray)):
+                identifier = value.decode("utf-8", "replace")
+                break
+    if not identifier and manifest_url and "/id/" in manifest_url:
+        identifier = manifest_url.split("/id/", 1)[1].split("/", 1)[0]
+    if not identifier:
+        return ""
+    return "%s:%s" % (source_of(manifest_url).upper(), identifier)
+
+
+def pssh_data(content, is_live=True, period_index=None):
+    """The WidevinePsshData payload for one stream.
+
+    Live streams rotate keys daily, so they carry the period index and its
+    duration. On-demand does not rotate and omits both.
+    """
+    parts = [_field_bytes(F_CONTENT_ID, content)]
+    if is_live:
+        parts.append(_field_varint(
+            F_CRYPTO_PERIOD_INDEX,
+            period_index if period_index is not None else crypto_period_index()))
+    parts.append(_field_varint(F_PROTECTION_SCHEME, PROTECTION_SCHEME_CENC))
+    if is_live:
+        parts.append(_field_varint(F_CRYPTO_PERIOD_SECONDS,
+                                   CRYPTO_PERIOD_SECONDS))
+    return b"".join(parts)
+
+
+def build_pssh(content, is_live=True, period_index=None):
     """A complete ``pssh`` box, base64 encoded, for license_data."""
-    data = pssh_data(video_id, period_index)
+    data = pssh_data(content, is_live=is_live, period_index=period_index)
     body = (WIDEVINE_SYSTEM_ID
             + struct.pack(">I", len(data))
             + data)

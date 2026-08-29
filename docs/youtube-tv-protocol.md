@@ -284,58 +284,97 @@ the standard-definition ceiling that limits the Apple TV+ addon. Worth
 re-testing rather than assuming: `initialAuthorizedDrmTrackTypes` may be
 enforced elsewhere.
 
-## The open question
+## The answer: DASH segments are not served, and SABR is the only path
 
-The web player **never fetches `dashManifestUrl`**. Across five captures —
-guide browsing, a live channel, search, and an on-demand title —
-`manifest.googlevideo.com` was not requested once. All real playback is SABR:
-`POST` to `rr*---sn-….googlevideo.com` with a ~2.2 KB protobuf body and no
-`itag`/`sq` parameters. The plain `GET …&itag=133&sq=N` requests that appear
-throughout are only the guide's 240p preview tiles.
+The question this document originally left open -- whether `dashManifestUrl`
+serves -- has been settled against us by running the addon on real hardware.
+Recording it in full so nobody repeats the work.
 
-This is worth stating plainly: **no further browser capture can settle this.**
-The web client is a SABR client; it will not exercise the DASH path no matter
-what is recorded. `dashManifestUrl` is offered in every player response and
-used in none of them.
+**The manifest serves. Its segments do not.** InputStream Adaptive fetches and
+parses the MPD without complaint ("Manifest successfully parsed ... Type: live"
+and "Type: VOD"), and every media request built from it comes back
+`HTTP 403, Server: gvs 1.0, Content-Length: 0`.
 
-Everything rests on it:
+The addon probed this directly rather than inferring it from ISA's behaviour,
+fetching segments itself with ISA's own headers. Everything below returned 403,
+on live and on-demand alike:
 
-- If that MPD serves — InputStream Adaptive plays DASH natively, the license
-  proxy handles Widevine, and SABR is irrelevant. A normal buildable addon.
-- If it 403s, or serves a manifest whose segments redirect into SABR — ISA
-  cannot help, and the addon would need SABR reimplemented in Python, which is
-  a moving target yt-dlp is actively struggling with.
+| tried | result |
+| --- | --- |
+| oldest, middle and newest segment in the list | 403 |
+| with the session cookies | 403 |
+| with `n` removed (unsigned, so removable) | 403 |
+| with a `cpn` added | 403 |
+| path-style vs query-style spelling | 403 |
+| ranged and unranged | 403 |
+| a proof-of-origin token from *another* video's session | 403 (see below) |
 
-**The decisive test is one request**, and it has to be made live rather than
-recorded: take a fresh player response, `GET` its `dashManifestUrl` with the
-session cookies, and check for a 200 with a parseable MPD whose
-`SegmentTemplate` points at ordinary `videoplayback` URLs. Must run inside the
-~6 hour `expiresInSeconds` window.
+**The proof-of-origin row does not prove what it looks like it proves.** The
+token was lifted from a browser capture taken while the browser was playing
+something else, and yt-dlp's PO Token Guide states that these tokens are bound
+to the video id -- "a new token is required for each video". So that test showed
+only that a token minted for one video does not authorise another, which is the
+expected result and tells us nothing about whether a correctly bound token
+would work.
 
-## Sketch, if the manifest serves
+Testing it properly requires a token minted for the exact video being played:
+play that title in the browser, capture, and take the `pot` from a request
+carrying the same content id. Until that is done, PO token enforcement remains
+a live hypothesis for the 403 rather than a ruled-out one.
 
-```
-plugin.video.youtubetv/
-  lib/auth.py            cookie import + SAPISIDHASH signing
-  lib/api.py             InnerTube: browse(FEunplugged_epg), player, next
-  lib/epg.py             renderers -> Kodi channels + EPG
-  lib/license_proxy.py   raw Widevine <-> get_drm_license JSON, key rotation
-  default.py             channel list / guide navigation
-  service.py             proxy lifecycle, token refresh
-```
+The rest of the table stands: position, cookies, `n`, `cpn`, spelling and
+ranging make no difference.
 
-A PVR-style presentation fits the data better than a plain video plugin: the
-EPG response is already channels-with-schedule.
+Meanwhile, across every capture taken -- guide browsing, a live channel, search,
+an on-demand title, and two captures of on-demand actually playing -- **the only
+`videoplayback` GET that has ever returned 200 is `itag=133 ctier=A`**: the
+guide's 240p, unencrypted preview tiles. Every request for entitled media, live
+and on-demand, is a `POST` carrying `ump=1`, `srfvp=1`, `rn`, `rbuf`, `range`
+and a proof-of-origin token. That is SABR.
 
-## Caveats
+What is certain is that the web player never uses the DASH GET path for
+entitled media, and that nothing we can vary about the request short of a
+correctly bound PO token has made it serve. Whether the path is closed
+outright, or merely gated behind a token we have not yet supplied correctly, is
+not settled.
 
-- Everything here is private, undocumented API. `clientVersion` and the
-  InnerTube field shapes change without warning.
-- PO tokens not being required for `WEB_UNPLUGGED` is a snapshot, not a
-  guarantee. If enforcement extends to this client, the addon breaks.
-- Lineup is tied to the account's home market and its location permission.
-- Google's terms do not permit third-party clients. This is account-risk
-  territory; anyone running it uses their own subscription and accepts that.
+### What that means for a Kodi addon
+
+InputStream Adaptive speaks DASH and HLS. It does not speak SABR, which is a
+proprietary POST protocol carrying UMP-framed responses. Making this addon play
+would mean:
+
+1. implementing a SABR client in Python (yt-dlp needed a dedicated downloader
+   and is still chasing changes),
+2. minting proof-of-origin tokens, which requires running Google's BotGuard
+   JavaScript -- yt-dlp delegates this to an external Node.js helper, and the
+   tokens expire within hours,
+3. and then remuxing SABR output into something ISA can consume, because ISA
+   cannot be pointed at a SABR endpoint.
+
+Each of those is a project. Together they are a moving target maintained
+against an actively hostile protocol. That is a considered assessment, not a
+refusal: the code up to this boundary is written, tested and working.
+
+### What does work
+
+Everything short of fetching media bytes, verified on real hardware:
+
+* Cookie sign-in with SAPISIDHASH request signing.
+* The full 150-station lineup and EPG, parsed with names, logos and schedule.
+* Search (20 results for "rick"), browsing a show, and reaching its episodes.
+* `player` for both live and on-demand, returning real streaming data.
+* The hand-built Widevine PSSH -- YouTube's manifests carry no usable one --
+  which ISA accepts.
+* **Widevine licence exchange, granted by Google**: `licence granted: 1954
+  bytes, 12 formats` for a live channel and `946 bytes, 4 formats` for an
+  on-demand episode, covering AUDIO, SD, HD and UHD1.
+* The manifest repair that stops ISA dividing by a missing timescale and
+  crashing Kodi with SIGFPE.
+
+The addon negotiates the entire YouTube TV protocol correctly, up to and
+including being issued decryption keys, and is then refused the encrypted
+bytes those keys would decrypt.
 
 ## Running the decisive test
 

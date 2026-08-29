@@ -37,6 +37,79 @@ UA = ("Mozilla/5.0 (X11; Linux x86_64; rv:154.0) "
 EPG_BROWSE_ID = "FEunplugged_epg"
 TIMEOUT = 30
 
+# YouTube TV is one surface of InnerTube with several client identities. Only
+# WEB_UNPLUGGED has been used in anger, and it is the one answering with SABR
+# delivery and signature-ciphered formats; mobile and TV clients are commonly
+# served plain URLs on ordinary YouTube, which is why they are worth asking.
+#
+# Ids and versions from the YouTube-Internal-Clients survey. Each carries its
+# own User-Agent, which is not decoration: InnerTube identifies a mobile client
+# by its app User-Agent as much as by the context, and sending a browser one
+# with an Android context is rejected with HTTP 400. yt-dlp takes the request
+# header from context.client.userAgent for exactly this reason, and so do we.
+UNPLUGGED_CLIENTS = {
+    "WEB_UNPLUGGED": {
+        "id": "41",
+        "version": CLIENT_VERSION,
+        "context": {"platform": "DESKTOP", "userAgent": UA},
+    },
+    "ANDROID_UNPLUGGED": {
+        "id": "29",
+        "version": "6.36",
+        "context": {
+            "platform": "MOBILE",
+            "userAgent": ("com.google.android.apps.youtube.unplugged/6.36"
+                          " (Linux; U; Android 14) gzip"),
+            "androidSdkVersion": 34,
+            "osName": "Android",
+            "osVersion": "14",
+        },
+    },
+    "IOS_UNPLUGGED": {
+        "id": "33",
+        "version": "6.36",
+        "context": {
+            "platform": "MOBILE",
+            "userAgent": ("com.google.ios.youtubeunplugged/6.36"
+                          " (iPhone16,2; U; CPU iOS 17_5 like Mac OS X)"),
+            "deviceMake": "Apple",
+            "deviceModel": "iPhone16,2",
+            "osName": "iPhone",
+            "osVersion": "17.5.0.21F79",
+        },
+    },
+    "TVHTML5_UNPLUGGED": {
+        "id": "65",
+        "version": "6.36",
+        "context": {
+            "platform": "TV",
+            "userAgent": ("Mozilla/5.0 (ChromiumStylePlatform) Cobalt/25.master"
+                          " (unlike Gecko) Starboard/16"),
+        },
+    },
+    "TV_UNPLUGGED_ANDROID": {
+        "id": "63",
+        "version": "1.37",
+        "context": {
+            "platform": "TV",
+            "userAgent": ("com.google.android.apps.youtube.unplugged.tv/1.37"
+                          " (Linux; U; Android 14) gzip"),
+            "androidSdkVersion": 34,
+            "osName": "Android",
+            "osVersion": "14",
+        },
+    },
+    "TV_UNPLUGGED_CAST": {
+        "id": "58",
+        "version": "0.1",
+        "context": {"platform": "TV", "userAgent": UA},
+    },
+}
+
+
+def client_spec(name):
+    return UNPLUGGED_CLIENTS.get(name) or UNPLUGGED_CLIENTS[CLIENT_NAME]
+
 
 class ApiError(Exception):
     """The API answered, but not with what we asked for."""
@@ -75,20 +148,22 @@ def new_cpn():
     return "".join(random.choice(alphabet) for _ in range(16))
 
 
-def context(location=True):
+def context(location=True, client_name=None):
+    name = client_name or CLIENT_NAME
+    spec = client_spec(name)
+    version = _client_version() if name == CLIENT_NAME else spec["version"]
+
     client = {
         "hl": "en",
         "gl": "US",
-        "clientName": CLIENT_NAME,
-        "clientVersion": _client_version(),
-        "platform": "DESKTOP",
-        "userAgent": UA,
+        "clientName": name,
+        "clientVersion": version,
         "unpluggedAppInfo": {"filterModeType": "UNPLUGGED_FILTER_MODE_TYPE_NONE"},
     }
+    client.update(spec["context"])
     if location:
         # The lineup is market-dependent -- locals follow the account's home
-        # area -- and the web player always sends this block. Omitting it has
-        # not been tested; sending it costs nothing.
+        # area -- and the web player always sends this block.
         client["unpluggedLocationInfo"] = {
             "clientPermissionState": 2,
             "timezone": time.strftime("%Z") or "UTC",
@@ -102,16 +177,21 @@ class Api(object):
         self.session = requests.Session()
         self._visitor_id = kodiutils.get_setting("visitor_id", "") or _baked_visitor_id()
 
-    def _headers(self):
+    def _headers(self, client_name=None):
+        name = client_name or CLIENT_NAME
+        spec = client_spec(name)
+        client_id = spec["id"]
+        version = _client_version() if name == CLIENT_NAME else spec["version"]
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": UA,
+            # Must match the client we claim to be, or InnerTube answers 400.
+            "User-Agent": spec["context"].get("userAgent", UA),
             "Accept": "*/*",
             "Origin": ORIGIN,
             "Referer": ORIGIN + "/",
             "X-Origin": ORIGIN,
-            "X-YouTube-Client-Name": CLIENT_NAME_ID,
-            "X-YouTube-Client-Version": _client_version(),
+            "X-YouTube-Client-Name": client_id,
+            "X-YouTube-Client-Version": version,
             "X-Goog-AuthUser": "0",
             "Authorization": auth.authorization(self.cookies),
             "Cookie": auth.cookie_header(self.cookies),
@@ -120,14 +200,15 @@ class Api(object):
             headers["X-Goog-Visitor-Id"] = self._visitor_id
         return headers
 
-    def call(self, endpoint, body, params=None):
+    def call(self, endpoint, body, params=None, client_name=None):
         url = BASE + endpoint
         payload = dict(body)
-        payload.setdefault("context", context())
+        payload.setdefault("context", context(client_name=client_name))
         try:
             response = self.session.post(url, params=params or {"alt": "json"},
                                          data=json.dumps(payload),
-                                         headers=self._headers(), timeout=TIMEOUT)
+                                         headers=self._headers(client_name),
+                                         timeout=TIMEOUT)
         except requests.RequestException as exc:
             raise ApiError("could not reach %s: %s" % (endpoint, exc))
 
@@ -136,7 +217,20 @@ class Api(object):
                                  "cookies have probably expired"
                                  % response.status_code)
         if response.status_code != 200:
-            raise ApiError("%s returned HTTP %d" % (endpoint, response.status_code))
+            # InnerTube explains itself in the body -- which field it did not
+            # like, which client it will not answer for. Discarding that turns
+            # a specific complaint into a bare number and invites guessing at
+            # the context instead of reading the answer.
+            detail = ""
+            try:
+                body = response.json()
+                error = body.get("error") or {}
+                detail = error.get("message") or json.dumps(body)[:400]
+            except ValueError:
+                detail = (response.text or "")[:400]
+            raise ApiError("%s returned HTTP %d%s"
+                           % (endpoint, response.status_code,
+                              ": %s" % detail if detail else ""))
 
         # Remember the visitor id Google hands back so later calls look like a
         # continuing session rather than a fresh client each time.
@@ -189,7 +283,7 @@ class Api(object):
 
     # -- playback ---------------------------------------------------------
 
-    def player(self, video_id, cpn):
+    def player(self, video_id, cpn, client_name=None):
         response = self.call("player", {
             "videoId": video_id,
             "playbackContext": {
@@ -206,7 +300,7 @@ class Api(object):
             "cpn": cpn,
             "racyCheckOk": True,
             "captionParams": {},
-        }, params={"prettyPrint": "false"})
+        }, params={"prettyPrint": "false"}, client_name=client_name)
 
         status = response.get("playabilityStatus", {}) or {}
         if status.get("status") != "OK":

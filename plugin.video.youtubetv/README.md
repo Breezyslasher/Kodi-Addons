@@ -17,27 +17,42 @@ TV subscription, played through InputStream Adaptive with Widevine DRM.
 
 ## Status
 
-The API side is derived from real captures of a signed-in session and is
-verified against them: the guide parser reads all 150 stations out of a real
-EPG response, and the player wiring builds correctly from real live and
-on-demand responses. The protocol is written up in
+Playback does not work, and the evidence says it cannot without a large
+addition. Everything up to the encrypted media bytes does work, verified on
+real hardware (Kodi 21.3):
+
+* cookie sign-in, the full 150-channel lineup and EPG, search, browsing shows
+  to their episodes;
+* the `player` call for live and on-demand;
+* a hand-built Widevine PSSH that InputStream Adaptive accepts;
+* the Widevine licence exchange -- Google grants the keys.
+
+Then every request for an actual media segment is refused
+`HTTP 403 (Server: gvs 1.0)`. This was tested exhaustively from inside the
+addon: oldest/middle/newest segment, with and without cookies, with `n`
+removed, with a `cpn` added, path- and query-style, ranged and not. All 403.
+
+One test was not conclusive: a proof-of-origin token was injected, but it came
+from a browser session playing a different title, and these tokens are bound to
+the video id. That test showed only that another video's token does not work.
+
+The reason is that YouTube TV no longer delivers entitled media over the DASH
+GET path InputStream Adaptive understands. Across every capture, the only
+`videoplayback` GET that returns 200 is the guide's 240p unencrypted preview
+tiles; all real media, live and on-demand, is fetched by SABR -- a proprietary
+POST protocol with UMP-framed responses and a proof-of-origin token minted by
+Google's BotGuard JavaScript. `dashManifestUrl` is still generated and signed
+but its segments are not served. InputStream Adaptive cannot speak SABR.
+
+Making this play would mean implementing a SABR client, running BotGuard to
+mint tokens (they expire within hours), and remuxing the result into something
+ISA can read -- three separate projects against an actively changing protocol.
+The full analysis, including the exact requests tried, is in
 [docs/youtube-tv-protocol.md](../docs/youtube-tv-protocol.md).
 
-What has **not** been confirmed is that the stream actually plays. Every
-`player` response offers a `dashManifestUrl` next to Google's own
-`serverAbrStreamingUrl`, and the web player always takes the SABR path -- so
-the DASH route this addon depends on is offered but lightly travelled. If
-Google does not serve it to a non-browser client, this addon cannot work and
-there is no fallback short of reimplementing SABR, which is a moving target.
-
-Settle it before expecting anything to play:
-
-```
-python3 tools/youtube_tv_check_dash.py cookies.txt --save-mpd live.mpd
-```
-
-Exit status 0 means the manifest serves segments InputStream Adaptive can
-fetch.
+The addon is left as a complete, working implementation of everything up to
+that boundary, because the boundary is YouTube's delivery protocol, not the
+code.
 
 ## Requirements
 

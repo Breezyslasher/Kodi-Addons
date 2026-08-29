@@ -3,6 +3,11 @@
 	<section id="plugin.video.youtubetv">
 		<category id="diagnostics" label="30030">
 			<group id="1">
+				<setting id="probe_clients" type="boolean" label="30033" help="30034">
+					<level>0</level>
+					<default>false</default>
+					<control type="toggle"/>
+				</setting>
 				<setting id="dump_manifest" type="boolean" label="30031" help="30032">
 					<level>0</level>
 					<default>false</default>
@@ -40,6 +45,12 @@
 					<default>57814</default>
 					<constraints><minimum>1024</minimum><maximum>65535</maximum></constraints>
 					<control type="edit" format="integer"/>
+				</setting>
+				<setting id="po_token" type="string" label="30026" help="30027">
+					<level>2</level>
+					<default></default>
+					<constraints><allowempty>true</allowempty></constraints>
+					<control type="edit" format="string"/>
 				</setting>
 				<setting id="visitor_id" type="string" label="30025">
 					<level>3</level>

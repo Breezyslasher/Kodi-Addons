@@ -164,6 +164,8 @@ class _Handler(BaseHTTPRequestHandler):
             return
         try:
             body = manifest_mod.patch(response.content)
+            body = manifest_mod.add_po_token(
+                body, kodiutils.get_setting("po_token", ""))
         except Exception as exc:
             # A manifest we failed to repair still beats no manifest.
             kodiutils.log_error("manifest patch failed, passing it through: %s"
