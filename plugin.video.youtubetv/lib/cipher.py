@@ -77,24 +77,29 @@ def _find_transform_name(js):
 def describe(js):
     """What the player script looks like where a transform should be.
 
-    Written for the case this has already hit: the patterns above are drawn
-    from player releases that have since changed, and guessing at a new one
-    from nothing is how three rounds get wasted. Every scrambler splits the
-    signature into characters and rejoins it, so the text around each
-    `.split("")` is where the answer is.
+    The first version of this counted the literal string "a.reverse()" and
+    found none, because this player does not name its parameter a -- which said
+    nothing useful. A scrambler is better identified by what it must do: split
+    a string into characters and rejoin it. Only windows containing both are
+    reported, which excludes the array helpers that merely split.
     """
     notes = ["player script: %d bytes" % len(js)]
-    for needle in ('.split("")', ".split(\"\")", "a.reverse()", "a.splice(",
-                   "decodeURIComponent"):
-        notes.append("  %-20s x%d" % (needle, js.count(needle)))
+    for needle in ('.split("")', '.join("")', ".reverse()", ".splice("):
+        notes.append("  %-13s x%d" % (needle, js.count(needle)))
 
-    for index, match in enumerate(re.finditer(r'\.split\(\s*""\s*\)', js)):
-        if index >= 4:
+    shown = 0
+    for match in re.finditer(r'\.join\(\s*""\s*\)', js):
+        window = js[max(0, match.start() - 380):match.end() + 20]
+        if '.split("")' not in window:
+            continue
+        shown += 1
+        notes.append("  candidate %d: ...%s..."
+                     % (shown, " ".join(window.split())))
+        if shown >= 3:
             break
-        start = max(0, match.start() - 140)
-        end = min(len(js), match.end() + 200)
-        snippet = js[start:end].replace("\n", " ")
-        notes.append("  context %d: ...%s..." % (index + 1, snippet))
+    if not shown:
+        notes.append('  nothing splits and rejoins a string -- this player may '
+                     'not descramble signatures at all')
     return "\n".join(notes)
 
 

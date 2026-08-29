@@ -36,6 +36,14 @@ One test was not conclusive: a proof-of-origin token was injected, but it came
 from a browser session playing a different title, and these tokens are bound to
 the video id. That test showed only that another video's token does not work.
 
+Three other routes were tried and closed. The other five Unplugged client
+identities are refused (400/403/404) where the web client is served. Every
+format arrives as a signatureCipher rather than a URL, so the regular YouTube
+addon's approach was implemented -- and the tv.youtube.com player turns out to
+contain no signature descrambling at all: 2.5 MB of it, and nothing that splits
+a string into characters and rejoins it. It passes the scrambled signature into
+SABR untouched. A proof-of-origin token changed nothing either.
+
 The reason is that YouTube TV no longer delivers entitled media over the DASH
 GET path InputStream Adaptive understands. Across every capture, the only
 `videoplayback` GET that returns 200 is the guide's 240p unencrypted preview

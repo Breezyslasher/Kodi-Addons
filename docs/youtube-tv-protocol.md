@@ -338,6 +338,132 @@ correctly bound PO token has made it serve. Whether the path is closed
 outright, or merely gated behind a token we have not yet supplied correctly, is
 not settled.
 
+### Every delivery path, and why each is closed
+
+Four ways to reach the media were tried. All are gated behind SABR.
+
+**1. The DASH manifest.** Served and parsed, its segments refused with
+`HTTP 403 (Server: gvs 1.0)` -- every position in the list, with and without
+cookies, with `n` removed, with a `cpn` added, in path and query spelling,
+ranged and unranged, and with a proof-of-origin token injected into all twelve
+BaseURLs. Live and on-demand alike.
+
+**2. Other client identities.** WEB_UNPLUGGED is one of six Unplugged clients.
+ANDROID_UNPLUGGED, IOS_UNPLUGGED and TVHTML5_UNPLUGGED answer
+`HTTP 400: Request contains an invalid argument` even with their own app
+User-Agents and platform context fields; TV_UNPLUGGED_ANDROID answers 403 and
+TV_UNPLUGGED_CAST 404, on the same cookie jar that serves WEB_UNPLUGGED
+without complaint. The 400 body names no field, so what those clients want is
+not recoverable from the response.
+
+**3. The signature cipher.** Every format arrives as a `signatureCipher`
+(35 of 35 on-demand), never a plain `url` -- the ordinary YouTube mechanism,
+where a scrambled `s` is descrambled by a function lifted from the player
+JavaScript and written back as `sig`. That is what the regular Kodi YouTube
+addon does, and it was the most promising lead precisely because these URLs are
+a different family from the manifest's: their `sparams` carry `aitags` and
+`bui`, matching the requests the browser is served.
+
+The addon fetched the watch page, found the player script and read all
+2,574,392 bytes of it. There is no scrambler in it. `join("")` appears 23
+times and `reverse()` twice, and no window anywhere in the file both splits a
+string into characters and rejoins it. The two `reverse()` sites are a version
+string being split on `"."` and a list of itags being reordered. The
+tv.youtube.com player never unscrambles `s`; it passes it into the SABR
+request, which is why the bundle carries no descrambling code at all.
+
+**4. Proof-of-origin tokens -- ruled out.** An earlier reading of this was
+wrong twice over. Injecting a browser-minted token changed nothing, and that
+test looked weak because tokens bind to the video id and the one available had
+been minted for another title. But a later capture of the browser playing the
+*same* title settles it from the other side: 22 GETs and 2 POSTs, `pot` on none
+of them, and a POST returning 15,010,219 bytes with status 200. The web player
+fetched the media with no proof-of-origin token at all. It is not the gate, and
+obtaining a correctly bound one would prove nothing.
+
+The only `videoplayback` GET that has ever returned 200, across every capture,
+is `itag=133 ctier=A` -- the guide's 240p unencrypted preview tiles.
+
+### SABR is not derived, it is handed to us
+
+Worth stating plainly, because it changes what a future attempt would have to
+build. `serverAbrStreamingUrl`, which every player response already contains,
+is byte for byte the URL the browser POSTs to:
+
+```
+player response  id = o-AKi9TYRHMgHBmnID__PMDWRnuVnhDlOzx6TUJotbYGkd  sabr = 1
+browser POST     id = o-AKi9TYRHMgHBmnID__PMDWRnuVnhDlOzx6TUJotbYGkd  sabr = 1
+```
+
+Same host, same opaque id. That id is per-session and is *not* the content id
+(`15b3613898561ecd`) that every DASH URL carries -- they address different
+resources, which is why no amount of repairing the DASH URLs could ever have
+reached the media.
+
+So the endpoint needs no reverse engineering; we are given it on every play and
+have never used it. What is missing is only the conversation: a protobuf request
+body describing which formats and byte ranges are wanted, and a UMP response
+parser to cut the returned stream into segments. One captured POST returned 15 MB
+in a single response, so the chunking is coarse.
+
+That is a smaller and better-defined problem than "implement SABR" suggested
+earlier in this document, though still a substantial one: the protobuf schema is
+undocumented and yt-dlp's implementation of it is a 227-commit branch that has
+not merged.
+
+### The request was not the problem
+
+Worth recording, because it is the obvious suspicion and it has been settled
+rather than argued about. Our player request was diffed against the browser's
+own, same account and same client, captured minutes apart:
+
+|  | browser | addon |
+| --- | --- | --- |
+| client | WEB_UNPLUGGED | WEB_UNPLUGGED |
+| formats | 35 | 35 |
+| plain `url` | 0 | 0 |
+| `signatureCipher` | 35 | 35 |
+| dash / sabr offered | yes / yes | yes / yes |
+
+Identical. The addon is not served a lesser response for asking differently.
+The browser, holding that same ciphered response, then issues SABR POSTs and
+four `itag=133 ctier=A` preview-tile GETs, and fetches no DASH segment either.
+
+The diff did find two real defects, both since fixed: `clientVersion` and
+`signatureTimestamp` were pinned from a capture and already a release stale
+within a day, and eighteen fields the web player sends were missing entirely,
+including the top-level `params`. The request now matches field for field, on a
+`clientVersion` and `signatureTimestamp` read live from the page -- and the
+response and the 403 are both unchanged. Whatever refuses these URLs, it is not
+the shape of the request.
+
+### The DRM session is now correct too
+
+The Apple TV addon's playbook (`CLAUDE.md`) describes this failure in its
+section 3: a service that sends no KEYID and a PSSH whose key id ISA cannot
+read, leaving ISA to open a session with an all-zero KID. That is exactly
+`ConvertKidStrToBytes: Cannot convert KID ""`, on every play.
+
+The fix works, and it was a real defect. Key ids are recorded from the licence
+response and supplied on the next play through `pre_init_data`
+(`{PSSH}|{KID}`), and the second play of a title measurably gets further than
+the first:
+
+    Opening stream: 1002 source: 256
+    Finding audio codec for: 86018
+    CDVDAudioCodecFFmpeg::Open() Successful opened audio decoder aac
+    Creating audio thread
+
+None of which had ever happened before -- ISA had never reached a second
+stream, let alone opened a decoder. The second play also makes no licence
+request, because the pre-initialised session already holds the keys.
+
+So ISA now opens a correct DRM session, resolves both streams, and starts a
+decoder. It then asks for the media and is refused, exactly as before, on both
+video and audio. Every client-side defect that was found has been fixed, and
+the 403 is unmoved by all of them: it is not a consequence of anything the
+addon was doing wrong.
+
 ### What that means for a Kodi addon
 
 InputStream Adaptive speaks DASH and HLS. It does not speak SABR, which is a
