@@ -16,6 +16,36 @@ KODI_BRANCH=${KODI_BRANCH:-Omega}
 WORK=${WORK:-$HOME/isa21-build}
 HERE=$(cd "$(dirname "$0")" && pwd)
 
+# The patch, wherever it landed. A browser may have saved it beside the script
+# or somewhere else entirely, or renamed it; say where we looked rather than
+# failing with one path the user did not choose.
+find_patch() {
+  local name="0001-probe-the-cdm-call.patch"
+  local tried=()
+  for candidate in "${PATCH:-}" "$HERE/$name" "$PWD/$name" \
+                   "$HOME/Downloads/$name" "$HOME/$name"; do
+    [ -n "$candidate" ] || continue
+    tried+=("$candidate")
+    if [ -f "$candidate" ]; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+  # Last resort: anything that looks like it, near where we are.
+  local found
+  found=$(find "$HERE" "$PWD" "$HOME/Downloads" -maxdepth 1 \
+            -name "*probe-the-cdm-call*.patch" 2>/dev/null | head -1)
+  if [ -n "$found" ]; then
+    printf '%s' "$found"
+    return 0
+  fi
+  echo "Could not find $name. Looked in:" >&2
+  printf '  %s\n' "${tried[@]}" >&2
+  echo >&2
+  echo "Point at it directly:  PATCH=/path/to/$name $0" >&2
+  return 1
+}
+
 echo "==> working in $WORK"
 mkdir -p "$WORK"
 cd "$WORK"
@@ -27,9 +57,10 @@ cd inputstream.adaptive
 git fetch --depth 1 origin tag "$ISA_TAG"
 git checkout -f "$ISA_TAG"
 git checkout -- .
-echo "==> applying the probe patch"
-git apply --check "$HERE/0001-probe-the-cdm-call.patch"
-git apply "$HERE/0001-probe-the-cdm-call.patch"
+PATCH_FILE=$(find_patch)
+echo "==> applying $PATCH_FILE"
+git apply --check "$PATCH_FILE"
+git apply "$PATCH_FILE"
 
 cd "$WORK"
 rm -rf build && mkdir build && cd build
