@@ -1,0 +1,280 @@
+"""Where js2py answers differently from a JavaScript engine.
+
+js2py is an ES5 interpreter written in Python, and BotGuard is a bytecode
+VM that runs entirely on top of one. Without these it stops a third of the
+way through its program and reports failure; with them it produces a
+snapshot byte for byte identical to the one V8 produces from the same
+challenge -- checked by running both against one cached challenge with the
+randomness pinned and diffing the traces.
+
+Each was found that way rather than by reading the spec: run the same
+expression under node and under js2py, diff, fix what differs. tools/js2py
+carries the conformance corpus and the differential tracer.
+
+They are applied by monkeypatching so the vendored library stays the
+released one, and apply() is safe to call more than once.
+"""
+
+import math
+
+_applied = False
+
+
+def apply():
+    """Correct js2py in place. Idempotent."""
+    global _applied
+    if _applied:
+        return
+    _applied = True
+    import js2py.base as base
+    import js2py.constructors.jsobject as jsobject
+    from js2py.base import Js, undefined
+
+    # -- key order -------------------------------------------------------
+    # JS enumerates integer-like keys first, ascending, then the rest in
+    # insertion order. js2py sorts every key alphabetically in for-in and
+    # uses plain insertion order in Object.keys, so {b:1, 2:1, a:1, 1:1}
+    # enumerates as 1,2,a,b and keys as b,2,a,1 where a browser says
+    # 1,2,b,a both times. Anything that hashes an object's keys sees a
+    # different object.
+    def order(names):
+        numeric, rest = [], []
+        for name in names:
+            if name.isdigit() and (name == "0" or name[0] != "0") \
+                    and int(name) < 4294967295:
+                numeric.append(name)
+            else:
+                rest.append(name)
+        numeric.sort(key=int)
+        return numeric + rest
+
+    def __iter__(self):
+        if not self.IS_CHILD_SCOPE:
+            cands = order([name for name in self.own
+                           if self.own[name]['enumerable']])
+        else:
+            cands = order(list(self.own))
+        for cand in cands:
+            check = self.own.get(cand)
+            if check and check['enumerable']:
+                yield Js(cand)
+
+    base.PyJs.__iter__ = __iter__
+
+    # -- Function.prototype.name -----------------------------------------
+    # js2py names a hoisted function PyJsHoisted_f_ and an inline one after
+    # its slot, so fn.name is its own translation artefact rather than the
+    # name the source gave it.
+    original_init = base.PyJsFunction.__init__
+
+    def __init__(self, func, prototype=None, extensible=True, source=None):
+        original_init(self, func, prototype, extensible, source)
+        name = self.func_name or ''
+        if name.startswith('PyJsHoisted_') and name.endswith('_'):
+            name = name[len('PyJsHoisted_'):-1]
+        elif name.startswith('PyJs_') and name.endswith('_'):
+            name = name[len('PyJs_'):-1].rstrip('0123456789').rstrip('_')
+            if name == 'anonymous':
+                name = ''
+        if name != self.func_name:
+            self.func_name = name
+            if self.own.get('name'):
+                self.own['name']['value'] = Js(name)
+            elif name:
+                self.define_own_property('name', {
+                    'value': Js(name), 'writable': False,
+                    'enumerable': False, 'configurable': True})
+
+    base.PyJsFunction.__init__ = __init__
+
+    # -- eval, from anywhere ---------------------------------------------
+    # js2py takes the calling scope from inspect.stack()[3] -- a fixed
+    # depth. It is right only when eval is called directly from translated
+    # code at exactly that depth; every other shape either picks somebody
+    # else's scope or raises KeyError: 'var', a *Python* exception that no
+    # JavaScript try/catch can catch. `(0, eval)(x)`, `var e = eval; e(x)`,
+    # eval.call, eval inside a callback: all of them.
+    #
+    # BotGuard evals throughout its run. Fixing this is what takes the VM
+    # from stopping a third of the way through to finishing.
+    import inspect as _inspect
+    import js2py.host.jseval as _jseval
+
+    class _Stack(object):
+        """inspect, with stack()[3] made to mean the global scope.
+
+        The outermost js2py scope, not the innermost: BotGuard calls eval
+        as `(0, eval)(code)`, and an indirect eval runs in *global* scope.
+        Handing it the caller's scope instead leaks the VM's own minified
+        locals into the snippet -- so `O` resolves, the probe that has to
+        throw "O is not defined" quietly succeeds, and the VM skips the two
+        instructions that follow it.
+        """
+
+        def __getattr__(self, name):
+            return getattr(_inspect, name)
+
+        def stack(self, *args):
+            frames = _inspect.stack()
+            found = [r for r in frames[1:] if "var" in r[0].f_locals]
+            return [found[-1]] * 4 if found else frames
+
+    _jseval.inspect = _Stack()
+
+    # -- what an error says ----------------------------------------------
+    # BotGuard throws on purpose and keeps what came back: a run collects
+    # "Cannot read properties of undefined (reading 'String')",
+    # "w.apply is not a function", "SH is not defined" and half a dozen
+    # SyntaxErrors, and puts them in the snapshot. js2py words all of them
+    # differently, so say them the way an engine says them.
+    import re as _re
+    _null_prop = _re.compile(
+        r"Undefined and null dont have properties \(tried getting "
+        r"property '(.*)'\)$")
+    _not_fn = _re.compile(
+        r"'(\w+)' is not a function \(tried calling property '(.*)' "
+        r"of '(.*)'\)$")
+    _line = _re.compile(r"^Line \d+: ")
+    _original = base.MakeError
+
+    def MakeError(name, message="", *rest):
+        text = message or ""
+        found = _null_prop.match(text)
+        if found:
+            text = "Cannot read properties of undefined (reading '%s')" \
+                % found.group(1)
+        else:
+            found = _not_fn.match(text)
+            if found:
+                text = "%s is not a function" % found.group(2)
+            elif name == "SyntaxError":
+                text = _line.sub("", text)
+        return _original(name, text, *rest)
+
+    base.MakeError = MakeError
+    for module in (base, jsobject):
+        module.MakeError = MakeError
+
+    # -- Object.getOwnPropertyNames ---------------------------------------
+    # It answered obj.own.keys() -- a Python view, handed to JS unconverted,
+    # with no length and no array methods on it. .sort() on the result was
+    # "'undefined' is not a function", so nothing could use it. It has to be
+    # replaced on the constructor itself: fill_prototype copied the original
+    # onto Object when js2py was imported, so patching the class does
+    # nothing.
+    def getOwnPropertyNames(obj):
+        if not obj.is_object():
+            raise base.MakeError(
+                'TypeError',
+                'Object.getOwnPropertyNames called on non-object')
+        return Js(order(list(obj.own)))
+
+    jsobject.Object.put('getOwnPropertyNames',
+                        base.PyJsFunction(getOwnPropertyNames,
+                                          base.FunctionPrototype))
+
+
+# The rest cannot be patched from Python: fill_prototype copies each method
+# onto its constructor when js2py is imported, so changing the class after
+# that changes nothing. They are replaced in JavaScript instead, on the
+# context, before anything else runs.
+FIXES_JS = """
+// Math.round: JS rounds half up, always. Python rounds half to even, so
+// js2py said round(-1.5) = -2 and round(2.5) = 2 where a browser says -1
+// and 3.
+(function () {
+  var floor = Math.floor;
+  Math.round = function (x) {
+    x = Number(x);
+    if (x !== x) return NaN;
+    if (x === Infinity || x === -Infinity) return x;
+    return floor(x + 0.5);
+  };
+})();
+
+// Date.now returns a Date object rather than a number: js2py binds it to
+// the same helper that builds a date. Everything downstream of it is then
+// a string concatenation instead of arithmetic -- BotGuard sets
+// MF = performance.timeOrigin, whose value is Date.now(), and its clock
+// reads "Sat Aug 29 2026 08:37:17 GMT+0000 (UTC)12" instead of a number.
+Date.now = function () { return new Date().getTime(); };
+
+// An error with no stack. js2py has none at all, and the VM keeps
+// message + ":" + stack for every throw it makes on purpose, so half of
+// what it collects was the string "undefined".
+(function () {
+  try {
+    Object.defineProperty(Error.prototype, 'stack', {
+      configurable: true,
+      get: function () {
+        return String(this.name) + ': ' + String(this.message) +
+               '\\n    at <anonymous>:1:1';
+      }
+    });
+  } catch (e) {}
+})();
+
+// Object.keys and getOwnPropertyNames: js2py returned insertion order and,
+// for getOwnPropertyNames, a Python list with no array methods on it at
+// all -- .sort() on the result was "'undefined' is not a function".
+// for-in is fixed in Python, so build both on it.
+(function () {
+  function order(names) {
+    var numeric = [], rest = [], i, n;
+    for (i = 0; i < names.length; i++) {
+      n = names[i];
+      if (/^(0|[1-9][0-9]*)$/.test(n) && +n < 4294967295) numeric.push(n);
+      else rest.push(n);
+    }
+    numeric.sort(function (a, b) { return a - b; });
+    return numeric.concat(rest);
+  }
+  Object.keys = function (o) {
+    var out = [], k;
+    for (k in o) if (Object.prototype.hasOwnProperty.call(o, k)) out.push(k);
+    return order(out);
+  };
+})();
+
+// (0.5).toString(2) was "0": js2py truncated to an integer first.
+(function () {
+  var digits = '0123456789abcdefghijklmnopqrstuvwxyz';
+  var native_ = Number.prototype.toString;
+  Number.prototype.toString = function (radix) {
+    if (radix === undefined || radix === 10) return native_.call(this, radix);
+    var v = Number(this);
+    if (v !== v) return 'NaN';
+    if (v === Infinity) return 'Infinity';
+    if (v === -Infinity) return '-Infinity';
+    var sign = v < 0 ? '-' : '';
+    v = Math.abs(v);
+    var whole = Math.floor(v), fraction = v - whole, out = '';
+    while (whole >= 1) {
+      out = digits.charAt(whole % radix) + out;
+      whole = Math.floor(whole / radix);
+    }
+    out = out || '0';
+    if (fraction) {
+      var frac = '';
+      for (var i = 0; i < 20 && fraction; i++) {
+        fraction *= radix;
+        var d = Math.floor(fraction);
+        frac += digits.charAt(d);
+        fraction -= d;
+      }
+      out += '.' + frac;
+    }
+    return sign + out;
+  };
+})();
+
+// (1e21).toFixed(2) is "1e+21", not twenty-one digits and a point.
+(function () {
+  var native_ = Number.prototype.toFixed;
+  Number.prototype.toFixed = function (n) {
+    var v = Number(this);
+    if (!(Math.abs(v) < 1e21)) return String(v);
+    return native_.call(this, n);
+  };
+})();
+"""

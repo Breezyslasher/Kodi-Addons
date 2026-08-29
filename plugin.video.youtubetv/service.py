@@ -182,6 +182,17 @@ def main():
         kodiutils.log_error("licence proxy did not start -- playback of "
                             "protected streams will fail")
 
+    # Have a minted token waiting before anything asks for one. Running
+    # BotGuard's VM in Python costs a few seconds, and the first play
+    # should not be the thing that pays for it -- without this it cold
+    # starts, which works but is good for thirty minutes rather than
+    # twelve hours.
+    try:
+        from lib import potoken
+        potoken.prime(api.visitor_data())
+    except Exception as exc:
+        kodiutils.log("could not start the proof-of-origin mint: %s" % exc)
+
     monitor = Monitor()
     heartbeat = Heartbeat()
     watchtime = Watchtime()
