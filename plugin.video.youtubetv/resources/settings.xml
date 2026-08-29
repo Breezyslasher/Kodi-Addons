@@ -17,6 +17,16 @@
 		</category>
 		<category id="playback" label="30010">
 			<group id="1">
+				<setting id="resume" type="boolean" label="30035" help="30036">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle"/>
+				</setting>
+				<setting id="report_progress" type="boolean" label="30039" help="30040">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle"/>
+				</setting>
 				<setting id="js_runtime" type="path" label="30037" help="30038">
 					<level>0</level>
 					<default></default>
@@ -67,6 +77,73 @@
 					<default></default>
 					<constraints><allowempty>true</allowempty></constraints>
 					<control type="edit" format="string"/>
+				</setting>
+			</group>
+		</category>
+		<category id="account" label="30052">
+			<group id="1">
+				<!-- Only for the experimental code sign-in. Your own Google API
+				     project, the same pair plugin.video.youtube asks for; the
+				     add-on ships none. -->
+				<setting id="oauth_client_id" type="string" label="30053" help="30054">
+					<level>1</level>
+					<default></default>
+					<constraints><allowempty>true</allowempty></constraints>
+					<control type="edit" format="string"/>
+				</setting>
+				<setting id="oauth_client_secret" type="string" label="30055" help="30054">
+					<level>1</level>
+					<default></default>
+					<constraints><allowempty>true</allowempty></constraints>
+					<control type="edit" format="string">
+						<hidden>true</hidden>
+					</control>
+				</setting>
+			</group>
+		</category>
+		<category id="integration" label="30045">
+			<group id="1">
+				<setting id="iptv.install" type="action" label="30046">
+					<level>0</level>
+					<data>InstallAddon(service.iptv.manager)</data>
+					<control type="button" format="action">
+						<close>true</close>
+					</control>
+					<visible>!System.HasAddon(service.iptv.manager)</visible>
+				</setting>
+				<setting id="iptv.enabled" type="boolean" label="30047" help="30048">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle"/>
+					<visible>System.HasAddon(service.iptv.manager)</visible>
+				</setting>
+				<setting id="iptv.settings" type="action" label="30049">
+					<level>0</level>
+					<data>Addon.OpenSettings(service.iptv.manager)</data>
+					<control type="button" format="action">
+						<close>true</close>
+					</control>
+					<dependencies>
+						<dependency type="enable" setting="iptv.enabled" operator="is">true</dependency>
+					</dependencies>
+					<visible>System.HasAddon(service.iptv.manager)</visible>
+				</setting>
+				<!-- IPTV Manager reads these two to know where to call. They are
+				     not choices, so they are not shown; it merges port= into the
+				     query it finds here, which is why ?action= survives. -->
+				<setting id="iptv.channels_uri" type="string" label="30050">
+					<level>0</level>
+					<default>plugin://plugin.video.youtubetv/?action=iptv_channels</default>
+					<constraints><allowempty>true</allowempty></constraints>
+					<control type="edit" format="string"/>
+					<visible>false</visible>
+				</setting>
+				<setting id="iptv.epg_uri" type="string" label="30051">
+					<level>0</level>
+					<default>plugin://plugin.video.youtubetv/?action=iptv_epg</default>
+					<constraints><allowempty>true</allowempty></constraints>
+					<control type="edit" format="string"/>
+					<visible>false</visible>
 				</setting>
 			</group>
 		</category>

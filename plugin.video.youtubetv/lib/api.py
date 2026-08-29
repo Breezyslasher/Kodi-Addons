@@ -18,12 +18,17 @@ import time
 
 import requests
 
+from urllib.parse import urlparse, urlunparse
+
 from . import auth, kodiutils
 
 ORIGIN = "https://tv.youtube.com"
 BASE = ORIGIN + "/youtubei/v1/"
 
 CLIENT_NAME = "WEB_UNPLUGGED"
+# The identity a device-code bearer token is accepted as. Measured, not
+# assumed: of the six the addon knows, this is the one that answered.
+OAUTH_CLIENT_NAME = "TVHTML5_UNPLUGGED"
 CLIENT_NAME_ID = "41"
 # Bumped by Google whenever they ship a new web player. A stale value is the
 # likeliest cause of a sudden LOGIN_REQUIRED against cookies that still work in
@@ -459,9 +464,61 @@ def context(location=True, client_name=None):
     return {"client": client}
 
 
+def credential():
+    """How this session authenticates, for callers outside Api.
+
+    Returns ``(headers, client_name)``. The licence proxy and the manifest
+    fetch talk to Google directly rather than through Api -- they build their
+    own requests around ISA's -- and both were signing with the cookie jar
+    unconditionally. On an OAuth session there is no jar, so both raised
+    "not signed in" and playback failed after a sign-in that had worked.
+
+    Raises AuthError when there is neither credential, which is what the
+    callers already expect.
+    """
+    from . import oauth
+    try:
+        cookies = auth.load()
+    except auth.AuthError:
+        token = oauth.access_token()
+        if not token:
+            raise
+        name = oauth.load().get("client_name") or OAUTH_CLIENT_NAME
+        return {"Authorization": "Bearer " + token}, name
+    return ({"Authorization": auth.authorization(cookies),
+             "Cookie": auth.cookie_header(cookies)}, CLIENT_NAME)
+
+
 class Api(object):
     def __init__(self, cookies=None):
-        self.cookies = cookies or auth.load()
+        # A bearer token stands in for the cookie jar when there is one. The
+        # jar is still preferred: it is what every captured request uses, and
+        # OAuth here is an experiment that reports its own result rather than
+        # a route anything falls back to silently.
+        self.bearer = ""
+        # Which identity this session claims. The cookie jar is the web
+        # player's, so it claims to be the web player; a bearer token is not,
+        # and measurably cannot be. See below.
+        self.client_name = CLIENT_NAME
+        if cookies:
+            self.cookies = cookies
+        else:
+            try:
+                self.cookies = auth.load()
+            except auth.AuthError:
+                from . import oauth
+                self.bearer = oauth.access_token()
+                if not self.bearer:
+                    raise
+                self.cookies = {}
+                # A device-code token is minted for a limited-input client and
+                # YouTube TV treats it that way. Asked as WEB_UNPLUGGED it
+                # answers HTTP 400 INVALID_ARGUMENT; asked as
+                # TVHTML5_UNPLUGGED, the same token returned a 150 channel
+                # lineup. So the identity travels with the credential rather
+                # than every call having to remember to pass one.
+                self.client_name = (oauth.load().get("client_name")
+                                    or OAUTH_CLIENT_NAME)
         self.session = requests.Session()
         self._visitor_id = kodiutils.get_setting("visitor_id", "") or _baked_visitor_id()
         try:
@@ -470,7 +527,7 @@ class Api(object):
             kodiutils.log("bootstrap refresh skipped: %s" % exc)
 
     def _headers(self, client_name=None):
-        name = client_name or CLIENT_NAME
+        name = client_name or self.client_name
         spec = client_spec(name)
         client_id = spec["id"]
         version = _client_version() if name == CLIENT_NAME else spec["version"]
@@ -485,17 +542,58 @@ class Api(object):
             "X-YouTube-Client-Name": client_id,
             "X-YouTube-Client-Version": version,
             "X-Goog-AuthUser": "0",
-            "Authorization": auth.authorization(self.cookies),
-            "Cookie": auth.cookie_header(self.cookies),
+            "Authorization": ("Bearer " + self.bearer if self.bearer
+                              else auth.authorization(self.cookies)),
         }
+        if self.cookies:
+            headers["Cookie"] = auth.cookie_header(self.cookies)
         if self._visitor_id:
             headers["X-Goog-Visitor-Id"] = self._visitor_id
         return headers
 
+    def report(self, url):
+        """POST one playback-stats ping and return the HTTP status.
+
+        Not an InnerTube call and deliberately not routed through ``call``:
+        the body is empty, everything is in the query string the player
+        response already signed, and a 204 is success. The capture of
+        2026-08-28 03:10 shows no Authorization header on these -- cookies,
+        the visitor id and the origin are the whole of the credential.
+
+        The url comes back from playbackTracking pointing at s.youtube.com
+        and the player sends it to the origin instead, so the host is
+        rewritten rather than taken as given.
+        """
+        parts = urlparse(url)
+        if parts.netloc != urlparse(ORIGIN).netloc:
+            url = urlunparse(parts._replace(scheme="https",
+                                            netloc=urlparse(ORIGIN).netloc))
+        headers = {
+            "User-Agent": UA,
+            "Accept": "*/*",
+            "Origin": ORIGIN,
+            "Referer": ORIGIN + "/",
+            "X-Goog-AuthUser": "0",
+            "Content-Length": "0",
+        }
+        if self.cookies:
+            headers["Cookie"] = auth.cookie_header(self.cookies)
+        elif self.bearer:
+            headers["Authorization"] = "Bearer " + self.bearer
+        if self._visitor_id:
+            headers["X-Goog-Visitor-Id"] = self._visitor_id
+        try:
+            response = self.session.post(url, data=b"", headers=headers,
+                                         timeout=TIMEOUT)
+        except requests.RequestException as exc:
+            raise ApiError("could not reach %s: %s" % (parts.path, exc))
+        return response.status_code
+
     def call(self, endpoint, body, params=None, client_name=None):
         url = BASE + endpoint
         payload = dict(body)
-        payload.setdefault("context", context(client_name=client_name))
+        payload.setdefault(
+            "context", context(client_name=client_name or self.client_name))
         try:
             response = self.session.post(url, params=params or {"alt": "json"},
                                          data=json.dumps(payload),
@@ -528,7 +626,7 @@ class Api(object):
             # refusing the request for bulk, and the Cookie header is the only
             # part of it that grows without bound.
             jar = auth.cookie_header(self.cookies)
-            asked = client_name or CLIENT_NAME
+            asked = client_name or self.client_name
             shown = (_client_version() if asked == CLIENT_NAME
                      else client_spec(asked)["version"])
             kodiutils.log("%s -> HTTP %d as %s v%s, %d cookies / %d bytes%s"
@@ -536,6 +634,15 @@ class Api(object):
                              len(self.cookies), len(jar),
                              ": %s" % detail[:300] if detail else ""))
 
+        if response.status_code in (401, 403) and self.bearer:
+            # Nothing to probe: the page probe asks whether a cookie jar is
+            # still alive, and a bearer session has no jar. Saying "import a
+            # fresh cookie export" here told the user to fix something that
+            # was not the problem.
+            raise auth.AuthError(
+                "%s returned HTTP %d for the OAuth session as %s.%s"
+                % (endpoint, response.status_code, asked,
+                   " (%s)" % detail if detail else ""))
         if response.status_code in (401, 403):
             # Four different explanations have been offered for a 401 here --
             # rotation, staleness, integrity cookies, a bad extraction -- all
@@ -583,7 +690,7 @@ class Api(object):
 
     # -- guide ------------------------------------------------------------
 
-    def epg(self, start_ms=None, hours=6, max_airings=11):
+    def epg(self, start_ms=None, hours=6, max_airings=11, client_name=None):
         """The channel lineup and schedule.
 
         One call covers a window; the response carries a continuation token for
@@ -599,7 +706,7 @@ class Api(object):
                 "paginationDurationMs": int(hours * 3600 * 1000),
                 "maxDurationMs": "604800000",
             }},
-        })
+        }, client_name=client_name)
 
     def continuation(self, token):
         return self.call("browse", {"continuation": token})

@@ -1,8 +1,9 @@
-"""Background service: the licence proxy, and the live heartbeat loop.
+"""Background service: the licence proxy, the heartbeat, and position reports.
 
-Two jobs that have to outlive a plugin invocation. The plugin process exits as
-soon as it resolves a URL, but ISA keeps fetching licences for as long as the
-stream plays, and YouTube expects a heartbeat every 30 seconds while it does.
+Three jobs that have to outlive a plugin invocation. The plugin process exits
+as soon as it resolves a URL, but ISA keeps fetching licences for as long as
+the stream plays, YouTube expects a heartbeat every 30 seconds while it does,
+and the account's watch position only moves if something keeps reporting it.
 """
 
 import json
@@ -10,7 +11,7 @@ import time
 
 import xbmc
 
-from lib import api, auth, kodiutils, license_proxy
+from lib import api, auth, kodiutils, license_proxy, stats
 
 HEARTBEAT_DEFAULT_MS = 30000
 
@@ -113,6 +114,67 @@ class Heartbeat(object):
                       % (self.sequence - 1, status or "no status", delay / 1000))
 
 
+class Watchtime(object):
+    """Reports the playhead to YouTube for as long as something is playing.
+
+    The heartbeat next door keeps the session entitled; this is what makes a
+    title show up as watched and resume where it was left. They are separate
+    endpoints on separate cadences, so they are separate objects.
+
+    Live is skipped. Its position is a place in a DVR window rather than
+    progress through a title, and the web player's own reports for a live
+    stream are not what these two urls describe.
+    """
+
+    def __init__(self):
+        self.reporter = None
+        self._video_id = None
+
+    def reset(self, final=True):
+        """Send the closing report, then forget this stream."""
+        if self.reporter and final:
+            try:
+                self.reporter.flush(state="paused", final=True)
+            except Exception as exc:
+                kodiutils.log_error("final position report failed: %s" % exc)
+        self.reporter = None
+        self._video_id = None
+
+    def adopt(self, context, client):
+        if not context.get("video_id") or context.get("is_live"):
+            return
+        if context["video_id"] == self._video_id:
+            return
+        self.reset()
+        self._video_id = context["video_id"]
+        reporter = stats.Reporter(
+            tracking=context.get("tracking") or {},
+            video_id=context["video_id"],
+            cpn=context.get("cpn"),
+            duration=context.get("duration") or 0,
+            client=client)
+        if not reporter.usable:
+            kodiutils.log("position reports: the player response carried no "
+                          "videostatsWatchtimeUrl, so nothing to report to")
+            return
+        self.reporter = reporter
+        kodiutils.log("position reports: following %s" % self._video_id)
+
+    def tick(self, player):
+        if not self.reporter:
+            return
+        try:
+            position = player.getTime()
+        except Exception:
+            return
+        # xbmc.Player has no state accessor in the Python API; Player.Paused
+        # is the boolean Kodi does expose (GUIInfoManager, PLAYER_PAUSED).
+        playing = not xbmc.getCondVisibility("Player.Paused")
+        self.reporter.observe(position, playing)
+        if self.reporter.due():
+            self.reporter.flush(state="playing" if playing else "paused")
+
+
 def main():
     kodiutils.log("service starting")
     proxy = license_proxy.LicenseProxy()
@@ -122,6 +184,8 @@ def main():
 
     monitor = Monitor()
     heartbeat = Heartbeat()
+    watchtime = Watchtime()
+    reporter_client = None
 
     while not monitor.abortRequested():
         if monitor.settings_changed:
@@ -132,18 +196,38 @@ def main():
                 proxy = license_proxy.LicenseProxy()
                 proxy.start()
 
-        if xbmc.Player().isPlayingVideo():
-            heartbeat.adopt(kodiutils.read_json(
-                license_proxy.CONTEXT_FILE, default={}) or {})
+        player = xbmc.Player()
+        if player.isPlayingVideo():
+            context = kodiutils.read_json(
+                license_proxy.CONTEXT_FILE, default={}) or {}
+            heartbeat.adopt(context)
             heartbeat.tick()
-        elif heartbeat.video_id:
-            kodiutils.log("heartbeat: playback ended")
-            heartbeat.reset()
+            if kodiutils.get_setting_bool("report_progress", True):
+                if reporter_client is None:
+                    try:
+                        reporter_client = api.Api()
+                    except auth.AuthError:
+                        reporter_client = None
+                if reporter_client is not None:
+                    watchtime.adopt(context, reporter_client)
+                    watchtime.tick(player)
+        else:
+            if heartbeat.video_id:
+                kodiutils.log("heartbeat: playback ended")
+                heartbeat.reset()
+            if watchtime.reporter:
+                # The closing report is what turns "watching" into "watched",
+                # so it goes out on the way past rather than being dropped.
+                kodiutils.log("position reports: playback ended")
+                watchtime.reset()
 
         if monitor.waitForAbort(2):
             break
 
     kodiutils.log("service stopping")
+    # Kodi closing mid-title is still the end of a watch: report the position
+    # on the way out rather than losing the last stretch of it.
+    watchtime.reset()
     proxy.stop()
 
 

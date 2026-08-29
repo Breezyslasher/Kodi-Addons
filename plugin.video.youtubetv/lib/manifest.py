@@ -48,9 +48,11 @@ _PARENT = re.compile(r"<SegmentList\b([^>]*\btimescale\s*=\s*[\"'][^\"']+[\"'][^
 # A Representation-level list: the bare tag, no attributes at all.
 _BARE = re.compile(r"<SegmentList\s*>")
 
-# Only timescale. presentationTimeOffset double-counts and startNumber would
-# renumber segments that already name their own sequence.
-_INHERITED = ("timescale",)
+# Only timescale is pushed onto a SegmentList. presentationTimeOffset
+# double-counts, and startNumber would renumber segments that already name
+# their own sequence. startNumber is read all the same, for the
+# SegmentTemplate, where the numbers are what builds the url.
+_INHERITED = ("timescale", "startNumber")
 
 
 def _attributes(tag_body):
@@ -132,7 +134,128 @@ def patch(xml):
     if count:
         kodiutils.log("manifest: pushed%s onto %d Representation SegmentLists"
                       % (attrs, count))
+
+    patched = to_segment_template(patched, parent, inherited)
     return patched.encode("utf-8") if was_bytes else patched
+
+
+_TIMELINE = re.compile(r"<SegmentTimeline\b.*?</SegmentTimeline>", re.S)
+_S_ELEMENT = re.compile(r"<S\b([^>]*)/>")
+_REPR_SEGLIST = re.compile(r"<SegmentList\b[^>]*>.*?</SegmentList>", re.S)
+_SQ = re.compile(r"\bsq/(\d+)")
+
+
+def _timeline_length(timeline):
+    """How many segments a SegmentTimeline describes, counting r= repeats."""
+    total = 0
+    for attrs in _S_ELEMENT.findall(timeline):
+        repeat = re.search(r'\br\s*=\s*"(-?\d+)"', attrs)
+        if repeat and int(repeat.group(1)) < 0:
+            return None  # open-ended; we cannot count it
+        total += 1 + (int(repeat.group(1)) if repeat else 0)
+    return total
+
+
+def to_segment_template(text, parent, attrs):
+    """Restate a live SegmentList as the SegmentTemplate ISA is written for.
+
+    Two things go wrong with the SegmentList form, and both are the same
+    omission in ISA.
+
+    It crashes. The live manifest update opens each Representation with
+
+        if (!repr->GetSegmentTemplate()->HasTimeline() || repr->Timeline().IsEmpty())
+
+    (DASHTree.cpp:1666) and GetSegmentTemplate returns a std::optional that is
+    empty unless a <SegmentTemplate> appeared on the Representation or above
+    it. The same call thirty lines down is guarded, so this is an oversight,
+    not a contract -- but minimumUpdatePeriod is PT5S, so live played for five
+    seconds and took Kodi with it.
+
+    And before that it was already running on nothing. ISA parses a
+    <SegmentTimeline> only from an AdaptationSet's SegmentList
+    (DASHTree.cpp:612); YouTube states it once on the Period, where nothing
+    reads it. A Representation's SegmentList inherits from its AdaptationSet,
+    which here has none, so every segment came out with duration 0, PTS 0 and
+    number 0 -- 1879 segments all claiming to start at the same instant. That
+    is why playback began at the oldest segment in a four-hour window rather
+    than at the live edge: there was no timeline to seek in.
+
+    The template form fixes both because it is the path ISA maintains. The
+    Period element carries timescale, startNumber and the timeline, and ISA
+    copies it down to each AdaptationSet and Representation (lines 578 and
+    818); each Representation overrides only ``media``, and a template node
+    with no SegmentTimeline child leaves the inherited one intact
+    (ParseSegmentTemplate). ISA then builds real segments from it
+    (line 1013) and formats each url as sq/<number>/lmt/<lmt> joined to the
+    Representation's BaseURL -- character for character the urls the
+    SegmentList spelled out, since $Number$ counts from the same startNumber
+    (AdaptiveStream.cpp:216, SegTemplate.cpp FormatUrl).
+
+    Bails out, leaving the manifest as it was, if the timeline does not
+    describe exactly as many segments as the Representation lists. A template
+    is only equivalent to the list it replaces while the two agree, and a
+    manifest that plays for five seconds beats one that fetches wrong urls.
+    """
+    timeline = _TIMELINE.search(text, parent.end())
+    if not timeline:
+        kodiutils.log("manifest: the Period SegmentList states no "
+                      "SegmentTimeline, so its SegmentLists stay as they are")
+        return text
+    length = _timeline_length(timeline.group(0))
+    if not length:
+        kodiutils.log("manifest: cannot count the Period SegmentTimeline, so "
+                      "its SegmentLists stay as they are")
+        return text
+
+    inherited = ' timescale="%s"' % attrs["timescale"]
+    if "startNumber" in attrs:
+        inherited += ' startNumber="%s"' % attrs["startNumber"]
+
+    converted = []
+    refused = []
+
+    def per_representation(rep):
+        head, body, tail = rep.group(1), rep.group(2), rep.group(3)
+        ident = _REP_ID.search(head)
+        ident = ident.group(1) if ident else "?"
+        seglist = _REPR_SEGLIST.search(body)
+        if not seglist:
+            return rep.group(0)
+        urls = _SEGMENT_MEDIA.findall(seglist.group(0))
+        if not urls:
+            refused.append("%s: no SegmentURL" % ident)
+            return rep.group(0)
+        if len(urls) != length:
+            refused.append("%s: %d urls vs %d timeline entries"
+                           % (ident, len(urls), length))
+            return rep.group(0)
+        first = _SQ.search(urls[0])
+        if not first:
+            refused.append("%s: %s names no sq" % (ident, urls[0]))
+            return rep.group(0)
+        media = _SQ.sub("sq/$Number$", urls[0], count=1)
+        # media comes straight out of an XML attribute and goes straight
+        # back into one, so it is already escaped exactly right.
+        element = ('<SegmentTemplate media="%s" startNumber="%s"/>'
+                   % (media, first.group(1)))
+        converted.append(ident)
+        return head + body[:seglist.start()] + element + body[seglist.end():] + tail
+
+    rewritten = _REPRESENTATION.sub(per_representation, text)
+    if refused:
+        kodiutils.log_error("manifest: left %d SegmentList(s) alone -- %s"
+                            % (len(refused), "; ".join(refused[:4])))
+    if not converted:
+        return text
+
+    element = ('<SegmentTemplate%s>%s</SegmentTemplate>'
+               % (inherited, timeline.group(0)))
+    rewritten = (rewritten[:parent.start()] + element
+                 + rewritten[parent.start():])
+    kodiutils.log("manifest: restated %d SegmentList(s) as SegmentTemplates "
+                  "over a %d entry timeline" % (len(converted), length))
+    return rewritten
 
 
 # -- diagnostics ---------------------------------------------------------
@@ -513,7 +636,10 @@ def _protection(uuid, pssh):
 _REP_ID = re.compile(r'\bid\s*=\s*"([^"]+)"')
 _INIT_RANGE = re.compile(r'<Initialization\b[^>]*\brange\s*=\s*"([^"]+)"')
 _INIT_SOURCE = re.compile(r'<Initialization\b[^>]*\bsourceURL\s*=\s*"([^"]+)"')
-_SEGMENT_URL = re.compile(r'<SegmentURL\b[^>]*\bmedia\s*=\s*"([^"]+)"')
+_SEGMENT_MEDIA = re.compile(r'<SegmentURL\b[^>]*\bmedia\s*=\s*"([^"]+)"')
+_TEMPLATE_MEDIA = re.compile(r'<SegmentTemplate\b[^>]*\bmedia\s*=\s*"([^"]+)"')
+_TEMPLATE_START = re.compile(
+    r'<SegmentTemplate\b[^>]*\bstartNumber\s*=\s*"(\d+)"')
 
 # How much of a live segment to pull when looking for its moov. On demand
 # states the init segment's exact length (about 1.7 kB); live states nothing,
@@ -581,10 +707,21 @@ def init_targets(xml):
         if source:
             out.append((ident.group(1), url + _unescape(source.group(1)), ""))
             continue
-        segment = _SEGMENT_URL.search(body)
-        if segment:
-            out.append((ident.group(1), url + _unescape(segment.group(1)),
-                        "0-%d" % (LIVE_HEAD_BYTES - 1)))
+        segment = _SEGMENT_MEDIA.search(body)
+        if not segment:
+            # After to_segment_template there are no SegmentURLs left to read,
+            # so take the template's own first segment: $Number$ at its
+            # startNumber is exactly the url the list used to spell out.
+            template = _TEMPLATE_MEDIA.search(body)
+            number = _TEMPLATE_START.search(body)
+            if template and number:
+                out.append((ident.group(1),
+                            url + _unescape(template.group(1)).replace(
+                                "$Number$", number.group(1)),
+                            "0-%d" % (LIVE_HEAD_BYTES - 1)))
+            continue
+        out.append((ident.group(1), url + _unescape(segment.group(1)),
+                    "0-%d" % (LIVE_HEAD_BYTES - 1)))
     return out
 
 
