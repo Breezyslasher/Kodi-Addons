@@ -55,14 +55,16 @@ def _sign_in():
     client_id, secret = oauth.credentials()
     if not client_id:
         kodiutils.ok_dialog(
-            "Signing in needs a Google API project. This add-on looks in "
-            "three places and found none: its own settings, the YouTube "
-            "add-on's (if you have that set up, its project is reused as "
-            "is), and one built into this build.\n\n"
-            "Create one at console.cloud.google.com -- enable the YouTube "
-            "Data API v3, make an OAuth client ID of type \"TVs and Limited "
-            "Input devices\" -- and paste the ID and secret into this "
-            "add-on's settings, under Account.",
+            "Signing in needs a Google API project, and none was found.\n\n"
+            "The easiest fix is the YouTube add-on (plugin.video.youtube): "
+            "set that up as its own instructions describe, and this add-on "
+            "reuses the same project automatically -- nothing to paste here, "
+            "and none of its quota is spent, because this add-on never calls "
+            "googleapis.com.\n\n"
+            "Otherwise, make one at console.cloud.google.com -- enable the "
+            "YouTube Data API v3, then an OAuth client ID of type \"TVs and "
+            "Limited Input devices\" -- and paste the ID and secret into "
+            "this add-on's settings, under Account.",
             "Nothing to sign in with")
         return False
 

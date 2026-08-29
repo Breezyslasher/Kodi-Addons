@@ -21,6 +21,7 @@ def setup(mine=None, youtube=None, baked=None):
         xbmcaddon.OTHERS["plugin.video.youtube"] = {
             "youtube.api.id": youtube[0], "youtube.api.secret": youtube[1]}
     oauth._baked = (lambda: baked) if baked else (lambda: ("", ""))
+    oauth.GOOGLE_TV_CLIENT = ("", "")
 
 fails = 0
 def check(label, got, want):
@@ -52,6 +53,18 @@ check("half a borrowed pair is skipped too", oauth.credentials(), ("", ""))
 setup(mine=("mine", "msec"))
 xbmcaddon.OTHERS.clear()
 check("no YouTube addon installed", oauth.credentials(), ("mine", "msec"))
+
+# Google's own TV client is last, and only when it is filled in at all.
+setup()
+oauth.GOOGLE_TV_CLIENT = ("tv-client", "tv-secret")
+check("Google's TV client is the last resort", oauth.credentials(),
+      ("tv-client", "tv-secret"))
+setup(baked=("bk", "bsec"))
+oauth.GOOGLE_TV_CLIENT = ("tv-client", "tv-secret")
+check("a real project still wins over it", oauth.credentials(), ("bk", "bsec"))
+setup()
+oauth.GOOGLE_TV_CLIENT = ("tv-client", "")
+check("half of it is skipped, not sent", oauth.credentials(), ("", ""))
 
 print("failures:", fails)
 sys.exit(1 if fails else 0)
