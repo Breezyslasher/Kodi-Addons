@@ -263,6 +263,49 @@ page to differ will not announce itself either:
   `unpluggedLibraryContinuation` — is what settled the shape above, in one
   round trip and without a capture.
 
+#### Nine named tabs holding nothing
+
+31.10 paired the chips correctly and every tab still came back empty:
+
+    library: 0 row(s) and 9 filter(s) -- New for you (0), Recently recorded (0),
+      Most watched (0), Scheduled (1), Series (0), Sports (0), All (0),
+      Purchased (0), Expired (0)
+    New for you: page 1 added 0 item(s)
+
+The shape dump had already counted 19 `unpluggedBrowseItemRenderer` and 7
+`unpluggedGridVideoRenderer` in that same response, so the tiles are there and
+`parse_items` cannot place them. Scheduled found exactly 1 of its 7 — the one
+tile whose videoId hides in a popup dialog, which is read specially. That is
+the signature of a tile whose endpoint is filed under a key `_endpoint_id`
+does not check: the web client uses `navigationEndpoint`, and the TV client
+evidently does not.
+
+`_endpoint_id` now tries a short list of carriers, still one level deep:
+`navigationEndpoint`, `onSelectCommand`, `tapCommand`,
+`entityPageNavigationEndpoint`. Checked against every capture — Library, Home
+both pages, the three Rick and Morty responses — the item and unplayable
+counts are identical to before, so the widening costs nothing on known data.
+
+`command` is deliberately **not** on that list. It is the key an
+`unpluggedMenuItemRenderer` keeps its watchEndpoint under, so accepting it
+would list the two buttons of a "Join live / Start from beginning" dialog as
+two rows of their own.
+
+Whether `onSelectCommand` is actually the TV client's key is unverified.
+`epg.unreadable_sample` therefore logs the keys carried by renderers that look
+like tiles and name nowhere to go, whenever a page answers and holds nothing
+readable — which names the key to read next off one log line.
+
+Run against the Rick and Morty season shelf, it settled an older question:
+
+    unpluggedCompactVideoRenderer carries [badge, clientStateSyncData,
+      description, ..., navigationEndpoint, primaryText, ...]
+
+Those ten episodes do have a `navigationEndpoint` — holding
+`unpluggedInitiateInlinePurchaseCommand`. They are not episodes the account
+lacks rights to; they are **buy prompts**. Dropping them is correct, and the
+count of ten this file has quoted throughout is accurate.
+
 ### The guide census
 
 `route_channels` skips any station whose current airing has no video id, and
