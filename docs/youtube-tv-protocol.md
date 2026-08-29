@@ -1681,7 +1681,21 @@ actually contains:
 
 Every SD-tier rendition is 854x480 or shorter. **There is no tall
 rendition in the tier this session may play**, so 854x480 is a hard
-ceiling on the bridge for a code sign-in, and no setting reaches past it.
+ceiling on the bridge, and no setting reaches past it.
+
+The `force_bridge` setting exists to separate the credential from the
+delivery, which had always changed together, and this is what it separates:
+
+    credential  delivery  initialAuthorized  what played
+    cookies     DASH      AUDIO,SD           ID 224, 1280x720, decoded
+    cookies     SABR      AUDIO,SD           223,     854x480
+    token       SABR      AUDIO,SD           223,     854x480
+
+Same account, same title, same licence granting HD and UHD1. **The
+delivery decides the quality, not the credential.** A cookie session
+forced through the bridge gets 854x480 exactly like a token one; the same
+cookies on DASH get 1280x720. So the ceiling belongs to SABR's
+server-side selection, and the way past it is not to use SABR.
 
 That also corrects what was written here about the 36 AV1 picks. Itag 810
 was recorded as "AV1 at 1080p carrying the SD tier's key id", inferred
