@@ -66,7 +66,7 @@ def forget(key):
 
 def set_context(url, config, audio, video, client_name, drm_params="",
                 candidates=None, max_height=1080, video_id="",
-                is_live=True):
+                is_live=True, audio_url=""):
     """Leave everything the service needs to open the session itself.
 
     The url must already have its n solved: the plugin has the player JS and
@@ -95,6 +95,13 @@ def set_context(url, config, audio, video, client_name, drm_params="",
         "drm_params": drm_params,
         "video_id": video_id,
         "live": bool(is_live),
+        # The same audio track as a plain file, with n already solved. The
+        # service has no player JS and cannot solve it, and this is the one
+        # thing that can still tell a bridge fault from a media fault: the
+        # DASH path reads these very bytes with byte ranges and decrypts
+        # them, so if what SABR delivers is identical then nothing the
+        # bridge does to the media is the reason audio will not decrypt.
+        "audio_url": audio_url,
     })
     return key
 
@@ -165,13 +172,130 @@ def lookup(key):
                "video_id": stored.get("video_id", ""),
                "refused": []}
     with _lock:
+        # Check again inside the lock. ISA opens the manifest from more than
+        # one thread and both missed the empty cache, so two sessions were
+        # built for one playback: two conversations, two sets of fragments,
+        # and whichever lost the race kept fetching into a session nothing
+        # would ever read. It also explains every duplicated "the server
+        # chose" line since this was written.
+        if key in _sessions:
+            return _sessions[key]
         _sessions[key] = (session, formats)
     kodiutils.log("sabr bridge: opened session %s as %s" % (key, name))
     return session, formats
 
 
+def split_boxes(data):
+    """([(name, bytes)] before the first moof, [fragment bytes]).
+
+    A run of top-level boxes read from the file: ftyp, moov and -- because
+    the DASH url carries gir=yes -- a sidx that SABR never sends, then
+    moof/mdat pairs. Grouping them this way makes the file comparable to
+    what the bridge assembled, box for box, without assuming either side's
+    lengths.
+    """
+    head, fragments, current = [], [], None
+    pos = 0
+    while pos + 8 <= len(data):
+        size = int.from_bytes(data[pos:pos + 4], "big")
+        kind = data[pos + 4:pos + 8]
+        if size < 8 or pos + size > len(data):
+            break
+        if kind == b"moof":
+            current = bytearray()
+            fragments.append(current)
+        if current is None:
+            head.append((kind, data[pos:pos + size]))
+        else:
+            current += data[pos:pos + size]
+        pos += size
+    return head, [bytes(f) for f in fragments]
+
+
+def compare_against_file(session, url, itag):
+    """Whether what SABR delivered is what the file holds, byte for byte.
+
+    Everything measurable about the bridge's audio has come back correct --
+    saiz counts the samples trun counts, saio points eight bytes past the
+    moof where the mdat payload starts, trun's data_offset lands exactly
+    where the IV table ends, the boxes account for every byte -- and the
+    CDM still answers kDecryptError with a key it reports usable. The DASH
+    path decrypts the same itag with the same KID and the same lastModified.
+    So the question left is not whether the bytes are well formed but
+    whether they are the same bytes, and that is answerable rather than
+    arguable.
+    """
+    held = session.segments.get(itag) or {}
+    order = sorted(held)
+    if len(order) < 2:
+        return
+    init = session.initialisation.get(itag) or b""
+    ours = [held[order[0]], held[order[1]]]
+    want = len(init) + sum(len(part) for part in ours) + 65536
+    try:
+        reply = requests.get(url, timeout=TIMEOUT, headers={
+            "User-Agent": api.UA,
+            "Origin": api.ORIGIN,
+            "Referer": api.ORIGIN + "/",
+            "Range": "bytes=0-%d" % want,
+        })
+    except Exception as exc:
+        kodiutils.log("sabr bridge: could not read itag %s as a file: %s"
+                      % (itag, exc))
+        return
+    if reply.status_code not in (200, 206):
+        kodiutils.log("sabr bridge: HTTP %d reading itag %s as a file"
+                      % (reply.status_code, itag))
+        return
+    head, fragments = split_boxes(reply.content)
+    kodiutils.log("sabr bridge: itag %s as a file: %d bytes, head %s, "
+                  "fragments %s"
+                  % (itag, len(reply.content),
+                     [(k.decode("latin-1"), len(v)) for k, v in head],
+                     [len(f) for f in fragments[:3]]))
+    theirs = [b"".join(v for k, v in head if k != b"sidx")]
+    theirs += [fragments[i] if i < len(fragments) else b"" for i in range(2)]
+    mine = [init] + ours
+    names = ["initialisation", "fragment %s" % order[0],
+             "fragment %s" % order[1]]
+    for name, a, b in zip(names, mine, theirs):
+        if a == b:
+            kodiutils.log("sabr bridge: %s matches the file (%d bytes)"
+                          % (name, len(a)))
+            continue
+        shared = min(len(a), len(b))
+        at = next((i for i in range(shared) if a[i] != b[i]), shared)
+        kodiutils.log("sabr bridge: %s DIFFERS -- %d bytes from SABR, %d in "
+                      "the file, first difference at %d: %s vs %s"
+                      % (name, len(a), len(b), at,
+                         a[at:at + 16].hex(), b[at:at + 16].hex()))
+
+
+def segment_ms(session, itag):
+    """How long one fragment of this track actually is.
+
+    SEGMENT_MS was a five second constant and the fragments are nothing
+    like it: one audio fragment measured 321,489 bytes and one video
+    fragment 1,866,238, which at these bitrates is around twenty seconds
+    each. A SegmentTemplate claiming five seconds describes a timeline four
+    times denser than the media, so ISA asks for segment numbers that do
+    not exist and maps the ones it gets to the wrong instants.
+
+    The start times of the segments held give the real spacing; the
+    constant is only the fallback for a track holding one.
+    """
+    seen = session.held.get(itag) or {}
+    starts = sorted(seen.values())
+    if len(starts) > 1:
+        gaps = [b - a for a, b in zip(starts, starts[1:]) if b > a]
+        if gaps:
+            return sum(gaps) // len(gaps)
+    return SEGMENT_MS
+
+
 def _representation(fmt, base, key, itag, start_number,
-                    has_init=False):
+                    has_init=False, duration=SEGMENT_MS,
+                    protection=""):
     """One Representation, pointing its template at our own routes."""
     mime = (fmt.get("mimeType") or "")
     codecs = ""
@@ -186,7 +310,7 @@ def _representation(fmt, base, key, itag, start_number,
         extra += ' frameRate="%d"' % fmt["fps"]
     return (
         '<Representation id="%(itag)d" codecs="%(codecs)s" '
-        'bandwidth="%(bandwidth)d"%(extra)s>'
+        'bandwidth="%(bandwidth)d"%(extra)s>%(protection)s'
         '<SegmentTemplate timescale="1000" duration="%(duration)d" '
         'startNumber="%(start)d" '
         '%(init)s'
@@ -194,13 +318,19 @@ def _representation(fmt, base, key, itag, start_number,
         '</Representation>') % {
             "itag": itag, "codecs": codecs, "extra": extra,
             "bandwidth": fmt.get("bitrate") or 500000,
-            "duration": SEGMENT_MS, "start": start_number,
+            "duration": duration, "start": start_number,
             "base": base["url"], "key": key, "secret": base["secret"],
             # Only when one exists. Declaring an initialisation url the
             # bridge cannot fill had ISA fetch it three times, take 503
             # each time, and give up -- where omitting it lets ISA read the
             # moov out of the first media segment, which is what it already
             # does on the live DASH path.
+            # Inside the Representation, which is where the path that
+            # works puts it: manifest.set_key_ids emits
+            # head + _protection(own_uuid, own_pssh) + inner for every
+            # Representation, so each track probes with its own key. The
+            # bridge had it on the AdaptationSet instead.
+            "protection": protection,
             "init": ('initialization="%s/sabr/init?id=%s&amp;itag=%d&amp;'
                      'k=%s" ' % (base["url"], key, itag, base["secret"])
                      if has_init else "")}
@@ -229,6 +359,21 @@ def manifest(key, base):
             kodiutils.log_error("sabr bridge: the endpoint refused the whole "
                                 "set: %s" % str(exc).strip())
             return ""
+
+    if not formats.get("compared"):
+        formats["compared"] = True
+        stored = kodiutils.read_json(CONTEXT_FILE, default={}) or {}
+        audio_url = stored.get("audio_url") or ""
+        itag = (formats.get("audio") or {}).get("itag")
+        if audio_url and itag:
+            try:
+                compare_against_file(session, audio_url, itag)
+            except Exception as exc:
+                kodiutils.log("sabr bridge: the file comparison failed: %s"
+                              % exc)
+        else:
+            kodiutils.log("sabr bridge: no file url for itag %s, so the "
+                          "bytes cannot be compared" % itag)
 
     # The PSSH, built the way the DASH path builds it: from drmParams'
     # content id, with no manifest url to read a source out of.
@@ -311,6 +456,15 @@ def manifest(key, base):
     kodiutils.log("sabr bridge: initialisation held for %s"
                   % (sorted(session.initialisation) or "nothing -- ISA will "
                      "read a moov out of the first fragment"))
+    lengths = {fmt.get("itag"): segment_ms(session, fmt["itag"])
+               for _kind, fmt in served}
+    guessed = [itag for itag, _kind in
+               ((f.get("itag"), k) for k, f in served)
+               if len(session.held.get(itag) or {}) < 2]
+    kodiutils.log("sabr bridge: fragment length %s%s"
+                  % (lengths,
+                     "  (unmeasured for %s -- the constant is a guess)"
+                     % guessed if guessed else "  (measured)"))
     kodiutils.log("sabr bridge: the server chose %s"
                   % ", ".join("%s %s" % (kind, fmt.get("itag"))
                               for kind, fmt in served))
@@ -324,11 +478,12 @@ def manifest(key, base):
         mime = (fmt.get("mimeType") or "").split(";")[0]
         sets.append(
             '<AdaptationSet id="%d" contentType="%s" mimeType="%s" '
-            'segmentAlignment="true" startWithSAP="1">%s%s</AdaptationSet>'
+            'segmentAlignment="true" startWithSAP="1">%s</AdaptationSet>'
             % (len(sets), kind, mime,
-               protection_for(itag, kind),
                _representation(fmt, base, key, itag, start,
-                               bool(session.initialisation.get(itag)))))
+                               bool(session.initialisation.get(itag)),
+                               segment_ms(session, itag),
+                               protection_for(itag, kind))))
 
     if not sets:
         return ""
@@ -423,8 +578,16 @@ def playable_url(player_response, max_height=1080):
     if not solved:
         return ""
 
+    audio_url = ""
+    if audio.get("url"):
+        audio_url = solve_n(audio["url"]) or ""
+    else:
+        kodiutils.log("sabr bridge: itag %s came with no url, only %s"
+                      % (audio.get("itag"), sorted(audio)))
+
     key = set_context(solved, config, audio, video,
                       _client_name(), streaming.get("drmParams", ""),
+                      audio_url=audio_url,
                       candidates=formats, max_height=max_height,
                       video_id=(player_response.get("videoDetails") or {}
                                 ).get("videoId", ""),

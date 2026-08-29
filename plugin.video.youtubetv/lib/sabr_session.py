@@ -58,6 +58,28 @@ def split_initialisation(data):
     return b"", data
 
 
+def box_span(data):
+    """(bytes accounted for by top-level boxes, count), walking the sizes.
+
+    A fragment can list moof and mdat and still be wrong: box_tree reads
+    headers, so a truncated or over-long mdat looks identical to a complete
+    one. The declared sizes have to add up to the fragment, and if they do
+    not then the bytes are being assembled wrongly -- which is the one
+    remaining way to hold the right key, the right IVs and still get
+    kDecryptError out of the CDM.
+    """
+    pos = count = 0
+    while pos + 8 <= len(data):
+        size = int.from_bytes(data[pos:pos + 4], "big")
+        # A size that runs past the buffer is itself the finding: stop and
+        # report where it claimed to end, rather than walking into nonsense.
+        if size < 8 or pos + size > len(data):
+            return (pos + size if size >= 8 else pos), count
+        pos += size
+        count += 1
+    return pos, count
+
+
 def find_pssh(data):
     """Every pssh box in an initialisation segment, as raw bytes.
 
@@ -127,6 +149,7 @@ class Session(object):
         self._open = {}
         self._announced = set()
         self._boxed = {}
+        self._reinit = {}
         # ISA reads audio and video on separate threads and both drive this
         # one session. Two fetches at once interleave their MEDIA parts
         # through the same _open map and the same echo, so a segment can be
@@ -266,7 +289,34 @@ class Session(object):
         data = bytes(buffer_)
         head, media = split_initialisation(data)
         if head:
-            self.initialisation.setdefault(itag, head)
+            # A browser SABR capture of an audio track (itag 149) shows every
+            # media payload opening with its own ftyp and moov, not just the
+            # first. Keeping only the first one -- which setdefault does --
+            # is right if they never change and silently wrong if the track
+            # rotates its key, since the moov is where tenc lives and tenc is
+            # where the KID and the IV size come from. So say when a payload
+            # brings its own, and whether it agrees with the one being
+            # served.
+            known = self.initialisation.get(itag)
+            if known is None:
+                self.initialisation[itag] = head
+                kodiutils.log("sabr session: itag %s took its initialisation "
+                              "from the payload for sequence %s (%d bytes): %s"
+                              % (itag, sequence, len(head),
+                                 mp4.track_encryption(head)))
+            elif head != known and self._reinit.get(itag, 0) < 3:
+                self._reinit[itag] = self._reinit.get(itag, 0) + 1
+                kodiutils.log("sabr session: itag %s sequence %s carries a "
+                              "DIFFERENT initialisation (%d bytes vs %d): "
+                              "%s vs %s"
+                              % (itag, sequence, len(head), len(known),
+                                 mp4.track_encryption(head),
+                                 mp4.track_encryption(known)))
+            elif self._reinit.get(itag, 0) < 3:
+                self._reinit[itag] = self._reinit.get(itag, 0) + 1
+                kodiutils.log("sabr session: itag %s sequence %s repeats the "
+                              "same initialisation (%d bytes)"
+                              % (itag, sequence, len(head)))
         if sequence is None:
             # An initialisation sent on its own: no moof to split at, so the
             # whole part is the initialisation.
@@ -280,13 +330,38 @@ class Session(object):
         # saiz/saio and fragment 1 carries them; a fragment the bridge has
         # assembled wrongly would differ here, and "Decrypt Sample returns
         # failure" is otherwise indistinguishable from a key problem.
+        # Four, not two: the first fragment of a track is a clear lead with
+        # no saiz or saio, and two dumps only ever showed that one twice --
+        # so nothing here has yet seen an encrypted fragment, which is the
+        # only kind that can fail to decrypt.
         seen = self._boxed.setdefault(itag, 0)
-        if seen < 2:
+        if seen < 4:
             self._boxed[itag] = seen + 1
             try:
-                kodiutils.log("sabr session: itag %s fragment %s (%d bytes): %s"
+                boxes = mp4.box_tree(body)
+                names = {b.strip() for b in boxes}
+                span, count = box_span(body)
+                kodiutils.log("sabr session: itag %s fragment %s (%d bytes) "
+                              "%s, boxes account for %d of %d bytes across "
+                              "%d box(es)%s: %s"
                               % (itag, sequence, len(body),
-                                 " ".join(mp4.box_tree(body))))
+                                 "ENCRYPTED (saiz/saio present)"
+                                 if {"saiz", "saio"} & names else
+                                 "clear (no saiz/saio)",
+                                 span, len(body), count,
+                                 "" if span == len(body) else
+                                 "  << MISMATCH: %+d" % (span - len(body)),
+                                 " ".join(boxes)))
+                # An encrypted fragment is the only kind that can fail to
+                # decrypt, and every parameter the CDM is given about it
+                # comes from saiz/saio. Measure where that region is
+                # instead of assuming the bridge served it whole.
+                if {"saiz", "saio"} & names:
+                    kodiutils.log("sabr session: itag %s fragment %s aux: %s"
+                                  % (itag, sequence,
+                                     mp4.aux_report(
+                                         body,
+                                         self.initialisation.get(itag, b""))))
             except Exception as exc:
                 kodiutils.log("sabr session: could not walk itag %s: %s"
                               % (itag, exc))
@@ -334,21 +409,28 @@ class Session(object):
                          if held else "nothing"))
         return b""
 
-    def prime(self):
-        """Fetch until the session holds a segment, or give up saying so.
+    def prime(self, minimum=2):
+        """Fetch until every track holds `minimum` segments, or give up.
 
-        A manifest needs a number to start from and a freshly opened session
-        has none: the service opens it on the first request, which is a
-        manifest request, so without this the very first thing ISA asks for
-        is answered 503 by a session that had simply not spoken yet.
+        A manifest needs a number to start from, and a freshly opened
+        session has none: the service opens it on the first request, which
+        is the manifest request.
+
+        Two segments, not one, because the manifest also has to state how
+        long a fragment is, and one segment gives nothing to measure -- the
+        duration then fell back to a five second constant while the
+        fragments were four times that, which is a timeline ISA cannot map
+        onto the media it receives.
         """
         for attempt in range(PUMP_LIMIT):
-            if self.segments:
+            if self.segments and all(len(held) >= minimum
+                                     for held in self.segments.values()):
                 return True
             if not self.fetch() and attempt:
                 time.sleep(1)
-        kodiutils.log("sabr session: primed %d times and hold nothing"
-                      % PUMP_LIMIT)
+        counts = {itag: len(held) for itag, held in self.segments.items()}
+        kodiutils.log("sabr session: primed %d times, holding %s"
+                      % (PUMP_LIMIT, counts or "nothing"))
         return bool(self.segments)
 
     def first_sequence(self, itag):

@@ -276,3 +276,111 @@ def track_encryption(init):
         return init[box + 14], init[box + 15], init[box + 16:box + 32].hex()
     return None, None, ""
 
+
+
+def _saiz_sizes(fragment, saiz):
+    """(default_size, sample_count, [per-sample sizes]) from a saiz box."""
+    flags = _u(fragment, saiz + 9, 3)
+    at = saiz + 12
+    if flags & 1:
+        at += 8
+    default = _u(fragment, at, 1)
+    count = _u(fragment, at + 1, 4)
+    at += 5
+    sizes = [] if default else [_u(fragment, at + i, 1) for i in range(count)]
+    return default, count, sizes
+
+
+def _saio_offsets(fragment, saio):
+    """Every entry of a saio box, as integers."""
+    version = fragment[saio + 8]
+    flags = _u(fragment, saio + 9, 3)
+    at = saio + 12
+    if flags & 1:
+        at += 8
+    count = _u(fragment, at, 4)
+    at += 4
+    width = 8 if version else 4
+    return [_u(fragment, at + i * width, width) for i in range(count)]
+
+
+def aux_report(fragment, init=b""):
+    """Whether this fragment's sample auxiliary information is reachable.
+
+    Bento4 seeks to ``moof_offset + saio[0]`` in InputStream Adaptive's stream
+    and reads ``saiz`` bytes per sample: the IV, and optionally a subsample
+    map. Everything the CDM is then told about a sample comes from those
+    bytes. If the region they name falls outside the fragment the bridge
+    served, or if saiz counts a different number of samples than trun does,
+    the decrypter is handed the wrong shape and the CDM answers
+    kDecryptError -- which looks exactly like a key problem and is not one.
+    So measure it: where the region starts, where it ends, how big the
+    fragment is, and what the first entry actually contains.
+    """
+    out = []
+    protected, iv_size, kid = (None, None, "")
+    if init:
+        protected, iv_size, kid = track_encryption(init)
+        out.append("tenc protected=%s iv_size=%s kid=%s"
+                   % (protected, iv_size, kid[:16]))
+
+    moof, moof_size = find_box(fragment, [b"moof"])
+    out.append("moof size=%s fragment=%d" % (moof_size, len(fragment)))
+
+    samples = 0
+    data_offset = None
+    total_bytes = 0
+    for trun in _boxes_named(fragment, b"trun"):
+        flags = _u(fragment, trun + 9, 3)
+        count = _u(fragment, trun + 12, 4)
+        samples += count
+        at = trun + 16
+        if flags & 0x000001:
+            offset = _u(fragment, at, 4)
+            if offset >= 0x80000000:
+                offset -= 0x100000000
+            data_offset = offset if data_offset is None else data_offset
+            at += 4
+        if flags & 0x000004:
+            at += 4
+        width = (4 if flags & 0x000100 else 0) + (4 if flags & 0x000200 else 0) \
+              + (4 if flags & 0x000400 else 0) + (4 if flags & 0x000800 else 0)
+        if flags & 0x000200:
+            size_at = at + (4 if flags & 0x000100 else 0)
+            for i in range(count):
+                total_bytes += _u(fragment, size_at + i * width, 4)
+    out.append("trun samples=%d data_offset=%s sample bytes=%d"
+               % (samples, data_offset, total_bytes))
+    if data_offset is not None:
+        out.append("samples span %d..%d of %d"
+                   % (data_offset, data_offset + total_bytes, len(fragment)))
+
+    saiz, _size = find_box(fragment, [b"moof", b"traf", b"saiz"])
+    saio, _size = find_box(fragment, [b"moof", b"traf", b"saio"])
+    if saiz is None or saio is None:
+        out.append("no saiz/saio")
+        return "; ".join(out)
+
+    default, count, sizes = _saiz_sizes(fragment, saiz)
+    offsets = _saio_offsets(fragment, saio)
+    total = default * count if default else sum(sizes)
+    out.append("saiz default=%d count=%d%s"
+               % (default, count,
+                  "" if default else " sizes[:4]=%s" % sizes[:4]))
+    out.append("saio count=%d offsets[:3]=%s" % (len(offsets), offsets[:3]))
+    if count != samples:
+        out.append("<< saiz counts %d samples, trun counts %d" % (count, samples))
+
+    if not offsets:
+        return "; ".join(out)
+    start = offsets[0]
+    end = start + total
+    out.append("aux region %d..%d of %d -> %s"
+               % (start, end, len(fragment),
+                  "inside the fragment" if end <= len(fragment)
+                  else "PAST THE END by %d" % (end - len(fragment))))
+    if end <= len(fragment):
+        first = default or (sizes[0] if sizes else 0)
+        out.append("first entry (%d bytes) %s"
+                   % (first, fragment[start:start + first].hex()))
+    return "; ".join(out)
