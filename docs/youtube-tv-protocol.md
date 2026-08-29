@@ -1034,6 +1034,63 @@ Also learned from those runs: this title has no itag 381 at all. AC-3 is not
 on everything, so a rendition test has to say when the one asked for is absent
 rather than silently falling back.
 
+### What actually differs between the track that works and the one that does not
+
+"Could it be an audio/video mismatch?" is the right question, and the logs
+answer it in two parts.
+
+**Nothing the addon declares is mismatched.** In every run the key id the
+bridge puts in the manifest is the one the media's own `tenc` carries:
+
+    sabr bridge: key ids {146: '13720fbbf8505264', 148: '92d444f944355272'}
+    itag 146 fragment 3 aux: tenc ... kid=13720fbbf8505264
+    itag 148 fragment 2 aux: tenc ... kid=92d444f944355272
+
+**But the two tracks are not encrypted the same way**, and the difference
+lines up exactly with which one fails:
+
+    VIDEO 146   saiz default=0  count=160  sizes[:4]=[16, 16, 16, 16]
+    AUDIO 150   saiz default=8  count=430
+
+Sixteen bytes of auxiliary data per video sample is an 8-byte IV plus a
+subsample count plus one subsample entry: **subsample encryption**, clear NAL
+headers with encrypted payload. Eight bytes per audio sample is the IV and
+nothing else: **the whole sample is encrypted, with no subsamples at all.**
+Both tracks use `iv_size=8`.
+
+That is the classic corner for a CENC implementation -- code that assumes
+subsample entries are present, or mishandles "no subsamples means the entire
+sample", breaks fully-encrypted audio while subsample-encrypted video plays
+perfectly. Which is precisely the observed behaviour on 21.5.22, and it
+explains why video survives.
+
+### Every AAC rendition fails at the same instant, and that is the proof
+
+The audio is not degrading after ten seconds. **It is never decrypted at all.**
+Audio fragment 1 arrives `clear (no saiz/saio)` and fragment 2 onward
+`ENCRYPTED`, and a fragment is 9984 ms:
+
+    itag 148 fragment 1 ( 61281 bytes) clear      itag 148 fragment 2 ENCRYPTED
+    itag 149 fragment 1 (161773 bytes) clear      itag 149 fragment 2 ENCRYPTED
+    itag 150 fragment 1 (321489 bytes) clear      itag 150 fragment 2 ENCRYPTED
+
+So the ~9.5 seconds that plays *is* the clear first fragment, and the AAC
+errors start the moment the first encrypted one is decoded. All three AAC
+renditions, offered one at a time so the endpoint had no choice:
+
+    itag 148  HE-AAC      61 KB/fragment   first error at 9.54 s
+    itag 149  AAC-LC med 162 KB/fragment   first error at 9.58 s
+    itag 150  AAC-LC hi  321 KB/fragment   first error at 9.54 s
+
+Fragment sizes differ five-fold and the failure time does not move, because it
+is not a byte count or a bitrate -- it is the encryption boundary. Codec
+profile and rendition are ruled out by measurement; itag 381 (AC-3) is absent
+from these titles and untested, but it is full-sample encrypted like the rest,
+so the mechanism covers it.
+
+Nothing in this addon reaches this: the key ids are right, the codecs are
+right, and YouTube decides how it encrypts.
+
 ### What the media actually is
 
 Measured with a probe in the addon rather than inferred. Every init segment:
