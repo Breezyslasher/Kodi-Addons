@@ -192,20 +192,33 @@ def lookup(key):
     # it picks from the set rather than taking the order as advice. So
     # offer H.264 alone when H.264 exists, and keep the whole set as the
     # fallback for when the endpoint refuses that.
-    video = alternatives(candidates, "video/", max_height)
-    avc = [f for f in video if "avc1" in (f.get("mimeType") or "")]
+    # A distinct name: "video" is the chosen rendition and formats carries
+    # it as one, so binding the candidate list to it handed the manifest a
+    # list where it wanted a dict -- "'list' object has no attribute 'get'"
+    # on the first play that got this far.
+    offerable = alternatives(candidates, "video/", max_height)
+    avc = [f for f in offerable if "avc1" in (f.get("mimeType") or "")]
     session = sabr_session.Session(
         stored["url"], stored.get("config") or "",
         [_entry(f) for f in alternatives(candidates, "audio/")],
-        [_entry(f) for f in (avc or video)],
+        [_entry(f) for f in (avc or offerable)],
         name, spec["id"], api.effective_version(name), _post,
         live=bool(stored.get("live", True)), po_token=po_token())
-    if avc and len(avc) != len(video):
+    if avc and len(avc) != len(offerable):
         kodiutils.log("sabr bridge: offering %d H.264 rendition(s) and "
                       "holding %d other(s) back: %s"
-                      % (len(avc), len(video) - len(avc),
-                         [f.get("itag") for f in video if f not in avc]))
-    session.every_video = [_entry(f) for f in video]
+                      % (len(avc), len(offerable) - len(avc),
+                         [f.get("itag") for f in offerable if f not in avc]))
+    session.every_video = [_entry(f) for f in offerable]
+    # The manifest reads these as single renditions. A list here is a bug
+    # that only surfaces several seconds later, inside the manifest handler,
+    # as an AttributeError ISA reports as "Cannot download the stream
+    # manifest file" -- so say it here, where it is legible.
+    for kind, chosen in (("audio", audio), ("video", video)):
+        if not isinstance(chosen, dict):
+            kodiutils.log_error("sabr bridge: the %s the context stored is a "
+                                "%s, not one rendition"
+                                % (kind, type(chosen).__name__))
     formats = {"audio": audio, "video": video,
                "drm_params": stored.get("drm_params", ""),
                "candidates": candidates, "max_height": max_height,
@@ -653,6 +666,21 @@ def solve_n(url):
     return rewritten[len("<BaseURL>"):-len("</BaseURL>")]
 
 
+def _baked(name):
+    """A value baked into a personal build, or "".
+
+    Pasting a hundred character token into Kodi's on-screen keyboard is its
+    own source of error, and the build already carries a session. These are
+    the same kind of thing, so they travel the same way -- and the setting
+    still wins, so anything baked can be overridden without a rebuild.
+    """
+    try:
+        from . import baked_session
+    except ImportError:
+        return ""
+    return getattr(baked_session, name, "") or ""
+
+
 def po_token():
     """The proof-of-origin token, as the bytes a SABR request carries.
 
@@ -660,7 +688,7 @@ def po_token():
     wants the bytes themselves. A captured browser request carries 85 of
     them under subfield 2, which is the 116 character setting decoded.
     """
-    text = kodiutils.get_setting("po_token", "")
+    text = kodiutils.get_setting("po_token", "") or _baked("PO_TOKEN")
     if not text:
         return b""
     import base64
@@ -706,7 +734,7 @@ def _file_url(fmt):
     # A media url without a pot is refused, which is why the DASH path adds
     # one to every BaseURL. Without this the probe measured its own omission
     # rather than anything about n.
-    token = kodiutils.get_setting("po_token", "")
+    token = kodiutils.get_setting("po_token", "") or _baked("PO_TOKEN")
     if solved and token and "pot=" not in solved:
         solved = manifest_mod._add_param(solved, "pot", token)
     return solved
@@ -755,7 +783,17 @@ def playable_url(player_response, max_height=1080):
         kodiutils.log_error("sabr bridge: no audio/video pair to ask for")
         return ""
 
-    solved = solve_n(sabr_url)
+    # A url pasted here replaces the one we were issued, n and all. It
+    # answers the only question the 403s leave: our media urls are refused
+    # even in a browser, so either the urls we are issued are poisoned or
+    # our client is. Borrow a url the browser was served and see which.
+    borrowed = kodiutils.get_setting("sabr_url", "") or _baked("SABR_URL")
+    if borrowed:
+        kodiutils.log("sabr bridge: using the pasted SABR url, not the one "
+                      "this player response carries")
+        solved = borrowed
+    else:
+        solved = solve_n(sabr_url)
     if not solved:
         return ""
 

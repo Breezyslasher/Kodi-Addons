@@ -299,7 +299,7 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             body = manifest_mod.patch(response.content)
             body = manifest_mod.add_po_token(
-                body, kodiutils.get_setting("po_token", ""))
+                body, kodiutils.get_setting("po_token", "") or manifest_mod._baked_po_token())
             body = _resolve_n(body, cookies)
             # Name the key each track needs. ISA holds all four the licence
             # grants and, with no cenc:default_KID anywhere in the manifest,

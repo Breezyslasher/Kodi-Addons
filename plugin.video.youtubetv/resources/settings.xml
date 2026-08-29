@@ -73,8 +73,8 @@
 			<group id="1">
 				<setting id="client_version" type="string" label="30021" help="30022">
 					<level>2</level>
-					<default>1.20260825.04.00</default>
-					<constraints><allowempty>false</allowempty></constraints>
+					<default></default>
+					<constraints><allowempty>true</allowempty></constraints>
 					<control type="edit" format="string"/>
 				</setting>
 				<setting id="proxy_port" type="integer" label="30023" help="30024">
@@ -89,8 +89,14 @@
 					<constraints><allowempty>true</allowempty></constraints>
 					<control type="edit" format="string"/>
 				</setting>
-				<setting id="visitor_id" type="string" label="30025">
-					<level>3</level>
+				<setting id="sabr_url" type="string" label="30063" help="30064">
+					<level>2</level>
+					<default></default>
+					<constraints><allowempty>true</allowempty></constraints>
+					<control type="edit" format="string"/>
+				</setting>
+				<setting id="visitor_id" type="string" label="30025" help="30062">
+					<level>2</level>
 					<default></default>
 					<constraints><allowempty>true</allowempty></constraints>
 					<control type="edit" format="string"/>

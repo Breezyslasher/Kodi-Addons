@@ -71,6 +71,15 @@ def _attributes(tag_body):
 _BASEURL_TAG = re.compile(r"(<BaseURL\b[^>]*>)([^<]+)(</BaseURL>)")
 
 
+def _baked_po_token():
+    """The token a personal build carries, or ""."""
+    try:
+        from . import baked_session
+    except ImportError:
+        return ""
+    return getattr(baked_session, "PO_TOKEN", "") or ""
+
+
 def add_po_token(xml, token):
     """Append an unsigned ``pot`` to every BaseURL.
 
@@ -379,7 +388,7 @@ def probe_variations(url, headers, cookie_header=""):
     # and none of ours does. pot is absent from sparams, so it can be added
     # without breaking the signature. If this is the one that returns 200, the
     # whole 403 wall is PO token enforcement and nothing else.
-    token = kodiutils.get_setting("po_token", "")
+    token = kodiutils.get_setting("po_token", "") or _baked_po_token()
     if token:
         variants.extend([
             ("with pot", _add_param(url, "pot", token), ranged),
@@ -387,6 +396,21 @@ def probe_variations(url, headers, cookie_header=""):
         ])
     else:
         kodiutils.log("segment variant [pot]: skipped, no po_token configured")
+    # The player's own n, put back. If this one answers 200 the transform is
+    # wrong for these urls however faithfully it was extracted; if it is
+    # refused like the rest, n is not what the wall is made of.
+    restored = url
+    for solved_value, minted in LAST_N.items():
+        if solved_value and solved_value in restored:
+            restored = restored.replace(solved_value, minted)
+    if restored != url:
+        variants.append(("player's own n", restored, ranged))
+        if token:
+            variants.append(("player's n + pot",
+                             _add_param(restored, "pot", token), ranged))
+    else:
+        kodiutils.log("segment variant [player's own n]: skipped, nothing "
+                      "was rewritten in this url")
     for name, candidate, extra in variants:
         attempt = dict(headers)
         attempt.update(extra)
@@ -494,6 +518,10 @@ def carries_n(url):
     return bool(_N_IN_URL.search(url))
 
 
+# solved value -> the value the player minted, from the last rewrite_n.
+LAST_N = {}
+
+
 def rewrite_n(xml, solve):
     """Replace ``n`` in every BaseURL with the value ``solve`` returns.
 
@@ -531,6 +559,14 @@ def rewrite_n(xml, solve):
 
     text = _BASEURL_TAG.sub(rewrite, text)
     if solved:
+        # Remember which value replaced which, so a probe can put the
+        # player's own n back. Every url the addon sends carries a value it
+        # computed, so "is our n the reason for the 403" has never actually
+        # been asked -- and the extracted transform being byte-identical to
+        # the player's own does not answer it if the url was minted by a
+        # different build of the same release.
+        LAST_N.clear()
+        LAST_N.update((new, old) for old, new in solved.items() if new)
         kodiutils.log("manifest: rewrote n on %d distinct value(s): %s"
                       % (len(solved),
                          ", ".join("%s -> %s" % i for i in solved.items())))

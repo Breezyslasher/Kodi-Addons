@@ -1480,3 +1480,86 @@ ClientAbrState field 28 is MAX_SAFE_INTEGER for "the live edge". Sent for a
 recording it is past the end, and the server answers with the two
 initialisation headers and no media, indefinitely -- which is the correct
 answer to the question asked. On-demand sessions send 0.
+
+
+## The signature timestamp names the player, and it has to be the right one
+
+Every media url went to `HTTP 403` with an empty body -- both paths at once,
+minutes after the DASH path had played seventy-six seconds cleanly. The
+symptom is worth recording because it is so easy to misread:
+
+* every variant of the url was refused, `as-is`, `no n`, `with pot`, `no n +
+  pot`, `query style`, `no range`;
+* pasting the url into a browser on the same machine and the same IP gave
+  the same `403 Forbidden, Content-Length: 0`;
+* a proof-of-origin token five minutes old, lifted from a request that had
+  returned 16 MB, changed nothing;
+* the manifest was clean -- diffing the itag 150 BaseURL of the run that
+  played against the run that failed, `sparams` was character for character
+  the same and the only new parameter, `pcm2cms=yes`, sits in `lsparams`
+  and is signed by `lsig`;
+* the player responses were the same: forty parameters each, matching but
+  for `expire`, `ei`, `sig`, `spc`, `ns`, `n` and CDN routing;
+* and `n` verified correct against the browser's own request -- YouTube
+  minted `2YLDnv4vx-5yo8ccc44`, the browser sent `-AcdKn1WC2CNPg`, and the
+  addon's transform of the minted value gives `-AcdKn1WC2CNPg`.
+
+All of that is consistent, and all of it is beside the point. The player
+request declares `signatureTimestamp`, which names the build the client
+promises to unscramble with. The addon read it from the bootstrap page,
+which said **20690**, while the player it actually fetches and extracts `n`
+from, `e937390a`, carries `signatureTimestamp:20684` in its own source --
+and 20684 is what the browser sends. So the urls we were minted expected a
+transform we never applied. They were refused for everyone, the browser
+included, which is exactly how that mismatch looks from outside.
+
+It also explains why the transform kept checking out: it was right for the
+browser's values, because those were minted for the build the browser
+declared, and wrong for ours.
+
+Read it out of the player, not the page. The player cannot disagree with the
+transform by construction. One line fixed both paths at once.
+
+A second bug hid inside the same log line. `_client_version` treats any
+setting differing from the constant as a deliberate pin, and `settings.xml`
+declared the previous version as its *default* -- so an untouched setting
+outvoted both the page and the constant, and the addon kept claiming
+`1.20260825.04.00` after the constant moved on. Settings defaults are not
+"unset".
+
+
+## AV1 is not a rendition this path can play
+
+Audio through the bridge died at the same instant every time: the clear lead
+played, 9.9 seconds of it, and every encrypted fragment after that came back
+`kDecryptError` on a key the CDM reported usable. Everything measurable
+about the media was correct --
+
+* the fragments are byte for byte the file's own, initialisation 1712 bytes
+  and fragments 321489 and 324709, compared against the same track fetched
+  as a file;
+* `saiz` counts the samples `trun` counts, 430 of them, `saio` points eight
+  bytes past the moof where the mdat payload starts, and `trun`'s
+  `data_offset` lands exactly where the IV table ends;
+* the PSSH is byte-identical to the one YouTube publishes for that
+  Representation;
+* the same credential decrypts the same title over DASH.
+
+The difference was the *other* track. Audio never gets a CDM session of its
+own: ISA opens one for the video key, finds it needs the secure path, and
+the audio track reuses that session. The bridge was picking itag 810 -- AV1
+at 1080p, carrying the SD tier's key -- because it sorted candidates on
+bitrate alone, and YouTube's own manifest for the title contains no AV1 at
+all: twelve Representations, every one `avc1`.
+
+Fields 16 and 17 are a *set* the server picks from, not a ranked list.
+Preferring H.264 in the ordering changed nothing; the server chose 810
+again. Offering H.264 alone got itag 223, and audio decrypted -- 31 seconds
+and counting, no `kDecryptError`, no stall, where every previous run stopped
+at 9.9.
+
+Honest caveat: the signature timestamp fix landed in the same build, so the
+two are not fully separated. What is not confounded is that audio failed
+this way for many runs while media was flowing normally, and that the CDM
+session is opened for the same KID either way -- `4d3521e2`, the SD key --
+so it is the codec that changed, not the key or the session.
