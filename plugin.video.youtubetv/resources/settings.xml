@@ -89,11 +89,6 @@
 					<constraints><allowempty>true</allowempty></constraints>
 					<control type="edit" format="string"/>
 				</setting>
-				<setting id="sabr_adaptive" type="boolean" label="30067" help="30068">
-					<level>2</level>
-					<default>false</default>
-					<control type="toggle"/>
-				</setting>
 				<setting id="no_js_runtime" type="boolean" label="30065" help="30066">
 					<level>2</level>
 					<default>false</default>

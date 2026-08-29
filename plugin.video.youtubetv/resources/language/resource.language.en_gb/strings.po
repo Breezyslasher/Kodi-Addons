@@ -173,7 +173,7 @@ msgid "Play through SABR when signed in with a code"
 msgstr ""
 
 msgctxt "#30059"
-msgid "The cookie jar is used for playback whenever there is one, because it is offered a DASH manifest and plays through the ordinary path. Turn this on to use a code sign-in instead when you hold both: that identity is only ever offered SABR, so playback goes through the bridge. One quality per track unless the adaptive setting below is on."
+msgid "The cookie jar is used for playback whenever there is one, because it is offered a DASH manifest and plays through the ordinary path. Turn this on to use a code sign-in instead when you hold both: that identity is only ever offered SABR, so playback goes through the bridge. One quality per track: SABR chooses server-side and a manifest naming more than the server serves takes the video track down."
 msgstr ""
 
 msgctxt "#30060"
@@ -202,12 +202,4 @@ msgstr ""
 
 msgctxt "#30066"
 msgid "Nothing in this addon needs a JavaScript runtime any more: n is solved by the bundled Python interpreter, and the proof-of-origin token is minted by running BotGuard's own interpreter inside a JavaScript engine written in Python. Turn this on to skip the mint and compute a token arithmetically instead -- it costs nothing and works while YouTube reports StreamProtectionStatus 2, but it is good for thirty minutes rather than twelve hours. It also stops n falling back to a runtime if one happens to be installed, so this is the switch for seeing exactly what a box with Python and nothing else does."
-msgstr ""
-
-msgctxt "#30067"
-msgid "Let the player choose the quality on the bridge"
-msgstr ""
-
-msgctxt "#30068"
-msgid "The bridge names one rendition per track, because SABR chooses server-side: fields 16 and 17 of a request are the set the client can play and the server picks out of it. Turn this on and the manifest lists every H.264 rendition instead, and whichever one InputStream Adaptive asks for is the only one still offered on the next exchange. Off by default: a narrowed set was once refused outright, and if it is refused again the session goes back to the whole set for the rest of playback. On a protected title a rendition is only listed once its key id can be named -- read out of its own media, or out of a licence this title has already been granted -- because a Representation whose PSSH names no key is a manifest InputStream Adaptive refuses whole."
 msgstr ""

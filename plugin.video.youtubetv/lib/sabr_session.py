@@ -157,14 +157,19 @@ class Session(object):
         self._announced = set()
         self._boxed = {}
         self._reinit = {}
-        # itag -> height, so the itag ISA fetches can be turned into the
-        # height cap the request carries. Filled in by the bridge; empty
-        # means nothing to steer with.
-        self.heights = {}
-        # What ClientAbrState field 59 asks for, and what it started as.
-        self.ceiling = max_height
+        # What ClientAbrState field 59 asks for. It was hardcoded to 1080
+        # in the request builder and nothing ever passed one, so a licence
+        # allowing 2160 still asked for 1080.
+        #
+        # It is not a way to *choose* a rendition. DASH addresses media by
+        # Representation and SABR lets the server choose, and those cannot
+        # both be true: a manifest naming nine Representations had ISA fetch
+        # itag 224 while the server kept serving 223, so /sabr/segment had
+        # no bytes for what ISA asked for, three 503s later ISA reported
+        # "No MOOV atom in stream" and disabled the video track. Narrowing
+        # fields 16 and 17 to the wanted itag instead is answered
+        # sabr.no_video_selected. One Representation per track it is.
         self.wanted_height = max_height
-        self.adaptive = False
         # ISA reads audio and video on separate threads and both drive this
         # one session. Two fetches at once interleave their MEDIA parts
         # through the same _open map and the same echo, so a segment can be
@@ -173,34 +178,6 @@ class Session(object):
         self._lock = threading.Lock()
 
     # -- the conversation ------------------------------------------------
-
-    def want(self, itag):
-        """Ask for the quality tier this rendition sits in, from here on.
-
-        Not by narrowing what is offered. Fields 16 and 17 are what the
-        client can play, and offering one video format is answered
-        sabr.no_video_selected -- measured twice now, most recently with
-        every key id in place and the manifest naming nine renditions, so
-        it is the request the endpoint objects to and not the pick.
-
-        The client says what it wants through ClientAbrState instead. Field
-        59 is the height cap, and the browser sends 1080 in it; that is the
-        knob a server-driven ABR gives the client, so this turns "ISA
-        fetched itag 224" into "cap the state at 1080" and lets the server
-        choose within it, which is the arrangement SABR is built around.
-
-        Audio has no equivalent field, so an audio itag changes nothing.
-        """
-        if not self.adaptive:
-            return False
-        height = self.heights.get(itag) or 0
-        if not height or height == self.wanted_height:
-            return False
-        kodiutils.log("sabr session: the player fetched itag %s (%dp), so "
-                      "the abr state asks for %dp rather than %dp"
-                      % (itag, height, height, self.wanted_height))
-        self.wanted_height = height
-        return True
 
     def _buffered(self):
         """What we hold, with the duration measured rather than assumed.
@@ -239,20 +216,7 @@ class Session(object):
             return self._fetch()
 
     def _fetch(self):
-        try:
-            return self._exchange()
-        except SabrError as exc:
-            if self.wanted_height == self.ceiling:
-                raise
-            # The cap the player asked for was refused. Put it back where it
-            # started rather than failing the segment, and stop moving it.
-            kodiutils.log("sabr session: the endpoint refused an abr state "
-                          "asking for %dp (%s) -- back to %dp and leaving it "
-                          "there" % (self.wanted_height, str(exc).strip(),
-                                     self.ceiling))
-            self.wanted_height = self.ceiling
-            self.adaptive = False
-            return self._exchange()
+        return self._exchange()
 
     def _exchange(self):
         body = sabr.build_request(
