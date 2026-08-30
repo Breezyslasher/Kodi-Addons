@@ -70,6 +70,27 @@ BROWSE_ID = "FEunplugged_browse"
 # entirely in its params, which is why those travel with a folder.
 CHIPS_ID = "FEunplugged_chips"
 
+# Every search in every capture sends params beside the query -- seven of
+# them, and not one sends the query alone, which is what this addon sent
+# until now. Scanning the request bodies of all twenty-three captures, it is
+# the only endpoint whose shape here did not match what a real client sends.
+#
+# This is the query-independent form: field 61 wrapping seven empty
+# sub-fields, which is what "no filters" looks like, and the same bytes went
+# out for "blues" and for "St. Louis Blues". Copied verbatim rather than
+# rebuilt -- there is nothing here worth reconstructing, and a filter
+# invented by hand is a filter nobody asked for.
+#
+# The other captured form, "cgIgAw%3D%3D", is field 14 wrapping a single
+# varint that differed per query (3, then 2). It tracks which suggestion was
+# clicked, so it is not ours to send.
+#
+# Whether this is what makes the difference to how a film is typed is NOT
+# established: the browser sent both forms and typed The Blues Brothers
+# MOVIE either way. What is established is that the call now matches the
+# capture, which it did not before.
+SEARCH_PARAMS = "6gMOCgASABoAIgAqADIAQgA%3D"
+
 # The Browse tab is 712 KB and its five categories belong on the addon's
 # front page, which cannot spend a request -- let alone that one -- drawing
 # a menu. So the categories are kept on disk and the tab is asked for only
@@ -1053,7 +1074,7 @@ class Api(object):
     # -- search -----------------------------------------------------------
 
     def search(self, query):
-        return self.call("search", {"query": query})
+        return self.call("search", {"query": query, "params": SEARCH_PARAMS})
 
     def search_continuation(self, token):
         """The next page of a search.

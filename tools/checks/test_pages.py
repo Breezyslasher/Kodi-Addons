@@ -1137,5 +1137,16 @@ check("a response naming no message says so rather than guessing",
 check("and so does one with no actions at all",
       epg.action_text({"responseContext": {}}), "")
 
+# -- the search call itself ------------------------------------------------
+# Scanning the request bodies of every capture, search was the one endpoint
+# this addon called with a shape no real client uses: seven captured
+# searches all send params beside the query and none sends the query alone.
+# The value is copied from a plain search, not rebuilt, so it is pinned.
+check("a search sends the params a real one does",
+      api.SEARCH_PARAMS, "6gMOCgASABoAIgAqADIAQgA%3D")
+check("and that is the query-independent form, not the one that tracks "
+      "which suggestion was clicked",
+      api.SEARCH_PARAMS.startswith("6gMO"), True)
+
 print("failures:", len(failures))
 sys.exit(1 if failures else 0)
