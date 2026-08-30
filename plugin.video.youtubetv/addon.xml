@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.48" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.49" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,21 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.49 - What a film's page says about it, and films nobody bought
+- On-demand titles carried a year and a rating and nothing else. Their own
+  page carries genres, a real synopsis, the studio, who directed it, and
+  the lead cast with the parts they played -- sixteen of them for Rogue
+  One -- and all of it was already being fetched to find out whether the
+  thing was a film at all. It reaches Kodi now.
+- A label the About tab uses that this does not know is logged rather than
+  dropped, so nothing goes quietly missing.
+- Fixes suggestions on a film nobody has bought. It has no Watch now items
+  at all, so that tab is dropped for holding nothing and Suggested takes
+  its place -- and reading the first tab as the one that plays then hid
+  the only tab there was. The tab that plays is found by what is in it now.
+- And such a film says so plainly rather than just failing: it is one to
+  buy, and what its page does hold is on the context menu.
+
 2026.8.31.48 - Films from search actually play now
 - The typing was landing on the wrong screen. Listing a search types its
   rows -- folder names and a log line -- and opening a row drew the items

@@ -1344,6 +1344,117 @@ def page_description(response):
     return ""
 
 
+def _attribute(node):
+    """One About line as (label, value).
+
+    Two shapes, both from Rogue One's page. A labelled line marks its label
+    bold -- ``Provider: `` then ``Disney``, ``Directors`` then ``: `` then
+    ``Gareth Edwards`` -- and an unlabelled one just reads ``Released 2016``
+    or ``On FX``. The genres line has no label at all, being simply
+    "Science fiction, Adventure, Action, Fantasy".
+    """
+    if not isinstance(node, dict):
+        return "", ""
+    said = node.get("simpleText")
+    if isinstance(said, str):
+        return "", said.strip()
+    runs = node.get("runs")
+    if not isinstance(runs, list):
+        return "", ""
+    bold = "".join(run.get("text", "") for run in runs
+                   if isinstance(run, dict) and run.get("bold"))
+    plain = "".join(run.get("text", "") for run in runs
+                    if isinstance(run, dict) and not run.get("bold"))
+    if bold:
+        return bold.strip().strip(":").strip(), plain.strip()
+    whole = "".join(run.get("text", "") for run in runs
+                    if isinstance(run, dict)).strip()
+    for word in ("Released", "On"):
+        if whole.startswith(word + " "):
+            return word, whole[len(word) + 1:].strip()
+    return "", whole
+
+
+_ABOUT_FIELDS = {"released": "year", "provider": "studio", "on": "network",
+                 "directors": "directors", "director": "directors",
+                 "writers": "writers", "writer": "writers",
+                 "producers": "producers", "producer": "producers"}
+
+
+def about_fields(response):
+    """Everything a title's About tab says about it.
+
+    A film's page carries far more than the year and rating its tile does:
+    "Science fiction, Adventure, Action, Fantasy", "Released 2016", "On FX",
+    "Provider: Disney", "Directors: Gareth Edwards", and a real synopsis.
+
+    Labels this does not know are returned under ``unknown`` rather than
+    dropped, so a title carrying one names it in a log instead of it going
+    quietly missing.
+    """
+    found = {"genres": [], "unknown": []}
+    for block in walk(response, "unpluggedContentDetailsAboutFieldsRenderer"):
+        if not isinstance(block, dict):
+            continue
+        said = text(block.get("description"))
+        if said:
+            found["description"] = said
+        for entry in (block.get("attributes") or []):
+            label, value = _attribute(entry)
+            if not value:
+                continue
+            if not label:
+                # The unlabelled line is the genres, comma separated.
+                found["genres"] = [part.strip() for part in value.split(",")
+                                   if part.strip()]
+                continue
+            field = _ABOUT_FIELDS.get(label.lower())
+            if field == "year":
+                try:
+                    found["year"] = int(value[:4])
+                except ValueError:
+                    pass
+            elif field in ("directors", "writers", "producers"):
+                found[field] = [part.strip() for part in value.split(",")
+                                if part.strip()]
+            elif field:
+                found[field] = value
+            else:
+                found["unknown"].append("%s: %s" % (label, value))
+    return found
+
+
+def cast_of(response):
+    """(name, role) for each of a title's lead cast, in the page's order."""
+    people = []
+    for person in walk(response, "unpluggedPersonRenderer"):
+        if not isinstance(person, dict):
+            continue
+        name = text(person.get("name"))
+        if name:
+            people.append((name, text(person.get("role"))))
+    return people
+
+
+def rating_and_year(node, default=""):
+    """("PG-13", 2016) out of a header's "PG-13 * 2016".
+
+    Either half can be missing -- a show reads "TV-14" alone on some pages
+    -- so they are told apart by shape: four digits is the year and
+    anything else is the rating.
+    """.replace("*", "\u2022")
+    rating, year = default, 0
+    for part in text(node).replace("\u2022", "|").split("|"):
+        part = part.strip()
+        if not part:
+            continue
+        if len(part) == 4 and part.isdigit():
+            year = int(part)
+        elif not rating or rating == default:
+            rating = part
+    return rating, year
+
+
 def dvr_state(response):
     """True if this title is in the library, False if not, None if unsaid.
 

@@ -1264,6 +1264,91 @@ check("a show is still a folder",
 check("and an airing plays what it is",
       (airing[2], "action=play&" in airing[0]), (False, True))
 
+# -- what a title's page says about it -------------------------------------
+# A tile carries a year and a rating. Rogue One's page carries genres, a
+# synopsis, the studio, who directed it and sixteen cast members with the
+# parts they played -- and all of it is already fetched, to find out whether
+# the thing was a film at all.
+ABOUT = {"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [
+    {"tabRenderer": {"title": "About", "content": {"sectionListRenderer": {
+        "contents": [{"unpluggedContentDetailsAboutFieldsRenderer": {
+            "description": {"simpleText": "Jyn Erso joins forces with a spy."},
+            "attributes": [
+                {"simpleText": "Science fiction, Adventure, Action"},
+                {"runs": [{"text": "Released "}, {"text": "2016"}]},
+                {"runs": [{"text": "On "}, {"text": "FX"}]},
+                {"runs": [{"text": "Provider: ", "bold": True},
+                          {"text": "Disney"}]},
+                {"runs": [{"text": "Directors", "bold": True},
+                          {"text": ": ", "bold": True},
+                          {"text": "Gareth Edwards"}]},
+                {"runs": [{"text": "Composers", "bold": True},
+                          {"text": ": ", "bold": True},
+                          {"text": "Michael Giacchino"}]},
+            ]}}]}}}},
+    {"tabRenderer": {"title": "Lead cast", "content": {"sectionListRenderer": {
+        "contents": [
+            {"unpluggedPersonRenderer": {"name": {"simpleText": "Felicity Jones"},
+                                         "role": {"simpleText": "Jyn Erso"}}},
+            {"unpluggedPersonRenderer": {"name": {"simpleText": "Diego Luna"},
+                                         "role": {"simpleText": "Cassian Andor"}}},
+        ]}}}},
+]}}}
+
+fields = epg.about_fields(ABOUT)
+check("the About tab is read field by field",
+      (fields["genres"], fields["year"], fields["studio"],
+       fields["network"], fields["directors"]),
+      (["Science fiction", "Adventure", "Action"], 2016, "Disney", "FX",
+       ["Gareth Edwards"]))
+# A label this does not know is reported, not dropped: a title carrying one
+# should name it in a log rather than go quietly missing.
+check("and a label it does not know is reported rather than dropped",
+      fields["unknown"], ["Composers: Michael Giacchino"])
+check("the cast keeps the parts they played, in the page's order",
+      epg.cast_of(ABOUT),
+      [("Felicity Jones", "Jyn Erso"), ("Diego Luna", "Cassian Andor")])
+check("and a rating is told from a year by shape, not by position",
+      [epg.rating_and_year({"simpleText": "PG-13 \u2022 2016"}),
+       epg.rating_and_year({"simpleText": "2016 \u2022 TV-14"}),
+       epg.rating_and_year({"simpleText": "TV-14"})],
+      [("PG-13", 2016), ("TV-14", 2016), ("TV-14", 0)])
+
+# And that it reaches the item, which is the part that was silently missing
+# the last time everything read correctly.
+xbmcplugin.ITEMS[:] = []
+default._add_item(epg.Item(video_id="V1", title="Rogue One", duration=8037),
+                  plot=fields["description"],
+                  meta=dict(fields, cast=epg.cast_of(ABOUT), mpaa="PG-13"))
+tag = xbmcplugin.ITEMS[0][3].info.set
+check("the metadata reaches the list item",
+      (tag.get("setGenres"), tag.get("setYear"), tag.get("setMpaa"),
+       tag.get("setDirectors"), tag.get("setStudios"),
+       tag.get("setDuration"), [(a.name, a.role) for a in tag["setCast"]]),
+      (["Science fiction", "Adventure", "Action"], 2016, "PG-13",
+       ["Gareth Edwards"], ["Disney"], 8037,
+       [("Felicity Jones", "Jyn Erso"), ("Diego Luna", "Cassian Andor")]))
+
+# -- a film nobody has bought ----------------------------------------------
+# It has no Watch now items at all, so that tab is dropped for holding
+# nothing and Suggested takes its place. Reading the first tab as the one
+# that plays then hid the only tab there was: The Blues Brothers came back
+# "beside the one that plays -- nothing", with 26 suggestions in it.
+BOUGHT = [epg.Section("Watch now", [epg.Item(video_id="V1", title="the film")]),
+          epg.Section("Suggested", [epg.Item(browse_id="UC2", title="another")])]
+UNBOUGHT = [epg.Section("Suggested",
+                        [epg.Item(browse_id="UC2", title="another")])]
+
+check("the tab that plays is found by what is in it, not by position",
+      (default._plays(BOUGHT).title, default._plays(UNBOUGHT)),
+      ("Watch now", None))
+check("so a film nobody has bought still shows its suggestions",
+      [t.title for t in UNBOUGHT if t is not default._plays(UNBOUGHT)],
+      ["Suggested"])
+check("and one that plays still keeps them apart",
+      [t.title for t in BOUGHT if t is not default._plays(BOUGHT)],
+      ["Suggested"])
+
 # -- the search call itself ------------------------------------------------
 # Scanning the request bodies of every capture, search was the one endpoint
 # this addon called with a shape no real client uses: seven captured

@@ -1396,12 +1396,18 @@ first and last are somewhere to go:
 | Tab | Holds |
 | --- | --- |
 | Watch now | the film, and any recording of it: John Wick 3 gave the on-demand copy and an AMC airing from four weeks earlier, in that order |
-| About | `unpluggedContentDetailsAboutFieldsRenderer` -- a description and attributes, no items |
-| Lead cast | `unpluggedPersonRenderer` x22, each a searchEndpoint for that name |
+| About | `unpluggedContentDetailsAboutFieldsRenderer` -- a description and `attributes`, no items. **The attributes are the metadata**: an unlabelled line of genres ("Science fiction, Adventure, Action, Fantasy"), then `Released 2016`, `On FX`, `Provider: Disney`, `Directors: Gareth Edwards`. A labelled line marks its label bold; `Released` and `On` are not bold and are read by their leading word |
+| Lead cast | `unpluggedPersonRenderer` x22, each with `name`, the `role` they played, and a searchEndpoint for that name |
 | Suggested | 39 titles for Harry Potter and the Order of the Phoenix, 26 for John Wick Chapter 2 |
 
 So a title's page always reads as two tabs and drops two, by design, and
 that is not a shape worth keeping a copy of.
+
+**A film nobody has bought has no Watch now items either**, so that tab is
+dropped as well and Suggested becomes the first one. Which is why the tab
+holding the title itself has to be found by what is in it rather than by
+position: The Blues Brothers answered with 26 suggestions and nothing to
+play, and reading tabs[0] as the one that plays hid the only tab there was.
 
 Its **header** is a different renderer from a channel's, and that is what
 tells the two pages apart:

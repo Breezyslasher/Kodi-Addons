@@ -545,12 +545,49 @@ def _dvr_one(browse_id, name, recording):
                                    browse_id=browse_id, name=name))]
 
 
-def _add_item(item, plot="", dvr=None):
+def _set_meta(info, meta):
+    """Everything a title's own page says about it, onto the info tag.
+
+    A tile carries a year and a rating and nothing else. The page carries
+    genres, a synopsis, the studio, who directed it and sixteen cast
+    members with the parts they played -- all of it already fetched to
+    find out whether the thing was a film at all.
+
+    Each setter is guarded on its own: an older Kodi missing one of them
+    should cost that field, not the listing.
+    """
+    for name, value in (("setGenres", meta.get("genres")),
+                        ("setDirectors", meta.get("directors")),
+                        ("setWriters", meta.get("writers")),
+                        ("setStudios", [meta["studio"]] if meta.get("studio")
+                         else None),
+                        ("setYear", meta.get("year")),
+                        ("setMpaa", meta.get("mpaa")),
+                        ("setPremiered", meta.get("premiered"))):
+        if not value:
+            continue
+        setter = getattr(info, name, None)
+        if setter:
+            try:
+                setter(value)
+            except Exception as exc:
+                kodiutils.log("could not set %s: %s" % (name, exc))
+    people = meta.get("cast")
+    if people and hasattr(info, "setCast") and hasattr(xbmc, "Actor"):
+        try:
+            info.setCast([xbmc.Actor(name, role, order)
+                          for order, (name, role) in enumerate(people)])
+        except Exception as exc:
+            kodiutils.log("could not set the cast: %s" % exc)
+
+
+def _add_item(item, plot="", dvr=None, meta=None):
     """One row, without ending the directory.
 
     ``plot`` overrides the tile's own line, for a page that carries a real
     synopsis its tiles do not. ``dvr`` is (browse_id, name, recording) where
     the page knows the library state, and adds the one entry that applies.
+    ``meta`` is the rest of what that page said: genres, cast, director.
     """
     listitem = xbmcgui.ListItem(label=_label_of(item))
     listitem.setArt({"thumb": item.art, "fanart": item.art})
@@ -561,6 +598,8 @@ def _add_item(item, plot="", dvr=None):
     if item.duration:
         info.setDuration(item.duration)
     info.setMediaType("video")
+    if meta:
+        _set_meta(info, meta)
     if item.playable:
         listitem.setProperty("IsPlayable", "true")
         if dvr:
@@ -956,23 +995,46 @@ def route_browse(browse_id, name, params=""):
         # folders. That is what a film reached from search needs: search
         # calls it a SHOW, so it is a folder, and this is the page it opens.
         header = epg.title_header(response)
-        if header and tabs[0].items:
+        playing = _plays(tabs)
+        if header and playing is not None:
             recording = epg.dvr_state(response)
             dvr = (browse_id, name or epg.text(header.get("title")),
                    recording) if recording is not None else None
-            plot = epg.page_description(response)
+            about = epg.about_fields(response)
+            rating, year = epg.rating_and_year(header.get("secondaryText"))
+            meta = dict(about)
+            meta["cast"] = epg.cast_of(response)
+            meta["mpaa"] = rating
+            meta["year"] = about.get("year") or year
+            if about.get("unknown"):
+                kodiutils.log("%s: about says something new -- %s"
+                              % (name or browse_id,
+                                 "; ".join(about["unknown"])))
+            plot = about.get("description", "")
             # The tab can defer shelves of its own. That is where a show
             # keeps its seasons, and where a film's extras would be: the
             # web client's show page hangs "Season 1"..."Season 9" and
             # "Extras" off ten tokens rather than listing them.
-            shown = _expand_sections(client, response, list(tabs[0].items))
+            shown = _expand_sections(client, response, list(playing.items))
             for item in shown:
-                _add_item(item, plot=plot, dvr=dvr)
-            kodiutils.log("%s: %d to play, %s alongside"
+                _add_item(item, plot=plot, dvr=dvr, meta=meta)
+            kodiutils.log("%s: %d to play, %s; %s alongside"
                           % (name or browse_id, len(shown),
+                             ", ".join(
+                                 filter(None,
+                                        ["%d genre(s)" % len(meta["genres"])
+                                         if meta.get("genres") else "",
+                                         "%d in the cast" % len(meta["cast"])
+                                         if meta.get("cast") else "",
+                                         "directed by %s"
+                                         % ", ".join(meta["directors"])
+                                         if meta.get("directors") else ""]))
+                             or "no details",
                              ", ".join("%s (%d)" % (t.title, len(t.items))
-                                       for t in tabs[1:]) or "nothing"))
-            _list_sections(tabs[1:], "browse_section",
+                                       for t in tabs if t is not playing)
+                             or "nothing"))
+            _list_sections([t for t in tabs if t is not playing],
+                           "browse_section",
                            extra={"browse_id": browse_id, "params": params})
             finish("movies" if header.get("contentType") == "MOVIE"
                    else "videos")
@@ -1516,13 +1578,30 @@ def route_play_movie(browse_id, label):
                      ", ".join("%s (%s)" % (item.title, item.video_id)
                                for item in found[:6]) or "nothing"))
     if not found:
+        kodiutils.log("%s: its page holds -- %s"
+                      % (label or browse_id,
+                         "; ".join(epg.tab_shapes(response)) or "no tabs"))
         kodiutils.ok_dialog(
-            "YouTube TV lists %s but names nothing to play on its page. It "
-            "may need to be bought or added to your library first."
+            "YouTube TV lists %s but names nothing to play on its page -- it "
+            "is probably one to buy. What the page does hold is on the "
+            "context menu, under \"Extras and suggested titles\"."
             % (label or "this film"), "Nothing to play")
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     route_play(found[0].video_id, label or found[0].title)
+
+
+def _plays(tabs):
+    """The tab holding the thing itself, or None when nothing plays.
+
+    Not tabs[0]. A film nobody has bought has no Watch now items at all, so
+    that tab is dropped for holding nothing and Suggested takes its place
+    -- and taking the first tab as the one that plays then hid the only
+    tab there was. The Blues Brothers came back "beside the one that plays
+    -- nothing" with 26 suggestions sitting in it.
+    """
+    return next((tab for tab in tabs
+                 if any(item.playable for item in tab.items)), None)
 
 
 def route_browse_suggested(browse_id, name, params=""):
@@ -1552,7 +1631,8 @@ def route_browse_suggested(browse_id, name, params=""):
         return
 
     tabs = epg.browse_tabs(response)
-    rest = tabs[1:]
+    playing = _plays(tabs)
+    rest = [tab for tab in tabs if tab is not playing]
     kodiutils.log("%s: beside the one that plays -- %s"
                   % (name or browse_id,
                      ", ".join("%s (%d)" % (t.title, len(t.items))
