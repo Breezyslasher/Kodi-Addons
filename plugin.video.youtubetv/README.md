@@ -25,6 +25,9 @@ not document. See [Status](#status).
 * **Recording** -- record or stop recording a series from the context menu on
   any show, in the Library, in search results, or on any programme in a
   channel's schedule
+* **Film and show details** -- genres, synopsis, studio, director and the
+  lead cast with their roles, off the title's own page, which is fetched
+  anyway to find out what the thing is
 * **Films play when you pick one.** A tile names no stream, only its page,
   so the id is fetched on selection; what is left of that page -- its
   suggestions, and its extras where a title has any -- is on the context

@@ -8,3 +8,13 @@ class Monitor(object):
 CONDITIONS = {}
 def getCondVisibility(cond):
     return CONDITIONS.get(cond, False)
+
+
+class Actor(object):
+    """xbmc.Actor, for setCast."""
+
+    def __init__(self, name="", role="", order=-1, thumbnail=""):
+        self.name = name
+        self.role = role
+        self.order = order
+        self.thumbnail = thumbnail
