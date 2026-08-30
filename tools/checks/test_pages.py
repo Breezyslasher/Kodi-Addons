@@ -1445,6 +1445,20 @@ check("one shelf is read as one, so the episodes still list",
 check("and several are read as several, so the folders take over",
       len(epg.section_continuations(SEASONS)), 2)
 
+# -- the order a listing is built in is the order it is shown in -----------
+# Setting no sort method does not mean unsorted: Kodi applies whatever sort
+# was last used for that content type. A show with forty seasons then reads
+# "Season 1, Season 10, Season 11 ... Season 2", and a channel's schedule
+# stops being chronological. The first method added is the default, so NONE
+# has to be first.
+xbmcplugin.SORTS[:] = []
+default.finish("videos")
+check("a listing asks for its own order first",
+      xbmcplugin.SORTS[:1], [xbmcplugin.SORT_METHOD_NONE])
+check("and offers alphabetical after it, not instead",
+      xbmcplugin.SORT_METHOD_LABEL in xbmcplugin.SORTS, True)
+xbmcplugin.SORTS[:] = []
+
 # -- a date parse that survives Kodi tearing its modules down --------------
 # The player hides the n transform's array indices behind dates with
 # fractional-hour offsets: new Date("1969-12-31T17:30:49.000-06:30")/1E3 is

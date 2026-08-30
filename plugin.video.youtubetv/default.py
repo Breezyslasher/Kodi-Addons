@@ -35,8 +35,30 @@ def add_dir(label, art=None, plot=None, fanart=None, **params):
 
 
 def finish(content=""):
+    """End the directory, keeping the order this addon put things in.
+
+    Nothing here set a sort method, which does not mean "unsorted" -- it
+    means Kodi applies whatever sort was last used for that content type.
+    Every listing in this addon is already in an order that means
+    something, and alphabetical is wrong for all of them: a show with forty
+    seasons reads "Season 1, Season 10, Season 11 ... Season 2, Season 20",
+    a channel's schedule stops being chronological, and Home's rows stop
+    being the order YouTube TV chose.
+
+    NONE is added first because the first one added is the default. LABEL
+    is offered after it so alphabetical is still one press away for anyone
+    who wants it.
+    """
     if content:
         xbmcplugin.setContent(HANDLE, content)
+    for method in (getattr(xbmcplugin, "SORT_METHOD_NONE", None),
+                   getattr(xbmcplugin, "SORT_METHOD_LABEL", None)):
+        if method is None:
+            continue
+        try:
+            xbmcplugin.addSortMethod(HANDLE, method)
+        except Exception as exc:
+            kodiutils.log("could not set a sort method: %s" % exc)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
