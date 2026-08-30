@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.19" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.20" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,14 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.20 - The guide's whole schedule, on the TV client
+- Found it. The guide sends 989 airings and the add-on was reading 143.
+  Only the airing currently on the air carries a watchEndpoint; the other
+  846 carry an unpluggedGetSidesheetCommand and no videoId field at all,
+  the same mechanism the Library's tiles use. The programme's id is inside
+  it, alongside the show's, and is now read. 143 airings become 989, a
+  median of 7 per channel.
+
 2026.8.31.19 - Find out why the guide has no schedule
 - On this account the guide comes back with one airing per channel, 143 for
   148 stations, where the browser capture the reader was written from had

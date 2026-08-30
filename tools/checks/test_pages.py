@@ -49,6 +49,10 @@ def _runs(value):
     return {"runs": [{"text": value}]}
 
 
+def _b64(raw):
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
 def _dropdown(labels, selected=0):
     return {"dropdownRenderer": {"entries": [
         {"dropdownItemRenderer": {"label": _runs(label),
@@ -365,10 +369,6 @@ def _proto(outer_field, browse_id, extra=b""):
     return bytes([outer_field << 3 | 2, len(inner)]) + inner
 
 
-def _b64(raw):
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
-
-
 for field, name in ((3, "a movie"), (4, "a show"), (7, "a sports team")):
     check("the id is read out of %s's params" % name,
           epg.sidesheet_id(_b64(_proto(field, "UCmXMw6OyWJH1O6cA7JZS9Fg"))),
@@ -443,6 +443,58 @@ check("the name and logo survive the merge",
       (fresh[0].name, bool(fresh[0].logo)), ("A Channel", True))
 check("'now' is still the marked airing after merging",
       fresh[0].now.video_id, "NOW")
+
+# -- a guide airing that is not on the air ---------------------------------
+# The TV client gives the airing currently on the air a watchEndpoint and
+# every other airing an unpluggedGetSidesheetCommand, with no videoId field
+# anywhere. Of 989 airings in the 2026-08-29 20:48 guide, 143 had the
+# endpoint -- one per station -- and all 846 others had a side sheet
+# carrying exactly two ids: the show's 24-character one and the programme's
+# 11-character one. Taking the wrong one lists the show, not the programme.
+def _sheet(show_id, video_id):
+    inner = (b"\x0a" + bytes([len(show_id)]) + show_id.encode()
+             + b"\x10\x00\x18\x01\x20\x01"
+             + b"\x32" + bytes([len(video_id)]) + video_id.encode())
+    return _b64(bytes([4 << 3 | 2, len(inner)]) + inner)
+
+
+SHEET_PARAMS = _sheet("UCTy7yMhdCqhduRTvA_Bx9TQ", "_u_J5hBoorE")
+check("the programme's id is the 11-character one",
+      epg.sidesheet_video_id(SHEET_PARAMS), "_u_J5hBoorE")
+check("the show's id is still what sidesheet_id gives",
+      epg.sidesheet_id(SHEET_PARAMS), "UCTy7yMhdCqhduRTvA_Bx9TQ")
+check("junk gives neither",
+      (epg.sidesheet_video_id("!!"), epg.sidesheet_id("!!")), ("", ""))
+
+TV_GUIDE = {"contents": [{"epgRowRenderer": {
+    "stationId": "UCCHAN",
+    "station": {"epgStationRenderer": {
+        "stationId": "UCCHAN",
+        "icon": {"thumbnails": [{"url": "//x/y", "width": 400}],
+                 "accessibility": {"accessibilityData": {"label": "A Channel"}}}}},
+    "airings": [
+        {"epgAiringRenderer": {
+            "primaryText": _runs("On now"),
+            "beginTimeMs": str(NOW_MS - HOUR // 2),
+            "endTimeMs": str(NOW_MS + HOUR // 2),
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "ONAIRVIDEO"}}}},
+        {"epgAiringRenderer": {
+            "primaryText": _runs("Later"),
+            "beginTimeMs": str(NOW_MS + HOUR // 2),
+            "endTimeMs": str(NOW_MS + HOUR),
+            "navigationEndpoint": {"unpluggedGetSidesheetCommand": {
+                "requestType": "UNPLUGGED_SIDESHEET_REQUEST_TYPE_SHOW",
+                "params": SHEET_PARAMS}}}},
+    ]}}]}
+
+tv = epg.parse_epg(TV_GUIDE)
+check("both airings are kept, not just the one on the air",
+      [a.video_id for a in tv[0].airings], ["ONAIRVIDEO", "_u_J5hBoorE"])
+check("the later one takes the programme's id, not the show's",
+      tv[0].airings[1].video_id, "_u_J5hBoorE")
+check("only the endpoint-carrying one is marked on air",
+      [a.on_air for a in tv[0].airings], [True, False])
+check("'now' is still the one on the air", tv[0].now.video_id, "ONAIRVIDEO")
 
 # -- the channel-order token -----------------------------------------------
 # The guide's order is chosen with a continuation sent *alongside* the
