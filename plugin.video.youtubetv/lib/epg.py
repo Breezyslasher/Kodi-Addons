@@ -185,6 +185,16 @@ def parse_airing(renderer):
     on_air = bool(video_id)
     if not video_id and isinstance(renderer.get("videoId"), str):
         video_id = renderer["videoId"]
+    if not video_id:
+        for carrier in _ENDPOINT_CARRIERS:
+            block = renderer.get(carrier)
+            if not isinstance(block, dict):
+                continue
+            command = block.get("unpluggedGetSidesheetCommand")
+            if isinstance(command, dict):
+                video_id = sidesheet_video_id(command.get("params"))
+                if video_id:
+                    break
 
     title = text(renderer.get("title")) or text(renderer.get("primaryText"))
     description = (text(renderer.get("quaternaryText"))
@@ -470,6 +480,51 @@ def _protobuf_strings(data, depth=0):
 _BROWSE_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 
 
+# A video id is eleven characters; a channel or show id is twenty-four
+# beginning "UC". A side-sheet command for a programme carries both -- the
+# show it belongs to and the programme itself -- so which one is wanted
+# depends on the caller, and neither is guessed at by position.
+_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+
+def _sidesheet_ids(params):
+    """Every id-shaped string inside a side-sheet command's params."""
+    if not isinstance(params, str) or not params:
+        return
+    token = unquote(params)
+    try:
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
+    except (binascii.Error, ValueError):
+        return
+    for chunk in _protobuf_strings(raw):
+        try:
+            found = chunk.decode("ascii")
+        except UnicodeDecodeError:
+            continue
+        if _BROWSE_ID.match(found):
+            yield found
+
+
+def sidesheet_video_id(params):
+    """The programme's own video id inside a side-sheet command.
+
+    A guide airing that is not the one currently on the air carries no
+    watchEndpoint and no videoId field: its navigationEndpoint holds an
+    unpluggedGetSidesheetCommand, exactly as the Library's tiles do. Of the
+    989 airings in the 2026-08-29 20:48 guide, 143 had a watchEndpoint --
+    one per station, the one on the air -- and the other 846 had a side
+    sheet. Every one of those 846 carries exactly two ids: the show's
+    twenty-four character one and the programme's eleven-character one.
+
+    Reading only the endpoint is why the guide listed one programme per
+    channel and nothing after it.
+    """
+    for found in _sidesheet_ids(params):
+        if _VIDEO_ID.match(found):
+            return found
+    return ""
+
+
 def sidesheet_id(params):
     """The browse id buried in an unpluggedGetSidesheetCommand's params.
 
@@ -489,20 +544,8 @@ def sidesheet_id(params):
     a show, 7 for a sports team), so the walk is by shape rather than by
     field number: the first nested string that looks like an id.
     """
-    if not isinstance(params, str) or not params:
-        return ""
-    token = unquote(params)
-    try:
-        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
-    except (binascii.Error, ValueError):
-        return ""
-    for chunk in _protobuf_strings(raw):
-        try:
-            found = chunk.decode("ascii")
-        except UnicodeDecodeError:
-            continue
-        if _BROWSE_ID.match(found):
-            return found
+    for found in _sidesheet_ids(params):
+        return found
     return ""
 
 

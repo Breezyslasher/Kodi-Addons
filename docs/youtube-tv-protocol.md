@@ -483,40 +483,51 @@ neither is needed to read a guide: `update_live_guide_order`, which writes a
 custom order as a list of `{externalId, settingsGroup}`, and
 `update_station_visibility`, which hides one station by id.
 
-### The TV client's guide carries one airing per channel
+### The TV client's guide hides the programme id in a side sheet
 
-Measured on the account, 2026-08-29 20:44, running 2026.8.31.18:
+The diagnostic answered it in one run, and the answer was the opposite of the
+guess it was written to test. The response carries the whole schedule:
 
-    guide: 148 station(s), 143 airing(s), 143 playable now
-    iptv manager: page 2 added 0 airing(s)
-    iptv manager: offering 143 airing(s) across 143 channel(s)
+| | airings in the response | airings parsed |
+| --- | --- | --- |
+| Live channels, 2 h | `epgAiringRenderer` x387 | 143 |
+| Guide, 6 h | `epgAiringRenderer` x989 | 143 |
 
-The web capture the reader was written from returned **953** airings for these
-same 148 stations over a six-hour window, and its second page another 748. The
-addon's own request returns one per station and a continuation that adds
-nothing.
+989 arrived and 143 were read, so this was never the server sending a
+now-and-next grid. It was the reader dropping 846 airings.
 
-Every fix so far has been verified against `WEB_UNPLUGGED` captures while the
-addon asks as `TVHTML5_UNPLUGGED`, and the Library has already shown that the
-two clients are answered differently -- a different container, a different
-selector, tiles that open a side sheet instead of navigating. So the likeliest
-reading is that the TV client is answered with a now-and-next grid rather than
-a schedule, but that is **not established**: there is no capture of the TV
-client's guide, and page one may equally be carrying airings this reader
-cannot see.
+Two structural differences from the `WEB_UNPLUGGED` capture the reader was
+written against:
 
-One log line separates those two cases, and it is now printed: `describe`
-counts the `epgAiringRenderer`s in the response. About 143 of them means the
-server sent one each and more must be asked for; about 950 means they arrived
-and the parser is dropping them.
+* rows arrive under `/contents/epgRenderer/paginationRenderer/epgPaginationRenderer/contents`
+  even on the first request, where the web client puts them directly under
+  `contents`; each row keeps its station under a `station` key and repeats
+  `stationId` beside it;
+* every airing carries an `epgInfoPanelRenderer`, which the web capture has
+  none of.
 
-Both responses are kept when this happens -- `guide-shape.json` for page one,
-`guide-page-shape.json` for a continuation that adds nothing.
+And the one that mattered: **only the airing currently on the air carries a
+`watchEndpoint`.** The other 846 carry an `unpluggedGetSidesheetCommand` --
+the same mechanism the Library's tiles use -- and no `videoId` field at all,
+where the web client puts one on every airing.
 
-One difference was closed on the way past, since both captures agree on it and
-matching costs nothing: the guide window is now asked for **on the hour**.
-1788044400000 and 1788048000000 are 496679 and 496680 hours since the epoch,
-exactly; the addon was sending whatever millisecond it happened to be.
+    143 with a watchEndpoint + 846 with a side sheet = 989, exactly
+
+Every one of those 846 params holds precisely two ids: the show's
+twenty-four character one and the programme's eleven-character one.
+
+    UCTy7yMhdCqhduRTvA_Bx9TQ   the show
+    _u_J5hBoorE                the programme
+
+Which one is wanted depends on the caller, so neither is taken by position:
+`sidesheet_video_id` matches the eleven-character shape for an airing, and
+`sidesheet_id` keeps returning the first id for a Library tile, where the show
+*is* the destination. Reading it takes the guide from 143 airings to **989**,
+a median of 7 per station, 989 distinct video ids, with all 148 stations still
+resolving a playable "now" and the 143 on-air markers intact.
+
+The web captures are unaffected: `live_2` still parses 953 airings and
+`live_13` still 748.
 
 ### A crash during install leaves the add-on unloadable
 
