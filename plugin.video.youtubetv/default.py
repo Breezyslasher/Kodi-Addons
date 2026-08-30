@@ -571,7 +571,7 @@ def _add_item(item, plot="", dvr=None):
         # that is left rather than a page whose other half is the button
         # that was just pressed.
         listitem.addContextMenuItems(
-            [("Suggested titles",
+            [("Extras and suggested titles",
               "Container.Update(%s)"
               % url(action="browse_suggested", browse_id=item.browse_id,
                     name=item.title, params=item.params))]
@@ -608,18 +608,86 @@ def route_search():
         finish()
         return
 
-    items = epg.parse_search(response)
-    kinds = {}
-    for item in items:
-        kinds[item.content_type or "(none)"] = kinds.get(
-            item.content_type or "(none)", 0) + 1
-    kodiutils.log("search %r: %d result(s) -- %s"
-                  % (query, len(items),
-                     ", ".join("%s x%d" % pair
-                               for pair in sorted(kinds.items())) or "nothing"))
+    _list_search(client, query, response)
+
+
+def _search_pages(client, response, limit=4):
+    """A search and the pages it defers, which is where the films are.
+
+    Not one search result in fourteen read as a film, and the kind was not
+    the reason: "blues" answers with Shows, Sports and "On now & upcoming",
+    and hands back a continuation carrying "From your library", "On demand"
+    and Movies -- where The Blues Brothers is, saying MOVIE plainly. A
+    search read one page deep finds no films at all.
+
+    The token goes to search rather than to browse, unlike every other
+    continuation here.
+    """
+    pages = [response]
+    token = epg.page_continuation(response)
+    while token and len(pages) < limit:
+        try:
+            page = client.search_continuation(token)
+        except (auth.AuthError, api.ApiError) as exc:
+            kodiutils.log("search: page %d did not open: %s" % (len(pages) + 1, exc))
+            break
+        pages.append(page)
+        following = epg.page_continuation(page)
+        if not following or following == token:
+            break
+        token = following
+    return pages
+
+
+def _list_search(client, query, response):
+    """Search results as the rows YouTube TV grouped them into."""
+    pages = _search_pages(client, response)
+    rows = _sections_of(pages)
+    kodiutils.log("search %r: %d page(s), %d row(s) -- %s"
+                  % (query, len(pages), len(rows),
+                     ", ".join("%s (%d)" % (r.title, len(r.items))
+                               for r in rows) or "nothing"))
+    if rows:
+        _list_sections(rows, "search_row", extra={"query": query})
+        finish()
+        return
+    # No rows this addon knows: list whatever the pages named, flat.
+    items = []
+    seen = set()
+    for page in pages:
+        for item in epg.parse_search(page):
+            key = (item.video_id or item.browse_id, item.params)
+            if key not in seen:
+                seen.add(key)
+                items.append(item)
     if not items:
         kodiutils.notify("Nothing found for %s" % query)
     _add_items(items)
+
+
+def route_search_row(query, name, token=""):
+    """One row of a search, in full."""
+    client = _client()
+    if not client or not query:
+        finish()
+        return
+    try:
+        response = client.search(query)
+    except (auth.AuthError, api.ApiError) as exc:
+        kodiutils.ok_dialog(str(exc), "Search failed")
+        finish()
+        return
+    rows = _sections_of(_search_pages(client, response))
+    section = next((r for r in rows if r.title == name), None)
+    if section is None and token:
+        section = epg.Section(name, [], token)
+    if section is None:
+        kodiutils.notify("%s is no longer in those results"
+                         % (name or "That row"))
+        finish()
+        return
+    _add_items(_follow_pages(client, section,
+                             fetch=client.search_continuation))
 
 
 def _expand_sections(client, response, items):
@@ -776,8 +844,17 @@ def route_browse(browse_id, name, params=""):
             dvr = (browse_id, name or epg.text(header.get("title")),
                    recording) if recording is not None else None
             plot = epg.page_description(response)
-            for item in tabs[0].items:
+            # The tab can defer shelves of its own. That is where a show
+            # keeps its seasons, and where a film's extras would be: the
+            # web client's show page hangs "Season 1"..."Season 9" and
+            # "Extras" off ten tokens rather than listing them.
+            shown = _expand_sections(client, response, list(tabs[0].items))
+            for item in shown:
                 _add_item(item, plot=plot, dvr=dvr)
+            kodiutils.log("%s: %d to play, %s alongside"
+                          % (name or browse_id, len(shown),
+                             ", ".join("%s (%d)" % (t.title, len(t.items))
+                                       for t in tabs[1:]) or "nothing"))
             _list_sections(tabs[1:], "browse_section",
                            extra={"browse_id": browse_id, "params": params})
             finish("movies" if header.get("contentType") == "MOVIE"
@@ -899,7 +976,7 @@ def route_browse_section(browse_id, name, params="", token=""):
     _add_items(items)
 
 
-def _follow_pages(client, section, limit=10):
+def _follow_pages(client, section, limit=10, fetch=None):
     """Everything behind a row's continuation token, page after page.
 
     One token covers two cases and they are handled the same way: a filter
@@ -908,6 +985,9 @@ def _follow_pages(client, section, limit=10):
     nothing new, repeats its own token, or the limit is reached, so a server
     that keeps handing back the same token cannot spin here.
     """
+    # A search row's token is spent at search, not at browse, like the
+    # search page's own. Every other row here is a browse continuation.
+    fetch = fetch or client.continuation
     items = list(section.items)
     seen = {(item.video_id or item.browse_id, item.params, item.start_ms)
             for item in items}
@@ -916,7 +996,7 @@ def _follow_pages(client, section, limit=10):
     while token and page < limit:
         page += 1
         try:
-            response = client.continuation(token)
+            response = fetch(token)
         except (auth.AuthError, api.ApiError) as exc:
             kodiutils.log("%s: page %d did not open: %s"
                           % (section.title, page, exc))
@@ -1333,6 +1413,51 @@ def route_play_movie(browse_id, label):
     route_play(found[0].video_id, label or found[0].title)
 
 
+def route_browse_suggested(browse_id, name, params=""):
+    """Everything on a title's page except the thing that plays.
+
+    Reached from the context menu on a film, where it replaced "Go to
+    <title>". Rogue One's page is Watch now, About, Lead cast and Suggested,
+    of which this addon reads the first and the last, and selecting the film
+    already does what the first is for.
+
+    Named for extras as well as suggestions because a title that has them
+    should keep them here. Nothing in any capture names a trailer or a bonus
+    feature -- neither the search of 2026-08-30 01:00 nor Rogue One's own
+    page holds the word -- so what such a title answers with is not
+    established. Every tab is logged, so the first title that has any says
+    where they live.
+    """
+    client = _client()
+    if not client:
+        finish()
+        return
+    try:
+        response = client.browse(browse_id, params or None)
+    except (auth.AuthError, api.ApiError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or browse_id))
+        finish()
+        return
+
+    tabs = epg.browse_tabs(response)
+    rest = tabs[1:]
+    kodiutils.log("%s: beside the one that plays -- %s"
+                  % (name or browse_id,
+                     ", ".join("%s (%d)" % (t.title, len(t.items))
+                               for t in rest) or "nothing"))
+    if not rest:
+        kodiutils.notify("%s has nothing else on its page"
+                         % (name or "That title"))
+        finish()
+        return
+    if len(rest) == 1:
+        _add_items(_follow_pages(client, rest[0]))
+        return
+    _list_sections(rest, "browse_section",
+                   extra={"browse_id": browse_id, "params": params})
+    finish()
+
+
 def route_play_channel(station_id):
     """Play whatever is on this channel now.
 
@@ -1410,6 +1535,10 @@ def main():
     elif action == "search":
         route_search()
         return
+    elif action == "search_row":
+        route_search_row(params.get("query", ""), params.get("name", ""),
+                         params.get("token", ""))
+        return
     elif action == "networks":
         route_networks()
         return
@@ -1419,6 +1548,11 @@ def main():
     elif action == "browse":
         route_browse(params.get("browse_id", ""), params.get("name", ""),
                      params.get("params", ""))
+        return
+    elif action == "browse_suggested":
+        route_browse_suggested(params.get("browse_id", ""),
+                               params.get("name", ""),
+                               params.get("params", ""))
         return
     elif action == "browse_section":
         route_browse_section(params.get("browse_id", ""),

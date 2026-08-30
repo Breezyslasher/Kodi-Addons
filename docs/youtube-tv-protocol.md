@@ -1015,6 +1015,32 @@ Formats offered (all video/audio CENC-encrypted; text tracks are not):
 H.264 is available at every rung alongside VP9, which matters because it is the
 safe codec on low-power Kodi hardware.
 
+### Search is rows, and the films are on the second page
+
+`{"query": "blues"}` answers with a `sectionListRenderer` of named shelves,
+one per kind, and **defers the rest of them**:
+
+| Page | Rows |
+| --- | --- |
+| 1 | Shows (5), Sports (8), On now & upcoming (8) |
+| 2 | From your library (1), On demand (8), **Movies (7)** |
+
+The Blues Brothers is in that Movies row, `contentType: "MOVIE"`. Read one
+page deep, a search of 14 results answers `SHOW x11, SPORTS_TEAM x3` and no
+film at all -- which reads as a client that cannot tell a film from a show,
+and is really a client that stopped reading too early.
+
+The page token is spent at **`search`**, not at `browse` where every other
+continuation in this addon goes:
+
+```json
+POST /youtubei/v1/search?alt=json    {"continuation": "EnESBWJsdWVzGmhjallLTkVOblVWRkZRbWhCUTJk"}
+```
+
+`SPORTS_TEAM` is a fourth `contentType`, alongside MOVIE, SHOW and EVENT.
+The "On demand" row is worth noting separately: its tiles carry a
+**videoId** rather than a browseId, so those play with no page fetch at all.
+
 ### Search — `POST /youtubei/v1/search?alt=json`
 
 ```json
