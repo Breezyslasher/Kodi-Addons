@@ -9,7 +9,9 @@ not document. See [Status](#status).
 ## What it does
 
 * Live channel list, showing what is on now on each channel in your lineup
-* Programme guide, channel by channel, from the same 7-day EPG the web app uses
+* Programme guide, channel by channel, from the same 7-day EPG the web app
+  uses, with each programme's synopsis, cast and genres read from the show
+  it belongs to
 * **Home** -- the front page YouTube TV builds for the account: "Resume
   watching", "Top picks for you", and the twenty genre rows behind them, each
   row a folder

@@ -422,18 +422,30 @@ def route_station(station_id, name):
         finish()
         return
 
+    # A programme names its show, and a show's page is where the synopsis,
+    # the cast and the genres are. Without this the guide gave a title and
+    # a channel logo: "St. Elmo's Fire", no still, nothing else. Bounded
+    # and remembered like every other listing, so a channel's schedule
+    # fills in over a few visits and then costs nothing.
+    _learned(client, name, [epg.Item(browse_id=airing.show_id,
+                                     title=airing.title)
+                            for airing in station.airings if airing.show_id])
+
     now_ms = time.time() * 1000
     for airing in station.airings:
         # Past programmes are listed but not playable: YouTube TV catch-up is
         # a separate entitlement, and offering a dead link reads as a bug.
         playable = airing.is_now or (airing.start_ms or 0) <= now_ms
+        known = _meta_for(airing.show_id) or {}
         item = xbmcgui.ListItem(label=airing.label())
         item.setArt({"thumb": airing.art or station.logo,
-                     "fanart": airing.art or station.logo})
+                     "fanart": known.get("art") or airing.art or station.logo})
         info = item.getVideoInfoTag()
         info.setTitle(airing.title)
-        info.setPlot(airing.description)
+        info.setPlot(airing.description or known.get("plot", ""))
         info.setMediaType("video")
+        if known:
+            _set_meta(info, known)
         # A programme names its show, so its series can be recorded from
         # here -- which is the useful thing to do with a listing of what is
         # coming up.
@@ -597,8 +609,13 @@ def _add_item(item, plot="", dvr=None, meta=None):
     # A tile's own image is the poster. The wide one behind it is the
     # page's banner, which no tile carries -- 3840x2160 on John Wick.
     banner = known.get("art") or item.art
-    listitem.setArt({"thumb": item.art or banner, "poster": item.art or banner,
-                     "fanart": banner})
+    art = {"thumb": item.art or banner, "fanart": banner}
+    # Only an upright image is a poster. A show's tile is a wide still, and
+    # putting that in a skin's poster slot is what made Marshals look
+    # stretched out of shape.
+    if item.art and item.upright:
+        art["poster"] = item.art
+    listitem.setArt(art)
     info = listitem.getVideoInfoTag()
     info.setTitle(item.title)
     if plot or item.subtitle:

@@ -1558,6 +1558,28 @@ check("and one nothing is known about is listed all the same",
 remembered.clear()
 default._REMEMBERED_META.clear()
 
+# A film's tile is a poster -- 2560x3840 -- and belongs in the slot a skin
+# keeps for one. A show's is a wide still, and putting that in the same slot
+# is what made Marshals look stretched. Only the shape says which.
+check("a tile knows whether it is a poster or a still",
+      [epg.is_portrait({"thumbnails": [{"url": "//x", "width": 2560,
+                                        "height": 3840}]}),
+       epg.is_portrait({"thumbnails": [{"url": "//x", "width": 3840,
+                                        "height": 2160}]}),
+       epg.is_portrait({})],
+      [True, False, False])
+
+xbmcplugin.ITEMS[:] = []
+default._add_item(epg.Item(video_id="V1", title="upright", art="poster.jpg",
+                           upright=True))
+default._add_item(epg.Item(video_id="V2", title="wide", art="still.jpg"))
+check("only the upright one is offered as a poster",
+      ("poster" in xbmcplugin.ITEMS[0][3].art,
+       "poster" in xbmcplugin.ITEMS[1][3].art), (True, False))
+check("and both are still a thumb",
+      [i[3].art.get("thumb") for i in xbmcplugin.ITEMS],
+      ["poster.jpg", "still.jpg"])
+
 # -- a cache that cannot say it is out of date -----------------------------
 # Nothing refetches a title it already knows about, so a cache written
 # before a field was read keeps that field missing for good. The cast
