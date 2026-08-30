@@ -23,6 +23,9 @@ not document. See [Status](#status).
 * **Recording** -- record or stop recording a series from the context menu on
   any show, in the Library, in search results, or on any programme in a
   channel's schedule
+* **Films play when you pick one.** A tile names no stream, only its page,
+  so the id is fetched on selection; the page is on the context menu as
+  "Go to <title>". A series stays a folder, because it is one
 * Search across live and on-demand, and browsing a show to its episodes --
   including the seasons the show page defers rather than lists
 * Widevine playback via InputStream Adaptive at up to 1080p

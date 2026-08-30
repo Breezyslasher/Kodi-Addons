@@ -522,6 +522,25 @@ def _add_items(items, content="videos"):
                 HANDLE,
                 url(action="play", video_id=item.video_id, label=item.title),
                 listitem, isFolder=False)
+        elif item.content_type == "MOVIE":
+            # A film has one thing to play, so selecting it plays it. Its
+            # tile carries no video id -- only a browseEndpoint -- so the
+            # id is fetched off its page when it is picked, and the page
+            # itself moves to the context menu, which is where YouTube TV's
+            # own tile keeps it ("Go to The Accountant").
+            listitem.setProperty("IsPlayable", "true")
+            info.setMediaType("movie")
+            listitem.addContextMenuItems(
+                [("Go to %s" % item.title,
+                  "Container.Update(%s)"
+                  % url(action="browse", browse_id=item.browse_id,
+                        name=item.title, params=item.params))]
+                + _dvr_menu(item.browse_id, item.title))
+            xbmcplugin.addDirectoryItem(
+                HANDLE,
+                url(action="play_movie", browse_id=item.browse_id,
+                    label=item.title),
+                listitem, isFolder=False)
         else:
             if item.source not in _NOT_A_SHOW:
                 listitem.addContextMenuItems(
@@ -1184,6 +1203,56 @@ def route_play(video_id, label):
     xbmcplugin.setResolvedUrl(HANDLE, True, item)
 
 
+def route_play_movie(browse_id, label):
+    """Play a film, whose tile names its page rather than its stream.
+
+    Nothing in a movie tile carries a video id: the navigationEndpoint is a
+    browseEndpoint and the menu offers "Go to <title>". The id lives on that
+    page, so it is fetched here, on selection, rather than a page being put
+    in front of somebody who picked a film to watch it.
+
+    Which of the page's videos is the film is read from the page's order:
+    the first playable thing on it. Brewster's Millions answered with a
+    "Watch now" tab holding two, and what the second one is is not
+    established -- so all of them are logged. If this ever starts a trailer,
+    that line names what it should have started instead.
+    """
+    client = _client()
+    if not client:
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    try:
+        response = client.browse(browse_id)
+    except (auth.AuthError, api.ApiError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (label or browse_id))
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+
+    # A tabbed page keeps what it plays in its own first tab; an untabbed
+    # one carries it directly. Either way the film is the first playable
+    # thing the page names.
+    tabs = epg.browse_tabs(response)
+    found = []
+    for tab in tabs:
+        found = [item for item in tab.items if item.playable]
+        if found:
+            break
+    if not found:
+        found = [item for item in epg.parse_items(response) if item.playable]
+    kodiutils.log("%s: %d playable on the page -- %s"
+                  % (label or browse_id, len(found),
+                     ", ".join("%s (%s)" % (item.title, item.video_id)
+                               for item in found[:6]) or "nothing"))
+    if not found:
+        kodiutils.ok_dialog(
+            "YouTube TV lists %s but names nothing to play on its page. It "
+            "may need to be bought or added to your library first."
+            % (label or "this film"), "Nothing to play")
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    route_play(found[0].video_id, label or found[0].title)
+
+
 def route_play_channel(station_id):
     """Play whatever is on this channel now.
 
@@ -1284,6 +1353,9 @@ def main():
         return
     elif action == "play":
         route_play(params.get("video_id", ""), params.get("label", ""))
+        return
+    elif action == "play_movie":
+        route_play_movie(params.get("browse_id", ""), params.get("label", ""))
         return
     elif action == "play_channel":
         route_play_channel(params.get("station_id", ""))

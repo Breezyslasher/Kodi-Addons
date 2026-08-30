@@ -32,6 +32,8 @@ import os
 import sys
 import time
 
+from urllib.parse import unquote
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE + "/stubs")
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE))
@@ -830,6 +832,53 @@ check("an item remembers which renderer named it",
       sorted({i.source for row in epg.page_shelves(BROWSE_TAB)
               for i in row.items}),
       ["unpluggedGridChannelRenderer", "unpluggedIntentChipRenderer"])
+
+# -- a tile says what it is ------------------------------------------------
+# From the Movies category (2026-08-29 23:26). A film's tile names no video
+# id at all -- its navigationEndpoint is a browseEndpoint and its menu
+# offers "Go to <title>" -- so what separates a film, which has one thing to
+# play, from a series, which is a folder of episodes, is contentType. It is
+# on the tile plainly: 1048 MOVIE, 303 SHOW and 1 EVENT across the captures.
+MOVIE_TILE = {"contents": {"sectionListRenderer": {"contents": [
+    {"shelfRenderer": {
+        "title": {"runs": [{"text": "Thriller movies"}]},
+        "content": {"horizontalListRenderer": {"items": [
+            {"unpluggedBrowseItemRenderer": {
+                "contentType": "MOVIE",
+                "primaryText": {"runs": [{"text": "The Accountant"}]},
+                "secondaryText": {"runs": [{"text": "2016 \u2022 R"}]},
+                "navigationEndpoint": {"browseEndpoint": {
+                    "browseId": "UCUlwmd1Fk7Tr2XLsLe3rYcQ"}},
+                "menu": {"menuRenderer": {"items": [
+                    {"toggleMenuServiceItemRenderer": {
+                        "defaultText": {"runs": [{"text": "Add to library"}]},
+                        "defaultServiceEndpoint": {"startDvrEndpoint": {
+                            "startDvrParams": "ChwIARIYVUNVbHdtZDFGazdUcjJYTHNMZTNyWWNR",
+                            "id": "UCUlwmd1Fk7Tr2XLsLe3rYcQ"}}}},
+                ]}}}},
+            {"unpluggedGridVideoRenderer": {
+                "title": {"runs": [{"text": "The Two Towers"}]},
+                "navigationEndpoint": {"watchEndpoint": {
+                    "videoId": "ONAIRVIDEOID"}}}},
+        ]}}}},
+]}}}
+
+tiles = epg.page_shelves(MOVIE_TILE)[0].items
+check("a film's tile names its page, not a stream, and says it is a film",
+      [(t.title, t.content_type, t.video_id, t.browse_id, t.playable)
+       for t in tiles],
+      [("The Accountant", "MOVIE", "", "UCUlwmd1Fk7Tr2XLsLe3rYcQ", False),
+       ("The Two Towers", "", "ONAIRVIDEOID", "", True)])
+check("and its year and rating become the plot",
+      tiles[0].subtitle, "2016 \u2022 R")
+
+# The tile's menu carries the DVR params outright. They are not read from
+# there -- api.dvr_params rebuilds them -- but a capture taken two days
+# after the one that builder was written from agreeing byte for byte is
+# worth pinning: it is the only independent confirmation there is.
+check("the rebuilt DVR params match a second capture's, byte for byte",
+      unquote(api.dvr_params("UCUlwmd1Fk7Tr2XLsLe3rYcQ")),
+      epg.first(MOVIE_TILE, "startDvrParams"))
 
 # -- what a DVR call answers with ------------------------------------------
 # Both DVR endpoints came back with actions + responseContext and nothing
