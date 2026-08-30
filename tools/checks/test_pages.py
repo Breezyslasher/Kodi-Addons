@@ -1505,14 +1505,20 @@ check("an episode's offers do not list as episodes of their own",
 # 24 came back as 186 rows reading "Family Feud", with no episode names and
 # no numbers to draw one from. The same answer the guide already uses for
 # two recordings of one show -- put the thing that differs in the label.
-_same = [epg.Item(video_id="a", title="Family Feud", subtitle="5d ago"),
-         epg.Item(video_id="b", title="Family Feud", subtitle="2mo ago"),
+# Only the part that differs. Season 24 says "Game Show Network * TV-PG *
+# Recorded 5 months ago" on every one of its 186 rows, and two thirds of
+# that is the same on all of them, so appending the whole line would be 186
+# rows of mostly identical text.
+_same = [epg.Item(video_id="a", title="Family Feud",
+                  subtitle="Game Show Network \u2022 TV-PG \u2022 Recorded 5 months ago"),
+         epg.Item(video_id="b", title="Family Feud",
+                  subtitle="Game Show Network \u2022 TV-PG \u2022 Recorded 3 months ago"),
          epg.Item(video_id="c", title="Celebrity Week", subtitle="1w ago")]
 _apart = default._tell_apart(_same)
-check("a colliding row says what differs", _apart.get(0),
-      "Family Feud  --  5d ago")
+check("a colliding row says only what differs", _apart.get(0),
+      "Family Feud  --  Recorded 5 months ago")
 check("and so does the one it collides with", _apart.get(1),
-      "Family Feud  --  2mo ago")
+      "Family Feud  --  Recorded 3 months ago")
 # Only rows that actually collide are touched.
 check("a row whose title is already its own is left alone",
       2 in _apart, False)
@@ -1521,6 +1527,12 @@ check("a row whose title is already its own is left alone",
 check("nor is anything added when there is nothing to add",
       default._tell_apart([epg.Item(video_id="a", title="X"),
                            epg.Item(video_id="b", title="X")]), {})
+# Two rows saying exactly the same thing have nothing that differs, so
+# they gain nothing rather than gaining the same suffix twice.
+check("and identical subtitles add nothing either",
+      default._tell_apart([epg.Item(video_id="a", title="X", subtitle="A \u2022 B"),
+                           epg.Item(video_id="b", title="X", subtitle="A \u2022 B")]),
+      {})
 
 # -- a date parse that survives Kodi tearing its modules down --------------
 # The player hides the n transform's array indices behind dates with

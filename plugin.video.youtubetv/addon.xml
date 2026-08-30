@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.74" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.75" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,14 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.75 - Only the part that differs
+- Season 24's rows say "Game Show Network / TV-PG / Recorded 5 months ago"
+  on all 186 of them, and two thirds of that is identical everywhere. A
+  colliding row now gains only what differs -- "Family Feud -- Recorded 5
+  months ago" -- rather than the whole line 186 times.
+- Two rows that say exactly the same thing gain nothing, rather than
+  gaining the same suffix twice.
+
 2026.8.31.74 - Rows whose titles do not tell them apart
 - Dropping the offer rows cut Family Feud's page from 383 to 173 and its
   Season 24 from 808 to 186, and left what was underneath: 186 rows all

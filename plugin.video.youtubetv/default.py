@@ -669,14 +669,34 @@ def _tell_apart(items):
     are named is left exactly as it is, and so is a colliding row with
     nothing to tell it apart by.
     """
-    counts = {}
-    for item in items:
-        counts[item.title] = counts.get(item.title, 0) + 1
-    labels = {}
+    where = {}
     for index, item in enumerate(items):
-        if counts.get(item.title, 0) < 2 or not item.subtitle:
+        where.setdefault(item.title, []).append(index)
+
+    labels = {}
+    for title, rows in where.items():
+        if len(rows) < 2:
             continue
-        labels[index] = "%s  --  %s" % (_label_of(item), item.subtitle)
+        # Only the part of the subtitle that actually differs. Family Feud's
+        # Season 24 reads "Game Show Network * TV-PG * Recorded 5 months
+        # ago" on every one of its 186 rows, and the first two thirds of
+        # that are the same on all of them. Appending the whole line would
+        # be 186 rows of mostly identical text; appending what is left is
+        # "Family Feud -- Recorded 5 months ago".
+        pieces = [[part.strip()
+                   for part in (items[i].subtitle or "").split("\u2022")
+                   if part.strip()] for i in rows]
+        shared = set(pieces[0])
+        for other in pieces[1:]:
+            shared &= set(other)
+        for i, parts in zip(rows, pieces):
+            rest = [part for part in parts if part not in shared]
+            # Nothing differs -- every row says the same thing -- so there
+            # is nothing to add and a bare suffix would only be noise.
+            if not rest:
+                continue
+            labels[i] = "%s  --  %s" % (_label_of(items[i]),
+                                        " \u2022 ".join(rest))
     return labels
 
 
