@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.39" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.40" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,14 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.40 - Which renderer a search row is made of
+- A browser answers "blues" with The Blues Brothers typed MOVIE inside
+  "On now &amp; upcoming"; the same row here comes back with nothing typed
+  at all, which is why a film sits among shows and opens as a folder.
+  Either the renderer is a different one or it is the same one with the
+  field left out. Each row's items now log the renderer they came from,
+  and the page logs what every renderer on it carries.
+
 2026.8.31.39 - What is in each search row, by name
 - The counts said this search holds no film at all: 11 SHOW and 3
   SPORTS_TEAM in Top picks, and nothing typed in the other three rows,
