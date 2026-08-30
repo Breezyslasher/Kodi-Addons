@@ -124,6 +124,92 @@ sent as `SAPISIDHASH {timestamp}_{hash}`. This is the same scheme yt-dlp uses
 for authenticated YouTube requests. Practical consequence for an addon: users
 import cookies from a browser. Scripted Google password login is not viable.
 
+## Recording a show
+
+`start_dvr` and `stop_dvr` take the show's id twice -- plainly as `id`, and
+inside a small protobuf as `1 { 1: 1, 2: "<show id>" }`. `api.dvr_params`
+rebuilds the 2026-08-27 capture's params byte for byte. The field-1 varint is
+1 in both the start and the stop request of the one capture there is, so it is
+sent as 1; what it means is not established, and it is *not* the on/off switch
+-- the endpoint's own name is that.
+
+No capture carries a response body for either, so success is the HTTP 200
+`call` already insists on. The first real call logs the keys it gets back.
+
+YouTube TV records a **series**, not an airing, so the id is always a show's.
+Every guide airing names its show in `entitiesDvrStatus`:
+
+```json
+"entitiesDvrStatus": [{ "entityId": "UCFlNIjsY5_u1foX03MEHiBA" }]
+```
+
+Despite the name it carries no state -- only the id -- so it cannot say
+whether a show is already recording. That is why both "record" and "stop
+recording" are offered rather than the one that applies: choosing between them
+would be a guess, and a wrong guess silently cancels a recording.
+
+It is the better of the two sources. On the 843 airings that also carry a
+side-sheet command the two agree **every time, none differ**, and it covers
+the 143 the side sheet does not -- the ones on the air, whose watchEndpoint
+carries no show id anywhere. All 989 airings name their show.
+
+## What YouTube TV's own settings offer, and why most are not worth adding
+
+From `account/get_setting` (2 MB), the categories are Billing, Family sharing,
+4K, Downloads, Streaming limits, Ratings filter, Area, Privacy, Nielsen TV
+rating measurement, Dark theme and Promo codes. Two were asked about
+specifically:
+
+**Ratings filter** is a `settingSingleOptionMenuRenderer` whose options write
+through `setClientSettingEndpoint` with `clientSettingEnum:
+UNPLUGGED_FILTER_MODE_MENU` and an int value. Its own summary says: *"This
+setting only applies to this device."* So it is not an account setting the
+add-on could read and honour -- it is per-client, and a client that wants it
+must enforce it itself.
+
+That is where it stops, because **nothing in any response carries a structured
+rating**. Searched across the guide, the Library and Home: no `rating`-shaped
+key at all, and the only rating text is free-form inside a subtitle, as in
+`"2016 • PG-13"` or `"S27 E101 • Family Feud • KDKA+ • TV-PG"`. A filter built
+on parsing that would silently fail to hide anything it could not parse, which
+is the worst property a parental control can have. Not implemented, and this
+is the reason.
+
+**Area** is read-only from here. `unpluggedCurrentLocationSettingItemRenderer`
+reports `"Pittsburgh Area - 16066"`, but changing it runs
+`unpluggedRequestTwofactorLocationCommand` and
+`unpluggedGetTwofactorLocationCommand` -- a two-factor check that asks the user
+to scan a QR code or visit `tv.youtube.com/verify` **on a mobile device**. A
+Kodi add-on cannot complete that flow. The current area could be displayed;
+it cannot be set.
+
+**Language** (`UNPLUGGED_I18N_LANGUAGE`) is likewise a client setting, and
+Kodi's own language already governs the add-on.
+
+The rest -- Billing, Family sharing, 4K, Downloads, Streaming limits, Privacy,
+Nielsen, Dark theme, Promo codes -- are account or billing pages the web UI
+owns, or app chrome Kodi has its own version of.
+
+### Why the channel order can be read but not written
+
+The Channel order setting picks one of the five orderings, which is a **read**.
+Writing one -- `update_live_guide_order`, or `update_station_visibility` to
+hide a channel -- is a different matter: both params embed the account's
+market as `508`, `160662`, `US` plus `unplugged-P1`.
+
+`primaryPackageId: "unplugged-P1"` does come back from `account/get_setting`.
+**`508` and `160662` appear in no captured response at all** -- only inside
+these opaque params. So they cannot be sourced for an arbitrary account, and
+hard-coding one account's market would break every other. Not implemented, and
+this is what would have to be found first.
+
+The custom order itself is still reachable: arrange it on tv.youtube.com and
+choose "Custom" in the setting.
+
+(One detail from the 21:17 capture: `update_live_guide_order`'s leading field
+changed from 0 to 1 between the two captures -- `CAAS…` became `CAES…` -- so
+that varint is the order being selected, not a constant.)
+
 ## What has been seen, and what is implemented
 
 Taken by scanning every `/youtubei/v1/` request across all twenty

@@ -681,6 +681,26 @@ def _pb_b64(raw):
     return quote(base64.urlsafe_b64encode(raw).decode(), safe="")
 
 
+def dvr_params(browse_id):
+    """The params that start or stop recording a show.
+
+    Both endpoints take the show's id twice: once plainly as ``id`` and once
+    inside a small protobuf, which is
+
+        1 { 1: 1, 2: "<show id>" }
+
+    Read off the 2026-08-27 capture and rebuilt rather than copied; the
+    builder reproduces that capture's token byte for byte, which
+    tools/checks/test_pages.py pins.
+
+    What the field-1 varint means is not established -- it is 1 in the one
+    capture there is, in both the start and the stop request, so it is sent
+    as 1. It is not the on/off switch: the endpoint's own name is that.
+    """
+    return _pb_b64(_pb_bytes(1, _pb_num(1, 1)
+                             + _pb_bytes(2, browse_id.encode())))
+
+
 def epg_order_token(order, max_airings, max_duration_ms, start_ms,
                     initial_ms, pagination_ms):
     """The continuation that asks for the guide in a particular order.
@@ -925,6 +945,28 @@ class Api(object):
     def home(self, client_name=None):
         """The front page: resume watching, top picks, and the genre rows."""
         return self.continuation(HOME_CONTINUATION, client_name=client_name)
+
+    # -- the DVR ----------------------------------------------------------
+
+    def start_dvr(self, browse_id):
+        """Add a show to the library, so its airings record."""
+        return self._dvr("start_dvr", "startDvrParams", browse_id)
+
+    def stop_dvr(self, browse_id):
+        """Remove a show from the library, so it stops recording."""
+        return self._dvr("stop_dvr", "stopDvrParams", browse_id)
+
+    def _dvr(self, endpoint, field, browse_id):
+        if not browse_id:
+            raise ApiError("no show was named to record")
+        response = self.call(endpoint, {field: dvr_params(browse_id),
+                                        "id": browse_id})
+        # No capture carries a response body for either endpoint, so what
+        # success looks like is not established beyond the 200 that call()
+        # already insists on. Log the shape the first real one returns.
+        kodiutils.log("%s %s -> %s" % (endpoint, browse_id,
+                                       ", ".join(sorted(response)) or "an empty body"))
+        return response
 
     def browse(self, browse_id, params=None):
         body = {"browseId": browse_id}

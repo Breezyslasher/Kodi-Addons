@@ -32,7 +32,7 @@ sys.path.insert(0, HERE + "/stubs")
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE))
                 + "/plugin.video.youtubetv")
 
-from lib import epg  # noqa: E402
+from lib import api, epg  # noqa: E402
 
 failures = []
 
@@ -496,6 +496,50 @@ check("only the endpoint-carrying one is marked on air",
       [a.on_air for a in tv[0].airings], [True, False])
 check("'now' is still the one on the air", tv[0].now.video_id, "ONAIRVIDEO")
 
+# -- recording a show ------------------------------------------------------
+# start_dvr and stop_dvr take the show's id twice: plainly as "id", and
+# inside a small protobuf as 1 { 1: 1, 2: <id> }. This is the exact params
+# string from the 2026-08-27 capture.
+check("the DVR params are rebuilt exactly",
+      api.dvr_params("UCUX5tSsqvZbXbsguBrS5UWw"),
+      "ChwIARIYVUNVWDV0U3NxdlpiWGJzZ3VCclM1VVd3")
+check("a different show gives different params",
+      api.dvr_params("UCUX5tSsqvZbXbsguBrS5UWw")
+      == api.dvr_params("UCTy7yMhdCqhduRTvA_Bx9TQ"), False)
+
+# YouTube TV records a series, not an airing, so every airing must name its
+# show. entitiesDvrStatus does, on all 989 in the capture -- including the
+# one on the air, whose watchEndpoint carries no show id anywhere. It agreed
+# with the side-sheet command on all 843 airings that have both.
+DVR_GUIDE = {"contents": [{"epgRowRenderer": {
+    "stationId": "UCCHAN",
+    "station": {"epgStationRenderer": {
+        "stationId": "UCCHAN",
+        "icon": {"thumbnails": [{"url": "//x/y", "width": 400}],
+                 "accessibility": {"accessibilityData": {"label": "A Channel"}}}}},
+    "airings": [
+        {"epgAiringRenderer": {          # on the air: no id but this one
+            "primaryText": _runs("On now"),
+            "beginTimeMs": str(NOW_MS - HOUR // 2),
+            "endTimeMs": str(NOW_MS + HOUR // 2),
+            "entitiesDvrStatus": [{"entityId": "UCSHOWAAAAAAAAAAAAAAAAA1"}],
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "ONAIRVIDEO"}}}},
+        {"epgAiringRenderer": {          # later: both, and they agree
+            "primaryText": _runs("Later"),
+            "beginTimeMs": str(NOW_MS + HOUR),
+            "endTimeMs": str(NOW_MS + 2 * HOUR),
+            "entitiesDvrStatus": [{"entityId": "UCTy7yMhdCqhduRTvA_Bx9TQ"}],
+            "navigationEndpoint": {"unpluggedGetSidesheetCommand": {
+                "params": SHEET_PARAMS}}}},
+    ]}}]}
+
+dvr = epg.parse_epg(DVR_GUIDE)[0].airings
+check("every airing names its show, the one on the air included",
+      [a.show_id for a in dvr],
+      ["UCSHOWAAAAAAAAAAAAAAAAA1", "UCTy7yMhdCqhduRTvA_Bx9TQ"])
+check("and the later one still has its own video id",
+      dvr[1].video_id, "_u_J5hBoorE")
+
 # -- the channel-order token -----------------------------------------------
 # The guide's order is chosen with a continuation sent *alongside* the
 # browseId. The token repeats the same epgOptions the request body carries,
@@ -503,8 +547,6 @@ check("'now' is still the one on the air", tv[0].now.video_id, "ONAIRVIDEO")
 # would ask for somebody else's window. These five are the exact tokens the
 # 2026-08-29 live tab's own order dropdown offered; reproducing them byte
 # for byte is what makes the builder a reconstruction and not a guess.
-from lib import api  # noqa: E402
-
 REAL_ORDER_TOKENS = {
     "default": "4qmFsgJBEg9GRXVucGx1Z2dlZF9lcGcaEDhnTUVJZ0l3QVElM0QlM0SyARsKGQgYGICIsqACIICrgf6ENCiQkaAKMLCMuwU%3D",
     "custom": "4qmFsgJBEg9GRXVucGx1Z2dlZF9lcGcaEDhnTUVJZ0l3QWclM0QlM0SyARsKGQgYGICIsqACIICrgf6ENCiQkaAKMLCMuwU%3D",

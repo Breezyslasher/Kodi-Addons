@@ -417,6 +417,10 @@ def route_station(station_id, name):
         info.setTitle(airing.title)
         info.setPlot(airing.description)
         info.setMediaType("video")
+        # A programme names its show, so its series can be recorded from
+        # here -- which is the useful thing to do with a listing of what is
+        # coming up.
+        item.addContextMenuItems(_dvr_menu(airing.show_id, airing.title))
         if airing.is_now:
             item.setProperty("IsPlayable", "true")
             xbmcplugin.addDirectoryItem(
@@ -427,6 +431,50 @@ def route_station(station_id, name):
             item.setProperty("IsPlayable", "false")
             xbmcplugin.addDirectoryItem(HANDLE, "", item, isFolder=False)
     finish("videos")
+
+
+def _dvr_menu(browse_id, name):
+    """Context-menu entries for recording a show, or none without an id.
+
+    Both are offered rather than the one that applies, because nothing in
+    the responses says whether a show is already being recorded. The guide's
+    airings carry an ``entitiesDvrStatus``, but it holds only the entity id
+    -- no state -- so choosing between "record" and "stop" would be a guess,
+    and a wrong guess here silently cancels a recording.
+    """
+    if not browse_id:
+        return []
+    return [
+        ("YouTube TV: record this show",
+         "RunPlugin(%s)" % url(action="dvr", on="1",
+                               browse_id=browse_id, name=name)),
+        ("YouTube TV: stop recording this show",
+         "RunPlugin(%s)" % url(action="dvr", on="0",
+                               browse_id=browse_id, name=name)),
+    ]
+
+
+def route_dvr(browse_id, name, on):
+    """Add a show to the library, or take it out again.
+
+    YouTube TV records a series rather than an airing, so the id here is
+    always a show's, never a programme's -- for a guide airing it comes out
+    of the side-sheet command, which names both.
+    """
+    client = _client()
+    if not client:
+        return
+    what = name or browse_id
+    try:
+        if on:
+            client.start_dvr(browse_id)
+        else:
+            client.stop_dvr(browse_id)
+    except (auth.AuthError, api.ApiError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not change the recording")
+        return
+    kodiutils.notify("Recording %s" % what if on
+                     else "No longer recording %s" % what)
 
 
 def _label_of(item):
@@ -462,6 +510,7 @@ def _add_items(items, content="videos"):
                 url(action="play", video_id=item.video_id, label=item.title),
                 listitem, isFolder=False)
         else:
+            listitem.addContextMenuItems(_dvr_menu(item.browse_id, item.title))
             xbmcplugin.addDirectoryItem(
                 HANDLE,
                 url(action="browse", browse_id=item.browse_id,
@@ -961,6 +1010,12 @@ def main():
         return
     elif action == "browse":
         route_browse(params.get("browse_id", ""), params.get("name", ""))
+        return
+    elif action == "dvr":
+        # RunPlugin, not a directory: nothing to draw, and the listing the
+        # menu was opened from stays where it is.
+        route_dvr(params.get("browse_id", ""), params.get("name", ""),
+                  params.get("on") == "1")
         return
     elif action == "play":
         route_play(params.get("video_id", ""), params.get("label", ""))

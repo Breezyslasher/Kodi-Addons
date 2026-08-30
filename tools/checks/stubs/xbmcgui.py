@@ -2,6 +2,7 @@ class ListItem(object):
     def __init__(self, label="", **kw): self.label=label; self._p={}
     def setArt(self,*a,**k): pass
     def setProperty(self,k,v): self._p[k]=v
+    def addContextMenuItems(self,items): self.menu=list(items)
     def getVideoInfoTag(self):
         class T:
             def __getattr__(self,n): return lambda *a,**k: None
