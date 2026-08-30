@@ -652,6 +652,63 @@ def _search_pages(client, response, limit=4):
     return pages
 
 
+def _type_by_page(client, rows, limit=24, workers=6):
+    """Ask each result's own page what it is, since the search will not.
+
+    Search types a film SHOW -- The Blues Brothers and Blues Brothers 2000
+    both -- and nothing on the tile contradicts it: there is no menu there,
+    so not even the DVR toast is available. The page one level down does
+    say, in the header this addon already reads, and that header is what
+    made a film play from a category.
+
+    So the pages are fetched, together rather than one after another, the
+    way a show page's deferred shelves are. What they answer is kept: a
+    title does not change what it is, and the same searches come back.
+
+    Bounded on both sides. Nothing already typed MOVIE, nothing playable,
+    and nothing already known is fetched at all; and at most ``limit``
+    lookups happen for one search, so a query that answers with a hundred
+    folders does not turn into a hundred requests.
+    """
+    known = api.remembered_kinds()
+    wanted = []
+    for row in rows:
+        for item in row.items:
+            if item.playable or not item.browse_id:
+                continue
+            remembered = known.get(item.browse_id)
+            if remembered:
+                item.content_type = remembered
+            elif (item.content_type != "MOVIE"
+                    and item.browse_id not in wanted):
+                wanted.append(item.browse_id)
+    wanted = wanted[:limit]
+    if not wanted:
+        return 0, 0
+
+    def ask(browse_id):
+        try:
+            header = epg.title_header(client.browse(browse_id))
+        except (auth.AuthError, api.ApiError) as exc:
+            kodiutils.log("could not type %s: %s" % (browse_id, exc))
+            return browse_id, ""
+        kind = (header or {}).get("contentType")
+        return browse_id, kind if isinstance(kind, str) else ""
+
+    from concurrent.futures import ThreadPoolExecutor
+    found = {}
+    with ThreadPoolExecutor(max_workers=min(workers, len(wanted))) as pool:
+        for browse_id, kind in pool.map(ask, wanted):
+            if kind:
+                found[browse_id] = kind
+    api.remember_kinds(found)
+    for row in rows:
+        for item in row.items:
+            if item.browse_id in found:
+                item.content_type = found[item.browse_id]
+    return len(wanted), sum(1 for k in found.values() if k == "MOVIE")
+
+
 def _list_search(client, query, response):
     """Search results as the rows YouTube TV grouped them into.
 
@@ -666,8 +723,10 @@ def _list_search(client, query, response):
     # listed under a row called Shows is the thing to find, and it can be
     # in either place -- YouTube TV names these rows and this addon names a
     # category's -- so both say what they actually hold.
-    kodiutils.log("search %r: %d page(s), %d row(s) -- %s"
-                  % (query, len(pages), len(rows),
+    asked, films = _type_by_page(client, rows)
+    kodiutils.log("search %r: %d page(s), %d row(s), asked %d page(s) and "
+                  "found %d film(s) -- %s"
+                  % (query, len(pages), len(rows), asked, films,
                      "; ".join("%s (%s)" % (r.title, _kinds_in(r.items))
                                for r in rows) or "nothing"))
     # The per-item dump that answered this is gone; what it found is

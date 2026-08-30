@@ -123,6 +123,30 @@ def remember_categories(response):
     return kept
 
 
+# What a browse id turned out to be, once its own page has said. Search
+# types a film SHOW, and the only thing that contradicts it is the page's
+# own header -- so the answer is kept, because a title does not change what
+# it is and the same searches come back.
+KIND_CACHE = "kinds.json"
+KIND_CACHE_MAX = 2000
+
+
+def remembered_kinds():
+    known = kodiutils.read_json(KIND_CACHE) or {}
+    return known if isinstance(known, dict) else {}
+
+
+def remember_kinds(found):
+    """Add {browse_id: kind} to what is known, oldest dropped when full."""
+    if not found:
+        return
+    known = remembered_kinds()
+    known.update(found)
+    if len(known) > KIND_CACHE_MAX:
+        known = dict(list(known.items())[-KIND_CACHE_MAX:])
+    kodiutils.write_json(KIND_CACHE, known)
+
+
 def categories_are_stale(max_age=CATEGORY_CACHE_AGE):
     known = kodiutils.read_json(CATEGORY_CACHE) or {}
     return (not known.get("categories")
