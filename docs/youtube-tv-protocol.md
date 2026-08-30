@@ -133,8 +133,13 @@ rebuilds the 2026-08-27 capture's params byte for byte. The field-1 varint is
 sent as 1; what it means is not established, and it is *not* the on/off switch
 -- the endpoint's own name is that.
 
-No capture carries a response body for either, so success is the HTTP 200
-`call` already insists on. The first real call logs the keys it gets back.
+Both answer with `actions` and `responseContext` and nothing else -- the
+Kodi log of 2026-08-29 23:07, a start and a stop of the same show. So the 200
+that `call` insists on is not by itself the report: `actions` is where the
+client is told what to show, and a refusal arrives the same way, as a 200
+with a different sentence in it. `epg.action_text` reads that message out and
+it is what the notification says; when none reads, the addon falls back to
+its own wording and logs the renderers that did come back.
 
 YouTube TV records a **series**, not an airing, so the id is always a show's.
 Every guide airing names its show in `entitiesDvrStatus`:
@@ -212,31 +217,38 @@ that varint is the order being selected, not a constant.)
 
 ## What has been seen, and what is implemented
 
-Taken by scanning every `/youtubei/v1/` request across all twenty
+Taken by scanning every `/youtubei/v1/` request across all twenty-one
 tv.youtube.com captures in this project, rather than from memory. Call counts
 are how often each appeared.
 
 ### Feeds
 
-Exactly four exist across all of them, so **no tab is missing**:
+Five exist across all of them, so **no tab is missing**:
 
 | Feed | Requests | Status |
 | --- | --- | --- |
 | `FEunplugged_epg` | 22 | Live channels, Guide, IPTV |
-| `FEunplugged_overlays` | 6 | **not implemented** — and there is nothing in it: it answers 786 bytes of `twoColumnBrowseResultsRenderer` holding one empty `tabRenderer`, a promo slot this account has nothing in |
+| `FEunplugged_overlays` | 7 | **not implemented** — and there is nothing in it: it answers 786 bytes of `twoColumnBrowseResultsRenderer` holding one empty `tabRenderer`, a promo slot this account has nothing in |
 | `FEunplugged_home` | 4 | Home |
+| `FEunplugged_browse` | 2 | Networks |
 | `FEunplugged_library` | 2 | Library |
+
+`FEunplugged_chips` is named by the Browse tab's five category chips and is
+requested in no capture, so what it answers with is unverified. It is
+followed anyway: it is a browseId with `params`, which is exactly what
+`route_browse` already sends, and a page that comes back in an unknown shape
+lists flat rather than failing.
 
 ### Endpoints
 
 | Endpoint | Calls | Status |
 | --- | --- | --- |
-| `browse` | 48 | implemented |
-| `log_event` | 31 | telemetry, deliberately not sent |
+| `browse` | 81 | implemented |
+| `log_event` | 43 | telemetry, deliberately not sent |
 | `search` | 20 | implemented |
 | `suggest` | 17 | implemented (`Api.suggest`, not yet wired to a route) |
-| `tenx_player` | 14 | **not implemented.** Takes `{"channelIds": [...]}`. No response body survives in any capture, so what it returns is unknown |
-| `att/get` | 5 | not needed — the add-on mints its own proof-of-origin |
+| `tenx_player` | 23 | **not implemented.** Takes `{"channelIds": [...]}`. No response body survives in any capture, so what it returns is unknown |
+| `att/get` | 6 | not needed — the add-on mints its own proof-of-origin |
 | `next` | 5 | **not implemented.** `{"videoId": ..., "params": ..., "unpluggedWatchNextOptions": null}` — the watch-next panel. No response body captured |
 | `player` | 5 | implemented |
 | `player/get_drm_license` | 5 | implemented, through the licence proxy |
@@ -244,8 +256,8 @@ Exactly four exist across all of them, so **no tab is missing**:
 | `account/set_setting` | 2 | not implemented |
 | `update_station_visibility` | 2 | **not implemented.** Hides or shows one station: params decode to the channel id, a 0/1 flag, and the account's market |
 | `check_client_freshness` | 2 | not implemented — a client-version check |
-| `start_dvr` | 1 | **not implemented.** `{"startDvrParams": <base64>, "id": "<channel id>"}`, where the params wrap the same channel id |
-| `stop_dvr` | 1 | **not implemented**, same shape |
+| `start_dvr` | 1 | implemented — "record this show" |
+| `stop_dvr` | 1 | implemented — "stop recording this show" |
 | `player/ad_break` | 1 | not implemented; body not captured |
 | `account/get_setting` | 1 | not implemented |
 
@@ -257,12 +269,11 @@ in Kodi logs.
 
 ### The gap worth closing
 
-`start_dvr` / `stop_dvr` is the only unimplemented pair that is a *feature*
-rather than plumbing, and the Library already lists "Scheduled" recordings
-that nothing in this add-on can create or cancel. Both requests are one field
-and a channel id.
+Nothing on the list is now a *feature* the add-on lacks. `start_dvr` /
+`stop_dvr` was the last one and is implemented; the Browse tab was the last
+feed not read and is implemented.
 
-Everything else on the not-implemented list is either telemetry, an
+Everything still on the not-implemented list is either telemetry, an
 attestation the add-on already satisfies another way, a write to account
 settings the web UI owns, or an endpoint whose response was never captured.
 
@@ -1051,6 +1062,44 @@ shelves were asked for. Listing only what the page itself carries showed two.
 
 The counts above are the addon's own parser run over the browser's recorded
 responses, not a reading of the UI.
+
+### The Browse tab — `POST /youtubei/v1/browse?alt=json`
+
+```json
+{ "browseId": "FEunplugged_browse" }
+```
+
+Asked for by browseId, unlike Home and the Library, which the web client
+sends as continuation tokens. 712 KB, in the `shelfRenderer` container the
+web readers already know, holding exactly two rows:
+
+| Row | Holds | Renderer |
+| --- | --- | --- |
+| Browse | 5 category chips | `unpluggedIntentChipRenderer` in an `unpluggedHorizontalChipListRenderer` |
+| Networks | 256 networks | `unpluggedGridChannelRenderer` in a `horizontalListRenderer` |
+
+256 networks against 147 stations in the same account's guide, because a
+network here is a brand and not a channel slot.
+
+**The chips are all one browseId.** Sports, Shows, Movies, News and Family
+each navigate to `FEunplugged_chips`, and what tells them apart is `params`:
+
+```json
+{"browseEndpoint": {"browseId": "FEunplugged_chips",
+                    "params": "8gMGKgQI75wB"}}
+```
+
+That is why `epg.Item` carries `params` and why `parse_items` keys its
+dedupe on the pair. Keyed on the browseId alone, five categories collapsed
+into one row -- the same trap as two airings of one show pointing at one
+show page, in a place where nothing has a start time to break the tie.
+`params` reaches the request unchanged, trailing `%3D` included, for the
+reason `HOME_CONTINUATION` does: the token is opaque, and decoding it to
+re-encode it is a way to break it.
+
+A network tile carries a plain `browseEndpoint` with no params, and opens as
+an ordinary show page. Adult Swim answers with 400 items in one response and
+no shelves deferred; ABC with 26, of which one is unplayable.
 
 ### Heartbeat — `POST /youtubei/v1/player/heartbeat?alt=json`
 

@@ -185,6 +185,9 @@ def route_root():
             action="guide")
     add_dir("Library", plot="Your recordings, purchases and what is "
                             "scheduled to record.", action="library")
+    add_dir("Networks", plot="Every network you can watch, and YouTube TV's "
+                             "own Sports, Shows, Movies, News and Family "
+                             "categories.", action="networks")
     add_dir("Search", action="search")
     # Offered while already signed in, not only before, so a session that
     # has gone wrong can be replaced without signing out first.
@@ -467,14 +470,17 @@ def route_dvr(browse_id, name, on):
     what = name or browse_id
     try:
         if on:
-            client.start_dvr(browse_id)
+            said = client.start_dvr(browse_id)
         else:
-            client.stop_dvr(browse_id)
+            said = client.stop_dvr(browse_id)
     except (auth.AuthError, api.ApiError) as exc:
         kodiutils.ok_dialog(str(exc), "Could not change the recording")
         return
-    kodiutils.notify("Recording %s" % what if on
-                     else "No longer recording %s" % what)
+    # YouTube TV's own words when it says any, because a refusal comes back
+    # as a 200 with a different sentence in it, and "Recording X" printed
+    # over the top of that would be a lie the log could not correct.
+    kodiutils.notify(said or ("Recording %s" % what if on
+                              else "No longer recording %s" % what))
 
 
 def _label_of(item):
@@ -514,7 +520,7 @@ def _add_items(items, content="videos"):
             xbmcplugin.addDirectoryItem(
                 HANDLE,
                 url(action="browse", browse_id=item.browse_id,
-                    name=item.title),
+                    name=item.title, params=item.params),
                 listitem, isFolder=True)
     finish(content)
 
@@ -621,18 +627,22 @@ def _in_episode_order(items):
     return sorted(items, key=lambda item: order[id(item)])
 
 
-def route_browse(browse_id, name):
-    """A show, movie or channel page reached from search.
+def route_browse(browse_id, name, params=""):
+    """A show, movie or channel page reached from search or the Browse tab.
 
     Search answers with shows rather than episodes, so this is where the
     playable things actually live.
+
+    ``params`` is carried because one browseId is not always one page: the
+    Browse tab's category chips are all FEunplugged_chips and name which
+    category they mean only there.
     """
     client = _client()
     if not client:
         finish()
         return
     try:
-        response = client.browse(browse_id)
+        response = client.browse(browse_id, params or None)
     except (auth.AuthError, api.ApiError) as exc:
         kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or browse_id))
         finish()
@@ -654,7 +664,8 @@ def _follow_pages(client, section, limit=10):
     that keeps handing back the same token cannot spin here.
     """
     items = list(section.items)
-    seen = {(item.video_id or item.browse_id, item.start_ms) for item in items}
+    seen = {(item.video_id or item.browse_id, item.params, item.start_ms)
+            for item in items}
     token = section.token
     page = 0
     while token and page < limit:
@@ -667,7 +678,7 @@ def _follow_pages(client, section, limit=10):
             break
         added = 0
         for item in epg.parse_items(response):
-            key = (item.video_id or item.browse_id, item.start_ms)
+            key = (item.video_id or item.browse_id, item.params, item.start_ms)
             if key in seen:
                 continue
             seen.add(key)
@@ -803,6 +814,74 @@ def route_home_row(name):
     section = next((s for s in sections if s.title == name), None)
     if section is None:
         kodiutils.notify("%s is no longer on the front page"
+                         % (name or "That row"))
+        finish()
+        return
+    _add_items(_follow_pages(client, section))
+
+
+def route_networks():
+    """YouTube TV's Browse tab: the networks, under its category chips.
+
+    Listed as rows rather than flattened, for the reason Home is: the tab
+    holds 256 networks and five categories, and one list of 261 things is
+    not a menu.
+    """
+    client = _client()
+    if not client:
+        finish()
+        return
+    first_page, pages, error = _whole_page(client, client.networks)
+    if error:
+        kodiutils.ok_dialog(error, "Could not open the networks")
+        finish()
+        return
+
+    sections = _networks_sections(pages)
+    kodiutils.log("networks: %d page(s), %d row(s) -- %s"
+                  % (len(pages), len(sections),
+                     ", ".join("%s (%d)" % (s.title, len(s.items))
+                               for s in sections) or "nothing"))
+    if sections:
+        _list_sections(sections, "networks_row")
+        finish()
+        return
+
+    # The capture is the web client's. Should the TV client answer this tab
+    # in a container of its own -- as it does the Library -- keep the
+    # response: the shape is the only thing that says what to write next.
+    kodiutils.log("networks shape: %s" % epg.describe(first_page))
+    kodiutils.dump_response("networks-shape.json", first_page)
+    kodiutils.log("networks: nothing recognised; listing the tab flat")
+    _add_items(epg.parse_items(first_page))
+
+
+def _networks_sections(pages):
+    """The tab's named rows, by container first and by shape second."""
+    sections = _sections_of(pages)
+    if sections:
+        return sections
+    rows = []
+    for page in pages:
+        rows.extend(epg.any_rows(page))
+    return rows
+
+
+def route_networks_row(name):
+    """One row of the Browse tab, in full."""
+    client = _client()
+    if not client:
+        finish()
+        return
+    _first, pages, error = _whole_page(client, client.networks)
+    if error:
+        kodiutils.ok_dialog(error, "Could not open the networks")
+        finish()
+        return
+    section = next((s for s in _networks_sections(pages) if s.title == name),
+                   None)
+    if section is None:
+        kodiutils.notify("%s is no longer on the Browse tab"
                          % (name or "That row"))
         finish()
         return
@@ -1008,8 +1087,15 @@ def main():
     elif action == "search":
         route_search()
         return
+    elif action == "networks":
+        route_networks()
+        return
+    elif action == "networks_row":
+        route_networks_row(params.get("name", ""))
+        return
     elif action == "browse":
-        route_browse(params.get("browse_id", ""), params.get("name", ""))
+        route_browse(params.get("browse_id", ""), params.get("name", ""),
+                     params.get("params", ""))
         return
     elif action == "dvr":
         # RunPlugin, not a directory: nothing to draw, and the listing the

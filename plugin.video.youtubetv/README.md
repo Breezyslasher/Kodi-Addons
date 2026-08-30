@@ -16,6 +16,8 @@ not document. See [Status](#status).
 * **Library** -- recordings, purchases and scheduled recordings, with the
   account's own filters (Shows, Movies, Sports, Events, Purchased) as folders
   and everything listed together at the top
+* **Networks** -- every network the account can watch, and YouTube TV's own
+  Sports, Shows, Movies, News and Family categories, each a folder
 * **Recording** -- record or stop recording a series from the context menu on
   any show, in the Library, in search results, or on any programme in a
   channel's schedule
@@ -207,6 +209,12 @@ request the index appears to be `ceil(unix_time / 86400)` -- a daily period.
 One data point is not a specification, so the proxy tries the neighbouring
 indices when the server rejects its first guess, and logs when a neighbour is
 the one that works.
+
+**One browse id is not always one page.** The Browse tab's five category
+chips all navigate to `FEunplugged_chips` and name which category they mean
+only in `params`, so a folder carries its params and the reader keys its
+dedupe on the pair. Network tiles carry no params and open as ordinary show
+pages.
 
 **Home and Library are pages of rows.** Neither is asked for by browse id --
 the web client wraps the id in a continuation token and sends that, so the
