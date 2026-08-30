@@ -674,7 +674,30 @@ def _type_results(client, query, rows, limit=24, workers=6):
     answers with a hundred folders does not become a hundred requests.
     """
     known = dict(api.remembered_kinds())
+
+    def apply(source):
+        """Type what ``source`` names; return the ids still unaccounted for."""
+        left = []
+        for row in rows:
+            for item in row.items:
+                if item.playable or not item.browse_id:
+                    continue
+                said = source.get(item.browse_id)
+                if said:
+                    item.content_type = said
+                elif (item.content_type != "MOVIE"
+                        and item.browse_id not in left):
+                    left.append(item.browse_id)
+        return left
+
+    # What is remembered first, and if that accounts for everything, stop
+    # here: the second search for the same thing should cost nothing at
+    # all, and asking for suggestions it has no use for is still a request.
+    wanted = apply(known)
     told = 0
+    if not wanted:
+        return 0, 0, _films(rows)
+
     if query:
         try:
             offered = epg.suggestion_kinds(client.suggest(query))
@@ -683,24 +706,16 @@ def _type_results(client, query, rows, limit=24, workers=6):
             offered = {}
         # Only where nothing is remembered: what a page said outranks a
         # suggestion, having come from the title itself.
-        for browse_id, kind in offered.items():
-            if browse_id not in known:
-                known[browse_id] = kind
-                told += 1
-    wanted = []
-    for row in rows:
-        for item in row.items:
-            if item.playable or not item.browse_id:
-                continue
-            remembered = known.get(item.browse_id)
-            if remembered:
-                item.content_type = remembered
-            elif (item.content_type != "MOVIE"
-                    and item.browse_id not in wanted):
-                wanted.append(item.browse_id)
+        fresh = {bid: kind for bid, kind in offered.items()
+                 if bid not in known}
+        if fresh:
+            known.update(fresh)
+            wanted = apply(known)
+            told = len(fresh)
+
     wanted = wanted[:limit]
     if not wanted:
-        api.remember_kinds({k: v for k, v in known.items()})
+        api.remember_kinds(known)
         return told, 0, _films(rows)
 
     def ask(browse_id):

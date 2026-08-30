@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.44" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.45" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,13 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.45 - A search that needs nothing asks for nothing
+- The remembering works: "blues" came back fully typed -- 11 films in Top
+  picks -- with no page fetched and nothing asked, where the first time it
+  cost 19. But the suggestions were still being asked for before anything
+  checked whether they were needed, so a search that had every answer
+  already made a request it had no use for. It checks first now.
+
 2026.8.31.44 - Ask YouTube TV what a thing is, in one call
 - It will just tell you. suggest answers with the kind spelled out beside
   the browse id -- "The Blues Brothers / Movie", "Air Disasters / Show",

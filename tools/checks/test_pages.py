@@ -1208,6 +1208,23 @@ check("and the film it named is a film now",
       [(i.title, i.content_type) for i in told_row[0].items],
       [("The Blues Brothers", "MOVIE"), ("St. Louis Blues", "SPORTS_TEAM")])
 # The "$" badge beside it says a title must be bought, not what it is.
+# A search whose results are all remembered should cost nothing -- not even
+# the suggestions, which it would have no use for. It ran one anyway until
+# a log read "0 typed by suggestion, 0 page(s) asked" beside a request that
+# had still gone out.
+api.remembered_kinds = lambda: {"UCFILM": "MOVIE", "UCTEAM": "SPORTS_TEAM"}
+quiet = _FakeClient({}, suggests={"UCFILM": "Movie"})
+quiet_row = _row(epg.Item(browse_id="UCFILM", title="The Blues Brothers",
+                          content_type="SHOW"),
+                 epg.Item(browse_id="UCTEAM", title="St. Louis Blues",
+                          content_type="SPORTS_TEAM"))
+told2, asked2, films2 = default._type_results(quiet, "blues", quiet_row)
+check("a search that needs nothing asks for nothing, suggestions included",
+      (told2, asked2, quiet.suggested, quiet.asked), (0, 0, 0, []))
+check("and it is still typed, from memory",
+      [i.content_type for i in quiet_row[0].items], ["MOVIE", "SPORTS_TEAM"])
+api.remembered_kinds = lambda: {}
+
 check("the price badge is not mistaken for a kind",
       epg.suggestion_kinds(told_client.suggest("x")),
       {"UCFILM": "MOVIE", "UCTEAM": "SPORTS_TEAM"})
