@@ -324,6 +324,25 @@ The items were never behind the token — they are inline in each cell's
 `gridRenderer`, which the sampler also confirmed (`gridRenderer x9 carries
 [continuations, items, trackingParams]`).
 
+#### The Library's tiles do not navigate — they open a side sheet
+
+Accepting any endpoint that names an id was not it either. With the sampler
+reporting one level further in:
+
+    library: unpluggedBrowseItemRenderer x19 carries [contentType,
+      navigationEndpoint, primaryText, ...];
+      navigationEndpoint -> [clickTrackingParams, unpluggedGetSidesheetCommand]
+
+`unpluggedGetSidesheetCommand` — and note it ends in *Command*, not *Endpoint*,
+so the fallback could not have matched it even had it held an id. The TV
+Library's tiles do not navigate anywhere: selecting one opens a side sheet, a
+detail panel, which is consistent with the `unpluggedSidesheetRenderer`,
+`unpluggedSidesheetTextHeaderRenderer` and `unpluggedSidesheetContentRenderer`
+the first shape dump counted in the same response.
+
+Whether that command carries a browse id of its own or has to be fetched is
+not yet known, and is the next thing to read out of `library-shape.json`.
+
 Whether `onSelectCommand` is actually used by the TV client remains
 unverified.
 `epg.unreadable_sample` therefore logs the keys carried by renderers that look
@@ -356,6 +375,40 @@ Against the 19:20 web capture: 148 stations, 144 airings, 144 playable, and 4
 dropped for having no airings (three NBCSN Extra feeds and Cartoon Network).
 The response is kept only when nothing is playable or more than half the
 lineup is dropped or unnamed; it is a couple of megabytes.
+
+### The guide carries 953 airings and the addon read 144 of them
+
+The Kodi PVR guide showed what was on each channel and nothing after it, on
+every channel. That was not pagination: page one of the 2026-08-29 guide holds
+**953 `epgAiringRenderer`** and `parse_epg` returned 144 — one per station.
+
+The two sets differ in exactly one field:
+
+| | airings with a watchEndpoint | airings without |
+| --- | --- | --- |
+| Count | 144 (one per station) | 809 |
+| `navigationEndpoint` | `watchEndpoint` | `browseEndpoint` to the show page |
+| `videoId` field | present | **present** |
+| Extra | `spoilerModeBadge`, `spoilerModeEntities` | — |
+
+Every airing carries its id in a plain `videoId` field. Only the one actually
+on the air also gets a `watchEndpoint`, and `parse_airing` read the endpoint
+alone, so every future programme was dropped for having "no video id".
+
+Reading the field as well takes the guide from 144 airings to 953 — a median of
+6 per station and up to 15 — and every station now has a schedule instead of a
+single row.
+
+That endpoint is not redundant, though: it is the guide's own statement of
+which airing is on now. `Airing.on_air` records it, and `Station.now` asks it
+*before* comparing timestamps. Run against the capture from a later day, the
+clock picked a different airing on 113 of the 148 stations while the marker was
+right on all of them. It also keeps Live channels exactly as it was: before
+this change a station had one airing, the marked one, and `now` was always it;
+falling through to `airings[0]` would now play whatever was on that morning.
+Measured against the capture, Live channels resolves to the same video on 144
+of 148 stations, and the four that differ are the four that previously had no
+airings at all — they gain a schedule rather than lose one.
 
 ### Station names live on the logo, not in a name field
 

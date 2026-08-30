@@ -83,15 +83,23 @@ def thumbnail(node, prefer_width=0):
 class Airing(object):
     """One programme on one channel."""
 
-    __slots__ = ("video_id", "title", "description", "start_ms", "end_ms", "art")
+    __slots__ = ("video_id", "title", "description", "start_ms", "end_ms",
+                 "art", "on_air")
 
-    def __init__(self, video_id, title, description, start_ms, end_ms, art):
+    def __init__(self, video_id, title, description, start_ms, end_ms, art,
+                 on_air=False):
         self.video_id = video_id
         self.title = title
         self.description = description
         self.start_ms = start_ms
         self.end_ms = end_ms
         self.art = art
+        # True when the id came from a watchEndpoint rather than the plain
+        # videoId field. YouTube TV gives the endpoint to exactly one airing
+        # per channel -- the one on the air -- so this is the guide's own
+        # word for "now", and worth more than arithmetic on a clock that may
+        # not agree with Google's.
+        self.on_air = on_air
 
     @property
     def is_now(self):
@@ -120,6 +128,20 @@ class Station(object):
 
     @property
     def now(self):
+        # The guide's own marker first, then the clock. YouTube TV gives a
+        # watchEndpoint to exactly one airing per channel and it is the one
+        # on the air, which beats comparing timestamps against a clock that
+        # need not agree with Google's -- run against the 2026-08-29 capture
+        # from a later day, is_now picked a different airing on 113 of the
+        # 148 stations while the marker was right on all of them.
+        #
+        # This also keeps what the addon did before the guide carried whole
+        # schedules: there was one airing per station, the marked one, and
+        # "now" was always it. Falling through to airings[0] now would mean
+        # playing whatever was on this morning.
+        for airing in self.airings:
+            if airing.on_air:
+                return airing
         for airing in self.airings:
             if airing.is_now:
                 return airing
@@ -141,11 +163,24 @@ def _int(value):
 
 
 def parse_airing(renderer):
+    """One programme.
+
+    The id is taken from a watchEndpoint if there is one and from the
+    renderer's own ``videoId`` field otherwise. Only the programme actually
+    on the air carries the endpoint: of the 953 airings in the 2026-08-29
+    guide, 144 had one -- one per channel, the one showing now -- and the
+    other 809 carried a navigationEndpoint to the show page and their id in
+    a plain field beside it. Reading the endpoint alone is why the guide
+    listed what was on and nothing after it.
+    """
     video_id = ""
     for endpoint in walk(renderer, "watchEndpoint"):
         if isinstance(endpoint, dict) and endpoint.get("videoId"):
             video_id = endpoint["videoId"]
             break
+    on_air = bool(video_id)
+    if not video_id and isinstance(renderer.get("videoId"), str):
+        video_id = renderer["videoId"]
 
     title = text(renderer.get("title")) or text(renderer.get("primaryText"))
     description = (text(renderer.get("quaternaryText"))
@@ -157,6 +192,7 @@ def parse_airing(renderer):
         start_ms=_int(renderer.get("beginTimeMs")),
         end_ms=_int(renderer.get("endTimeMs")),
         art=thumbnail(renderer.get("thumbnail") or {}, prefer_width=1280),
+        on_air=on_air,
     )
 
 
@@ -462,10 +498,17 @@ def parse_items(response):
         title = _title_of(renderer)
         if not title:
             return
+        # A plain videoId/browseId field beside the endpoints counts too:
+        # that is where the guide keeps the id of every programme that is
+        # not the one currently on the air.
         video_id = (_endpoint_id(renderer, "watchEndpoint", "videoId")
-                    or _popup_video_id(renderer))
-        browse_id = "" if video_id else _endpoint_id(renderer, "browseEndpoint",
-                                                     "browseId")
+                    or _popup_video_id(renderer)
+                    or (renderer.get("videoId")
+                        if isinstance(renderer.get("videoId"), str) else ""))
+        browse_id = "" if video_id else (
+            _endpoint_id(renderer, "browseEndpoint", "browseId")
+            or (renderer.get("browseId")
+                if isinstance(renderer.get("browseId"), str) else ""))
         if not video_id and not browse_id:
             return
         # Keyed by destination *and* start time. Destination alone collapsed
@@ -519,6 +562,8 @@ def unplayable_count(response):
                             and not _endpoint_id(value, "browseEndpoint",
                                                  "browseId")
                             and not _popup_video_id(value)
+                            and not value.get("videoId")
+                            and not value.get("browseId")
                             and title not in seen):
                         seen.add(title)
                         count += 1

@@ -24,6 +24,7 @@ the titles and ids replaced.
 import copy
 import os
 import sys
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE + "/stubs")
@@ -301,6 +302,52 @@ MENU = {"contents": [
 ]}
 check("a dialog button is not a row",
       [i.title for i in epg.parse_items(MENU)], ["On now"])
+
+# -- the guide's schedule --------------------------------------------------
+# Of the 953 airings in the 2026-08-29 guide, 144 carry a watchEndpoint --
+# one per channel, the one on the air -- and the other 809 carry a
+# browseEndpoint to the show page with their id in a plain videoId field
+# beside it. Reading only the endpoint is why the guide showed what was on
+# and nothing after it, on every channel.
+def _airing(title, begin, end, video_id=None, endpoint_id=None):
+    node = {"title": _runs(title), "beginTimeMs": str(begin),
+            "endTimeMs": str(end)}
+    if endpoint_id:
+        node["navigationEndpoint"] = {"watchEndpoint": {"videoId": endpoint_id}}
+        node["videoId"] = endpoint_id
+    else:
+        node["videoId"] = video_id
+        node["navigationEndpoint"] = {"browseEndpoint": {"browseId": "UCSHOW"}}
+    return {"epgAiringRenderer": node}
+
+
+# Timed relative to the moment the check runs: next_up asks the clock, so a
+# fixture with fixed timestamps would pass or fail by the calendar.
+HOUR = 3600000
+NOW_MS = int(time.time() * 1000)
+GUIDE = {"contents": [{"epgRowRenderer": {"contents": [
+    {"epgStationRenderer": {
+        "stationId": "UCCHAN",
+        "icon": {"thumbnails": [{"url": "//x/y", "width": 400}],
+                 "accessibility": {"accessibilityData": {"label": "A Channel"}}}}},
+    _airing("On now", NOW_MS - HOUR // 2, NOW_MS + HOUR // 2, endpoint_id="NOW"),
+    _airing("Later", NOW_MS + HOUR // 2, NOW_MS + HOUR, video_id="LATER"),
+    _airing("Later still", NOW_MS + HOUR, NOW_MS + 2 * HOUR,
+            video_id="LATERSTILL"),
+]}}]}
+
+stations = epg.parse_epg(GUIDE)
+check("the station parsed", [s.name for s in stations], ["A Channel"])
+check("named by its logo's accessibility label, with no name field",
+      stations[0].name, "A Channel")
+check("every airing kept, not just the one on the air",
+      [a.video_id for a in stations[0].airings], ["NOW", "LATER", "LATERSTILL"])
+check("only the endpoint-carrying airing is marked on air",
+      [a.on_air for a in stations[0].airings], [True, False, False])
+check("'now' is the marked airing, whatever the clock says",
+      stations[0].now.video_id, "NOW")
+check("next up is the one after it", stations[0].next_up.video_id
+      if stations[0].next_up else "", "LATER")
 
 print("failures:", len(failures))
 sys.exit(1 if failures else 0)
