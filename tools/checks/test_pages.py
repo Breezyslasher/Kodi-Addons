@@ -697,6 +697,48 @@ check("one tab is not a page of tabs",
 check("nor is a page with no tabs at all",
       epg.browse_tabs(BROWSE_TAB), [])
 
+# The TV client answers a network with fewer tabs than the web one: Adult
+# Swim came back with four to a browser and two to Kodi. A tab that arrives
+# with no content at all is the shape that would explain the gap -- it can
+# carry a token, or name a page of its own to go and fetch, and neither is
+# reachable through a "content" key that is not there.
+BARE_TABS = {"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [
+    {"tabRenderer": {"title": "Live", "selected": True,
+                     "content": {"sectionListRenderer": {"contents": [
+                         {"shelfRenderer": {
+                             "title": {"runs": [{"text": "On now"}]},
+                             "content": {"horizontalListRenderer": {"items": [
+                                 {"unpluggedVideoRenderer": {
+                                     "title": {"runs": [{"text": "Rick and Morty"}]},
+                                     "navigationEndpoint": {"watchEndpoint": {
+                                         "videoId": "NOWVIDEOID1"}}}}]}}}}]}}}},
+    {"tabRenderer": {"title": "Series",
+                     "endpoint": {"browseEndpoint": {
+                         "browseId": "UCNETWORKAAAAAAAAAAAAA2",
+                         "params": "8gMGKgQI75wB"}}}},
+    {"tabRenderer": {"title": "Movies",
+                     "continuation": "BARE-TOKEN"}},
+    {"tabRenderer": {"title": "Nothing"}},
+]}}}
+
+bare = epg.browse_tabs(BARE_TABS)
+check("a tab with no content is read by what it does carry",
+      [(t.title, len(t.items), t.token, t.browse_id, t.params) for t in bare],
+      [("Live", 1, "", "", ""),
+       ("Series", 0, "", "UCNETWORKAAAAAAAAAAAAA2", "8gMGKgQI75wB"),
+       ("Movies", 0, "BARE-TOKEN", "", ""),
+      ])
+check("tab_shapes names every tab, including the one dropped",
+      epg.tab_shapes(BARE_TABS),
+      ["Live carries [content, selected, title]",
+       "Series carries [endpoint, title]",
+       "Movies carries [continuation, title]",
+       "Nothing carries [title]"])
+# The whole-tab search is safe only where there is no content to confuse it.
+check("a tab that HAS content still reads its token from its own list",
+      [t.token for t in epg.browse_tabs(NETWORK_PAGE)],
+      ["", "SERIES-TOKEN", "LATE-TOKEN"])
+
 # -- a category is rows, under chips that name no row ----------------------
 # The Movies category (2026-08-29 23:26). Its genre chips sit in a shelf
 # with no title, which page_shelves drops -- rightly, a folder called
