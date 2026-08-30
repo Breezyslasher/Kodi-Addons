@@ -1394,6 +1394,42 @@ check("and paragraphs are counted as the lines they take",
       _needs_room("one\n\ntwo\n\nthree"), True)
 check("an empty message asks for no room at all", _needs_room(""), False)
 
+# -- a title's deferred shelves are folders, not one flat list -------------
+# YouTube TV hangs a show's seasons off a selector: ten labels and ten
+# content blocks, paired by position, each block holding only a
+# continuation token. Family Feud answered with thirteen seasons and a
+# shelf called "Extras", and fetching all fourteen and listing the result
+# flat put 3,822 items in one folder (2026-08-30 03:50).
+SEASONS = {"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [
+    {"tabRenderer": {"title": "Episodes", "content": {"sectionListRenderer": {
+        "contents": [
+            {"unpluggedGridVideoRenderer": {
+                "primaryText": {"simpleText": "S26 E1 \u2022 Newest"},
+                "navigationEndpoint": {"watchEndpoint": {"videoId": "new1"}}}},
+            {"unpluggedSelectableSectionRenderer": {
+                "selectors": [{"dropdownItemRenderer": {
+                    "label": {"runs": [{"text": "Season 26"}]}}},
+                    {"dropdownItemRenderer": {
+                        "label": {"runs": [{"text": "Extras"}]}}}],
+                "contents": [
+                    {"sectionListRenderer": {"continuations": [
+                        {"nextContinuationData": {"continuation": "tok26"}}]}},
+                    {"sectionListRenderer": {"continuations": [
+                        {"nextContinuationData": {"continuation": "tokX"}}]}},
+                ]}},
+        ]}}}},
+]}}}
+
+check("the selector's labels pair with its shelves by position",
+      epg.section_continuations(SEASONS),
+      [("Season 26", "tok26"), ("Extras", "tokX")])
+# The label is YouTube TV's own and is used as given -- "Extras" is not
+# renamed to anything this addon has decided it means. No capture has ever
+# spent an Extras token, so what is behind it is not established.
+check("and the labels are the page's own words",
+      [label for label, _t in epg.section_continuations(SEASONS)],
+      ["Season 26", "Extras"])
+
 # -- a date parse that survives Kodi tearing its modules down --------------
 # The player hides the n transform's array indices behind dates with
 # fractional-hour offsets: new Date("1969-12-31T17:30:49.000-06:30")/1E3 is

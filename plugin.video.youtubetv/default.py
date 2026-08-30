@@ -1077,6 +1077,16 @@ def _expand_sections(client, response, items):
             items.append(item)
             added += 1
         barred += unplayable
+        # Named, not just counted. "Extras: 70 of 70 were new" says a shelf
+        # called Extras holds seventy things and nothing about what they
+        # are -- and no capture has ever spent an Extras token, so the
+        # titles are the only way to find out whether they are trailers,
+        # clips, specials, or episodes with no season number.
+        if found:
+            kodiutils.log("%s holds: %s%s"
+                          % (label or "a shelf",
+                             "; ".join(item.title for item in found[:6]),
+                             " ..." if len(found) > 6 else ""))
         # An empty shelf and a shelf of episodes this account has no rights
         # to both used to log "0 of 0", and only one of those is a show you
         # cannot watch.
@@ -1200,13 +1210,32 @@ def route_browse(browse_id, name, params=""):
             if browse_id:
                 api.remember_meta({browse_id: meta})
             plot = meta.get("plot", "")
-            # The tab can defer shelves of its own. That is where a show
-            # keeps its seasons, and where a film's extras would be: the
-            # web client's show page hangs "Season 1"..."Season 9" and
-            # "Extras" off ten tokens rather than listing them.
-            shown = _expand_sections(client, response, list(playing.items))
+            # The tab defers shelves of its own, and YouTube TV names each
+            # one: "Season 1".."Season 26", and "Extras". Those names are
+            # the page's own structure and are worth keeping.
+            #
+            # Fetching all of them and listing the result flat is what this
+            # did, and on a long-running show it is unusable: Family Feud
+            # answered with thirteen seasons and an Extras shelf, and the
+            # addon put **3,822 items in one folder** with the seventy
+            # extras at the bottom of it. So several shelves become several
+            # folders, and the page's own items -- the newest episodes,
+            # which are what someone opening a show usually wants -- stay
+            # listed above them.
+            deferred = epg.section_continuations(response)
+            shown = list(playing.items)
+            if len(deferred) < 2:
+                # One shelf is not a menu. Nothing is gained by making
+                # somebody open a folder to reach the only thing in it.
+                shown = _expand_sections(client, response, shown)
             for item in shown:
                 _add_item(item, plot=plot, dvr=dvr, meta=meta)
+            if len(deferred) >= 2:
+                shelves = [epg.Section(label or "More", [], token)
+                           for label, token in deferred]
+                _list_sections(shelves, "season",
+                               extra={"browse_id": browse_id,
+                                      "params": params})
             kodiutils.log("%s: %d to play, %s; %s alongside"
                           % (name or browse_id, len(shown),
                              ", ".join(
@@ -1304,6 +1333,70 @@ def route_category(browse_id, name, params):
                 name="%s: %s" % (name, chip.title) if name else chip.title,
                 params=chip.params)
     finish("videos")
+
+
+def route_season(browse_id, name, params="", token=""):
+    """One shelf of a title's page -- a season, or whatever else it names.
+
+    The page is fetched again and the shelf found by its label, rather than
+    the token in the url being spent. Same reason every other row here does
+    it: a token is the part most likely to go stale, and a season reopened
+    from a bookmark tomorrow should be that season as it is tomorrow.
+
+    Named for seasons because that is what these shelves nearly always are,
+    and it takes whatever else the page names without caring: the label is
+    YouTube TV's own and is used as given.
+    """
+    client = _client()
+    if not client:
+        finish()
+        return
+    try:
+        response = client.browse(browse_id, params or None)
+    except (auth.AuthError, api.ApiError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or "that"))
+        finish()
+        return
+
+    deferred = epg.section_continuations(response)
+    found = next((tok for label, tok in deferred if label == name), "")
+    if not found:
+        # Fall back to the token the url carried. It may be stale, and a
+        # stale token that answers beats a folder that opens on nothing.
+        found = token
+    if not found:
+        kodiutils.notify("%s is no longer on this page" % (name or "That row"))
+        finish()
+        return
+
+    header = epg.title_header(response)
+    meta = _page_meta(response, header) if header else {}
+    plot = meta.get("plot", "")
+    recording = epg.dvr_state(response)
+    dvr = (browse_id, epg.text((header or {}).get("title")) or name,
+           recording) if recording is not None else None
+    try:
+        shelf = client.continuation(found)
+    except (auth.AuthError, api.ApiError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or "that"))
+        finish()
+        return
+    items = epg.parse_items(shelf)
+    barred = epg.unplayable_count(shelf)
+    kodiutils.log("%s: %d item(s)%s -- %s"
+                  % (name or "a shelf", len(items),
+                     ", and %d this account cannot play" % barred if barred
+                     else "",
+                     "; ".join(item.title for item in items[:6]) or "nothing"))
+    if not items:
+        kodiutils.notify("Nothing playable under %s"
+                         % (name or "that")
+                         if not barred else
+                         "%s lists %d thing(s) this account cannot play"
+                         % (name or "That", barred))
+    for item in items:
+        _add_item(item, plot=plot, dvr=dvr, meta=meta)
+    finish("episodes" if items and items[0].episode else "videos")
 
 
 def route_browse_section(browse_id, name, params="", token=""):
@@ -2096,6 +2189,9 @@ def main():
         route_browse_section(params.get("browse_id", ""),
                              params.get("name", ""), params.get("params", ""),
                              params.get("token", ""))
+    elif action == "season":
+        route_season(params.get("browse_id", ""), params.get("name", ""),
+                     params.get("params", ""), params.get("token", ""))
         return
     elif action == "dvr":
         # RunPlugin, not a directory: nothing to draw, and the listing the

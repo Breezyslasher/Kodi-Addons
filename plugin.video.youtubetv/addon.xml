@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.68" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.69" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,22 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.69 - A show's seasons are folders, not one list of 3,822
+- Opening Family Feud fetched thirteen seasons and a shelf YouTube TV calls
+  "Extras" and put all of it in one folder: 3,822 items, with the seventy
+  extras at the bottom. YouTube TV names each shelf, and those names are
+  the page's own structure, so several shelves are several folders now.
+- The newest episodes -- what the page itself carries, and what someone
+  opening a show usually wants -- stay listed above them. A page that
+  defers only one shelf still lists it flat, because one shelf is not a
+  menu.
+- What is in an "Extras" shelf is not established: no capture has ever
+  fetched one, and on this account one title answered with seventy items
+  and another with none. The shelf now names the first few things it holds
+  in the log, so the next run says what they are rather than how many.
+- The folder is labelled with YouTube TV's own word for it. Calling it
+  trailers or bonus content would be deciding what it is before knowing.
+
 2026.8.31.68 - One path for n, in Python, with no fallback
 - The fallback that shelled out to node, deno, bun or quickjs is gone,
   along with the setting that pointed at one and the flatpak plumbing that
