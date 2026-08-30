@@ -124,6 +124,62 @@ sent as `SAPISIDHASH {timestamp}_{hash}`. This is the same scheme yt-dlp uses
 for authenticated YouTube requests. Practical consequence for an addon: users
 import cookies from a browser. Scripted Google password login is not viable.
 
+## What has been seen, and what is implemented
+
+Taken by scanning every `/youtubei/v1/` request across all twenty
+tv.youtube.com captures in this project, rather than from memory. Call counts
+are how often each appeared.
+
+### Feeds
+
+Exactly four exist across all of them, so **no tab is missing**:
+
+| Feed | Requests | Status |
+| --- | --- | --- |
+| `FEunplugged_epg` | 22 | Live channels, Guide, IPTV |
+| `FEunplugged_overlays` | 6 | **not implemented** — and there is nothing in it: it answers 786 bytes of `twoColumnBrowseResultsRenderer` holding one empty `tabRenderer`, a promo slot this account has nothing in |
+| `FEunplugged_home` | 4 | Home |
+| `FEunplugged_library` | 2 | Library |
+
+### Endpoints
+
+| Endpoint | Calls | Status |
+| --- | --- | --- |
+| `browse` | 48 | implemented |
+| `log_event` | 31 | telemetry, deliberately not sent |
+| `search` | 20 | implemented |
+| `suggest` | 17 | implemented (`Api.suggest`, not yet wired to a route) |
+| `tenx_player` | 14 | **not implemented.** Takes `{"channelIds": [...]}`. No response body survives in any capture, so what it returns is unknown |
+| `att/get` | 5 | not needed — the add-on mints its own proof-of-origin |
+| `next` | 5 | **not implemented.** `{"videoId": ..., "params": ..., "unpluggedWatchNextOptions": null}` — the watch-next panel. No response body captured |
+| `player` | 5 | implemented |
+| `player/get_drm_license` | 5 | implemented, through the licence proxy |
+| `update_live_guide_order` | 3 | **not implemented.** Writes a custom channel order: `params` plus a `liveGuideItems` list of `{externalId, settingsGroup}` |
+| `account/set_setting` | 2 | not implemented |
+| `update_station_visibility` | 2 | **not implemented.** Hides or shows one station: params decode to the channel id, a 0/1 flag, and the account's market |
+| `check_client_freshness` | 2 | not implemented — a client-version check |
+| `start_dvr` | 1 | **not implemented.** `{"startDvrParams": <base64>, "id": "<channel id>"}`, where the params wrap the same channel id |
+| `stop_dvr` | 1 | **not implemented**, same shape |
+| `player/ad_break` | 1 | not implemented; body not captured |
+| `account/get_setting` | 1 | not implemented |
+
+`player/heartbeat` appears in **none** of the surviving captures, though the
+add-on implements it and this file cites a 2026-08-28 03:10 capture for its
+shape. That HAR is not among the twenty that remain, so the shape recorded
+below cannot currently be re-checked against a file -- it does run correctly
+in Kodi logs.
+
+### The gap worth closing
+
+`start_dvr` / `stop_dvr` is the only unimplemented pair that is a *feature*
+rather than plumbing, and the Library already lists "Scheduled" recordings
+that nothing in this add-on can create or cancel. Both requests are one field
+and a channel id.
+
+Everything else on the not-implemented list is either telemetry, an
+attestation the add-on already satisfies another way, a write to account
+settings the web UI owns, or an endpoint whose response was never captured.
+
 ## Endpoints
 
 ### Home and Library — `POST .../browse` with a `continuation`
