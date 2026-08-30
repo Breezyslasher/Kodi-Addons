@@ -1405,6 +1405,12 @@ def route_browse(browse_id, name, params=""):
         return
 
     items = _expand_sections(client, response, epg.parse_items(response))
+    # Once per shelf, and only when the rows cannot be told apart by their
+    # titles: what the renderers carried, so "the addon does not read the
+    # field" and "the service does not send it" are distinguishable.
+    if len({item.title for item in items}) < max(2, len(items) // 4):
+        for line in epg.item_fields(shelf):
+            kodiutils.log("%s carries -- %s" % (name or "a shelf", line))
     if not items:
         kodiutils.notify("Nothing playable under %s" % (name or browse_id))
     _add_items(items)

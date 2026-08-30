@@ -1552,6 +1552,18 @@ check("and identical subtitles add nothing either",
                            epg.Item(video_id="b", title="X", subtitle="A \u2022 B")]),
       {})
 
+# "The addon does not read the field" and "the service does not send it"
+# looked identical from a log. Family Feud's episodes carry no synopsis at
+# all where Rick and Morty's carry one, and only a key list says which.
+_fields = epg.item_fields(EPISODE_WITH_OFFERS)
+check("a shelf can say what its renderers actually carry",
+      bool(_fields) and "primaryText=" in _fields[0], True)
+check("including the field that turned out to be missing on some shows",
+      "description=Tom Sawyer, broh." in _fields[0], True)
+# The versions nested inside are not item renderers and are not reported
+# as if they were rows.
+check("and it does not report an episode's offers as rows", len(_fields), 1)
+
 # -- a date parse that survives Kodi tearing its modules down --------------
 # The player hides the n transform's array indices behind dates with
 # fractional-hour offsets: new Date("1969-12-31T17:30:49.000-06:30")/1E3 is

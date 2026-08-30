@@ -993,6 +993,39 @@ def parse_items(response):
     return items
 
 
+def item_fields(response, limit=3):
+    """What the item renderers in a response actually carry, named.
+
+    parse_items reads the handful of keys it knows. This says what was
+    there, so "the addon is missing a field" and "the field is not sent"
+    stop being the same observation.
+
+    Written because a show whose episodes are all called after itself has
+    to be told apart by something, and the answer for Family Feud turned
+    out to be that its episodes carry no synopsis at all -- where Rick and
+    Morty's carry one. A key list settles which of those a listing is.
+    """
+    out = []
+    for name in ("unpluggedCompactVideoRenderer", "unpluggedGridVideoRenderer",
+                 "unpluggedBrowseItemRenderer"):
+        for renderer in walk(response, name):
+            if not isinstance(renderer, dict) or len(out) >= limit:
+                continue
+            said = []
+            for key in sorted(renderer):
+                if key in ("trackingParams", "clientStateSyncData"):
+                    continue
+                value = renderer[key]
+                shown = text(value) if isinstance(value, dict) else ""
+                if not shown and isinstance(value, (dict, list)):
+                    shown = "<%s>" % type(value).__name__
+                elif not isinstance(value, (dict, list)):
+                    shown = str(value)
+                said.append("%s=%s" % (key, (shown or "-")[:26]))
+            out.append("%s{%s}" % (name, ", ".join(said)))
+    return out
+
+
 def unplayable_count(response):
     """How many things a response names that cannot be opened.
 

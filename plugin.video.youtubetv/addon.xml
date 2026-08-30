@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.76" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.77" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,18 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.77 - Say what a shelf's rows actually carry
+- Family Feud's Season 24 episodes carry no synopsis at all: the field
+  read last build came back empty on every one of the 186, where Rick and
+  Morty's episodes have one. So that show has a title, a network, a rating
+  and "Recorded N months ago", and genuinely nothing else in text.
+- When a shelf's rows cannot be told apart by their titles, it now logs
+  what its renderers carried, field by field. "The addon does not read the
+  field" and "the service does not send it" looked the same from a log,
+  and they are not the same thing.
+- Family Feud's episodes do still differ on screen: each has its own
+  thumbnail, which is how YouTube TV's own app tells them apart.
+
 2026.8.31.76 - The episode synopsis was being dropped
 - Every episode in a season shelf carries a "description" -- Rick and
   Morty's S9 E10 says "Tom Sawyer, broh." -- and none of it ever reached
