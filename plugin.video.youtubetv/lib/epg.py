@@ -881,6 +881,26 @@ def section_continuations(response):
     return pairs
 
 
+# Renderers that carry a title and an id and are still not a thing to list.
+#
+# unpluggedCompactVideoVersionRenderer is where an episode says *where* it
+# can be watched: one per service, each with its own watchEndpoint carrying
+# the same videoId as the episode above it, and each with the service and
+# the age in **primaryText** --
+#
+#     primaryText   "Adult Swim * TV-14 * 13d ago"
+#     secondaryText "24 min * Expires Sep 3"
+#     available     true, or false with an inline purchase command
+#
+# Since primaryText is where a title comes from, every one of these listed
+# itself as an episode called "Adult Swim * TV-14 * 13d ago". Family Feud's
+# Season 23 came back with 380 rows reading "Family Feud; Game Show Network
+# * TV-PG * 5d ago; Game Show Network * TV-PG * 2mo ago; Family Feud..." --
+# each real episode followed by its offers, one of which is a thing to buy
+# rather than a thing to play.
+_NOT_AN_ITEM = frozenset(("unpluggedCompactVideoVersionRenderer",))
+
+
 def parse_items(response):
     """Every renderer that names something to play or browse.
 
@@ -898,7 +918,8 @@ def parse_items(response):
         if isinstance(node, dict):
             for key, value in node.items():
                 if key.endswith("Renderer") and isinstance(value, dict):
-                    _collect(value, key)
+                    if key not in _NOT_AN_ITEM:
+                        _collect(value, key)
                 visit(value)
         elif isinstance(node, list):
             for value in node:

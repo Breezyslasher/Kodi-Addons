@@ -1473,6 +1473,33 @@ check("so alphabetical puts them in season order",
              key=default._sort_label),
       ["Season 1", "Season 2", "Season 10", "Season 40"])
 
+# -- an episode's offers are not more episodes -----------------------------
+# unpluggedCompactVideoVersionRenderer is where an episode says where it
+# can be watched: one per service, each carrying the same videoId as the
+# episode, and each with the service and the age in primaryText. Since
+# primaryText is where a title comes from, every one listed itself as an
+# episode called "Adult Swim * TV-14 * 13d ago", and Family Feud's Season
+# 23 came back as 380 rows of episodes interleaved with their own offers.
+EPISODE_WITH_OFFERS = {"unpluggedCompactVideoRenderer": {
+    "primaryText": {"runs": [{"text": "S9 E10 \u2022 Field of Dreams"}]},
+    "navigationEndpoint": {"watchEndpoint": {"videoId": "ep1"}},
+    "videoVersionList": {"unpluggedVideoVersionListRenderer": {"contents": [
+        {"unpluggedCompactVideoVersionRenderer": {
+            "available": True,
+            "primaryText": {"runs": [{"text": "Adult Swim \u2022 TV-14 \u2022 13d ago"}]},
+            "secondaryText": {"runs": [{"text": "24 min \u2022 Expires Sep 3"}]},
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "ep1",
+                                                     "params": "other"}}}},
+        {"unpluggedCompactVideoVersionRenderer": {
+            "available": False,
+            "primaryText": {"runs": [{"text": "HBO Max \u2022 TV-14 \u2022 12d ago"}]},
+            "navigationEndpoint": {"watchEndpoint": {"videoId": "ep1",
+                                                     "params": "third"}}}},
+    ]}}}}
+check("an episode's offers do not list as episodes of their own",
+      [i.title for i in epg.parse_items(EPISODE_WITH_OFFERS)],
+      ["Field of Dreams"])
+
 # -- a date parse that survives Kodi tearing its modules down --------------
 # The player hides the n transform's array indices behind dates with
 # fractional-hour offsets: new Date("1969-12-31T17:30:49.000-06:30")/1E3 is
