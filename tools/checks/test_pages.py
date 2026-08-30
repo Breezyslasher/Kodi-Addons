@@ -1378,6 +1378,28 @@ check("and so is a list of networks",
                                    {"text": "Adult Swim, Cartoon Network"}]}]
       }})["network"],
       ["Adult Swim", "Cartoon Network"])
+# -- an nsig answer that is not an answer ----------------------------------
+# Player e937390a on a real Android box returned "BdHv3wGc_iIzKEBs97-_w8_"
+# followed by the whole input on 4 of 6 solves, where every desktop log
+# across the same player returned a proper 14-character value on all of
+# them. googlevideo answers a url carrying that with an empty-bodied 403,
+# and the value was being written to the on-disk cache, so one bad solve
+# poisoned every play after it.
+from lib import nsig                                          # noqa: E402
+
+_N = "7tbMAbEhDYdV2D7bjM3"
+check("a constant followed by the input is a bail, not a transform",
+      bool(nsig.bailed("BdHv3wGc_iIzKEBs97-_w8_" + _N, _N)), True)
+check("and the input handed back is the bail already known about",
+      bool(nsig.bailed(_N, _N)), True)
+# A real answer is shorter than its input and shares no tail with it.
+check("a real answer is not called a bail",
+      nsig.bailed("IO1grhszxl1e_Q", _N), "")
+# Guard the test itself: something merely ending in the same letter is not
+# a bail, or every answer would be one.
+check("and neither is one that merely ends the same way",
+      nsig.bailed("xmjn1z9smHwl93", _N), "")
+
 # -- what a guide airing keeps in its info panel ---------------------------
 # An epgAiringRenderer has eight keys and not one of them is a picture, a
 # synopsis, a genre or a rating: 0 of the 989 airings in the 2026-08-30

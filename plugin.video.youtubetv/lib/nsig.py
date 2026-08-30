@@ -422,6 +422,35 @@ def _keep(js, player_id):
                       % (player_id, exc))
 
 
+def bailed(result, value):
+    """Why a transform's answer is not a transform, or "" when it is.
+
+    Two shapes, both of which the player produces without erroring, and
+    both of which reach googlevideo as an HTTP 403 with an empty body.
+
+    The first is the input handed straight back. The second is a constant
+    followed by the input, which is what a real Android box sent: player
+    e937390a returned ``BdHv3wGc_iIzKEBs97-_w8_`` + the whole 19-character
+    input on 4 of 6 solves, where every desktop log across the same player
+    returned a proper 14-character value on all of them. That prefix is
+    identical across runs and across inputs -- it is a global the transform
+    falls back to when it decides something is wrong, not a result.
+
+    A real answer never ends with its own input: it is shorter than the
+    input and shares no tail with it.
+    """
+    if result == value:
+        return ("returned the input unchanged -- the transform bailed, most "
+                "likely a sentinel global it checks for was not carried "
+                "across")
+    if len(result) > len(value) and result.endswith(value):
+        return ("returned a constant and then the input (%s + the input) -- "
+                "the transform bailed; googlevideo answers a url carrying "
+                "that with an empty-bodied 403"
+                % result[:len(result) - len(value)])
+    return ""
+
+
 def solve(js, value, player_id=""):
     """Transform one ``n``.
 
@@ -433,9 +462,17 @@ def solve(js, value, player_id=""):
     if key in _MEMO:
         return _MEMO[key]
     stored = kodiutils.read_json(CACHE_FILE, default={}) or {}
-    if key in stored:
+    if key in stored and not bailed(stored[key], value):
         _MEMO[key] = stored[key]
         return stored[key]
+    if key in stored:
+        # A bail was being written to disk and read back for the life of the
+        # player release, so one bad solve poisoned every play after it. It
+        # is dropped rather than trusted, and solving starts again below.
+        kodiutils.log("nsig: the cached answer for %s is a bail, not a "
+                      "transform -- solving it again" % value)
+        stored.pop(key, None)
+        kodiutils.write_json(CACHE_FILE, stored)
 
     # A wrong extraction is indistinguishable from a right one here: the
     # program runs, returns a plausible string, and the server answers the
@@ -461,17 +498,20 @@ def solve(js, value, player_id=""):
         kodiutils.log("nsig: the built-in interpreter could not solve it (%s), "
                       "falling back to a runtime" % exc)
         result = ""
-    if not result or result == value:
+    why = bailed(result, value) if result else ""
+    if why:
+        kodiutils.log("nsig: the built-in interpreter %s; trying a runtime"
+                      % why)
+    if not result or why:
         runtime, name, result = _solve_with_runtime(js, value)
     if not result:
         raise NsigError("%s produced nothing for %s" % (runtime, name))
-    if result == value:
-        # The transform bails to its input when a sentinel global is missing,
-        # silently and without erroring. Treating that as success would put a
-        # url that looks transformed and is not in front of the player.
-        raise NsigError("%s returned the input unchanged -- the transform "
-                        "bailed, most likely a sentinel global it checks for "
-                        "was not carried across" % name)
+    why = bailed(result, value)
+    if why:
+        # The transform bails silently and without erroring. Treating that
+        # as success puts a url that looks transformed and is not in front
+        # of the player, and the only symptom is an empty-bodied 403.
+        raise NsigError("%s %s" % (name, why))
 
     kodiutils.log("nsig: %s solved %s -> %s via %s()/%s"
                   % (player_id or "?", value, result, name, runtime))
