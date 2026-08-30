@@ -27,7 +27,9 @@ not document. See [Status](#status).
   channel's schedule
 * **Film and show details** -- genres, synopsis, studio, director and the
   lead cast with their roles, off the title's own page, which is fetched
-  anyway to find out what the thing is
+  anyway to find out what the thing is, and remembered so listings can show
+  it. A category does not fetch those pages, so its titles carry what their
+  tiles carry until something has opened them
 * **Films play when you pick one.** A tile names no stream, only its page,
   so the id is fetched on selection; what is left of that page -- its
   suggestions, and its extras where a title has any -- is on the context

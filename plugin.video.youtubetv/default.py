@@ -598,7 +598,12 @@ def _add_item(item, plot="", dvr=None, meta=None):
     if item.duration:
         info.setDuration(item.duration)
     info.setMediaType("video")
+    meta = meta or _meta_for(item.browse_id)
     if meta:
+        if not plot and meta.get("plot"):
+            info.setPlot(meta["plot"])
+        if not item.duration and meta.get("duration"):
+            info.setDuration(meta["duration"])
         _set_meta(info, meta)
     if item.playable:
         listitem.setProperty("IsPlayable", "true")
@@ -745,20 +750,32 @@ def _type_results(client, rows, limit=24, workers=6):
         return 0, _films(rows)
 
     def ask(browse_id):
+        """The page says what it is -- and, in the same breath, all the rest.
+
+        Reading only contentType out of it was the reason a listing showed
+        a year and a rating and nothing else: the genres, the synopsis and
+        the cast were in the response and thrown away.
+        """
         try:
-            header = epg.title_header(client.browse(browse_id))
+            response = client.browse(browse_id)
         except (auth.AuthError, api.ApiError) as exc:
             kodiutils.log("could not type %s: %s" % (browse_id, exc))
-            return browse_id, ""
+            return browse_id, "", None
+        header = epg.title_header(response)
         kind = (header or {}).get("contentType")
-        return browse_id, kind if isinstance(kind, str) else ""
+        return (browse_id, kind if isinstance(kind, str) else "",
+                _page_meta(response, header))
 
     from concurrent.futures import ThreadPoolExecutor
-    found = {}
+    found, details = {}, {}
     with ThreadPoolExecutor(max_workers=min(workers, len(wanted))) as pool:
-        for browse_id, kind in pool.map(ask, wanted):
+        for browse_id, kind, meta in pool.map(ask, wanted):
             if kind:
                 found[browse_id] = kind
+            if meta:
+                details[browse_id] = meta
+    api.remember_meta(details)
+    _REMEMBERED_META.update(details)
     known.update(found)
     api.remember_kinds(known)
     apply(known)
@@ -1000,17 +1017,10 @@ def route_browse(browse_id, name, params=""):
             recording = epg.dvr_state(response)
             dvr = (browse_id, name or epg.text(header.get("title")),
                    recording) if recording is not None else None
-            about = epg.about_fields(response)
-            rating, year = epg.rating_and_year(header.get("secondaryText"))
-            meta = dict(about)
-            meta["cast"] = epg.cast_of(response)
-            meta["mpaa"] = rating
-            meta["year"] = about.get("year") or year
-            if about.get("unknown"):
-                kodiutils.log("%s: about says something new -- %s"
-                              % (name or browse_id,
-                                 "; ".join(about["unknown"])))
-            plot = about.get("description", "")
+            meta = _page_meta(response, header)
+            if browse_id:
+                api.remember_meta({browse_id: meta})
+            plot = meta.get("plot", "")
             # The tab can defer shelves of its own. That is where a show
             # keeps its seasons, and where a film's extras would be: the
             # web client's show page hangs "Season 1"..."Season 9" and
@@ -1565,7 +1575,10 @@ def route_play_movie(browse_id, label):
     # A tabbed page keeps what it plays in its own first tab; an untabbed
     # one carries it directly. Either way the film is the first playable
     # thing the page names.
-    tabs = epg.browse_tabs(response)
+    header = epg.title_header(response)
+    if header and browse_id:
+        api.remember_meta({browse_id: _page_meta(response, header)})
+    tabs = epg.browse_tabs(response, least=1)
     found = []
     for tab in tabs:
         found = [item for item in tab.items if item.playable]
@@ -1589,6 +1602,46 @@ def route_play_movie(browse_id, label):
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     route_play(found[0].video_id, label or found[0].title)
+
+
+def _page_meta(response, header=None):
+    """Everything a title's page says about it, ready for a list item.
+
+    The same dict whether it came from the page just fetched or from what
+    was remembered of one, so a listing and a title page show the same
+    thing.
+    """
+    header = header if header is not None else epg.title_header(response)
+    about = epg.about_fields(response)
+    rating, year = epg.rating_and_year((header or {}).get("secondaryText"))
+    meta = {"genres": about.get("genres") or [],
+            "directors": about.get("directors") or [],
+            "cast": [list(pair) for pair in epg.cast_of(response)],
+            "plot": about.get("description", ""),
+            "year": about.get("year") or year,
+            "mpaa": rating,
+            "studio": about.get("studio", "")}
+    for name in ("writers", "producers", "network"):
+        if about.get(name):
+            meta[name] = about[name]
+    if about.get("unknown"):
+        kodiutils.log("about says something new -- %s"
+                      % "; ".join(about["unknown"]))
+    return {key: value for key, value in meta.items() if value}
+
+
+_REMEMBERED_META = {}
+_LOADED_META = [False]
+
+
+def _meta_for(browse_id):
+    """What is remembered about this title, read from disk once per run."""
+    if not browse_id:
+        return None
+    if not _LOADED_META[0]:
+        _REMEMBERED_META.update(api.remembered_meta())
+        _LOADED_META[0] = True
+    return _REMEMBERED_META.get(browse_id)
 
 
 def _plays(tabs):
@@ -1630,7 +1683,13 @@ def route_browse_suggested(browse_id, name, params=""):
         finish()
         return
 
-    tabs = epg.browse_tabs(response)
+    # least=1 here, unlike a page being opened. Two tabs are asked for
+    # there because one tab is not a menu; here the page is known to be a
+    # title's and the question is what else it has. A film nobody has
+    # bought leaves exactly one tab standing -- Watch now is dropped for
+    # holding nothing, About and Lead cast for naming nowhere to go -- and
+    # asking for two threw that one away too.
+    tabs = epg.browse_tabs(response, least=1)
     playing = _plays(tabs)
     rest = [tab for tab in tabs if tab is not playing]
     kodiutils.log("%s: beside the one that plays -- %s"
@@ -1638,6 +1697,9 @@ def route_browse_suggested(browse_id, name, params=""):
                      ", ".join("%s (%d)" % (t.title, len(t.items))
                                for t in rest) or "nothing"))
     if not rest:
+        kodiutils.log("%s: its page holds -- %s"
+                      % (name or browse_id,
+                         "; ".join(epg.tab_shapes(response)) or "no tabs"))
         kodiutils.notify("%s has nothing else on its page"
                          % (name or "That title"))
         finish()
