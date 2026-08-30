@@ -84,6 +84,29 @@ def thumbnail(node, prefer_width=0):
     return url
 
 
+def is_portrait(node):
+    """Whether a thumbnail block is taller than it is wide.
+
+    A film's tile is a poster -- 2560x3840 -- and belongs in the slot a
+    skin keeps for one. A show's is a wide still, and putting that in the
+    same slot is what made Marshals look stretched. Only the shape says
+    which, so it is asked rather than assumed.
+    """
+    for block in walk(node, "thumbnails"):
+        if not isinstance(block, list):
+            continue
+        for thumb in block:
+            if not isinstance(thumb, dict):
+                continue
+            try:
+                wide, tall = int(thumb.get("width") or 0), int(thumb.get("height") or 0)
+            except (TypeError, ValueError):
+                continue
+            if wide and tall:
+                return tall > wide
+    return False
+
+
 class Airing(object):
     """One programme on one channel."""
 
@@ -365,11 +388,11 @@ class Item(object):
 
     __slots__ = ("video_id", "browse_id", "params", "title", "subtitle",
                  "art", "start_ms", "end_ms", "source", "content_type",
-                 "duration")
+                 "duration", "upright")
 
     def __init__(self, video_id="", browse_id="", title="", subtitle="",
                  art="", start_ms=0, end_ms=0, params="", source="",
-                 content_type="", duration=0):
+                 content_type="", duration=0, upright=False):
         self.video_id = video_id
         self.browse_id = browse_id
         # What the browse endpoint asks for *within* that page. The Browse
@@ -396,6 +419,9 @@ class Item(object):
         # rather than a number, which Kodi will show as a runtime once it
         # is one.
         self.duration = duration
+        # Whether ``art`` is a poster or a wide still, which decides the
+        # slot it belongs in and cannot be told from the url.
+        self.upright = upright
 
     @property
     def playable(self):
@@ -796,6 +822,7 @@ def parse_items(response):
             source=source,
             content_type=_content_type(renderer),
             duration=_duration(renderer),
+            upright=is_portrait(renderer.get("thumbnail") or {}),
         ))
 
     visit(response)

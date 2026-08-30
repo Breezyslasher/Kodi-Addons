@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.56" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.57" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,16 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.57 - The guide has details, and a still is not a poster
+- The guide gave a title and a channel logo and nothing else. A programme
+  names its show, and a show's page is where the synopsis, the cast and
+  the genres are, so a channel's schedule reads them the way every other
+  listing does -- bounded and remembered, so it fills in over a few visits
+  and then costs nothing.
+- A show looked stretched because its tile is a wide still and was being
+  offered as a poster. A film's tile is 2560x3840 and is one; a show's is
+  not. Only the upright ones go in that slot now.
+
 2026.8.31.56 - Production companies, and studios as several
 - Shows do carry genres and always did -- Rick and Morty's page says
   "Animated, Action, Adventure, Comedy" and this reads it. What was
