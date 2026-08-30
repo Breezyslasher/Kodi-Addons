@@ -18,6 +18,7 @@ ADDON_FOLDERS = [
     "plugin.video.appletv",
     "plugin.video.youtubetv",
     "script.akl.heroic",
+    "script.scrcpy-launcher",
     "script.webhook.runner",
     "service.watchparty"
 ]
@@ -63,16 +64,28 @@ def main():
     # Generate addons.xml
     addons_xml = generate_addons_xml()
     
-    # Write addons.xml
-    with open("addons.xml", "w", encoding="utf-8") as f:
+    # Written into zips/, which is where the repository add-on actually
+    # reads them from:
+    #
+    #   <info>    .../main/zips/addons.xml
+    #   <datadir> .../main/zips/
+    #
+    # This wrote them to the repository root, and the root copies are not
+    # even tracked -- only zips/addons.xml is. So every run produced two
+    # files nothing reads, and the served index was kept up some other way.
+    if not os.path.isdir("zips"):
+        os.makedirs("zips")
+    index = os.path.join("zips", "addons.xml")
+    with open(index, "w", encoding="utf-8") as f:
         f.write(addons_xml)
-    print("\nGenerated: addons.xml")
-    
+    print(f"\nGenerated: {index}")
+
     # Generate and write MD5
     md5_hash = generate_md5(addons_xml)
-    with open("addons.xml.md5", "w", encoding="utf-8") as f:
+    checksum = os.path.join("zips", "addons.xml.md5")
+    with open(checksum, "w", encoding="utf-8") as f:
         f.write(md5_hash)
-    print(f"Generated: addons.xml.md5 ({md5_hash})")
+    print(f"Generated: {checksum} ({md5_hash})")
     
     print("\nDone! Don't forget to:")
     print("1. Build the zips:  python3 tools/build_addon_zip.py")
