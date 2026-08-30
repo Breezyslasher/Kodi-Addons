@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.49" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.50" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,20 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.50 - The details reach the listing this time
+- Last build read every field correctly and put them on the one screen
+  nobody opens: a film's own page, which films stopped opening the moment
+  they started playing on selection. The details are kept now when a page
+  is fetched -- which already happens, to find out what a thing is -- and
+  a listing shows what is known about each title.
+- So a search fills in as it types its results, and anything played or
+  opened is remembered. A category does not fetch pages, so its titles
+  carry what their tiles carry until something has opened them; 93 films
+  is not worth 93 requests to fill a listing.
+- Films nobody has bought show their suggestions at last. Watch now is
+  dropped for holding nothing, About and Lead cast for naming nowhere to
+  go, and asking for two tabs then threw away the one that was left.
+
 2026.8.31.49 - What a film's page says about it, and films nobody bought
 - On-demand titles carried a year and a rating and nothing else. Their own
   page carries genres, a real synopsis, the studio, who directed it, and

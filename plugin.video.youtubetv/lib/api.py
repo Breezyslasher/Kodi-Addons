@@ -147,6 +147,28 @@ def remember_kinds(found):
     kodiutils.write_json(KIND_CACHE, known)
 
 
+# What a title's page said about it. Bounded far tighter than the kinds:
+# an entry here is a synopsis and a cast list rather than one word.
+META_CACHE = "titles.json"
+META_CACHE_MAX = 400
+
+
+def remembered_meta():
+    known = kodiutils.read_json(META_CACHE) or {}
+    return known if isinstance(known, dict) else {}
+
+
+def remember_meta(found):
+    """Add {browse_id: details} to what is known, oldest dropped when full."""
+    if not found:
+        return
+    known = remembered_meta()
+    known.update(found)
+    if len(known) > META_CACHE_MAX:
+        known = dict(list(known.items())[-META_CACHE_MAX:])
+    kodiutils.write_json(META_CACHE, known)
+
+
 def categories_are_stale(max_age=CATEGORY_CACHE_AGE):
     known = kodiutils.read_json(CATEGORY_CACHE) or {}
     return (not known.get("categories")

@@ -1342,12 +1342,62 @@ UNBOUGHT = [epg.Section("Suggested",
 check("the tab that plays is found by what is in it, not by position",
       (default._plays(BOUGHT).title, default._plays(UNBOUGHT)),
       ("Watch now", None))
+# And there is only one tab left to find. Watch now is dropped for holding
+# nothing, About and Lead cast for naming nowhere to go, so asking for two
+# tabs threw the survivor away as well.
+UNBOUGHT_PAGE = {"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [
+    {"tabRenderer": {"title": "Watch now", "selected": True,
+                     "content": {"sectionListRenderer": {"contents": []}}}},
+    {"tabRenderer": {"title": "Suggested", "content": {"sectionListRenderer": {
+        "contents": [{"unpluggedBrowseItemRenderer": {
+            "primaryText": {"simpleText": "Another film"},
+            "navigationEndpoint": {"browseEndpoint": {
+                "browseId": "UC2"}}}}]}}}},
+]}}}
+check("one surviving tab is still a tab when a title is asked what else it has",
+      ([t.title for t in epg.browse_tabs(UNBOUGHT_PAGE)],
+       [t.title for t in epg.browse_tabs(UNBOUGHT_PAGE, least=1)]),
+      ([], ["Suggested"]))
+
 check("so a film nobody has bought still shows its suggestions",
       [t.title for t in UNBOUGHT if t is not default._plays(UNBOUGHT)],
       ["Suggested"])
 check("and one that plays still keeps them apart",
       [t.title for t in BOUGHT if t is not default._plays(BOUGHT)],
       ["Suggested"])
+
+# The details have to reach a *listing*, not only a title page. Films play
+# on selection now, so that page is the one screen nobody opens -- which is
+# why a build that read every field correctly still showed a year and a
+# rating and nothing else.
+remembered = {}
+api.remembered_meta = lambda: dict(remembered)
+api.remember_meta = lambda found: remembered.update(found)
+default._REMEMBERED_META.clear()
+default._LOADED_META[0] = False
+
+remembered["UCROGUE"] = {"genres": ["Science fiction"], "year": 2016,
+                         "mpaa": "PG-13", "directors": ["Gareth Edwards"],
+                         "studio": "Disney", "plot": "Jyn Erso.",
+                         "cast": [["Felicity Jones", "Jyn Erso"]]}
+xbmcplugin.ITEMS[:] = []
+default._add_item(epg.Item(browse_id="UCROGUE", title="Rogue One",
+                           content_type="MOVIE"))
+listed = xbmcplugin.ITEMS[0][3].info.set
+check("a listed film carries what was learned when it was typed",
+      (listed.get("setGenres"), listed.get("setYear"), listed.get("setMpaa"),
+       listed.get("setStudios"), listed.get("setPlot"),
+       [(a.name, a.role) for a in listed["setCast"]]),
+      (["Science fiction"], 2016, "PG-13", ["Disney"], "Jyn Erso.",
+       [("Felicity Jones", "Jyn Erso")]))
+
+xbmcplugin.ITEMS[:] = []
+default._add_item(epg.Item(browse_id="UCUNKNOWN", title="Never opened",
+                           content_type="MOVIE"))
+check("and one nothing is known about is listed all the same",
+      "setGenres" in xbmcplugin.ITEMS[0][3].info.set, False)
+remembered.clear()
+default._REMEMBERED_META.clear()
 
 # -- the search call itself ------------------------------------------------
 # Scanning the request bodies of every capture, search was the one endpoint
