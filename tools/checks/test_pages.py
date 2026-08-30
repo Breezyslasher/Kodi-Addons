@@ -635,6 +635,112 @@ check("a network names a page and asks for nothing within it",
 check("and its logo is made absolute",
       browse_rows[1].items[0].art, "https://yt3.ggpht.com/abc=ns-nd")
 
+# -- a network page is tabs -----------------------------------------------
+# Cut down from ABC, AMC and Adult Swim (2026-08-29 23:06). A network page
+# is a singleColumnBrowseResultsRenderer of tabs and **only the selected one
+# ships with anything in it** -- ABC came back as LIVE plus seven tabs whose
+# entire content is one nextContinuationData. Listing the page flat showed
+# what was on now and nothing else.
+#
+# Two traps here. A tab titles itself with a plain string where every shelf
+# in this file uses runs; and the selected tab's own shelves carry
+# continuations of their own, which fetch more of one shelf and are not the
+# tab's token.
+NETWORK_PAGE = {"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [
+    {"tabRenderer": {
+        "title": "LIVE",
+        "selected": True,
+        "content": {"sectionListRenderer": {"contents": [
+            {"shelfRenderer": {
+                "title": {"runs": [{"text": "WTAE 4"}]},
+                "content": {"horizontalListRenderer": {"items": [
+                    {"unpluggedVideoRenderer": {
+                        "title": {"runs": [{"text": "Action News 4"}]},
+                        "navigationEndpoint": {"watchEndpoint": {
+                            "videoId": "LIVEVIDEOID1"}}}},
+                ]}},
+                "continuations": [{"nextContinuationData": {
+                    "continuation": "MORE-OF-THIS-SHELF"}}],
+            }},
+        ]}},
+    }},
+    {"tabRenderer": {
+        "title": "SERIES",
+        "content": {"sectionListRenderer": {"continuations": [
+            {"nextContinuationData": {"continuation": "SERIES-TOKEN"}}]}},
+    }},
+    {"tabRenderer": {
+        "title": "LATE NIGHT",
+        "content": {"sectionListRenderer": {"continuations": [
+            {"nextContinuationData": {"continuation": "LATE-TOKEN"}}]}},
+    }},
+    {"tabRenderer": {"title": "EMPTY",
+                     "content": {"sectionListRenderer": {}}}},
+]}}}
+
+tabs = epg.browse_tabs(NETWORK_PAGE)
+check("a network page reads as its tabs, and drops the one holding nothing",
+      [(t.title, len(t.items), t.token) for t in tabs],
+      [("LIVE", 1, ""), ("SERIES", 0, "SERIES-TOKEN"),
+       ("LATE NIGHT", 0, "LATE-TOKEN")])
+check("the live tab's own shelf continuation is not the tab's token",
+      tabs[0].token, "")
+check("and that shelf token really is in there to be got wrong",
+      epg.continuation_token(NETWORK_PAGE), "MORE-OF-THIS-SHELF")
+
+# FEunplugged_overlays answers with one empty tab, and a page of one tab is
+# not a page of tabs: the caller must go on listing it the way it always did.
+check("one tab is not a page of tabs",
+      epg.browse_tabs({"contents": {"twoColumnBrowseResultsRenderer": {"tabs": [
+          {"tabRenderer": {"title": "", "tabIdentifier": "x"}}]}}}),
+      [])
+check("nor is a page with no tabs at all",
+      epg.browse_tabs(BROWSE_TAB), [])
+
+# -- a category is rows, under chips that name no row ----------------------
+# The Movies category (2026-08-29 23:26). Its genre chips sit in a shelf
+# with no title, which page_shelves drops -- rightly, a folder called
+# nothing is worse than no folder -- so they are read separately.
+CATEGORY = {"contents": {"sectionListRenderer": {"contents": [
+    {"shelfRenderer": {"content": {"unpluggedHorizontalChipListRenderer": {
+        "items": [
+            {"unpluggedChipRenderer": {
+                "title": {"runs": [{"text": "Action"}]},
+                "navigationEndpoint": {"browseEndpoint": {
+                    "browseId": "FEunplugged_chips",
+                    "params": "8gMJKgcIoFQIn5YB"}}}},
+            {"unpluggedChipRenderer": {
+                "title": {"runs": [{"text": "Comedy"}]},
+                "navigationEndpoint": {"browseEndpoint": {
+                    "browseId": "FEunplugged_chips",
+                    "params": "8gMIKgYIoFQIkGg%3D"}}}},
+        ]}}}},
+    {"shelfRenderer": {
+        "title": {"runs": [{"text": "Picked for you"}]},
+        "content": {"horizontalListRenderer": {"items": [
+            {"unpluggedGridVideoRenderer": {
+                "title": {"runs": [{"text": "Jaws"}]},
+                "navigationEndpoint": {"watchEndpoint": {
+                    "videoId": "MOVIEVIDEOID1"}}}},
+        ]}}}},
+]}}}
+
+check("a category's named row is a row",
+      [(r.title, len(r.items)) for r in epg.page_shelves(CATEGORY)],
+      [("Picked for you", 1)])
+check("and its nameless chip shelf is read separately, all of it",
+      [(c.title, c.browse_id, c.params) for c in epg.page_chips(CATEGORY)],
+      [("Action", "FEunplugged_chips", "8gMJKgcIoFQIn5YB"),
+       ("Comedy", "FEunplugged_chips", "8gMIKgYIoFQIkGg%3D")])
+check("a page whose chip shelf is titled has no loose chips -- it has a row",
+      epg.page_chips(BROWSE_TAB), [])
+
+# Not everything with a browse id is a show, and the DVR takes a show's id.
+check("an item remembers which renderer named it",
+      sorted({i.source for row in epg.page_shelves(BROWSE_TAB)
+              for i in row.items}),
+      ["unpluggedGridChannelRenderer", "unpluggedIntentChipRenderer"])
+
 # -- what a DVR call answers with ------------------------------------------
 # Both DVR endpoints came back with actions + responseContext and nothing
 # else (2026-08-29). The message inside actions is the only report of what

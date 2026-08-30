@@ -65,6 +65,11 @@ EPG_BROWSE_ID = "FEunplugged_epg"
 # web readers already know.
 BROWSE_ID = "FEunplugged_browse"
 
+# Where its five category chips go, and where each of *their* fifteen genre
+# chips goes after that. One id for all of them: what a chip means is
+# entirely in its params, which is why those travel with a folder.
+CHIPS_ID = "FEunplugged_chips"
+
 # The order the guide comes back in. YouTube TV's own live tab offers five,
 # and the choice rides along as a continuation *beside* the browseId rather
 # than replacing it. Whatever is chosen here is what the addon lists and what
