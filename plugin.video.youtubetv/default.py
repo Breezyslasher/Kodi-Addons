@@ -1987,10 +1987,31 @@ def route_play_channel(station_id):
         return
 
     station = next((s for s in stations if s.station_id == station_id), None)
-    if not station or not station.now or not station.now.video_id:
+    # Three different things, and they were one sentence. A bookmark to a
+    # channel the lineup no longer carries was told "nothing is playing
+    # right now", which reads as "wait a while" for something that will
+    # never come back.
+    if not station:
         kodiutils.ok_dialog(
-            "Nothing is listed as playing on this channel right now.",
-            "Cannot play this")
+            "This channel is not in the lineup any more, so there is nothing "
+            "to play on it. If it is bookmarked, the bookmark is stale.",
+            "Channel not found")
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    if not station.now:
+        kodiutils.ok_dialog(
+            "The guide lists no programme on %s right now." % station.name,
+            "Nothing on now")
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    if not station.now.video_id:
+        # Counted separately in the guide diagnostics for the same reason:
+        # a channel whose current programme carries no watchEndpoint is not
+        # a channel with nothing on it.
+        kodiutils.ok_dialog(
+            "%s is showing \"%s\", but the guide names no stream for it -- "
+            "this usually means the channel is not in your plan."
+            % (station.name, station.now.title), "Cannot play this")
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     route_play(station.now.video_id, station.name)
