@@ -1476,6 +1476,12 @@ def rating_and_year(node, default=""):
             year = int(part)
         elif _RATING.match(part.upper()) and rating == default:
             rating = part
+        elif not year:
+            # A show gives a span rather than a year -- "2013 - Present",
+            # "1975 - Present" -- and the year it started is a year.
+            started = re.match(r"^(\d{4})\b", part)
+            if started:
+                year = int(started.group(1))
     return rating, year
 
 
