@@ -297,6 +297,53 @@ class Debugger:
         return interpret_statement
 
 
+_ISO_DATE = re.compile(
+    r"^\s*(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})"
+    r"(?:\.(\d{1,6})\d*)?\s*(?:(Z)|([+-])(\d{2}):?(\d{2}))?\s*$")
+
+
+def _js_date(text):
+    """Seconds since the epoch for a date literal in the player.
+
+    Self-contained on purpose, importing datetime inside itself and calling
+    nothing from this module's globals.
+
+    YouTube's n transform hides its array indices behind dates with
+    fractional-hour offsets -- new Date("1969-12-31T17:30:49.000-06:30")/1E3
+    is 49 -- so every index in it is an ISO-8601 parse. Those parses were
+    going through unified_timestamp, which reaches for calendar, email.utils
+    and contextlib; Kodi tears a plugin's modules down when the script ends
+    and blanks their globals, so on the next play every one of them came
+    back "'NoneType' object is not callable" (Android, 2026-08-30). A
+    wrong index reads a wrong slot, which throws, which the player catches
+    and answers with a constant -- and a url carrying that constant is
+    refused with an empty-bodied 403.
+
+    Handles what the player actually writes: an ISO timestamp with Z, a
+    numeric offset, or none. Anything else falls back to the general
+    parser, which is right for every other date the interpreter meets and
+    only unavailable in the case this exists for.
+    """
+    if not isinstance(text, str):
+        return None
+    found = _ISO_DATE.match(text)
+    if found:
+        import datetime as _dt
+        year, month, day, hour, minute, second = (int(found.group(i))
+                                                  for i in range(1, 7))
+        micro = int((found.group(7) or "0").ljust(6, "0"))
+        when = _dt.datetime(year, month, day, hour, minute, second, micro)
+        if found.group(9):
+            offset = _dt.timedelta(hours=int(found.group(10)),
+                                   minutes=int(found.group(11)))
+            when -= offset if found.group(9) == "+" else -offset
+        return (when - _dt.datetime(1970, 1, 1)).total_seconds()
+    try:
+        return unified_timestamp(text, False)
+    except Exception:
+        return None
+
+
 class JSInterpreter:
     __named_object_counter = 0
 
@@ -488,8 +535,8 @@ class JSInterpreter:
             obj = expr[4:]
             if obj.startswith('Date('):
                 left, right = self._separate_at_paren(obj[4:])
-                date = unified_timestamp(
-                    self.interpret_expression(left, local_vars, allow_recursion), False)
+                date = _js_date(
+                    self.interpret_expression(left, local_vars, allow_recursion))
                 if date is None:
                     raise self.Exception(f'Failed to parse date {left!r}', expr)
                 expr = self._dump(int(date * 1000), local_vars) + right

@@ -1394,6 +1394,43 @@ check("and paragraphs are counted as the lines they take",
       _needs_room("one\n\ntwo\n\nthree"), True)
 check("an empty message asks for no room at all", _needs_room(""), False)
 
+# -- a date parse that survives Kodi tearing its modules down --------------
+# The player hides the n transform's array indices behind dates with
+# fractional-hour offsets: new Date("1969-12-31T17:30:49.000-06:30")/1E3 is
+# 49. Those parses went through unified_timestamp, which reaches for
+# calendar and email.utils -- and Kodi blanks a plugin's module globals
+# when the script ends, so on the next play every one of them came back
+# "'NoneType' object is not callable" (Android, 2026-08-30). A wrong index
+# reads a wrong slot, which throws, which the player answers with a
+# constant, which googlevideo refuses with an empty-bodied 403.
+from lib.jsinterp import _js_date                              # noqa: E402
+
+check("the player's own date literals become the indices they encode",
+      [_js_date(d) for d in ("1969-12-31T17:30:49.000-06:30",
+                             "1970-01-01T09:31:06.000+09:30",
+                             "1969-12-31T14:15:59.000-09:45",
+                             "1970-01-01T06:30:24.000+06:30")],
+      [49.0, 66.0, 59.0, 24.0])
+check("a Z and a bare timestamp are read too",
+      [_js_date("1970-01-01T00:00:05Z"), _js_date("1970-01-01T00:00:07")],
+      [5.0, 7.0])
+# The point of the whole thing: it calls nothing that a teardown can blank.
+import calendar as _cal, email.utils as _eu                    # noqa: E402
+_keep = (_cal.timegm, _eu.parsedate_tz)
+_cal.timegm = None
+_eu.parsedate_tz = None
+try:
+    check("and it still reads them once a teardown has blanked the helpers "
+          "the general parser uses",
+          _js_date("1969-12-31T17:30:49.000-06:30"), 49.0)
+    check("which the probe reports by name rather than missing",
+          bool(nsig_probe := __import__("lib.nsig", fromlist=["nsig"])
+               ._emptied_modules()), True)
+finally:
+    _cal.timegm, _eu.parsedate_tz = _keep
+check("and reports nothing once they are back",
+      __import__("lib.nsig", fromlist=["nsig"])._emptied_modules(), [])
+
 # -- an nsig answer that is not an answer ----------------------------------
 # Player e937390a on a real Android box returned "BdHv3wGc_iIzKEBs97-_w8_"
 # followed by the whole input on 4 of 6 solves, where every desktop log

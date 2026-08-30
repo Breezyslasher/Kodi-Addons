@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.66" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.67" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,23 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.67 - The date parse no longer depends on a torn-down module
+- Named exactly, by the last build's own diagnostic: every one of the
+  player's eight date literals came back "'NoneType' object is not
+  callable", while the same value worked out correctly beside it.
+- Those dates are the n transform's array indices -- the player hides them
+  as new Date("1969-12-31T17:30:49.000-06:30")/1E3, which is 49 -- and the
+  parse went through a helper that reaches for calendar and email.utils.
+  Kodi blanks a plugin's module globals when the script ends, so after one
+  playback those were gone and every index came out wrong. A wrong index
+  reads a wrong slot, which throws, which the player answers with a
+  constant, which googlevideo refuses with a 403.
+- The interpreter now reads a date literal with nothing but datetime,
+  imported inside the function itself. Against the exact failure a real
+  device reported, all eight values that had been failing solve correctly.
+- The bail probe also called nothing and so reported nothing. It calls the
+  helpers now and names the ones that have stopped answering.
+
 2026.8.31.66 - The bail is a torn-down module, not a bad value
 - The logs say it plainly: in every run the first pair of values solves
   correctly, and every solve after a playback has opened and closed bails.
