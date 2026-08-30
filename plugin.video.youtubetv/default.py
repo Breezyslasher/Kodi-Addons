@@ -196,19 +196,16 @@ def route_root():
             action="networks")
     # The five categories sit here rather than two folders down. They come
     # off the Browse tab, which is 712 KB, so they are remembered between
-    # visits: this reads that copy and never waits on a request. The first
-    # draw after signing in has none yet and shows none; opening Networks
-    # fetches the tab and they are here from then on.
+    # visits: this reads that copy and never waits on a request. The
+    # service fills it a moment after Kodi starts, and opening Networks
+    # refreshes it, so the only draw that shows none is the one before
+    # either has happened.
     for category in api.remembered_categories():
         add_dir(category["title"],
                 plot="What YouTube TV puts under %s." % category["title"],
                 action="browse", browse_id=category["browse_id"],
                 name=category["title"], params=category["params"])
     add_dir("Search", action="search")
-    # Offered while already signed in, not only before, so a session that
-    # has gone wrong can be replaced without signing out first.
-    add_dir("Sign in again", plot="Authorise a new code, replacing the "
-                                  "stored sign-in.", action="signin")
     add_dir("Sign out", action="signout")
     finish()
 
@@ -655,10 +652,42 @@ def _search_pages(client, response, limit=4):
     return pages
 
 
+_KIND_ROWS = {"MOVIE": "Movies", "SHOW": "Shows", "SPORTS_TEAM": "Sports",
+              "EVENT": "Events"}
+
+
+def _by_kind(rows):
+    """Split any search row that mixes films, shows and teams.
+
+    The web client answers a search with a row per kind -- Shows, Sports,
+    Movies. This one does not: it puts fourteen results of every kind into
+    one row called "Top picks" (2026-08-30 01:13). Every tile still says
+    what it is, so the row is split here rather than left as a heap.
+
+    A row of one kind is left exactly as it is, name and token and all. A
+    split row keeps no token: the parent's belongs to the whole row and
+    cannot be handed to a part of it, and on this search it fetched nothing
+    anyway -- "Top picks: page 1 added 0 item(s)", twice.
+    """
+    out = []
+    for row in rows:
+        kinds = [k for k in {item.content_type for item in row.items} if k]
+        if len(kinds) < 2:
+            out.append(row)
+            continue
+        for kind in sorted(kinds):
+            mine = [item for item in row.items if item.content_type == kind]
+            out.append(epg.Section(_KIND_ROWS.get(kind, kind.title()), mine))
+        rest = [item for item in row.items if not item.content_type]
+        if rest:
+            out.append(epg.Section(row.title, rest))
+    return out
+
+
 def _list_search(client, query, response):
-    """Search results as the rows YouTube TV grouped them into."""
+    """Search results as rows, one per kind of thing found."""
     pages = _search_pages(client, response)
-    rows = _sections_of(pages)
+    rows = _by_kind(_sections_of(pages))
     kodiutils.log("search %r: %d page(s), %d row(s) -- %s"
                   % (query, len(pages), len(rows),
                      ", ".join("%s (%d)" % (r.title, len(r.items))
@@ -693,7 +722,7 @@ def route_search_row(query, name, token=""):
         kodiutils.ok_dialog(str(exc), "Search failed")
         finish()
         return
-    rows = _sections_of(_search_pages(client, response))
+    rows = _by_kind(_sections_of(_search_pages(client, response)))
     section = next((r for r in rows if r.title == name), None)
     if section is None and token:
         section = epg.Section(name, [], token)

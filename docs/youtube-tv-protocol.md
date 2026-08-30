@@ -1037,6 +1037,14 @@ continuation in this addon goes:
 POST /youtubei/v1/search?alt=json    {"continuation": "EnESBWJsdWVzGmhjallLTkVOblVWRkZRbWhCUTJk"}
 ```
 
+**The TV client groups it differently.** Asked as `TVHTML5_UNPLUGGED` the
+same query answers with four rows across three pages -- `Top picks (14)`,
+`On now & upcoming (6)`, `From your library (1)`, `On demand (6)` -- putting
+films, shows and teams together in one row where a browser separates them.
+Every tile still carries its `contentType`, so the addon splits that row
+itself. The row's own continuation is worth nothing here: spending it added
+0 items, twice.
+
 `SPORTS_TEAM` is a fourth `contentType`, alongside MOVIE, SHOW and EVENT.
 The "On demand" row is worth noting separately: its tiles carry a
 **videoId** rather than a browseId, so those play with no page fetch at all.
