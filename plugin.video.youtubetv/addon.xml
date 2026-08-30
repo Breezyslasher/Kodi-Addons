@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.22" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.23" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,15 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.23 - Recording
+- Record or stop recording a series, from the context menu on any show or on
+  any programme in a channel's schedule. YouTube TV records a series rather
+  than an airing, and every airing names its show in entitiesDvrStatus --
+  including the one on the air, which carries no show id anywhere else.
+- Both "record" and "stop recording" are offered rather than the one that
+  applies: nothing in the responses says which a show is already doing, and
+  a wrong guess would silently cancel a recording.
+
 2026.8.31.22 - No programme claims to be playable
 - Marking only the airing on the air was still wrong, because the guide is
   built when the merge runs and read hours later: by then the marker is on

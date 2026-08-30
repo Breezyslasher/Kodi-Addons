@@ -16,6 +16,9 @@ not document. See [Status](#status).
 * **Library** -- recordings, purchases and scheduled recordings, with the
   account's own filters (Shows, Movies, Sports, Events, Purchased) as folders
   and everything listed together at the top
+* **Recording** -- record or stop recording a series from the context menu on
+  any show, in the Library, in search results, or on any programme in a
+  channel's schedule
 * Search across live and on-demand, and browsing a show to its episodes --
   including the seasons the show page defers rather than lists
 * Widevine playback via InputStream Adaptive at up to 1080p

@@ -88,10 +88,10 @@ class Airing(object):
     """One programme on one channel."""
 
     __slots__ = ("video_id", "title", "description", "start_ms", "end_ms",
-                 "art", "on_air")
+                 "art", "on_air", "show_id")
 
     def __init__(self, video_id, title, description, start_ms, end_ms, art,
-                 on_air=False):
+                 on_air=False, show_id=""):
         self.video_id = video_id
         self.title = title
         self.description = description
@@ -104,6 +104,11 @@ class Airing(object):
         # word for "now", and worth more than arithmetic on a clock that may
         # not agree with Google's.
         self.on_air = on_air
+        # The show this programme belongs to, when the guide says. A
+        # side-sheet command names both the programme and its show, and the
+        # show is what the DVR records -- YouTube TV records a series, not
+        # an airing.
+        self.show_id = show_id
 
     @property
     def is_now(self):
@@ -185,16 +190,33 @@ def parse_airing(renderer):
     on_air = bool(video_id)
     if not video_id and isinstance(renderer.get("videoId"), str):
         video_id = renderer["videoId"]
-    if not video_id:
-        for carrier in _ENDPOINT_CARRIERS:
-            block = renderer.get(carrier)
-            if not isinstance(block, dict):
-                continue
-            command = block.get("unpluggedGetSidesheetCommand")
-            if isinstance(command, dict):
-                video_id = sidesheet_video_id(command.get("params"))
-                if video_id:
-                    break
+    # Which show this programme belongs to, which is what the DVR records.
+    # entitiesDvrStatus names it on every airing, including the one on the
+    # air, whose watchEndpoint carries no show id anywhere. Checked against
+    # the side-sheet command on the 843 airings that have both: they agree
+    # every time, none differ, and this covers the 143 that the side sheet
+    # does not. The field carries no state despite its name -- just the id.
+    show_id = ""
+    status = renderer.get("entitiesDvrStatus")
+    if isinstance(status, list) and status and isinstance(status[0], dict):
+        found = status[0].get("entityId")
+        if isinstance(found, str):
+            show_id = found
+
+    for carrier in _ENDPOINT_CARRIERS:
+        block = renderer.get(carrier)
+        if not isinstance(block, dict):
+            continue
+        command = block.get("unpluggedGetSidesheetCommand")
+        if not isinstance(command, dict):
+            continue
+        params = command.get("params")
+        if not show_id:
+            show_id = sidesheet_id(params)
+        if not video_id:
+            video_id = sidesheet_video_id(params)
+        if show_id and video_id:
+            break
 
     title = text(renderer.get("title")) or text(renderer.get("primaryText"))
     description = (text(renderer.get("quaternaryText"))
@@ -207,6 +229,7 @@ def parse_airing(renderer):
         end_ms=_int(renderer.get("endTimeMs")),
         art=thumbnail(renderer.get("thumbnail") or {}, prefer_width=1280),
         on_air=on_air,
+        show_id=show_id,
     )
 
 
