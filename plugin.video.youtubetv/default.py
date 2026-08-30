@@ -575,6 +575,10 @@ def route_search():
         return
 
     items = epg.parse_search(response)
+    kodiutils.log("search %r: %d result(s), %d of them a film -- %s"
+                  % (query, len(items),
+                     sum(1 for item in items if item.content_type == "MOVIE"),
+                     "; ".join(epg.renderer_sample(response, 4)) or "nothing"))
     if not items:
         kodiutils.notify("Nothing found for %s" % query)
     _add_items(items)
@@ -713,19 +717,18 @@ def route_browse(browse_id, name, params=""):
             # the visitor id, so what the unread tabs actually hold can be
             # looked at rather than inferred from renderer names.
             kodiutils.dump_response("network-tabs.json", response)
-        # The page opens on what it is *about*, not on a menu of tabs.
-        # A film's page is "Watch now" and "Suggested", and picking the
-        # film only to be shown two folders -- one of them recommendations
-        # -- is a page in the way of the thing that was picked. So the
-        # first tab, which is the one the service marks selected, is listed
-        # in place, and the rest follow it as folders.
-        head = tabs[0] if tabs[0].items else None
-        if head:
-            for item in head.items:
-                _add_item(item)
-        _list_sections(tabs[1:] if head else tabs, "browse_section",
+        # A tab stays a tab while the page has more than one. Live is a
+        # kind of its own -- what is on that network now -- and folding it
+        # into the page put eleven programmes above four folders on AMC,
+        # which reads as a listing with some folders lost in it rather than
+        # as a network with a Live tab. A page carrying a single tab has no
+        # menu to be: that one is listed in place.
+        if len(tabs) == 1 and tabs[0].items:
+            _add_items(tabs[0].items)
+            return
+        _list_sections(tabs, "browse_section",
                        extra={"browse_id": browse_id, "params": params})
-        finish("videos" if head else "")
+        finish()
         return
 
     items = _expand_sections(client, response, epg.parse_items(response))
