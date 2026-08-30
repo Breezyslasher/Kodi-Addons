@@ -1237,6 +1237,33 @@ default._type_results(busy, many, limit=24)
 check("a query answering with fifty folders does not make fifty requests",
       len(busy.asked), 24)
 
+# -- what a typed result becomes on screen ---------------------------------
+# The bug this exists for: search results were typed where the *rows* were
+# listed -- folder names and a log line -- and not where the items are, so
+# a film from search stayed a folder. Nothing caught it, because every
+# reader was correct and the typing worked; it was landing on the wrong
+# screen. So this checks the screen.
+import xbmcplugin                                                # noqa: E402
+
+xbmcplugin.ITEMS[:] = []
+default._add_item(epg.Item(browse_id="UCFILM", title="The Blues Brothers",
+                           content_type="MOVIE"))
+default._add_item(epg.Item(browse_id="UCSHOW", title="Air Disasters",
+                           content_type="SHOW"))
+default._add_item(epg.Item(video_id="V1", title="An airing"))
+film, show, airing = xbmcplugin.ITEMS
+
+check("a film is listed playable, not as a folder",
+      (film[2], film[3]._p.get("IsPlayable"), "action=play_movie" in film[0]),
+      (False, "true", True))
+check("and it offers what is left of its page beside it",
+      [label for label, _command in film[3].menu][:1],
+      ["Extras and suggested titles"])
+check("a show is still a folder",
+      (show[2], "action=browse" in show[0]), (True, True))
+check("and an airing plays what it is",
+      (airing[2], "action=play&" in airing[0]), (False, True))
+
 # -- the search call itself ------------------------------------------------
 # Scanning the request bodies of every capture, search was the one endpoint
 # this addon called with a shape no real client uses: seven captured

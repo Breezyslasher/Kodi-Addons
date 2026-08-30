@@ -15,6 +15,12 @@ box, each of which the previous check would have missed:
 
 | `test_routes.py` | a url the addon draws with no route to answer it | 2026.8.31.32 shipped a context menu entry pointing at `action=browse_suggested` whose route never reached the file: an edit failed and only the label was reapplied, so the entry fell through `main()` to `route_root` and silently opened the front page. Nothing else sees it -- the file imports, no attribute is missing, and the readers are all correct; what is wrong is a string on one side and no match on the other |
 
+`test_pages.py` also checks what a listed item *becomes* -- whether a film
+is playable and what its context menu offers -- because the readers being
+right is not the same as the right screen getting them: search results were
+typed where the rows were listed, which is folder names and a log line, and
+not where the items are, so a film from search stayed a folder.
+
 Run them all:
 
     for f in tools/checks/*.py; do python3 "$f" || echo "FAILED: $f"; done
