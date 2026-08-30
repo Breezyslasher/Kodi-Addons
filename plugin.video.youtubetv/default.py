@@ -509,48 +509,53 @@ def _label_of(item):
 def _add_items(items, content="videos"):
     """List parsed items: playable ones resolve, folders browse deeper."""
     for item in items:
-        listitem = xbmcgui.ListItem(label=_label_of(item))
-        listitem.setArt({"thumb": item.art, "fanart": item.art})
-        info = listitem.getVideoInfoTag()
-        info.setTitle(item.title)
-        if item.subtitle:
-            info.setPlot(item.subtitle)
-        info.setMediaType("video")
-        if item.playable:
-            listitem.setProperty("IsPlayable", "true")
-            xbmcplugin.addDirectoryItem(
-                HANDLE,
-                url(action="play", video_id=item.video_id, label=item.title),
-                listitem, isFolder=False)
-        elif item.content_type == "MOVIE":
-            # A film has one thing to play, so selecting it plays it. Its
-            # tile carries no video id -- only a browseEndpoint -- so the
-            # id is fetched off its page when it is picked, and the page
-            # itself moves to the context menu, which is where YouTube TV's
-            # own tile keeps it ("Go to The Accountant").
-            listitem.setProperty("IsPlayable", "true")
-            info.setMediaType("movie")
-            listitem.addContextMenuItems(
-                [("Go to %s" % item.title,
-                  "Container.Update(%s)"
-                  % url(action="browse", browse_id=item.browse_id,
-                        name=item.title, params=item.params))]
-                + _dvr_menu(item.browse_id, item.title))
-            xbmcplugin.addDirectoryItem(
-                HANDLE,
-                url(action="play_movie", browse_id=item.browse_id,
-                    label=item.title),
-                listitem, isFolder=False)
-        else:
-            if item.source not in _NOT_A_SHOW:
-                listitem.addContextMenuItems(
-                    _dvr_menu(item.browse_id, item.title))
-            xbmcplugin.addDirectoryItem(
-                HANDLE,
-                url(action="browse", browse_id=item.browse_id,
-                    name=item.title, params=item.params),
-                listitem, isFolder=True)
+        _add_item(item)
     finish(content)
+
+
+def _add_item(item):
+    """One row, without ending the directory."""
+    listitem = xbmcgui.ListItem(label=_label_of(item))
+    listitem.setArt({"thumb": item.art, "fanart": item.art})
+    info = listitem.getVideoInfoTag()
+    info.setTitle(item.title)
+    if item.subtitle:
+        info.setPlot(item.subtitle)
+    info.setMediaType("video")
+    if item.playable:
+        listitem.setProperty("IsPlayable", "true")
+        xbmcplugin.addDirectoryItem(
+            HANDLE,
+            url(action="play", video_id=item.video_id, label=item.title),
+            listitem, isFolder=False)
+    elif item.content_type == "MOVIE":
+        # A film has one thing to play, so selecting it plays it. Its
+        # tile carries no video id -- only a browseEndpoint -- so the
+        # id is fetched off its page when it is picked, and the page
+        # itself moves to the context menu, which is where YouTube TV's
+        # own tile keeps it ("Go to The Accountant").
+        listitem.setProperty("IsPlayable", "true")
+        info.setMediaType("movie")
+        listitem.addContextMenuItems(
+            [("Go to %s" % item.title,
+              "Container.Update(%s)"
+              % url(action="browse", browse_id=item.browse_id,
+                    name=item.title, params=item.params))]
+            + _dvr_menu(item.browse_id, item.title))
+        xbmcplugin.addDirectoryItem(
+            HANDLE,
+            url(action="play_movie", browse_id=item.browse_id,
+                label=item.title),
+            listitem, isFolder=False)
+    else:
+        if item.source not in _NOT_A_SHOW:
+            listitem.addContextMenuItems(
+                _dvr_menu(item.browse_id, item.title))
+        xbmcplugin.addDirectoryItem(
+            HANDLE,
+            url(action="browse", browse_id=item.browse_id,
+                name=item.title, params=item.params),
+            listitem, isFolder=True)
 
 
 def route_search():
@@ -708,9 +713,19 @@ def route_browse(browse_id, name, params=""):
             # the visitor id, so what the unread tabs actually hold can be
             # looked at rather than inferred from renderer names.
             kodiutils.dump_response("network-tabs.json", response)
-        _list_sections(tabs, "browse_section",
+        # The page opens on what it is *about*, not on a menu of tabs.
+        # A film's page is "Watch now" and "Suggested", and picking the
+        # film only to be shown two folders -- one of them recommendations
+        # -- is a page in the way of the thing that was picked. So the
+        # first tab, which is the one the service marks selected, is listed
+        # in place, and the rest follow it as folders.
+        head = tabs[0] if tabs[0].items else None
+        if head:
+            for item in head.items:
+                _add_item(item)
+        _list_sections(tabs[1:] if head else tabs, "browse_section",
                        extra={"browse_id": browse_id, "params": params})
-        finish()
+        finish("videos" if head else "")
         return
 
     items = _expand_sections(client, response, epg.parse_items(response))
@@ -1212,10 +1227,12 @@ def route_play_movie(browse_id, label):
     in front of somebody who picked a film to watch it.
 
     Which of the page's videos is the film is read from the page's order:
-    the first playable thing on it. Brewster's Millions answered with a
-    "Watch now" tab holding two, and what the second one is is not
-    established -- so all of them are logged. If this ever starts a trailer,
-    that line names what it should have started instead.
+    the first playable thing on it. That order is the right one, and the
+    second entry is not a trailer -- it is your own recording. John Wick 3
+    answered with the film and with "AMC • R • 4w ago", an airing recorded
+    a month earlier, in that order. The film is the copy without the ad
+    breaks, so first is also best. Every candidate is logged anyway, since
+    one page is one page.
     """
     client = _client()
     if not client:
