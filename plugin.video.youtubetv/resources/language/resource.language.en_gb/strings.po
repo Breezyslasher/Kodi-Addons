@@ -235,3 +235,35 @@ msgstr ""
 msgctxt "#30082"
 msgid "Leave this on. YouTube TV encrypts audio whole-sample: the auxiliary data is one IV per sample and nothing else, which CENC spells as a subsample count of zero. inputstream.adaptive 21.5.22 decodes that to noise -- silently, reporting no error at all -- while it plays the video track, which is subsample encrypted, perfectly. Saying the same thing the other way round fixes it: one subsample per sample, no clear bytes, the whole sample encrypted. The encrypted bytes are never touched, only how they are described. Measured on both: ISA 21.5.22 plays 103 seconds with zero audio errors where it used to die at 9.5, and ISA 22.3.20 is unaffected either way. Turn it off only to reproduce the old failure."
 msgstr ""
+
+msgctxt "#30083"
+msgid "Channel order"
+msgstr ""
+
+msgctxt "#30084"
+msgid "The order channels are listed in, here and in the Kodi TV section. These are YouTube TV's own five orderings, asked for the way its live tab asks: a token sent alongside the guide request. \"As set on the account\" sends no token at all and takes whatever order the account last chose on tv.youtube.com, which is what this add-on has always done. \"Custom\" is the order arranged on tv.youtube.com under the guide's Custom option."
+msgstr ""
+
+msgctxt "#30085"
+msgid "As set on the account"
+msgstr ""
+
+msgctxt "#30086"
+msgid "Default -- locals first"
+msgstr ""
+
+msgctxt "#30087"
+msgid "Custom -- as arranged on tv.youtube.com"
+msgstr ""
+
+msgctxt "#30088"
+msgid "Most watched"
+msgstr ""
+
+msgctxt "#30089"
+msgid "A to Z"
+msgstr ""
+
+msgctxt "#30090"
+msgid "Z to A"
+msgstr ""

@@ -14,6 +14,7 @@ INVALID_ARGUMENT. WEB_UNPLUGGED stays in the table below because the protocol
 notes are written against it and because it names what a capture was.
 """
 
+import base64
 import json
 import random
 import re
@@ -23,7 +24,7 @@ import time
 
 import requests
 
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import quote, urlparse, urlunparse
 
 from . import auth, kodiutils
 
@@ -53,6 +54,21 @@ UA = ("Mozilla/5.0 (X11; Linux x86_64; rv:154.0) "
 PLAYER_PARAMS = "2AEA"
 
 EPG_BROWSE_ID = "FEunplugged_epg"
+
+# The order the guide comes back in. YouTube TV's own live tab offers five,
+# and the choice rides along as a continuation *beside* the browseId rather
+# than replacing it. Whatever is chosen here is what the addon lists and what
+# IPTV Manager numbers its channels by.
+#
+# The numbers are the varint the token carries; the labels are the web
+# client's own.
+EPG_ORDERS = {
+    "default": 1,        # the lineup order: locals first
+    "custom": 2,         # the order set on tv.youtube.com
+    "watched": 3,        # most watched
+    "az": 4,
+    "za": 5,
+}
 
 # The Library is not asked for by browseId. The web client sends it as a
 # continuation token, and a token is what the capture shows going out, so a
@@ -632,6 +648,62 @@ def context(location=True, client_name=None):
     return {"client": client}
 
 
+def _varint(value):
+    out = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        out.append(byte | (0x80 if value else 0))
+        if not value:
+            return bytes(out)
+
+
+def _pb_num(field, value):
+    return _varint(field << 3) + _varint(value)
+
+
+def _pb_bytes(field, payload):
+    return _varint(field << 3 | 2) + _varint(len(payload)) + payload
+
+
+def _pb_b64(raw):
+    """base64url, percent-encoded, as these tokens travel."""
+    return quote(base64.urlsafe_b64encode(raw).decode(), safe="")
+
+
+def epg_order_token(order, max_airings, max_duration_ms, start_ms,
+                    initial_ms, pagination_ms):
+    """The continuation that asks for the guide in a particular order.
+
+    Read out of the live tab's own order dropdown and rebuilt rather than
+    copied, because the token repeats the epgOptions the request is making
+    and a stale copy would ask for somebody else's window. Its shape:
+
+        80226972 {
+          2: "FEunplugged_epg"
+          3: "8gMEIgIwAQ%3D%3D"        # itself 62 { 4 { 6: <order> } }
+          22 { 1 { 1: maxAiringsPerStation, 3: maxDurationMs,
+                   4: initialEpgFetchStartTimeMs,
+                   5: initialEpgFetchDurationMs, 6: paginationDurationMs } }
+        }
+
+    Only field 6 of the inner selector distinguishes the five orders, and
+    this builder reproduces all five of the tokens in the 2026-08-29 capture
+    byte for byte -- which is what makes it a reconstruction rather than a
+    guess. tools/checks/test_pages.py keeps it that way.
+    """
+    selector = _pb_b64(_pb_bytes(62, _pb_bytes(4, _pb_num(6, order))))
+    options = _pb_bytes(1, (_pb_num(1, max_airings)
+                            + _pb_num(3, max_duration_ms)
+                            + _pb_num(4, start_ms)
+                            + _pb_num(5, initial_ms)
+                            + _pb_num(6, pagination_ms)))
+    body = (_pb_bytes(2, EPG_BROWSE_ID.encode())
+            + _pb_bytes(3, selector.encode())
+            + _pb_bytes(22, options))
+    return _pb_b64(_pb_bytes(80226972, body))
+
+
 class Api(object):
     def __init__(self, bearer=None):
         """A session on the stored device-code token.
@@ -793,23 +865,34 @@ class Api(object):
 
     # -- guide ------------------------------------------------------------
 
-    def epg(self, start_ms=None, hours=6, max_airings=11, client_name=None):
+    def epg(self, start_ms=None, hours=6, max_airings=11, client_name=None,
+            order=None):
         """The channel lineup and schedule.
 
         One call covers a window; the response carries a continuation token for
         the next. Google caps the reachable range at ``maxDurationMs``, a week.
         """
-        start_ms = start_ms or int(time.time() * 1000)
-        return self.call("browse", {
+        start_ms = int(start_ms or time.time() * 1000)
+        window = int(hours * 3600 * 1000)
+        body = {
             "browseId": EPG_BROWSE_ID,
             "unpluggedBrowseOptions": {"epgOptions": {
                 "maxAiringsPerStation": max_airings,
-                "initialEpgFetchStartTimeMs": str(int(start_ms)),
-                "initialEpgFetchDurationMs": int(hours * 3600 * 1000),
-                "paginationDurationMs": int(hours * 3600 * 1000),
+                "initialEpgFetchStartTimeMs": str(start_ms),
+                "initialEpgFetchDurationMs": window,
+                "paginationDurationMs": window,
                 "maxDurationMs": "604800000",
             }},
-        }, client_name=client_name)
+        }
+        if order in EPG_ORDERS:
+            # Sent alongside the browseId, not instead of it: that is what
+            # the web client does, and the token repeats the same
+            # epgOptions that the body carries, so the two are built from
+            # one set of values here.
+            body["continuation"] = epg_order_token(
+                EPG_ORDERS[order], max_airings, 604800000, start_ms,
+                window, window)
+        return self.call("browse", body, client_name=client_name)
 
     def continuation(self, token, client_name=None):
         return self.call("browse", {"continuation": token},

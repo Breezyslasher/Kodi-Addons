@@ -41,7 +41,14 @@ from . import api, auth, epg as epg_mod, kodiutils
 # shape nothing has been observed answering, and this ran as one for long
 # enough to be worth not repeating.
 EPG_HOURS = 6
-EPG_PAGES = 4
+# Pagination does not bring back more *channels* -- every page of the
+# 2026-08-29 capture carried the same 148 rows in the same order. It brings
+# back more hours: eleven pages took one lineup from 962 airings to 6306, a
+# median of 40 per channel. So the loop runs until a page adds nothing new,
+# repeats its own token, or this cap is reached, and the cap only decides
+# how far ahead the guide reaches. Eight pages is about 29 airings per
+# channel, measured; the capture still had a token after eleven.
+EPG_PAGES = 8
 EPG_AIRINGS_PER_STATION = 40
 
 
@@ -109,7 +116,8 @@ class IPTVManager(object):
         """
         client = api.Api()
         response = client.epg(hours=hours,
-                              max_airings=EPG_AIRINGS_PER_STATION)
+                              max_airings=EPG_AIRINGS_PER_STATION,
+                              order=kodiutils.get_setting("epg.order", "") or None)
         stations = epg_mod.parse_epg(response)
         token = epg_mod.continuation_token(response) if pages > 1 else None
         fetched = 1
