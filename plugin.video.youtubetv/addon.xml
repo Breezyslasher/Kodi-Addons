@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.61" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.62" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,22 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.62 - An nsig answer that was not an answer
+- Films failed on Android with an empty-bodied HTTP 403 while live channels
+  played. The cause is in the log: the player's n transform returned
+  "BdHv3wGc_iIzKEBs97-_w8_" followed by the whole input on 4 of 6 solves.
+  Every desktop log across the same player returns a proper 14-character
+  value on all of them.
+- That prefix is the same across runs and across inputs, so it is a
+  constant the transform falls back to when it decides something is wrong,
+  not a result. A url carrying it is answered 403.
+- Only the input handed straight back was recognised as a bail. A constant
+  and then the input now counts too: a runtime is tried instead, and if
+  that also bails the play stops with a reason rather than a 403.
+- The bad value was being written to the on-disk cache and read back for
+  the life of the player release, so one bad solve poisoned every play
+  after it. A cached bail is now dropped and solved again.
+
 2026.8.31.61 - Say which platform and which decrypter
 - Every log this addon has been debugged against says "Platform: Linux x86
   64-bit". InputStream Adaptive picks its Widevine decrypter by platform,
