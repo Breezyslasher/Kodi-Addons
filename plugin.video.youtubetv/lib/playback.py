@@ -64,25 +64,33 @@ def _authorized_cap(streaming, video_id=""):
     hint from before the exchange; the licence is the answer.
 
     The hint used to stand in on the first play of a title, which cost that
-    play its HD stream. It has now read AUDIO,SD on every title measured --
-    on both credentials -- while every licence that followed granted AUDIO,
-    SD, HD and UHD1, so it was not a conservative ceiling, it was a wrong
-    one; the browser reads the same hint and is served HD-tier formats
-    regardless. So it is no longer treated as a ceiling: with no licence
-    recorded yet there is no ceiling from here, and the quality setting is
-    the only limit.
+    play its HD stream. On every *subscription* title measured it read
+    AUDIO,SD while the licence that followed granted AUDIO, SD, HD and
+    UHD1 -- not a conservative ceiling but a wrong one, and the browser
+    reads the same hint and is served HD-tier formats regardless. So it is
+    not treated as a ceiling: with no licence recorded there is no ceiling
+    from here, and the quality setting is the only limit.
+
+    One title has since matched it. A *purchased* film, played 2026-08-29
+    20:14, hinted AUDIO,SD and its licence granted exactly AUDIO,SD -- two
+    formats, where a subscription title's licence grants four. So the hint
+    is not always wrong; it is only unreliable, and there is no way to tell
+    from the hint alone which case a title is. Reading it as a ceiling would
+    still cost every subscription title its HD stream to protect the rare
+    purchased one.
 
     The cost of being wrong the other way is a title that really is SD-only:
-    we would fetch HD media the CDM has no key for. Nothing measured has
-    behaved that way, and the licence arrives before the first encrypted
-    fragment does, so the following play corrects itself either way.
+    HD media is fetched that the CDM has no key for. That play was stopped
+    after five seconds, so whether it decrypted is not established. Either
+    way it corrects itself on the next play of the same title, because the
+    licence is recorded by then and takes over from the hint entirely.
     """
     granted = list(license_proxy.key_ids_for(video_id)) if video_id else []
     if not granted:
         hint = streaming.get("initialAuthorizedDrmTrackTypes") or []
         kodiutils.log("no licence recorded for %s yet, so no ceiling from "
                       "here -- the player response only hints at %s, which "
-                      "has never yet matched the licence that follows it"
+                      "the licence that follows has usually exceeded"
                       % (video_id or "this title",
                          ", ".join(sorted(hint)) or "nothing"))
         return 0

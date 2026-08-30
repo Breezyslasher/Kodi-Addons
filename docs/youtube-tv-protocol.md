@@ -2552,6 +2552,24 @@ evidence available at the time:
   setting is the only limit. Once a licence has been seen, its grant is the
   ceiling as before -- an SD-only licence still caps at 480p.
 
+  **One title has since matched the hint**, and the claim above needs
+  narrowing rather than keeping. A *purchased* film played from the Library
+  on 2026-08-29 20:14 hinted `AUDIO,SD` and its licence granted exactly
+  `AUDIO,SD` -- two formats, where every subscription title's licence has
+  granted four:
+
+      play joldJiP04hk: live=False authorized=DRM_TRACK_TYPE_AUDIO,DRM_TRACK_TYPE_SD
+      licence granted: 697 bytes, 2 formats [DRM_TRACK_TYPE_SD=…, DRM_TRACK_TYPE_AUDIO=…]
+
+  So the hint is not always wrong; it is unreliable, and nothing in the
+  player response distinguishes the two cases before the licence arrives.
+  Treating it as a ceiling would still cost every subscription title its HD
+  stream in order to protect the occasional purchased one, so the behaviour
+  stands. The bridge offered 1080p (itag 227, `DRM_TRACK_TYPE_HD`) for a
+  licence that granted only an SD key; that play was stopped after five
+  seconds, so whether it decrypted is **not established**. The second play
+  of the same title is capped at 480p by the recorded licence regardless.
+
 The correlation behind all three was real but backwards: every offer that
 was accepted happened to contain 480p renditions, because 480p is what a
 request naming no height gets. Nothing was being refused for its tier or
