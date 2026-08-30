@@ -680,9 +680,15 @@ def route_browse(browse_id, name, params=""):
         # and this one with two, and the count alone cannot say whether the
         # other two were dropped here or never sent -- which is the
         # difference between a reader to fix and a request to change.
+        shapes = epg.tab_shapes(response)
         kodiutils.log("%s: tabs on the page -- %s"
-                      % (name or browse_id,
-                         "; ".join(epg.tab_shapes(response))))
+                      % (name or browse_id, "; ".join(shapes)))
+        if len(shapes) > len(tabs):
+            # Two rounds of reading this from a log line have each been
+            # wrong about a different thing. Keep the page itself, minus
+            # the visitor id, so what the unread tabs actually hold can be
+            # looked at rather than inferred from renderer names.
+            kodiutils.dump_response("network-tabs.json", response)
         _list_sections(tabs, "browse_section",
                        extra={"browse_id": browse_id, "params": params})
         finish()

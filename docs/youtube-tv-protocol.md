@@ -1140,6 +1140,15 @@ in the shape most of InnerTube has moved to, a `continuationItemRenderer`
 holding a `continuationCommand.token`, where the web client uses the older
 `sectionListRenderer.continuations`.
 
+**And that was not it either.** On 2026-08-30 00:19 the same page still read
+as two tabs with the continuationCommand shape handled. So the two unread
+tabs hold neither shape, and the tab's own keys cannot say what they do
+hold: every tab on the page carries `[content, title, trackingParams]`, the
+ones that read and the ones that do not alike. `tab_shapes` now reports what
+is *inside* an unread tab's content, and the page is kept as
+`network-tabs.json` in the addon's data folder. Two readings off a log line
+have each been wrong about a different thing.
+
 So the rule is by what the tab holds rather than by which key it holds it
 under. A tab with items reads its token from its own section list only --
 its shelves have tokens that fetch more of one shelf. A tab with **no**

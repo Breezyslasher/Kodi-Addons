@@ -1367,13 +1367,49 @@ def tab_shapes(response, limit=12):
             if not isinstance(entry, dict) or len(out) >= limit:
                 continue
             renderer = entry.get("tabRenderer")
-            if isinstance(renderer, dict):
-                out.append("%s carries [%s]"
-                           % (_tab_title(renderer) or "(unnamed)",
-                              ", ".join(sorted(renderer))))
+            if not isinstance(renderer, dict):
+                continue
+            line = "%s carries [%s]" % (_tab_title(renderer) or "(unnamed)",
+                                        ", ".join(sorted(renderer)))
+            # For a tab this could read nothing out of, the tab's own keys
+            # are not the answer -- every tab on a network page carries
+            # [content, title, trackingParams], the two that read and the
+            # two that do not alike. What is *inside* the content is the
+            # only thing that separates them.
+            content = renderer.get("content")
+            if isinstance(content, dict) and not parse_items(content):
+                line += "; content " + _inside(content)
+            out.append(line)
         if out:
             return out
     return out
+
+
+def _inside(node, limit=6):
+    """A one-line account of what a small subtree holds."""
+    counts = {}
+    plain = []
+
+    def visit(node, depth):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key.endswith("Renderer") and isinstance(value, dict):
+                    counts[key] = counts.get(key, 0) + 1
+                elif (isinstance(value, str) and value
+                        and key not in ("trackingParams", "clickTrackingParams")
+                        and key not in plain):
+                    plain.append(key)
+                visit(value, depth + 1)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value, depth + 1)
+
+    visit(node, 0)
+    ranked = sorted(counts.items(), key=lambda pair: -pair[1])[:limit]
+    return ("[%s] holding %s%s"
+            % (", ".join(sorted(node)) if isinstance(node, dict) else "?",
+               ", ".join("%s x%d" % pair for pair in ranked) or "no renderers",
+               "; strings under " + ", ".join(plain[:limit]) if plain else ""))
 
 
 def describe(response, limit=40):

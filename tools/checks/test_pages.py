@@ -734,6 +734,24 @@ check("tab_shapes names every tab, including the one dropped",
        "Series carries [endpoint, title]",
        "Movies carries [continuation, title]",
        "Nothing carries [title]"])
+# Every tab of a network page carries [content, title, trackingParams], the
+# ones that read and the ones that do not alike, so the tab's own keys
+# cannot say why one was dropped. What is inside the content can.
+check("and says what an unread tab's content holds",
+      epg.tab_shapes({"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [
+          {"tabRenderer": {"title": "Live", "content": {"sectionListRenderer": {
+              "contents": [{"unpluggedVideoRenderer": {
+                  "title": {"runs": [{"text": "On now"}]},
+                  "navigationEndpoint": {"watchEndpoint": {
+                      "videoId": "V"}}}}]}}}},
+          {"tabRenderer": {"title": "Series", "content": {"sectionListRenderer": {
+              "contents": [{"continuationItemRenderer": {
+                  "continuationEndpoint": {"continuationCommand": {
+                      "token": "T"}}}}]}}}},
+      ]}}})[1],
+      "Series carries [content, title]; content [sectionListRenderer] "
+      "holding sectionListRenderer x1, continuationItemRenderer x1; "
+      "strings under token")
 # The whole-tab search is safe only where there is no content to confuse it.
 check("a tab that HAS content still reads its token from its own list",
       [t.token for t in epg.browse_tabs(NETWORK_PAGE)],
