@@ -560,8 +560,7 @@ def _set_meta(info, meta):
     for name, value in (("setGenres", meta.get("genres")),
                         ("setDirectors", meta.get("directors")),
                         ("setWriters", meta.get("writers")),
-                        ("setStudios", [meta["studio"]] if meta.get("studio")
-                         else None),
+                        ("setStudios", meta.get("studios")),
                         ("setYear", meta.get("year")),
                         ("setMpaa", meta.get("mpaa")),
                         ("setPremiered", meta.get("premiered"))):
@@ -1673,9 +1672,11 @@ def _page_meta(response, header=None):
             "plot": about.get("description", ""),
             "year": about.get("year") or year,
             "mpaa": rating,
-            # A show names a network where a film names a provider, and
-            # both are the studio as far as a listing is concerned.
-            "studio": about.get("studio") or about.get("network", ""),
+            # Who made it, most particular first. A film names its
+            # production companies and its provider; a show names the
+            # networks it is on, and that is the closest thing it has.
+            "studios": (about.get("companies") or about.get("studio")
+                        or about.get("network") or []),
             "art": epg.title_art(header)}
     for name in ("writers", "producers", "network"):
         if about.get(name):

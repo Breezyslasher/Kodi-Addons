@@ -1340,6 +1340,9 @@ ABOUT = {"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [
                 {"runs": [{"text": "Directors", "bold": True},
                           {"text": ": ", "bold": True},
                           {"text": "Gareth Edwards"}]},
+                {"runs": [{"text": "Production Companies", "bold": True},
+                          {"text": ": ", "bold": True},
+                          {"text": "Lucasfilm, Allison Shearmur Productions"}]},
                 {"runs": [{"text": "Composers", "bold": True},
                           {"text": ": ", "bold": True},
                           {"text": "Michael Giacchino"}]},
@@ -1361,8 +1364,20 @@ fields = epg.about_fields(ABOUT)
 check("the About tab is read field by field",
       (fields["genres"], fields["year"], fields["studio"],
        fields["network"], fields["directors"]),
-      (["Science fiction", "Adventure", "Action"], 2016, "Disney", "FX",
+      (["Science fiction", "Adventure", "Action"], 2016, ["Disney"], ["FX"],
        ["Gareth Edwards"]))
+# Named by the diagnostic, not guessed at: "about says something new --
+# Production Companies: Escape Artists, Zhiv, Mace Neufeld Productions".
+check("production companies are several, and are read as several",
+      fields["companies"], ["Lucasfilm", "Allison Shearmur Productions"])
+# "Adult Swim, Cartoon Network, HBO Max" is three studios, not one long
+# name, which is how it was reaching Kodi.
+check("and so is a list of networks",
+      epg.about_fields({"unpluggedContentDetailsAboutFieldsRenderer": {
+          "attributes": [{"runs": [{"text": "On "},
+                                   {"text": "Adult Swim, Cartoon Network"}]}]
+      }})["network"],
+      ["Adult Swim", "Cartoon Network"])
 # A label this does not know is reported, not dropped: a title carrying one
 # should name it in a log rather than go quietly missing.
 check("and a label it does not know is reported rather than dropped",
@@ -1499,7 +1514,7 @@ default._REMEMBERED_META.clear()
 default._LOADED_META[0] = False       # make it read the stub again
 remembered["UCROGUE"] = {"genres": ["Science fiction"], "year": 2016,
                          "mpaa": "PG-13", "directors": ["Gareth Edwards"],
-                         "studio": "Disney", "plot": "Jyn Erso.",
+                         "studios": ["Disney"], "plot": "Jyn Erso.",
                          "cast": [["Felicity Jones", "Jyn Erso", "https://yt3.ggpht.com/jyn"]],
                          "art": "https://yt3.ggpht.com/banner"}
 xbmcplugin.ITEMS[:] = []
