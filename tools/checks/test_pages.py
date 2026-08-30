@@ -1319,8 +1319,12 @@ ABOUT = {"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [
             ]}}]}}}},
     {"tabRenderer": {"title": "Lead cast", "content": {"sectionListRenderer": {
         "contents": [
-            {"unpluggedPersonRenderer": {"name": {"simpleText": "Felicity Jones"},
-                                         "role": {"simpleText": "Jyn Erso"}}},
+            {"unpluggedPersonRenderer": {
+                "name": {"simpleText": "Felicity Jones"},
+                "role": {"simpleText": "Jyn Erso"},
+                "thumbnail": {"thumbnails": [
+                    {"url": "//yt3.ggpht.com/jyn=p-ns-nd-df",
+                     "width": 288, "height": 288}]}}},
             {"unpluggedPersonRenderer": {"name": {"simpleText": "Diego Luna"},
                                          "role": {"simpleText": "Cassian Andor"}}},
         ]}}}},
@@ -1336,14 +1340,25 @@ check("the About tab is read field by field",
 # should name it in a log rather than go quietly missing.
 check("and a label it does not know is reported rather than dropped",
       fields["unknown"], ["Composers: Michael Giacchino"])
-check("the cast keeps the parts they played, in the page's order",
+# The photo is on the person renderer beside the name. Without it Kodi
+# draws the silhouette it uses for an actor it has no picture of, which is
+# what the cast row was: five names under five blank outlines.
+check("the cast keeps the parts they played and their photographs",
       epg.cast_of(ABOUT),
-      [("Felicity Jones", "Jyn Erso"), ("Diego Luna", "Cassian Andor")])
+      [("Felicity Jones", "Jyn Erso", "https://yt3.ggpht.com/jyn=p-ns-nd-df"),
+       ("Diego Luna", "Cassian Andor", "")])
 check("and a rating is told from a year by shape, not by position",
       [epg.rating_and_year({"simpleText": "PG-13 \u2022 2016"}),
        epg.rating_and_year({"simpleText": "2016 \u2022 TV-14"}),
        epg.rating_and_year({"simpleText": "TV-14"})],
       [("PG-13", 2016), ("TV-14", 2016), ("TV-14", 0)])
+# And a rating has to look like one. Saturday Night Live's header reads
+# "NBC", which was shown as "Rated: NBC" for want of asking what a rating
+# actually is.
+check("a network is not a rating",
+      [epg.rating_and_year({"simpleText": "NBC"}),
+       epg.rating_and_year({"simpleText": "1975 \u2013 Present \u2022 NBC"})],
+      [("", 0), ("", 0)])
 
 # And that it reaches the item, which is the part that was silently missing
 # the last time everything read correctly.
@@ -1406,7 +1421,8 @@ default._LOADED_META[0] = False       # make it read the stub again
 remembered["UCROGUE"] = {"genres": ["Science fiction"], "year": 2016,
                          "mpaa": "PG-13", "directors": ["Gareth Edwards"],
                          "studio": "Disney", "plot": "Jyn Erso.",
-                         "cast": [["Felicity Jones", "Jyn Erso"]]}
+                         "cast": [["Felicity Jones", "Jyn Erso", "https://yt3.ggpht.com/jyn"]],
+                         "art": "https://yt3.ggpht.com/banner"}
 xbmcplugin.ITEMS[:] = []
 default._add_item(epg.Item(browse_id="UCROGUE", title="Rogue One",
                            content_type="MOVIE"))
@@ -1414,9 +1430,21 @@ listed = xbmcplugin.ITEMS[0][3].info.set
 check("a listed film carries what was learned when it was typed",
       (listed.get("setGenres"), listed.get("setYear"), listed.get("setMpaa"),
        listed.get("setStudios"), listed.get("setPlot"),
-       [(a.name, a.role) for a in listed["setCast"]]),
+       [(a.name, a.role, a.thumbnail) for a in listed["setCast"]]),
       (["Science fiction"], 2016, "PG-13", ["Disney"], "Jyn Erso.",
-       [("Felicity Jones", "Jyn Erso")]))
+       [("Felicity Jones", "Jyn Erso", "https://yt3.ggpht.com/jyn")]))
+check("and the page's banner becomes its fanart",
+      xbmcplugin.ITEMS[0][3].art.get("fanart"), "https://yt3.ggpht.com/banner")
+# A cast remembered by a build that did not read photos is pairs, not
+# triples, and must still list rather than raise.
+xbmcplugin.ITEMS[:] = []
+default._add_item(epg.Item(browse_id="UCOLD", title="Older",
+                           content_type="MOVIE"),
+                  meta={"cast": [["Keanu Reeves", "John Wick"]]})
+check("a cast remembered before the photos were read still lists",
+      [(a.name, a.role, a.thumbnail)
+       for a in xbmcplugin.ITEMS[0][3].info.set["setCast"]],
+      [("Keanu Reeves", "John Wick", "")])
 
 xbmcplugin.ITEMS[:] = []
 default._add_item(epg.Item(browse_id="UCUNKNOWN", title="Never opened",
