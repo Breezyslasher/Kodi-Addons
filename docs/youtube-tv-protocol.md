@@ -217,7 +217,7 @@ that varint is the order being selected, not a constant.)
 
 ## What has been seen, and what is implemented
 
-Taken by scanning every `/youtubei/v1/` request across all twenty-one
+Taken by scanning every `/youtubei/v1/` request across all twenty-three
 tv.youtube.com captures in this project, rather than from memory. Call counts
 are how often each appeared.
 
@@ -231,23 +231,18 @@ Five exist across all of them, so **no tab is missing**:
 | `FEunplugged_overlays` | 7 | **not implemented** — and there is nothing in it: it answers 786 bytes of `twoColumnBrowseResultsRenderer` holding one empty `tabRenderer`, a promo slot this account has nothing in |
 | `FEunplugged_home` | 4 | Home |
 | `FEunplugged_browse` | 2 | Networks |
+| `FEunplugged_chips` | 2 | The categories, and their genres |
 | `FEunplugged_library` | 2 | Library |
-
-`FEunplugged_chips` is named by the Browse tab's five category chips and is
-requested in no capture, so what it answers with is unverified. It is
-followed anyway: it is a browseId with `params`, which is exactly what
-`route_browse` already sends, and a page that comes back in an unknown shape
-lists flat rather than failing.
 
 ### Endpoints
 
 | Endpoint | Calls | Status |
 | --- | --- | --- |
-| `browse` | 81 | implemented |
-| `log_event` | 43 | telemetry, deliberately not sent |
+| `browse` | 99 | implemented |
+| `log_event` | 50 | telemetry, deliberately not sent |
 | `search` | 20 | implemented |
 | `suggest` | 17 | implemented (`Api.suggest`, not yet wired to a route) |
-| `tenx_player` | 23 | **not implemented.** Takes `{"channelIds": [...]}`. No response body survives in any capture, so what it returns is unknown |
+| `tenx_player` | 25 | **not implemented.** Takes `{"channelIds": [...]}`. No response body survives in any capture, so what it returns is unknown |
 | `att/get` | 6 | not needed — the add-on mints its own proof-of-origin |
 | `next` | 5 | **not implemented.** `{"videoId": ..., "params": ..., "unpluggedWatchNextOptions": null}` — the watch-next panel. No response body captured |
 | `player` | 5 | implemented |
@@ -1097,9 +1092,58 @@ show page, in a place where nothing has a start time to break the tie.
 reason `HOME_CONTINUATION` does: the token is opaque, and decoding it to
 re-encode it is a way to break it.
 
-A network tile carries a plain `browseEndpoint` with no params, and opens as
-an ordinary show page. Adult Swim answers with 400 items in one response and
-no shelves deferred; ABC with 26, of which one is unplayable.
+### A network page is tabs, and only one of them arrives
+
+A network tile carries a plain `browseEndpoint` with no params. What it opens
+is **not** a show page: it is a `singleColumnBrowseResultsRenderer` of tabs,
+and only the selected one ships with anything in it.
+
+| Network | Tabs |
+| --- | --- |
+| ABC | LIVE (26 items), SERIES, DRAMA, COMEDY, NEWS, REALITY, DAYTIME, LATE NIGHT |
+| AMC | LIVE (11), SERIES, MOVIES, ORIGINALS, THE WALKING DEAD |
+| Adult Swim | LIVE (1), UPCOMING (399 inline), ADULT SWIM, SERIES |
+
+Every tab but the selected one -- and Adult Swim's UPCOMING, which arrives
+inline -- carries a content of exactly this and nothing else:
+
+```json
+{"sectionListRenderer": {"continuations": [
+  {"nextContinuationData": {"continuation": "4qmFsgI4EhhVQ1Jfdkt3T09j…"}}]}}
+```
+
+So a network listed flat showed what was on now and nothing else: the rest
+of the page was seven tokens nobody spent. Spent, AMC's tabs answer with 26
+series, 60 films across two pages, 23 originals and 7 Walking Dead titles.
+
+Two things to get wrong. A tab titles itself with a **plain string**
+(`"title": "SERIES"`), where every shelf on every other page uses `runs`.
+And the selected tab's own shelves carry continuations that fetch more of
+one shelf -- so the tab's token must be read from the tab's own section
+list, the same care `page_continuation` takes on Home.
+
+### A category is rows under chips — `browseId: FEunplugged_chips`
+
+```json
+{ "browseId": "FEunplugged_chips", "params": "8gMFKgMIoFQ%3D" }
+```
+
+Movies answers with named rows -- "Picked for you", "On now & upcoming",
+"Thriller movies" -- and defers more behind a page-level continuation, the
+way Home does: two requests gave eight rows.
+
+Above them sits a shelf with **no title** holding fifteen
+`unpluggedChipRenderer` genres (Action, Comedy, Crime, Drama, Fantasy,
+History, Horror, Musical, Romance, Science fiction, Thriller, Adventure,
+Romantic comedy, Marvel Cinematic Universe, Magic). `page_shelves` drops an
+untitled shelf, correctly, so `page_chips` reads that one separately.
+
+Each genre is `FEunplugged_chips` again with longer params --
+`8gMJKgcIoFQIn5YB` for Action against the category's own `8gMFKgMIoFQ%3D` --
+and picking a second narrows further: `8gMQKg4IoFQIn5YBCL98COCWcQ%3D%3D`
+carries several. Fifteen chips behind one browseId is the params trap again,
+at a second depth, and this is where it was captured rather than reasoned
+about.
 
 ### Heartbeat — `POST /youtubei/v1/player/heartbeat?alt=json`
 

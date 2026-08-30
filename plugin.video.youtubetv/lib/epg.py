@@ -364,10 +364,10 @@ class Item(object):
     """Something the UI can show: a folder to browse, or a video to play."""
 
     __slots__ = ("video_id", "browse_id", "params", "title", "subtitle",
-                 "art", "start_ms", "end_ms")
+                 "art", "start_ms", "end_ms", "source")
 
     def __init__(self, video_id="", browse_id="", title="", subtitle="",
-                 art="", start_ms=0, end_ms=0, params=""):
+                 art="", start_ms=0, end_ms=0, params="", source=""):
         self.video_id = video_id
         self.browse_id = browse_id
         # What the browse endpoint asks for *within* that page. The Browse
@@ -380,6 +380,10 @@ class Item(object):
         self.art = art
         self.start_ms = start_ms
         self.end_ms = end_ms
+        # The renderer that named it. Kept because not everything with a
+        # browse id is a show: a network and a genre chip are both folders,
+        # and neither can be recorded.
+        self.source = source
 
     @property
     def playable(self):
@@ -729,13 +733,13 @@ def parse_items(response):
         if isinstance(node, dict):
             for key, value in node.items():
                 if key.endswith("Renderer") and isinstance(value, dict):
-                    _collect(value)
+                    _collect(value, key)
                 visit(value)
         elif isinstance(node, list):
             for value in node:
                 visit(value)
 
-    def _collect(renderer):
+    def _collect(renderer, source=""):
         title = _title_of(renderer)
         if not title:
             return
@@ -777,6 +781,7 @@ def parse_items(response):
             art=thumbnail(renderer.get("thumbnail") or {}, prefer_width=1280),
             start_ms=_seconds_ms(renderer, "startTimeSeconds"),
             end_ms=_seconds_ms(renderer, "endTimeSeconds"),
+            source=source,
         ))
 
     visit(response)
@@ -1217,6 +1222,87 @@ def action_text(response, default=""):
                 if said:
                     return said
     return default
+
+
+def _tab_title(node, default=""):
+    """A tab names itself with a plain string, where a shelf uses runs."""
+    title = node.get("title")
+    if isinstance(title, str):
+        return title or default
+    return text(title, default)
+
+
+def page_chips(response):
+    """The filter chips a category page carries, which name no row.
+
+    A category -- Movies, say -- comes back as a nameless shelf of fifteen
+    genre chips (Action, Comedy, Crime, Drama...) over its named rows.
+    page_shelves drops that shelf, correctly: it has no title, and a folder
+    called nothing is worse than no folder. But the chips are the page's own
+    way of narrowing itself, and each is a real destination -- the same
+    FEunplugged_chips with longer params -- so they are read separately and
+    listed after the rows.
+    """
+    for entry in _section_list(response):
+        if not isinstance(entry, dict):
+            continue
+        for shelf in entry.values():
+            if not isinstance(shelf, dict) or _title_of(shelf):
+                continue
+            chips = shelf.get("content")
+            if not isinstance(chips, dict):
+                continue
+            if not any(name.endswith("ChipListRenderer") for name in chips):
+                continue
+            found = parse_items(chips)
+            if found:
+                return found
+    return []
+
+
+def browse_tabs(response, least=2):
+    """A page's tabs, when it is a page of tabs.
+
+    A network page is one: ABC came back as eight -- LIVE, SERIES, DRAMA,
+    COMEDY, NEWS, REALITY, DAYTIME, LATE NIGHT -- in a
+    singleColumnBrowseResultsRenderer, and **only the selected one ships
+    with anything in it.** The other seven carry an empty content holding a
+    single nextContinuationData. That is why a network listed flat showed
+    what was on now and nothing else: everything else on the page was a
+    token nobody spent.
+
+    The token is read from the tab's own section list rather than from
+    anywhere below it, for the reason page_continuation is careful: the LIVE
+    tab holds real shelves, and their continuations fetch more of one shelf,
+    not the tab.
+
+    ``least`` tabs must survive before this claims the page is tabbed, so a
+    container holding one tab -- which is how FEunplugged_overlays answers,
+    with an empty one -- reads as no tabs at all and the caller goes on
+    listing the page the way it always did.
+    """
+    for block in walk(response, "tabs"):
+        if not isinstance(block, list):
+            continue
+        tabs = []
+        for entry in block:
+            if not isinstance(entry, dict):
+                continue
+            renderer = entry.get("tabRenderer")
+            if not isinstance(renderer, dict):
+                continue
+            title = _tab_title(renderer)
+            content = renderer.get("content")
+            if not title or not isinstance(content, dict):
+                continue
+            token = page_continuation(content) or ""
+            items = parse_items(content)
+            # A tab with neither is a heading for nothing.
+            if items or token:
+                tabs.append(Section(title, items, token))
+        if len(tabs) >= least:
+            return tabs
+    return []
 
 
 def describe(response, limit=40):

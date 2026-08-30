@@ -483,6 +483,13 @@ def route_dvr(browse_id, name, on):
                               else "No longer recording %s" % what))
 
 
+# Renderers that name something other than a show. The DVR records a series
+# and takes a show's id, so offering "record this show" on a network or on a
+# genre chip offers to record something that is not a programme.
+_NOT_A_SHOW = ("unpluggedGridChannelRenderer", "unpluggedChipRenderer",
+               "unpluggedIntentChipRenderer")
+
+
 def _label_of(item):
     """The title, with the airing time in front when the row has one.
 
@@ -516,7 +523,9 @@ def _add_items(items, content="videos"):
                 url(action="play", video_id=item.video_id, label=item.title),
                 listitem, isFolder=False)
         else:
-            listitem.addContextMenuItems(_dvr_menu(item.browse_id, item.title))
+            if item.source not in _NOT_A_SHOW:
+                listitem.addContextMenuItems(
+                    _dvr_menu(item.browse_id, item.title))
             xbmcplugin.addDirectoryItem(
                 HANDLE,
                 url(action="browse", browse_id=item.browse_id,
@@ -641,6 +650,14 @@ def route_browse(browse_id, name, params=""):
     if not client:
         finish()
         return
+    # A category is a page of rows, and is the one page here known to defer
+    # rows to a second request. Routed by its id rather than by shape,
+    # because the shape that would catch it -- "a page with named rows" --
+    # also catches a show page, whose seasons are read a different way and
+    # whose capture pins that reading.
+    if browse_id == api.CHIPS_ID:
+        route_category(browse_id, name, params)
+        return
     try:
         response = client.browse(browse_id, params or None)
     except (auth.AuthError, api.ApiError) as exc:
@@ -648,7 +665,111 @@ def route_browse(browse_id, name, params=""):
         finish()
         return
 
+    # A network page is tabs -- LIVE, SERIES, MOVIES, ORIGINALS -- and only
+    # the one on screen ships with anything in it. Listing the page flat
+    # showed what was on now and nothing else, because the rest of it was
+    # seven tokens nobody spent.
+    tabs = epg.browse_tabs(response)
+    if tabs:
+        kodiutils.log("%s: %d tab(s) -- %s"
+                      % (name or browse_id, len(tabs),
+                         ", ".join("%s (%d)" % (t.title, len(t.items))
+                                   for t in tabs)))
+        _list_sections(tabs, "browse_section",
+                       extra={"browse_id": browse_id, "params": params})
+        finish()
+        return
+
     items = _expand_sections(client, response, epg.parse_items(response))
+    if not items:
+        kodiutils.notify("Nothing playable under %s" % (name or browse_id))
+    _add_items(items)
+
+
+def route_category(browse_id, name, params):
+    """One of the Browse tab's categories: Sports, Shows, Movies, News, Family.
+
+    Rows, not a list -- "Picked for you", "On now & upcoming", "Thriller
+    movies" -- and it defers more of them to a second request, the way Home
+    does. Under them go the page's own genre chips, which are how it
+    narrows itself and which name no row of their own.
+    """
+    client = _client()
+    if not client:
+        finish()
+        return
+    first_page, pages, error = _whole_page(
+        client, lambda: client.browse(browse_id, params or None))
+    if error:
+        kodiutils.ok_dialog(error, "Could not open %s" % (name or "that category"))
+        finish()
+        return
+
+    rows = _sections_of(pages)
+    if not rows:
+        for page in pages:
+            rows.extend(epg.any_rows(page))
+    chips = epg.page_chips(first_page)
+    kodiutils.log("%s: %d page(s), %d row(s), %d chip(s) -- %s"
+                  % (name or browse_id, len(pages), len(rows), len(chips),
+                     ", ".join("%s (%d)" % (r.title, len(r.items))
+                               for r in rows) or "nothing"))
+    if not rows and not chips:
+        kodiutils.log("%s shape: %s" % (name or browse_id,
+                                        epg.describe(first_page)))
+        _add_items(epg.parse_items(first_page))
+        return
+
+    _list_sections(rows, "browse_section",
+                   extra={"browse_id": browse_id, "params": params})
+    # Listed with add_dir rather than through _add_items: a genre is not a
+    # show, and the context menu there offers to record one.
+    for chip in chips:
+        add_dir(chip.title, art=chip.art,
+                plot="Narrow %s to %s." % (name or "this category", chip.title),
+                action="browse", browse_id=chip.browse_id,
+                name="%s: %s" % (name, chip.title) if name else chip.title,
+                params=chip.params)
+    finish("videos")
+
+
+def route_browse_section(browse_id, name, params=""):
+    """One tab of a network page, or one row of a category.
+
+    The page is asked for again rather than the token being carried in the
+    url. That is how Home's and the Library's rows already work, and the
+    token is the part most likely to go stale: a tab reopened from a
+    bookmarked url an hour later should get this hour's schedule.
+    """
+    client = _client()
+    if not client:
+        finish()
+        return
+    if browse_id == api.CHIPS_ID:
+        _first, pages, error = _whole_page(
+            client, lambda: client.browse(browse_id, params or None))
+        sections = _sections_of(pages)
+        if not sections:
+            for page in pages:
+                sections.extend(epg.any_rows(page))
+    else:
+        try:
+            response = client.browse(browse_id, params or None)
+        except (auth.AuthError, api.ApiError) as exc:
+            error, sections = str(exc), []
+        else:
+            error, sections = "", epg.browse_tabs(response)
+    if error:
+        kodiutils.ok_dialog(error, "Could not open %s" % (name or browse_id))
+        finish()
+        return
+
+    section = next((s for s in sections if s.title == name), None)
+    if section is None:
+        kodiutils.notify("%s is no longer on this page" % (name or "That row"))
+        finish()
+        return
+    items = _follow_pages(client, section)
     if not items:
         kodiutils.notify("Nothing playable under %s" % (name or browse_id))
     _add_items(items)
@@ -745,10 +866,14 @@ def _sections_of(pages):
 
 def _list_sections(sections, action, extra=None):
     for section in sections:
+        # A network's tabs arrive empty with a token each, so "0 item(s)"
+        # would be wrong about all but the one that is on the air.
+        plot = ("%d item(s)" % len(section.items) if section.items
+                else "Fetched when you open it.")
         add_dir(section.title,
                 art=section.items[0].art if section.items else "",
-                plot="%d item(s)" % len(section.items),
-                action=action, name=section.title)
+                plot=plot, action=action, name=section.title,
+                **(extra or {}))
     return bool(sections)
 
 
@@ -1096,6 +1221,10 @@ def main():
     elif action == "browse":
         route_browse(params.get("browse_id", ""), params.get("name", ""),
                      params.get("params", ""))
+        return
+    elif action == "browse_section":
+        route_browse_section(params.get("browse_id", ""),
+                             params.get("name", ""), params.get("params", ""))
         return
     elif action == "dvr":
         # RunPlugin, not a directory: nothing to draw, and the listing the

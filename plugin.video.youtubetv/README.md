@@ -16,8 +16,10 @@ not document. See [Status](#status).
 * **Library** -- recordings, purchases and scheduled recordings, with the
   account's own filters (Shows, Movies, Sports, Events, Purchased) as folders
   and everything listed together at the top
-* **Networks** -- every network the account can watch, and YouTube TV's own
-  Sports, Shows, Movies, News and Family categories, each a folder
+* **Networks** -- every network the account can watch, each opening on its
+  own tabs (LIVE, SERIES, MOVIES, ORIGINALS -- ABC has eight), and YouTube
+  TV's own Sports, Shows, Movies, News and Family categories, each a page of
+  rows under its fifteen genre chips
 * **Recording** -- record or stop recording a series from the context menu on
   any show, in the Library, in search results, or on any programme in a
   channel's schedule
@@ -212,9 +214,13 @@ the one that works.
 
 **One browse id is not always one page.** The Browse tab's five category
 chips all navigate to `FEunplugged_chips` and name which category they mean
-only in `params`, so a folder carries its params and the reader keys its
-dedupe on the pair. Network tiles carry no params and open as ordinary show
-pages.
+only in `params` -- as do the fifteen genre chips inside each category. A
+folder carries its params and the reader keys its dedupe on the pair.
+
+**A network page is tabs, and only the selected one arrives.** The other
+seven are a continuation token apiece, which is why a network first opened
+on what was on now and nothing else. Tabs are listed as folders and their
+tokens spent when one is opened.
 
 **Home and Library are pages of rows.** Neither is asked for by browse id --
 the web client wraps the id in a continuation token and sends that, so the

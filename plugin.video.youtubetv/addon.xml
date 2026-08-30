@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.24" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.25" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,18 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.25 - A network is tabs, and a category is rows
+- A network page opened on what was on now and nothing else, because that
+  is all it ships: ABC is eight tabs -- LIVE, SERIES, DRAMA, COMEDY, NEWS,
+  REALITY, DAYTIME, LATE NIGHT -- and the seven that are not on screen
+  carry one continuation token each. The tabs are listed as folders and
+  spent when opened: AMC's give 26 series, 60 films, 23 originals.
+- The five categories now open as their rows -- "Picked for you", "On now
+  &amp; upcoming", "Thriller movies" -- with more rows fetched the way Home's are,
+  and the fifteen genre chips under them listed as folders of their own.
+- No longer offers to record a network or a genre. The DVR takes a show's
+  id, and neither of those is a show.
+
 2026.8.31.24 - Networks
 - A Networks folder: every network the account can watch -- 256 of them,
   against 147 stations in the guide, because a network is a brand and not a
