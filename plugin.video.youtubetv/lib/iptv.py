@@ -188,10 +188,19 @@ class IPTVManager(object):
                     entry["description"] = airing.description
                 if airing.art:
                     entry["image"] = airing.art
-                if airing.video_id:
-                    # Lets the guide play a programme directly. Only what is
-                    # on now will actually resolve -- catch-up is a separate
-                    # entitlement -- but the url is right either way.
+                if airing.video_id and airing.on_air:
+                    # Only the programme on the air gets a url, because
+                    # that is the only one that plays: a future airing
+                    # cannot, and catch-up on a past one is a separate
+                    # entitlement this add-on has not established.
+                    #
+                    # Kodi draws a marker on every programme it is given a
+                    # stream for. That used to be honest by accident --
+                    # before the side-sheet id was read, the only airings
+                    # with an id at all were the 143 on the air. Reading
+                    # the rest gave all 8050 a url and marked a whole
+                    # week's schedule playable. on_air is the guide's own
+                    # statement of which one is live, so it decides here.
                     entry["stream"] = ("plugin://plugin.video.youtubetv/"
                                        "?action=play&video_id=%s"
                                        % quote(airing.video_id))
@@ -199,6 +208,9 @@ class IPTVManager(object):
             if programmes:
                 guide[station.station_id] = programmes
                 airings += len(programmes)
-        kodiutils.log("iptv manager: offering %d airing(s) across %d channel(s)"
-                      % (airings, len(guide)))
+        playable = sum(1 for entries in guide.values()
+                       for entry in entries if "stream" in entry)
+        kodiutils.log("iptv manager: offering %d airing(s) across %d "
+                      "channel(s), %d of them playable now"
+                      % (airings, len(guide), playable))
         return {"version": 1, "epg": guide}
