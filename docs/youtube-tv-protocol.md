@@ -483,6 +483,37 @@ neither is needed to read a guide: `update_live_guide_order`, which writes a
 custom order as a list of `{externalId, settingsGroup}`, and
 `update_station_visibility`, which hides one station by id.
 
+### A crash during install leaves the add-on unloadable
+
+Recorded because two changes were made at once and the conclusion is
+therefore weaker than it looks. Kodi began segfaulting at startup on 21.3
+*and* 22.0-BETA1 with 2026.8.31.17 installed:
+
+    /app/bin/kodi: line 217: 7 Segmentation fault (core dumped) ${KODI_BINARY}
+
+No stack trace: gdb is not installed on that box, so all four crash logs end
+at the last line written before the process died. The shipped zip was intact,
+both XML files parsed, the .po was well-formed and every module compiled --
+so nothing static explained it, and a pure-Python add-on segfaulting Kodi is
+odd on its face.
+
+What the timeline says: 31.15 ran for sixteen minutes, played a film and
+listed the Library, then died at 20:31:01 **during the install of the next
+build**, with the repository scan still running. Every start after that
+crashed. Deleting the add-on folder and installing cleanly stopped it.
+
+That fits everything, and the settings.xml suspicion below does not fit the
+part where 31.15 was already installed and working. The likeliest account is
+a half-written add-on folder from the interrupted install, which Kodi loads
+before almost anything else.
+
+The settings change was kept regardless, on its own merits: the Channel order
+setting was the only list in settings.xml written as `type="string"` with an
+empty option value and `allowempty` beside `<options>`, where `max_height`,
+`audio_itag` and `sabr_floor` are integers with plain numeric values. It is an
+integer now. Whether that ever mattered is **not established** -- the folder
+was deleted in the same step.
+
 ### The PVR guide is IPTV Manager's copy, not this addon's
 
 The Kodi TV section's guide is populated by whatever consumes
