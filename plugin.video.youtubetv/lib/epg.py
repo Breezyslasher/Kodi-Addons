@@ -1306,6 +1306,17 @@ def browse_tabs(response, least=2):
                 # continuations fetch more of one shelf.
                 token = page_continuation(content) or ""
                 items = parse_items(content)
+                if not items and not token:
+                    # A content this could not read at all. A tab holding
+                    # no items holds no shelves either, so any continuation
+                    # in it is the tab's own, whatever shape it came in --
+                    # and the TV client's is a different shape. Adult Swim
+                    # answered with four tabs, every one of them carrying a
+                    # content, and the two that are not on screen came back
+                    # with neither an item nor a nextContinuationData in it
+                    # (2026-08-29 23:52). Most of InnerTube has moved to
+                    # continuationCommand; continuation_token knows both.
+                    token = continuation_token(content) or ""
                 browse_id = params = ""
             else:
                 # A tab carrying no content at all cannot be hiding a

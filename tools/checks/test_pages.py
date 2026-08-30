@@ -739,6 +739,36 @@ check("a tab that HAS content still reads its token from its own list",
       [t.token for t in epg.browse_tabs(NETWORK_PAGE)],
       ["", "SERIES-TOKEN", "LATE-TOKEN"])
 
+# The TV client defers a tab in the shape most of InnerTube has moved to.
+# Adult Swim answered Kodi with four tabs, every one carrying a content, and
+# the two not on screen held neither an item nor a nextContinuationData
+# (2026-08-29 23:52) -- so they were dropped and the network opened on what
+# was on now. A tab holding no items holds no shelves either, so any
+# continuation in such a content is that tab's own.
+MODERN_TABS = {"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [
+    {"tabRenderer": {"title": "Live", "selected": True,
+                     "content": {"sectionListRenderer": {"contents": [
+                         {"shelfRenderer": {
+                             "title": {"runs": [{"text": "On now"}]},
+                             "content": {"horizontalListRenderer": {"items": [
+                                 {"unpluggedVideoRenderer": {
+                                     "title": {"runs": [{"text": "Smiling Friends"}]},
+                                     "navigationEndpoint": {"watchEndpoint": {
+                                         "videoId": "NOWVIDEOID1"}}}}]}},
+                             "continuations": [{"nextContinuationData": {
+                                 "continuation": "MORE-OF-THIS-SHELF"}}]}}]}}}},
+    {"tabRenderer": {"title": "Series", "content": {"sectionListRenderer": {
+        "contents": [{"continuationItemRenderer": {"continuationEndpoint": {
+            "continuationCommand": {"token": "SERIES-COMMAND-TOKEN"}}}}]}}}},
+]}}}
+
+modern = epg.browse_tabs(MODERN_TABS)
+check("a tab deferred as a continuationCommand is still a tab",
+      [(t.title, len(t.items), t.token) for t in modern],
+      [("Live", 1, ""), ("Series", 0, "SERIES-COMMAND-TOKEN")])
+check("and the tab that has items still ignores its shelf's token",
+      modern[0].token, "")
+
 # -- a category is rows, under chips that name no row ----------------------
 # The Movies category (2026-08-29 23:26). Its genre chips sit in a shelf
 # with no title, which page_shelves drops -- rightly, a folder called

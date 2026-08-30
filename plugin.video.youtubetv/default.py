@@ -741,7 +741,7 @@ def route_category(browse_id, name, params):
     finish("videos")
 
 
-def route_browse_section(browse_id, name, params=""):
+def route_browse_section(browse_id, name, params="", token=""):
     """One tab of a network page, or one row of a category.
 
     The page is asked for again rather than the token being carried in the
@@ -773,6 +773,13 @@ def route_browse_section(browse_id, name, params=""):
         return
 
     section = next((s for s in sections if s.title == name), None)
+    if section is None and token:
+        # The page came back reshuffled and this row is not in it. The token
+        # picked up when the row was drawn still names the row, so spend it
+        # rather than telling the user a row they can see has gone.
+        kodiutils.log("%s: not on the page this time; following its own token"
+                      % (name or "that row"))
+        section = epg.Section(name, [], token)
     if section is None:
         kodiutils.notify("%s is no longer on this page" % (name or "That row"))
         finish()
@@ -812,7 +819,13 @@ def _follow_pages(client, section, limit=10):
                           % (section.title, page, exc))
             break
         added = 0
-        for item in epg.parse_items(response):
+        # This page can defer shelves the way a show page does -- and show
+        # pages are now reached through a tab, not directly: Brewster's
+        # Millions answered with "Watch now" and "Suggested" rather than a
+        # flat list. Expanding here is what keeps a season list from being
+        # ten empty shelves once it sits behind one.
+        for item in _expand_sections(client, response,
+                                     epg.parse_items(response)):
             key = (item.video_id or item.browse_id, item.params, item.start_ms)
             if key in seen:
                 continue
@@ -879,6 +892,15 @@ def _sections_of(pages):
 
 
 def _list_sections(sections, action, extra=None):
+    """Rows as folders, each carrying its own token as well as its name.
+
+    The name alone is not enough to find a row again. A category is not the
+    same page twice: two requests for Movies a moment apart came back with
+    "Drama movies" and then "Drama thriller movies", and with 18 and then 17
+    fantasy comedies (2026-08-29 23:49). Reopening a row by name means
+    reopening a page that has since been reshuffled, and the row that was
+    selected may simply not be in it.
+    """
     for section in sections:
         # A network's tabs arrive empty with a token each, so "0 item(s)"
         # would be wrong about all but the one that is on the air.
@@ -887,7 +909,7 @@ def _list_sections(sections, action, extra=None):
         add_dir(section.title,
                 art=section.items[0].art if section.items else "",
                 plot=plot, action=action, name=section.title,
-                **(extra or {}))
+                token=section.token, **(extra or {}))
     return bool(sections)
 
 
@@ -935,7 +957,7 @@ def route_home():
     _add_items(epg.parse_items(first_page))
 
 
-def route_home_row(name):
+def route_home_row(name, token=""):
     """One row of the front page, in full."""
     client = _client()
     if not client:
@@ -951,6 +973,8 @@ def route_home_row(name):
         for page in pages:
             sections.extend(epg.any_rows(page))
     section = next((s for s in sections if s.title == name), None)
+    if section is None and token:
+        section = epg.Section(name, [], token)
     if section is None:
         kodiutils.notify("%s is no longer on the front page"
                          % (name or "That row"))
@@ -1006,7 +1030,7 @@ def _networks_sections(pages):
     return rows
 
 
-def route_networks_row(name):
+def route_networks_row(name, token=""):
     """One row of the Browse tab, in full."""
     client = _client()
     if not client:
@@ -1019,6 +1043,8 @@ def route_networks_row(name):
         return
     section = next((s for s in _networks_sections(pages) if s.title == name),
                    None)
+    if section is None and token:
+        section = epg.Section(name, [], token)
     if section is None:
         kodiutils.notify("%s is no longer on the Browse tab"
                          % (name or "That row"))
@@ -1101,7 +1127,7 @@ def route_library():
     _add_items(items)
 
 
-def route_library_section(name):
+def route_library_section(name, token=""):
     """One row or one filter of the library, in full."""
     client = _client()
     if not client:
@@ -1116,6 +1142,8 @@ def route_library_section(name):
 
     shelves, filters, _known = _library_sections(response)
     section = next((s for s in shelves + filters if s.title == name), None)
+    if section is None and token:
+        section = epg.Section(name, [], token)
     if section is None:
         kodiutils.notify("%s is no longer in your library"
                          % (name or "That row"))
@@ -1215,13 +1243,14 @@ def main():
         route_home()
         return
     elif action == "home_row":
-        route_home_row(params.get("name", ""))
+        route_home_row(params.get("name", ""), params.get("token", ""))
         return
     elif action == "library":
         route_library()
         return
     elif action == "library_section":
-        route_library_section(params.get("name", ""))
+        route_library_section(params.get("name", ""),
+                              params.get("token", ""))
         return
     elif action == "search":
         route_search()
@@ -1230,7 +1259,7 @@ def main():
         route_networks()
         return
     elif action == "networks_row":
-        route_networks_row(params.get("name", ""))
+        route_networks_row(params.get("name", ""), params.get("token", ""))
         return
     elif action == "browse":
         route_browse(params.get("browse_id", ""), params.get("name", ""),
@@ -1238,7 +1267,8 @@ def main():
         return
     elif action == "browse_section":
         route_browse_section(params.get("browse_id", ""),
-                             params.get("name", ""), params.get("params", ""))
+                             params.get("name", ""), params.get("params", ""),
+                             params.get("token", ""))
         return
     elif action == "dvr":
         # RunPlugin, not a directory: nothing to draw, and the listing the
