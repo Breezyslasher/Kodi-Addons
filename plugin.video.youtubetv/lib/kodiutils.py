@@ -97,6 +97,48 @@ def input_numeric(heading):
     return result or None
 
 
+_PLATFORM = [""]
+
+
+def platform():
+    """Kodi's build, the platform it is on, and the ISA version beside it.
+
+    One line, once per session. Every kodi.log this addon has been debugged
+    against so far says "Platform: Linux x86 64-bit", and the decrypter
+    InputStream Adaptive uses is chosen by platform, not by setting: on
+    Android it is src/decrypters/widevineandroid, which is a different file
+    from the one every finding here was made against. Without this line a
+    log cannot say which one ran, and a fix aimed at the wrong one is a
+    round wasted.
+    """
+    if _PLATFORM[0]:
+        return _PLATFORM[0]
+    parts = []
+    for label, info in (("kodi", "System.BuildVersion"),
+                        ("on", "System.OSVersionInfo")):
+        try:
+            said = xbmc.getInfoLabel(info)
+        except Exception:
+            said = ""
+        if said:
+            parts.append("%s %s" % (label, said.replace("\n", " ").strip()))
+    try:
+        isa = xbmcaddon.Addon("inputstream.adaptive").getAddonInfo("version")
+    except Exception:
+        isa = ""
+    parts.append("inputstream.adaptive " + (isa or "not installed"))
+    # Named plainly rather than inferred from the OS string, which is
+    # "Linux" on Android too.
+    try:
+        if xbmc.getCondVisibility("System.Platform.Android"):
+            parts.append("ANDROID -- the widevineandroid decrypter, not the "
+                         "desktop one")
+    except Exception:
+        pass
+    _PLATFORM[0] = "; ".join(parts)
+    return _PLATFORM[0]
+
+
 def profile_dir():
     """The addon's data directory, created if absent.
 
