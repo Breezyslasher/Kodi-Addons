@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.25" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.26" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,15 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.26 - The tabs a network page did not show
+- Adult Swim came back with two tabs here and four in a browser. A tab that
+  arrives carrying no content at all was being dropped, so one is now read
+  by whatever it does carry: a bare continuation, or a browse endpoint
+  naming a page of its own, which is opened as that page.
+- Every tab on a network page is logged now, read or not. If the two that
+  are missing were never sent rather than dropped, that is a different fix
+  -- a different request -- and only the log says which.
+
 2026.8.31.25 - A network is tabs, and a category is rows
 - A network page opened on what was on now and nothing else, because that
   is all it ships: ABC is eight tabs -- LIVE, SERIES, DRAMA, COMEDY, NEWS,

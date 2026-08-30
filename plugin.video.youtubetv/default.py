@@ -675,6 +675,14 @@ def route_browse(browse_id, name, params=""):
                       % (name or browse_id, len(tabs),
                          ", ".join("%s (%d)" % (t.title, len(t.items))
                                    for t in tabs)))
+        # Every tab the page carried, read or not, and logged even when all
+        # of them read. Adult Swim answered the web client with four tabs
+        # and this one with two, and the count alone cannot say whether the
+        # other two were dropped here or never sent -- which is the
+        # difference between a reader to fix and a request to change.
+        kodiutils.log("%s: tabs on the page -- %s"
+                      % (name or browse_id,
+                         "; ".join(epg.tab_shapes(response))))
         _list_sections(tabs, "browse_section",
                        extra={"browse_id": browse_id, "params": params})
         finish()
@@ -768,6 +776,12 @@ def route_browse_section(browse_id, name, params=""):
     if section is None:
         kodiutils.notify("%s is no longer on this page" % (name or "That row"))
         finish()
+        return
+    # A tab may name a page of its own rather than a continuation. Opening
+    # it is opening that page, so hand it back to route_browse, which knows
+    # what to do with rows, tabs and a flat list alike.
+    if section.browse_id and not section.items and not section.token:
+        route_browse(section.browse_id, name, section.params)
         return
     items = _follow_pages(client, section)
     if not items:

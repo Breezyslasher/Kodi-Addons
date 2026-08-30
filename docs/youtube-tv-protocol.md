@@ -1122,6 +1122,17 @@ And the selected tab's own shelves carry continuations that fetch more of
 one shelf -- so the tab's token must be read from the tab's own section
 list, the same care `page_continuation` takes on Home.
 
+**The TV client sends fewer tabs.** Adult Swim answered a browser with four
+(LIVE, UPCOMING, ADULT SWIM, SERIES) and answered Kodi with two, titled
+`Live` and `Upcoming` rather than in caps -- the 2026-08-29 23:46 log. Two
+things would explain that and they need different fixes: the page really
+carries two, or it carries four and two arrive in a shape with no `content`
+key, which the reader written from the web capture drops. So a tab with no
+content is now read by whatever it does carry -- a bare `continuation`, or
+a `browseEndpoint` naming a page of its own, which is opened as that page --
+and `tab_shapes` logs the keys of *every* tab on the page, read or not. The
+count alone cannot tell a reader to fix from a request to change.
+
 ### A category is rows under chips — `browseId: FEunplugged_chips`
 
 ```json

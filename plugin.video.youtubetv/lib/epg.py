@@ -925,12 +925,17 @@ def parse_search(response):
 class Section(object):
     """A named row of a page: what it holds, and how to ask for more."""
 
-    __slots__ = ("title", "items", "token")
+    __slots__ = ("title", "items", "token", "browse_id", "params")
 
-    def __init__(self, title, items, token=""):
+    def __init__(self, title, items, token="", browse_id="", params=""):
         self.title = title
         self.items = items
         self.token = token
+        # A row asks for more with a token. A *tab* need not: the TV client
+        # may hand one a page of its own to go and fetch instead, so a
+        # section can name a destination as well as a continuation.
+        self.browse_id = browse_id
+        self.params = params
 
 
 def _section_list(response):
@@ -1292,17 +1297,72 @@ def browse_tabs(response, least=2):
             if not isinstance(renderer, dict):
                 continue
             title = _tab_title(renderer)
-            content = renderer.get("content")
-            if not title or not isinstance(content, dict):
+            if not title:
                 continue
-            token = page_continuation(content) or ""
-            items = parse_items(content)
-            # A tab with neither is a heading for nothing.
-            if items or token:
-                tabs.append(Section(title, items, token))
+            content = renderer.get("content")
+            if isinstance(content, dict):
+                # Read from the tab's own section list, not from anywhere
+                # below it: the selected tab holds real shelves, and their
+                # continuations fetch more of one shelf.
+                token = page_continuation(content) or ""
+                items = parse_items(content)
+                browse_id = params = ""
+            else:
+                # A tab carrying no content at all cannot be hiding a
+                # shelf's token, so here the whole tab is fair to search --
+                # and it may name a page rather than a continuation. The web
+                # client defers with a token; a tab that defers with a
+                # browse id is read the same way from the caller's side.
+                items = []
+                found = first(renderer, "continuation")
+                token = found if isinstance(found, str) else ""
+                # Searched over the whole tab, and only here. Elsewhere an
+                # endpoint is looked for under the handful of keys a tile
+                # keeps its destination under, because a tile's menu holds
+                # endpoints for other things entirely. A tab with no content
+                # has no menu and no shelves: whatever browseEndpoint is in
+                # it is the tab's own, whatever key it arrived under.
+                endpoint = first(renderer, "browseEndpoint")
+                if not isinstance(endpoint, dict):
+                    endpoint = {}
+                browse_id = endpoint.get("browseId") or ""
+                params = endpoint.get("params") or ""
+                if not isinstance(browse_id, str):
+                    browse_id = ""
+                if not isinstance(params, str):
+                    params = ""
+            # A tab with none of the three is a heading for nothing.
+            if items or token or browse_id:
+                tabs.append(Section(title, items, token, browse_id, params))
         if len(tabs) >= least:
             return tabs
     return []
+
+
+def tab_shapes(response, limit=12):
+    """What every tab on a page carries, named, for the log.
+
+    browse_tabs drops a tab it can find nothing in, and a count cannot say
+    whether a page had two tabs or had six and four were unreadable. Adult
+    Swim answered the web client with four and the TV client with two, and
+    only the keys the dropped ones carry say which of those two things
+    happened.
+    """
+    out = []
+    for block in walk(response, "tabs"):
+        if not isinstance(block, list):
+            continue
+        for entry in block:
+            if not isinstance(entry, dict) or len(out) >= limit:
+                continue
+            renderer = entry.get("tabRenderer")
+            if isinstance(renderer, dict):
+                out.append("%s carries [%s]"
+                           % (_tab_title(renderer) or "(unnamed)",
+                              ", ".join(sorted(renderer))))
+        if out:
+            return out
+    return out
 
 
 def describe(response, limit=40):
