@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.71" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.72" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,16 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.72 - Seasons sort by their number even alphabetically
+- A folder keeps YouTube TV's own label -- "Season 1", "Season 40" -- and
+  sorts on a padded copy of it, "Season 0001" and "Season 0040". So a show
+  with forty seasons stays in order even if a view is switched to
+  alphabetical, where sorting on the text puts Season 10 before Season 2.
+- Renaming the folder to "Season 01" would have worked around Kodi's sort
+  by changing the service's own words. The sort title does the same job
+  without touching what is shown.
+- A label with no number in it, like "Extras", sorts as itself.
+
 2026.8.31.71 - Listings keep the order they were built in
 - Nothing here ever set a sort method, and that does not mean "unsorted":
   Kodi applies whatever sort was last used for that content type. A show

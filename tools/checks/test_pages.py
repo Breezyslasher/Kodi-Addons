@@ -1459,6 +1459,20 @@ check("and offers alphabetical after it, not instead",
       xbmcplugin.SORT_METHOD_LABEL in xbmcplugin.SORTS, True)
 xbmcplugin.SORTS[:] = []
 
+# The folder keeps YouTube TV's own label and sorts on a padded copy, so a
+# show with forty seasons is in order even if a view is switched to
+# alphabetical. Renaming the folder "Season 01" to dodge that would be
+# changing the service's words to work around Kodi's sort.
+check("a season sorts on its number, not on its text",
+      [default._sort_label(l) for l in ("Season 1", "Season 10", "Season 40")],
+      ["Season 0001", "Season 0010", "Season 0040"])
+check("a label with no number in it sorts as itself",
+      default._sort_label("Extras"), "Extras")
+check("so alphabetical puts them in season order",
+      sorted(["Season 1", "Season 10", "Season 2", "Season 40"],
+             key=default._sort_label),
+      ["Season 1", "Season 2", "Season 10", "Season 40"])
+
 # -- a date parse that survives Kodi tearing its modules down --------------
 # The player hides the n transform's array indices behind dates with
 # fractional-hour offsets: new Date("1969-12-31T17:30:49.000-06:30")/1E3 is

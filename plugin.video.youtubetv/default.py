@@ -20,8 +20,38 @@ def url(**kwargs):
     return "%s?%s" % (BASE_URL, urlencode(kwargs))
 
 
-def add_dir(label, art=None, plot=None, fanart=None, **params):
+_NUMBERED = re.compile(r"^(.*?)(\d+)(.*)$")
+
+
+def _sort_label(label):
+    """A label with its number zero-padded, for sorting only.
+
+    Shown as YouTube TV writes it -- "Season 1", "Season 40" -- and sorted
+    as "Season 0001" and "Season 0040", so a show with forty seasons is
+    still in order if a view is switched to alphabetical. Sorting on the
+    displayed label puts Season 10 before Season 2, and renaming the folder
+    to "Season 01" to dodge that would be changing the service's own words
+    to work around Kodi's sort.
+
+    A label with no number in it -- "Extras" -- sorts as itself.
+    """
+    found = _NUMBERED.match(label or "")
+    if not found:
+        return label or ""
+    return "%s%04d%s" % (found.group(1), int(found.group(2)),
+                         found.group(3))
+
+
+def add_dir(label, art=None, plot=None, fanart=None, sort_label=None,
+            **params):
     item = xbmcgui.ListItem(label=label)
+    if sort_label:
+        setter = getattr(item.getVideoInfoTag(), "setSortTitle", None)
+        if setter:
+            try:
+                setter(sort_label)
+            except Exception as exc:
+                kodiutils.log("could not set a sort title: %s" % exc)
     if art or fanart:
         shown = {}
         if art:
@@ -1622,6 +1652,7 @@ def _list_sections(sections, action, extra=None):
         add_dir(section.title,
                 art=section.items[0].art if section.items else "",
                 plot=plot, action=action, name=section.title,
+                sort_label=_sort_label(section.title),
                 token=section.token, **(extra or {}))
     return bool(sections)
 
