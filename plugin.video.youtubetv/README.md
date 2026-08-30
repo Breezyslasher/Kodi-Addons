@@ -219,6 +219,23 @@ arithmetic that pins them down.
 It carries `HEARTBEAT_CHECK_TYPE_YPC`, the entitlement check, so the loop runs
 in the service for as long as a stream is playing.
 
+## If Kodi will not start
+
+Delete the add-on's folder and Kodi comes up clean:
+
+    rm -rf ~/.kodi/addons/plugin.video.youtubetv
+    # Flatpak: ~/.var/app/tv.kodi.Kodi/data/addons/plugin.video.youtubetv
+
+Then install the zip again. The signed-in session is not in that folder --
+it lives under `userdata/addon_data/plugin.video.youtubetv` -- so this costs
+nothing but the reinstall.
+
+This is worth knowing because of how it happened once: Kodi crashed *during*
+an add-on install, and every start after that segfaulted, on Kodi 21.3 and
+22.0-BETA1 alike, before any of the new code could run. A crash mid-install
+can leave the add-on folder half-written, and Kodi loads add-ons before it
+loads much else. Deleting and reinstalling fixed it.
+
 ## Caveats
 
 * Every endpoint here is private and undocumented. Google changes them without
