@@ -929,6 +929,25 @@ check("and a series is still a series",
 check("contentType still wins where the tile has one",
       tiles[0].content_type, "MOVIE")
 
+# Search answers with contentType on the same renderer -- the log named the
+# field: unpluggedBrowseItemRenderer x14 carries [contentType, ...] -- and
+# not one of the 14 read as a film. So the vocabulary is not identical
+# everywhere, and the kind is matched on the word rather than on the whole
+# string. A value with no word in it is handed back whole, so the log names
+# it rather than swallowing it.
+def _kind_of(value):
+    return epg.parse_items({"unpluggedBrowseItemRenderer": {
+        "contentType": value,
+        "primaryText": {"runs": [{"text": "X"}]},
+        "navigationEndpoint": {"browseEndpoint": {"browseId": "UC1"}}}})[0].content_type
+
+check("a longer name for the same kind still reads as that kind",
+      [_kind_of("MOVIE"), _kind_of("UNPLUGGED_CONTENT_TYPE_MOVIE"),
+       _kind_of("CONTENT_TYPE_SHOW"), _kind_of("EVENT")],
+      ["MOVIE", "MOVIE", "SHOW", "EVENT"])
+check("and a kind with no word this knows is reported, not dropped",
+      _kind_of("SPORTS_TEAM"), "SPORTS_TEAM")
+
 # The tile's menu carries the DVR params outright. They are not read from
 # there -- api.dvr_params rebuilds them -- but a capture taken two days
 # after the one that builder was written from agreeing byte for byte is

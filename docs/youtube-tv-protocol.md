@@ -1251,10 +1251,30 @@ after the one that builder was written from is the only independent
 confirmation of it there is, so it is worth having even though the params
 are not read from here.
 
-`contentType` is not on every listing. What search answers with has none,
-so a film reached that way was drawn as a folder. The toast text is the
-second name for the same thing and it is written per kind, so it stands in
-where the field is absent.
+### A title's page is four tabs
+
+A film or show opened from a listing answers with `Watch now`, `About`,
+`Lead cast` and `Suggested` -- not the two a network page has. Only the
+first and last are somewhere to go:
+
+| Tab | Holds |
+| --- | --- |
+| Watch now | the film, and any recording of it: John Wick 3 gave the on-demand copy and an AMC airing from four weeks earlier, in that order |
+| About | `unpluggedContentDetailsAboutFieldsRenderer` -- a description and attributes, no items |
+| Lead cast | `unpluggedPersonRenderer` x22, each a searchEndpoint for that name |
+| Suggested | 39 titles for Harry Potter and the Order of the Phoenix, 26 for John Wick Chapter 2 |
+
+So a title's page always reads as two tabs and drops two, by design, and
+that is not a shape worth keeping a copy of.
+
+`contentType` is not the same everywhere. Search answers with the field on
+the same renderer -- `unpluggedBrowseItemRenderer x14 carries [contentType,
+navigationEndpoint, primaryText, style, thumbnail, trackingParams]` -- and
+not one of those 14 read as a film against the literal "MOVIE" a category
+tile uses. So the kind is matched on the word rather than the whole string,
+and a value carrying no word this knows is handed back whole so a log names
+it. The DVR toast, written per kind, stands in where the field is absent
+altogether.
 
 What is *not* there is the state. `isToggled` appears on none of the 2007
 toggle renderers across every capture, so the tile still cannot say whether
