@@ -363,13 +363,18 @@ def continuation_token(response):
 class Item(object):
     """Something the UI can show: a folder to browse, or a video to play."""
 
-    __slots__ = ("video_id", "browse_id", "title", "subtitle", "art",
-                 "start_ms", "end_ms")
+    __slots__ = ("video_id", "browse_id", "params", "title", "subtitle",
+                 "art", "start_ms", "end_ms")
 
     def __init__(self, video_id="", browse_id="", title="", subtitle="",
-                 art="", start_ms=0, end_ms=0):
+                 art="", start_ms=0, end_ms=0, params=""):
         self.video_id = video_id
         self.browse_id = browse_id
+        # What the browse endpoint asks for *within* that page. The Browse
+        # tab's five category chips are one browseId, FEunplugged_chips,
+        # told apart only by this -- so a reader that drops it turns Sports,
+        # Shows, Movies, News and Family into five copies of one folder.
+        self.params = params
         self.title = title
         self.subtitle = subtitle
         self.art = art
@@ -400,7 +405,20 @@ _ENDPOINT_CARRIERS = ("navigationEndpoint", "onSelectCommand", "tapCommand",
 
 
 def _endpoint_id(node, endpoint, key):
-    """The id under a named endpoint, searching only this renderer.
+    """The id under a named endpoint, or "" -- see _endpoint_of."""
+    block = _endpoint_of(node, endpoint, key)
+    return block.get(key, "") if block else ""
+
+
+def _endpoint_params(node, endpoint, key):
+    """The ``params`` of whichever endpoint answered _endpoint_id."""
+    block = _endpoint_of(node, endpoint, key)
+    found = block.get("params") if block else None
+    return found if isinstance(found, str) else ""
+
+
+def _endpoint_of(node, endpoint, key):
+    """The endpoint block naming ``key``, searching only this renderer.
 
     The web client puts it under navigationEndpoint. The TV client answered
     the Library with nine correctly named tabs holding nothing at all --
@@ -413,10 +431,10 @@ def _endpoint_id(node, endpoint, key):
             continue
         found = block.get(endpoint)
         if isinstance(found, dict) and found.get(key):
-            return found[key]
+            return found
     block = node.get(endpoint)
     if isinstance(block, dict) and block.get(key):
-        return block[key]
+        return block
 
     # Nothing under the name this addon knows. Take any endpoint that names
     # the id instead, rather than guess at another name.
@@ -442,8 +460,8 @@ def _endpoint_id(node, endpoint, key):
         for name, value in block.items():
             if (name.endswith("Endpoint") and isinstance(value, dict)
                     and value.get(key)):
-                return value[key]
-    return ""
+                return value
+    return None
 
 
 def _varint(data, at):
@@ -735,17 +753,25 @@ def parse_items(response):
             or _sidesheet_browse_id(renderer))
         if not video_id and not browse_id:
             return
+        params = ("" if video_id
+                  else _endpoint_params(renderer, "browseEndpoint", "browseId"))
         # Keyed by destination *and* start time. Destination alone collapsed
         # two Phineas and Ferb recordings an hour apart into one row, because
         # both point at the same show page; two airings are two rows. Nothing
         # without a start time is affected, which is every show page.
-        key = (video_id or browse_id, _seconds_ms(renderer, "startTimeSeconds"))
+        #
+        # The params are part of the destination for the same reason: the
+        # Browse tab's five category chips share one browseId and differ
+        # only there, and keying without them left one chip of five.
+        key = (video_id or browse_id, params,
+               _seconds_ms(renderer, "startTimeSeconds"))
         if key in seen:
             return
         seen.add(key)
         items.append(Item(
             video_id=video_id,
             browse_id=browse_id,
+            params=params,
             title=title,
             subtitle=_subtitle_of(renderer),
             art=thumbnail(renderer.get("thumbnail") or {}, prefer_width=1280),
@@ -1163,6 +1189,34 @@ def any_rows(response, least=2):
             continue
         rows.append(Section(title, items, token if isinstance(token, str) else ""))
     return rows
+
+
+_MESSAGE_KEYS = ("responseText", "notificationText", "messageText",
+                 "alertText", "title", "text")
+
+
+def action_text(response, default=""):
+    """What a mutation's ``actions`` block asks the client to say.
+
+    Both DVR endpoints answer with ``actions`` and ``responseContext`` and
+    nothing else -- seen 2026-08-29, for a start and a stop of the same show
+    -- so a message inside that block is the only part of the response that
+    reports what happened. YouTube TV puts its toast there ("Added to your
+    library"), and a refusal reads the same way to ``call``: a 200 with a
+    different sentence in it.
+
+    Which renderer holds it is not established, so the message is searched
+    for by the key names such text arrives under, most specific first.
+    ``text`` comes last because every run in the tree is stored under that
+    name and it would otherwise win over the toast's own field.
+    """
+    for actions in walk(response, "actions"):
+        for key in _MESSAGE_KEYS:
+            for node in walk(actions, key):
+                said = (node if isinstance(node, str) else text(node)).strip()
+                if said:
+                    return said
+    return default
 
 
 def describe(response, limit=40):

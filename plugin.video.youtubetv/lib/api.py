@@ -26,7 +26,7 @@ import requests
 
 from urllib.parse import quote, urlparse, urlunparse
 
-from . import auth, kodiutils
+from . import auth, epg, kodiutils
 
 ORIGIN = "https://tv.youtube.com"
 BASE = ORIGIN + "/youtubei/v1/"
@@ -54,6 +54,16 @@ UA = ("Mozilla/5.0 (X11; Linux x86_64; rv:154.0) "
 PLAYER_PARAMS = "2AEA"
 
 EPG_BROWSE_ID = "FEunplugged_epg"
+
+# The Browse tab: one shelf of category chips (Sports, Shows, Movies, News,
+# Family) over a grid of every network the account can watch -- 256 of them
+# on the 2026-08-29 capture, against 147 stations in the same account's
+# guide, because a network here is a brand and not a channel slot.
+#
+# Unlike the Library and Home this one *is* asked for by browseId, which is
+# what the capture sends, and it answers in the shelfRenderer container the
+# web readers already know.
+BROWSE_ID = "FEunplugged_browse"
 
 # The order the guide comes back in. YouTube TV's own live tab offers five,
 # and the choice rides along as a continuation *beside* the browseId rather
@@ -949,11 +959,18 @@ class Api(object):
     # -- the DVR ----------------------------------------------------------
 
     def start_dvr(self, browse_id):
-        """Add a show to the library, so its airings record."""
+        """Add a show to the library, so its airings record.
+
+        Returns what YouTube TV asks the client to say about it, or "" when
+        the response names nothing.
+        """
         return self._dvr("start_dvr", "startDvrParams", browse_id)
 
     def stop_dvr(self, browse_id):
-        """Remove a show from the library, so it stops recording."""
+        """Remove a show from the library, so it stops recording.
+
+        Returns the same as start_dvr: the service's own message, if any.
+        """
         return self._dvr("stop_dvr", "stopDvrParams", browse_id)
 
     def _dvr(self, endpoint, field, browse_id):
@@ -961,12 +978,29 @@ class Api(object):
             raise ApiError("no show was named to record")
         response = self.call(endpoint, {field: dvr_params(browse_id),
                                         "id": browse_id})
-        # No capture carries a response body for either endpoint, so what
-        # success looks like is not established beyond the 200 that call()
-        # already insists on. Log the shape the first real one returns.
-        kodiutils.log("%s %s -> %s" % (endpoint, browse_id,
-                                       ", ".join(sorted(response)) or "an empty body"))
-        return response
+        # Both endpoints answered with actions and responseContext and
+        # nothing else. The 200 that call() insists on is therefore not the
+        # whole answer -- actions is where this client is told what to show,
+        # and a refusal arrives that way too -- so the message is read out
+        # and handed to the caller instead of the raw body, which holds
+        # nothing else worth having. When no message reads, the renderers
+        # that did come back are logged, which names what to read next.
+        said = epg.action_text(response)
+        if said:
+            kodiutils.log("%s %s -> %s" % (endpoint, browse_id, said))
+        else:
+            shape = ("; ".join(epg.renderer_sample(response, 4))
+                     or ", ".join(sorted(response))
+                     or "an empty body")
+            kodiutils.log("%s %s -> no message; %s"
+                          % (endpoint, browse_id, shape))
+        return said
+
+    # -- pages ------------------------------------------------------------
+
+    def networks(self):
+        """The Browse tab: every network, and the category chips above it."""
+        return self.browse(BROWSE_ID)
 
     def browse(self, browse_id, params=None):
         body = {"browseId": browse_id}

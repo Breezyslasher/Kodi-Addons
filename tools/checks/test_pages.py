@@ -15,7 +15,12 @@ the shape it holds is a trap that a naive reader falls into:
     Library says shelfRenderer/title;
   * the first nextContinuationData in a Home response belongs to the first
     *shelf*, not the page, so "next page" must be read from the section
-    list's own continuations or it fetches more of "Top picks for you".
+    list's own continuations or it fetches more of "Top picks for you";
+  * the Browse tab's five category chips are one browseId, FEunplugged_chips,
+    and differ only in params, so a dedupe keyed on the destination alone
+    reports one category where there are five;
+  * a DVR call reports what it did in an actions block and nowhere else, and
+    the button beside the message is reached before the message is.
 
 Account data is deliberately not committed: these are the structures, with
 the titles and ids replaced.
@@ -569,6 +574,108 @@ check("a window change changes the token",
       == api.epg_order_token(1, 40, 604800000, 1788044400000, 21498000,
                              11454000),
       False)
+
+# -- the Browse tab --------------------------------------------------------
+# Cut down from the 2026-08-29 23:06 capture of FEunplugged_browse, which
+# answered with two shelves: five category chips over a grid of 256
+# networks. The trap is the chips -- all five are browseId
+# FEunplugged_chips and differ only in params, so a reader keyed on the
+# destination alone reports one category where there are five.
+BROWSE_TAB = {
+    "contents": {"sectionListRenderer": {"contents": [
+        {"shelfRenderer": {
+            "title": {"runs": [{"text": "Browse"}]},
+            "content": {"unpluggedHorizontalChipListRenderer": {"items": [
+                {"unpluggedIntentChipRenderer": {
+                    "title": {"runs": [{"text": "Sports"}]},
+                    "navigationEndpoint": {"browseEndpoint": {
+                        "browseId": "FEunplugged_chips",
+                        "params": "8gMGKgQI75wB"}}}},
+                {"unpluggedIntentChipRenderer": {
+                    "title": {"runs": [{"text": "Movies"}]},
+                    "navigationEndpoint": {"browseEndpoint": {
+                        "browseId": "FEunplugged_chips",
+                        "params": "8gMFKgMIoFQ%3D"}}}},
+            ]}}}},
+        {"shelfRenderer": {
+            "title": {"runs": [{"text": "Networks"}]},
+            "content": {"horizontalListRenderer": {"items": [
+                {"unpluggedGridChannelRenderer": {
+                    "title": {"runs": [{"text": "ABC"}]},
+                    "primaryText": {"runs": [{"text": "ABC"}]},
+                    "thumbnail": {"thumbnails": [
+                        {"url": "//yt3.ggpht.com/abc=ns-nd",
+                         "width": 400, "height": 400}]},
+                    "navigationEndpoint": {"browseEndpoint": {
+                        "browseId": "UCNETWORKAAAAAAAAAAAAA1"}}}},
+                {"unpluggedGridChannelRenderer": {
+                    "title": {"runs": [{"text": "AMC"}]},
+                    "primaryText": {"runs": [{"text": "AMC"}]},
+                    "thumbnail": {"thumbnails": [
+                        {"url": "//yt3.ggpht.com/amc=ns-nd",
+                         "width": 400, "height": 400}]},
+                    "navigationEndpoint": {"browseEndpoint": {
+                        "browseId": "UCNETWORKAAAAAAAAAAAAA2"}}}},
+            ]}}}},
+    ]}},
+}
+
+browse_rows = epg.page_shelves(BROWSE_TAB)
+check("the Browse tab reads as its two rows",
+      [(row.title, len(row.items)) for row in browse_rows],
+      [("Browse", 2), ("Networks", 2)])
+check("five categories behind one browseId stay five",
+      [(i.title, i.browse_id, i.params) for i in browse_rows[0].items],
+      [("Sports", "FEunplugged_chips", "8gMGKgQI75wB"),
+       ("Movies", "FEunplugged_chips", "8gMFKgMIoFQ%3D")])
+check("a network names a page and asks for nothing within it",
+      [(i.browse_id, i.params, i.playable) for i in browse_rows[1].items],
+      [("UCNETWORKAAAAAAAAAAAAA1", "", False),
+       ("UCNETWORKAAAAAAAAAAAAA2", "", False)])
+check("and its logo is made absolute",
+      browse_rows[1].items[0].art, "https://yt3.ggpht.com/abc=ns-nd")
+
+# -- what a DVR call answers with ------------------------------------------
+# Both DVR endpoints came back with actions + responseContext and nothing
+# else (2026-08-29). The message inside actions is the only report of what
+# happened -- a refusal is a 200 with a different sentence in it -- so it is
+# read out and shown instead of a message this addon made up.
+TOAST = {
+    "responseContext": {"visitorData": "x"},
+    "actions": [{"openPopupAction": {
+        "popupType": "TOAST",
+        "popup": {"notificationActionRenderer": {
+            "responseText": {"runs": [{"text": "Added to your library"}]}}},
+    }}],
+}
+
+check("a toast's words are read out of the actions block",
+      epg.action_text(TOAST), "Added to your library")
+
+# The toast carries a button whose own label is stored under "text" too,
+# and it is reached first. Asking for the message key by key -- the toast's
+# own field everywhere before "text" anywhere -- is what stops "Undo" being
+# reported as the outcome; a plain search for "text" returns the label.
+LABELLED = {"actions": [{"openPopupAction": {"popup": {
+    "notificationActionRenderer": {
+        "actionButton": {"buttonRenderer": {"text": {"simpleText": "Undo"}}},
+        "responseText": {"runs": [{"text": "Added to your library"}]},
+    }}}}]}
+
+check("a button label reached first does not win",
+      epg.action_text(LABELLED), "Added to your library")
+check("and the plain search it beats really does find the label",
+      epg.text(epg.first(LABELLED["actions"], "text")), "Undo")
+
+check("simpleText reads the same as runs",
+      epg.action_text({"actions": [{"a": {"responseText":
+                                          {"simpleText": "Removed"}}}]}),
+      "Removed")
+
+check("a response naming no message says so rather than guessing",
+      epg.action_text({"responseContext": {}, "actions": []}), "")
+check("and so does one with no actions at all",
+      epg.action_text({"responseContext": {}}), "")
 
 print("failures:", len(failures))
 sys.exit(1 if failures else 0)
