@@ -3444,6 +3444,45 @@ line where a film carries `Released 2016`.
 and Morty's page, banner included, is 3840x2160, so there is nothing to put
 in a poster slot.
 
+## Android uses a different decrypter, and the desktop patch does not apply
+
+Every finding in this document about InputStream Adaptive was made against a
+`Platform: Linux x86 64-bit` box. ISA picks its Widevine decrypter by
+platform, not by setting, and the two files differ in ways that matter.
+Read against ISA `Omega` at v21.5.23:
+
+**1. Android never decrypts in process.**
+`src/decrypters/widevineandroid/WVCencSingleSampleDecrypter.cpp:185` returns
+`SSD_SECURE_PATH | SSD_ANNEXB_REQUIRED` unconditionally and **ignores its
+`media` argument**, so an audio track gets the same flags as video and
+`SSD_SUPPORTS_DECODING` is never reported. The desktop decrypter
+(`src/decrypters/widevine/WVCencSingleSampleDecrypter.cpp:150-215`) runs a
+real trial decrypt and normally reports `SSD_SUPPORTS_DECODING |
+SSD_SINGLE_DECRYPT`; for audio it sets `SSD_INVALID` rather than a secure
+path when that trial fails. On Android both tracks are therefore handed to
+the platform decoder as ciphertext plus a crypto descriptor.
+
+**2. The `explicit_subsamples` patch is a no-op on Android.**
+`WVCencSingleSampleDecrypter.cpp:792-794` already does it internally: when
+`subsampleCount` is zero it sets the count to 1, clear bytes to 0 and
+encrypted bytes to the whole sample -- exactly what `mp4.explicit_subsamples`
+writes into the fragment. So the fix for whole-sample audio on desktop
+cannot be the fix for anything on Android, and porting it is pointless.
+
+**3. Android shares one CDM session across every stream.**
+`WVCencSingleSampleDecrypter.cpp:178` returns `true` from `HasLicenseKey`
+without looking at the key id, and `Session.cpp:517` uses that to hand a
+later stream the earlier stream's decrypter. The comment in ISA's own source
+says returning `false` "fixes pixaltion issues on some devices when manifest
+has multiple encrypted streams". YouTube TV gives audio and video **different
+key ids** -- a real session logged `key ids {146: 'd29e68442f8d5df6', 381:
+'3b60e66196425c9d'}` -- so this is the one place where a track's key
+identity is deliberately not checked.
+
+Which of these actually bites has not been established: no Android kodi.log
+exists. The addon now logs its platform and ISA version beside the session
+id so the next one says outright which decrypter ran.
+
 ## No JavaScript runtime, anywhere in the addon
 
 Two things needed one, and neither does now.

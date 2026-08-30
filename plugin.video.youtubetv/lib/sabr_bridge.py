@@ -384,7 +384,8 @@ def lookup(key):
         if key in _sessions:
             return _sessions[key]
         _sessions[key] = (session, formats)
-    kodiutils.log("sabr bridge: opened session %s as %s" % (key, name))
+    kodiutils.log("sabr bridge: opened session %s as %s [%s]"
+                  % (key, name, kodiutils.platform()))
     return session, formats
 
 
