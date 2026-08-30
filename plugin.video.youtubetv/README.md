@@ -26,9 +26,13 @@ not document. See [Status](#status).
   any show, in the Library, in search results, or on any programme in a
   channel's schedule
 * **Films play when you pick one.** A tile names no stream, only its page,
-  so the id is fetched on selection; the page is on the context menu as
-  "Go to <title>". A series stays a folder, because it is one
-* Search across live and on-demand, and browsing a show to its episodes --
+  so the id is fetched on selection; what is left of that page -- its
+  suggestions, and its extras where a title has any -- is on the context
+  menu. A series stays a folder, because it is one
+* Search across live and on-demand, listed as a row per kind: this client
+  answers with films, shows and teams in one row called "Top picks", and
+  every tile says which it is
+* Browsing a show to its episodes --
   including the seasons the show page defers rather than lists
 * Widevine playback via InputStream Adaptive at up to 1080p
 * A local licence proxy that handles YouTube's JSON-wrapped, rotating-key
