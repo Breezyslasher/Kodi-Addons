@@ -3615,6 +3615,45 @@ the bridge's server thread, a later plugin invocation -- must not depend on
 module-level imports it cannot see being blanked. A local import inside the
 function is the cheap protection.
 
+## "Extras" is not extras
+
+A show page hangs its seasons off an `unpluggedSelectableSectionRenderer`:
+N labels in `selectors`, N blocks in `contents`, paired by position, each
+block holding only a continuation token. One of those labels is **Extras**,
+and it sat there through this whole project looking like the trailers and
+bonus features nothing else in any capture ever named.
+
+**It is not.** No capture ever spent an Extras token -- only the selected
+season's -- so it took a run on a real account to find out. Family Feud's
+holds 69 items, and they are episodes:
+
+```
+Extras: 69 item(s) -- Bailey Family vs. Eldafrawy Family; Utsey Family vs.
+    Bailey Family; Clapp Family vs. Ford Family; Smaha Family vs. Taylor
+    Family; Stapleton Family vs. Smaha Family; Family Feud ...
+```
+
+Titled the way that show titles its episodes, and **all 69 new** against the
+3,752 episodes in the thirteen numbered seasons beside them -- so they are
+episodes the numbered seasons do not carry, not duplicates. A syndicated
+show's unnumbered back catalogue is what it looks like.
+
+Rick and Morty has an Extras shelf too and it answered with nothing, so one
+title is the whole sample for what is in one.
+
+**So trailers and bonus content have still never been observed anywhere in
+this project** -- not in a capture, not in a log, not behind the one label
+that promised them. The folder keeps YouTube TV's own word for it rather
+than being renamed to what it turned out to hold, because "Extras" is what
+the service calls that shelf and a title where it does hold something else
+would then be mislabelled instead.
+
+### What the shelves are worth doing anyway
+
+Fetching them all and listing the result flat put **3,822 items in one
+folder** for Family Feud, extras at the bottom. Listed as folders instead,
+the page opens on its own 383 items with a folder per shelf beside them.
+
 ## No JavaScript runtime, anywhere in the addon
 
 Two things needed one, and neither does now.
