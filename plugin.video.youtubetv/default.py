@@ -678,10 +678,23 @@ def _list_search(client, query, response):
     for row in rows:
         kodiutils.log("search %r: %s = %s"
                       % (query, row.title,
-                         ", ".join("%s [%s]" % (item.title,
-                                                item.content_type or "-")
+                         ", ".join("%s [%s] %s"
+                                   % (item.title, item.content_type or "-",
+                                      item.source or "?")
                                    for item in row.items[:12])
                          or "nothing"))
+    # And the renderers those rows are made of. A browser answers the same
+    # query with The Blues Brothers typed MOVIE inside "On now & upcoming";
+    # here that row comes back with nothing typed at all. Either the
+    # renderer is a different one or it is the same one with the field left
+    # out, and the tile's own keys are what say which.
+    seen = []
+    for page in pages:
+        for line in epg.renderer_sample(page, 6):
+            if line not in seen:
+                seen.append(line)
+    kodiutils.log("search %r: renderers -- %s"
+                  % (query, "; ".join(seen[:8]) or "none"))
     if rows:
         _list_sections(rows, "search_row", extra={"query": query})
         finish()
