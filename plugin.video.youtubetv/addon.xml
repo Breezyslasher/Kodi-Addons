@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.26" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.27" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,20 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.27 - The other tabs, and rows that do not stay put
+- Adult Swim's four tabs are all four sent, and all four carry a content:
+  the two not on screen defer themselves as a continuationCommand, where
+  the web client uses the older nextContinuationData. A tab holding no
+  items holds no shelves either, so any continuation in it is now taken as
+  that tab's own, in either shape.
+- A category is not the same page twice -- two requests for Movies gave
+  "Drama movies" and then "Drama thriller movies" -- so a row folder now
+  carries its own token and spends it when the page comes back reshuffled,
+  instead of reporting a row you can see as gone.
+- A page reached by opening a row expands the shelves it defers. Show pages
+  arrive behind a tab now, and a season list behind one was ten empty
+  shelves.
+
 2026.8.31.26 - The tabs a network page did not show
 - Adult Swim came back with two tabs here and four in a browser. A tab that
   arrives carrying no content at all was being dropped, so one is now read

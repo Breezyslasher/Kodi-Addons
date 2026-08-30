@@ -1122,16 +1122,30 @@ And the selected tab's own shelves carry continuations that fetch more of
 one shelf -- so the tab's token must be read from the tab's own section
 list, the same care `page_continuation` takes on Home.
 
-**The TV client sends fewer tabs.** Adult Swim answered a browser with four
-(LIVE, UPCOMING, ADULT SWIM, SERIES) and answered Kodi with two, titled
-`Live` and `Upcoming` rather than in caps -- the 2026-08-29 23:46 log. Two
-things would explain that and they need different fixes: the page really
-carries two, or it carries four and two arrive in a shape with no `content`
-key, which the reader written from the web capture drops. So a tab with no
-content is now read by whatever it does carry -- a bare `continuation`, or
-a `browseEndpoint` naming a page of its own, which is opened as that page --
-and `tab_shapes` logs the keys of *every* tab on the page, read or not. The
-count alone cannot tell a reader to fix from a request to change.
+**The TV client defers a tab differently.** Adult Swim answered a browser
+with four tabs (LIVE, UPCOMING, ADULT SWIM, SERIES) and answered Kodi with
+two, titled `Live` and `Upcoming` rather than in caps -- the 2026-08-29
+23:46 log. Logging the keys of every tab on the page settled why:
+
+```
+Live carries [content, selected, title, trackingParams];
+Upcoming carries [content, title, trackingParams];
+Adult Swim carries [content, title, trackingParams];
+Series carries [content, title, trackingParams]
+```
+
+All four are sent, and all four carry a `content`. The two not on screen
+hold neither an item nor a `nextContinuationData`: the TV client defers them
+in the shape most of InnerTube has moved to, a `continuationItemRenderer`
+holding a `continuationCommand.token`, where the web client uses the older
+`sectionListRenderer.continuations`.
+
+So the rule is by what the tab holds rather than by which key it holds it
+under. A tab with items reads its token from its own section list only --
+its shelves have tokens that fetch more of one shelf. A tab with **no**
+items has no shelves either, so any continuation anywhere in it is that
+tab's own, in either shape; and a tab arriving with no `content` at all may
+name a page rather than a continuation, which is opened as that page.
 
 ### A category is rows under chips — `browseId: FEunplugged_chips`
 
@@ -1142,6 +1156,15 @@ count alone cannot tell a reader to fix from a request to change.
 Movies answers with named rows -- "Picked for you", "On now & upcoming",
 "Thriller movies" -- and defers more behind a page-level continuation, the
 way Home does: two requests gave eight rows.
+
+**It is not the same page twice.** Two requests for Movies twenty seconds
+apart came back with "Drama movies" and then "Drama thriller movies", and
+with 18 and then 17 fantasy comedies (2026-08-29 23:49). Only "Picked for
+you", "On now & upcoming" and "All" appear every time. So a row cannot be
+reopened by asking for the page again and matching its name: the row drawn a
+moment ago may not be in the page that comes back. Each row folder carries
+its own continuation token, and that is what is spent when the name is not
+found.
 
 Above them sits a shelf with **no title** holding fifteen
 `unpluggedChipRenderer` genres (Action, Comedy, Crime, Drama, Fantasy,
