@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.21" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.22" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,14 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.22 - No programme claims to be playable
+- Marking only the airing on the air was still wrong, because the guide is
+  built when the merge runs and read hours later: by then the marker is on
+  a programme that has ended and the one actually on has none. No programme
+  carries a play url now. Selecting a live programme in Kodi's guide plays
+  its channel, and the channel url resolves what is on at the moment it is
+  played, which is the one thing here that cannot go stale.
+
 2026.8.31.21 - Only what is on now is marked playable
 - Kodi draws a marker on every guide entry it is given a stream url for,
   and every one of the 8050 airings was getting one -- a week of schedule

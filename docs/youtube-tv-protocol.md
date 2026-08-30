@@ -583,7 +583,7 @@ A tell worth recognising: the channel *list* had already changed to the new
 merge's order while the grid had not. A fresh playlist against a stale EPG is
 exactly that shape.
 
-### A marker on every programme is a claim that every programme plays
+### No programme carries a stream url, and the reason is the clock
 
 Kodi draws a marker on any EPG entry it is given a stream url for. `lib/iptv.py`
 gave one to every airing carrying a video id, with a comment saying only the
@@ -591,10 +591,22 @@ one on now would resolve -- which was honest by accident, because before the
 side-sheet id was read the only airings *with* an id were the 143 on the air.
 
 Reading the other 846 gave all 8050 a url and marked a week's schedule
-playable. Now only `on_air` airings get one: 989 programmes, 143 urls, one per
-channel. That is the guide's own statement of which airing is live, and the
-only one this add-on has established plays -- a future airing cannot, and
-catch-up on a past one is a separate entitlement.
+playable. Marking only the `on_air` airing was no better, and the reason is
+the clock: the guide is **built when the merge runs and read hours later**. By
+then the marker sits on a programme that has ended, its url is dead, and the
+programme actually on the air has none.
+
+So no programme carries one. The JSON-EPG spec calls `stream` "the endpoint
+that will be called when this program should play... to directly play a
+program from the EPG" -- a catch-up facility, which this add-on has not
+established it has.
+
+Nothing is lost by leaving it out. Selecting a live programme in Kodi's guide
+plays its channel, and the channel url from JSON-STREAMS is
+`?action=play_channel&station_id=...`, which looks up what is on **at the
+moment it is played** rather than the moment the guide was built. That is the
+one thing in this chain that cannot go stale, and it is why the channel url
+names a station and never a video -- see `_channels`.
 
 ### The PVR guide is IPTV Manager's copy, not this addon's
 
