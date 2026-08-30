@@ -438,7 +438,11 @@ def route_station(station_id, name):
         playable = airing.is_now or (airing.start_ms or 0) <= now_ms
         known = _meta_for(airing.show_id) or {}
         item = xbmcgui.ListItem(label=airing.label())
-        item.setArt({"thumb": airing.art or station.logo,
+        # The airing's own still first, then the show's banner, and the
+        # channel logo only when neither exists. A programme with no still
+        # was showing the channel's logo while its show's artwork sat in
+        # what had just been fetched for it.
+        item.setArt({"thumb": airing.art or known.get("art") or station.logo,
                      "fanart": known.get("art") or airing.art or station.logo})
         info = item.getVideoInfoTag()
         info.setTitle(airing.title)

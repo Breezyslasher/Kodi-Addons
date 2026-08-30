@@ -1413,6 +1413,13 @@ Superjail!, Tuca & Bertie) agree:
 | genres | inline in About | inline in About |
 | studio | `Production Companies: Lucasfilm, …` and `Provider: Disney` | `On: Adult Swim, Cartoon Network, HBO Max` |
 | director | `Directors: Gareth Edwards` | none — a show has no director line |
+
+**And a show's About can be empty.** Rick and Morty carries genres and a
+network; "Bathroom Makeover" carries only `On=CHARGE!, Comet TV, FOX 53, …`
+and "Paid Programming" carries nothing whatever (2026-08-30 02:55). So a
+title with no genres, no year and no cast is usually the service having
+none rather than a field going unread -- which is what the "its about
+carried [...]" line in the log is for, and what it settled here.
 | **cast** | **inline**, 16–28 `unpluggedPersonRenderer` | **deferred**, the LEAD CAST tab is empty and holds 7 behind its token |
 
 So a show costs one request more than a film for the same detail, which is
