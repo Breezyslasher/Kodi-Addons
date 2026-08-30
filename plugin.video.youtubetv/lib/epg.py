@@ -213,6 +213,25 @@ def parse_epg(response):
     for row in walk(response, "epgRowRenderer"):
         renderer = first(row, "epgStationRenderer")
         if not isinstance(renderer, dict):
+            # A later page of the guide describes each channel once, on the
+            # first page, and then sends rows carrying only a stationId and
+            # more airings. Requiring the station renderer threw away all
+            # 748 airings of the second page. The row still says which
+            # channel it is; the name and logo come from the merge.
+            station_id = (row.get("stationId") or row.get("tenxId") or ""
+                          ) if isinstance(row, dict) else ""
+            if not station_id or station_id in seen:
+                continue
+            seen.add(station_id)
+            airings = []
+            for block in walk(row, "epgAiringRenderer"):
+                if isinstance(block, dict):
+                    airing = parse_airing(block)
+                    if airing.video_id:
+                        airings.append(airing)
+            airings.sort(key=lambda a: a.start_ms or 0)
+            stations.append(Station(station_id=station_id, name="",
+                                    call_sign="", logo="", airings=airings))
             continue
         station_id = renderer.get("stationId") or renderer.get("tenxId") or ""
         if not station_id or station_id in seen:
@@ -258,6 +277,33 @@ def parse_epg(response):
         kodiutils.log("no epgRowRenderer in the guide response -- the EPG "
                       "shape may have changed")
     return stations
+
+
+def merge_airings(stations, more):
+    """Fold a later page's airings into the stations already parsed.
+
+    Returns how many were new. A later page repeats nothing, but it is
+    deduplicated by video id anyway, because a guide that lists a programme
+    twice is worse than one that fetches a page for nothing. Airings that
+    belong to no station already known are dropped: without the first page's
+    station renderer they have no name and no logo, so they would list as a
+    channel called by its own id.
+    """
+    by_id = {station.station_id: station for station in stations}
+    added = 0
+    for station in more:
+        target = by_id.get(station.station_id)
+        if target is None:
+            continue
+        known = {airing.video_id for airing in target.airings}
+        for airing in station.airings:
+            if airing.video_id in known:
+                continue
+            known.add(airing.video_id)
+            target.airings.append(airing)
+            added += 1
+        target.airings.sort(key=lambda a: a.start_ms or 0)
+    return added
 
 
 def continuation_token(response):

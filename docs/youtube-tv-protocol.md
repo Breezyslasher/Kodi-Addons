@@ -387,6 +387,34 @@ Those ten episodes do have a `navigationEndpoint` — holding
 lacks rights to; they are **buy prompts**. Dropping them is correct, and the
 count of ten this file has quoted throughout is accurate.
 
+### A later page of the guide names no channel
+
+Reading the plain `videoId` field took page one from 144 airings to 953. The
+pages after it were still being thrown away entirely, and the reason is that
+they describe no channel:
+
+| | page 1 | page 2 |
+| --- | --- | --- |
+| container | `contents` → `epgRowRenderer` | `epgPaginationRenderer` → `contents` |
+| rows | 148 | 148, same order |
+| `epgStationRenderer` | 148 | **none** |
+| channel named by | the station renderer | `stationId` on the row itself |
+| airings | 953 | 748 |
+
+`parse_epg` required the station renderer, so page two parsed as zero stations
+and its 748 airings were lost. Reading the row's own `stationId` and folding
+the result in with `merge_airings` takes the same lineup to **1555 airings, a
+median of 10 per channel and up to 22**.
+
+The merge deduplicates by video id, and drops any channel page one never
+described -- without its station renderer it has no name and no logo, so it
+would list as a channel called `UCtfoIx_MZ0h5bX3i9YsF5xw`.
+
+`lib/iptv.py` used to ask for a single twenty-four hour window. It now asks for
+four pages of six hours, which is the shape the web client's live tab actually
+uses and the only one any capture measures. Against the capture it hands Kodi
+1555 programmes across 148 channels where it previously handed 148.
+
 ### The PVR guide is IPTV Manager's copy, not this addon's
 
 The Kodi TV section's guide is populated by whatever consumes

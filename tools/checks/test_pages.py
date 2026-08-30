@@ -403,5 +403,46 @@ check("a side-sheet tile becomes a folder",
       [("A show", "UCmXMw6OyWJH1O6cA7JZS9Fg")])
 check("and is not counted unplayable", epg.unplayable_count(SIDESHEET), 0)
 
+# -- a later page of the guide ---------------------------------------------
+# The second page of the 2026-08-29 guide carried 748 more airings across
+# the same 148 channels and named none of them: each row holds a stationId
+# and airings, with no epgStationRenderer. parse_epg required that renderer,
+# so every airing past the first page was dropped.
+PAGE_TWO = {"continuationContents": {"epgPaginationRenderer": {"contents": [
+    {"epgRowRenderer": {
+        "stationId": "UCCHAN",
+        "airings": [
+            _airing("Tomorrow", NOW_MS + 3 * HOUR, NOW_MS + 4 * HOUR,
+                    video_id="TOMORROW"),
+            # Repeated from page one: a guide that lists a programme twice
+            # is worse than one that fetches a page for nothing.
+            _airing("Later", NOW_MS + HOUR // 2, NOW_MS + HOUR,
+                    video_id="LATER"),
+        ]}},
+    # A channel page one never described: no name and no logo, so listing it
+    # would mean a channel called by its own id.
+    {"epgRowRenderer": {
+        "stationId": "UCUNKNOWN",
+        "airings": [_airing("Orphan", NOW_MS, NOW_MS + HOUR,
+                            video_id="ORPHAN")]}},
+]}}}
+
+later = epg.parse_epg(PAGE_TWO)
+check("a later page's rows parse without a station renderer",
+      [s.station_id for s in later], ["UCCHAN", "UCUNKNOWN"])
+
+fresh = epg.parse_epg(GUIDE)
+added = epg.merge_airings(fresh, epg.parse_epg(PAGE_TWO))
+check("only the new airing was folded in", added, 1)
+check("and it landed in time order",
+      [a.video_id for a in fresh[0].airings],
+      ["NOW", "LATER", "LATERSTILL", "TOMORROW"])
+check("a channel page one never named is dropped",
+      [s.station_id for s in fresh], ["UCCHAN"])
+check("the name and logo survive the merge",
+      (fresh[0].name, bool(fresh[0].logo)), ("A Channel", True))
+check("'now' is still the marked airing after merging",
+      fresh[0].now.video_id, "NOW")
+
 print("failures:", len(failures))
 sys.exit(1 if failures else 0)
