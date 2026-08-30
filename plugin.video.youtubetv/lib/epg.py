@@ -789,9 +789,7 @@ def parse_items(response):
             start_ms=_seconds_ms(renderer, "startTimeSeconds"),
             end_ms=_seconds_ms(renderer, "endTimeSeconds"),
             source=source,
-            content_type=(renderer.get("contentType")
-                          if isinstance(renderer.get("contentType"), str)
-                          else ""),
+            content_type=_content_type(renderer),
         ))
 
     visit(response)
@@ -1239,6 +1237,67 @@ def action_text(response, default=""):
     return default
 
 
+_TOAST_KINDS = (("Movie", "MOVIE"), ("Show", "SHOW"), ("Event", "EVENT"))
+
+
+def _content_type(renderer):
+    """MOVIE, SHOW or EVENT -- what YouTube TV says a tile is.
+
+    A category tile says it outright in ``contentType``. Not every listing
+    does: the one search answered with was drawn as a folder because this
+    came back empty, and a film reached from search opened its page rather
+    than playing.
+
+    So the tile's own DVR toast is read when the field is absent. It is
+    written per kind -- "Movie added to your library. We'll record it as it
+    becomes available.", "Show added to your library. We'll record upcoming
+    episodes...", "Event added to your library..." -- 1120, 873 and 14 of
+    them across the captures, always agreeing with contentType where both
+    are present.
+    """
+    named = renderer.get("contentType")
+    if isinstance(named, str) and named:
+        return named
+    toast = text(first(renderer, "defaultToastText"))
+    for word, kind in _TOAST_KINDS:
+        if toast.startswith(word + " "):
+            return kind
+    return ""
+
+
+def _lazy_token(content):
+    """The continuation of a tab whose content holds nothing but that.
+
+    Deliberately not fussy about the wrapper. page_continuation is fussy on
+    purpose -- on a page full of shelves, reading the wrong continuation
+    fetches more of one shelf, or the page again -- but a tab with no items
+    has no shelves and nothing else to confuse: whatever continuation is in
+    it is the one that fills it.
+
+    A timedContinuationData is still skipped. That one is a refresh timer,
+    and spending it asks for the same empty tab back on a schedule.
+    """
+    found = [""]
+
+    def visit(node):
+        if found[0] or not isinstance(node, (dict, list)):
+            return
+        if isinstance(node, list):
+            for value in node:
+                visit(value)
+            return
+        for name, value in node.items():
+            if name == "timedContinuationData":
+                continue            # a refresh timer: asks for this back
+            if name == "continuation" and isinstance(value, str) and value:
+                found[0] = value
+                return
+            visit(value)
+
+    visit(content)
+    return found[0]
+
+
 def _tab_title(node, default=""):
     """A tab names itself with a plain string, where a shelf uses runs."""
     title = node.get("title")
@@ -1319,14 +1378,17 @@ def browse_tabs(response, least=2):
                 if not items and not token:
                     # A content this could not read at all. A tab holding
                     # no items holds no shelves either, so any continuation
-                    # in it is the tab's own, whatever shape it came in --
-                    # and the TV client's is a different shape. Adult Swim
-                    # answered with four tabs, every one of them carrying a
-                    # content, and the two that are not on screen came back
-                    # with neither an item nor a nextContinuationData in it
-                    # (2026-08-29 23:52). Most of InnerTube has moved to
-                    # continuationCommand; continuation_token knows both.
-                    token = continuation_token(content) or ""
+                    # in it is the tab's own, whatever shape it came in.
+                    #
+                    # Which shape took three readings to pin down, because
+                    # the wrapper is the only thing that differs and it was
+                    # the one thing not being printed: the tab that reads
+                    # and the tab that does not both hold exactly one
+                    # string, both under a key called "continuation", both
+                    # inside one sectionListRenderer. The web client wraps
+                    # it in nextContinuationData; this one does not.
+                    token = (continuation_token(content)
+                             or _lazy_token(content))
                 browse_id = params = ""
             else:
                 # A tab carrying no content at all cannot be hiding a
@@ -1400,21 +1462,25 @@ def _inside(node, limit=6):
     counts = {}
     plain = []
 
-    def visit(node, depth):
+    def visit(node, path):
         if isinstance(node, dict):
             for key, value in node.items():
                 if key.endswith("Renderer") and isinstance(value, dict):
                     counts[key] = counts.get(key, 0) + 1
                 elif (isinstance(value, str) and value
-                        and key not in ("trackingParams", "clickTrackingParams")
-                        and key not in plain):
-                    plain.append(key)
-                visit(value, depth + 1)
+                        and key not in ("trackingParams", "clickTrackingParams")):
+                    # The whole path, not the last key. A tab that reads and
+                    # a tab that does not both ended "...continuation", and
+                    # the wrapper between is the entire difference.
+                    where = "/".join(path + [key])
+                    if where not in plain:
+                        plain.append(where)
+                visit(value, path + [key])
         elif isinstance(node, list):
             for value in node:
-                visit(value, depth + 1)
+                visit(value, path)
 
-    visit(node, 0)
+    visit(node, [])
     ranked = sorted(counts.items(), key=lambda pair: -pair[1])[:limit]
     return ("[%s] holding %s%s"
             % (", ".join(sorted(node)) if isinstance(node, dict) else "?",

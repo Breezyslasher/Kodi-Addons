@@ -1140,6 +1140,25 @@ in the shape most of InnerTube has moved to, a `continuationItemRenderer`
 holding a `continuationCommand.token`, where the web client uses the older
 `sectionListRenderer.continuations`.
 
+**It took a third reading, because the diagnostic was ambiguous.** The tab
+that reads and the tab that does not both hold exactly one string, both
+under a key called `continuation`, both inside one `sectionListRenderer` --
+so the log line for each was identical character for character:
+
+```
+Adult Swim carries [content, title, trackingParams];
+  content [sectionListRenderer] holding sectionListRenderer x1;
+  strings under continuation
+```
+
+The wrapper between is the entire difference and it was the one thing not
+being printed. The web client uses `nextContinuationData`; this one does
+not. The reader now takes any continuation inside a tab that holds nothing
+else -- a tab with no items has no shelves to confuse it -- skipping only a
+`timedContinuationData`, which is a refresh timer and asks for the same
+empty tab back. And `_inside` prints the path to a string rather than its
+last key, so two shapes can no longer log the same line.
+
 **And that was not it either.** On 2026-08-30 00:19 the same page still read
 as two tabs with the continuationCommand shape handled. So the two unread
 tabs hold neither shape, and the tab's own keys cannot say what they do
@@ -1221,6 +1240,11 @@ id alone -- checked, and pinned by `test_pages.py`. A capture taken two days
 after the one that builder was written from is the only independent
 confirmation of it there is, so it is worth having even though the params
 are not read from here.
+
+`contentType` is not on every listing. What search answers with has none,
+so a film reached that way was drawn as a folder. The toast text is the
+second name for the same thing and it is written per kind, so it stands in
+where the field is absent.
 
 What is *not* there is the state. `isToggled` appears on none of the 2007
 toggle renderers across every capture, so the tile still cannot say whether

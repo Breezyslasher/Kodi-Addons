@@ -753,7 +753,34 @@ check("and says what an unread tab's content holds",
       ]}}})[1],
       "Series carries [content, title]; content [sectionListRenderer] "
       "holding sectionListRenderer x1, continuationItemRenderer x1; "
-      "strings under token")
+      "strings under sectionListRenderer/contents/continuationItemRenderer"
+      "/continuationEndpoint/continuationCommand/token")
+
+# The path, not the last key. Two tabs -- one this reads, one it did not --
+# both held exactly one string, both under a key called "continuation", both
+# inside one sectionListRenderer, so the log line for each was identical
+# character for character while one worked and the other did not. The
+# wrapper between is the whole difference, and it is now printed.
+def _one_tab(inner):
+    return {"contents": {"singleColumnBrowseResultsRenderer": {"tabs": [
+        {"tabRenderer": {"title": "A", "content": inner}},
+        {"tabRenderer": {"title": "B", "content": inner}}]}}}
+
+WRAPPED = _one_tab({"sectionListRenderer": {"continuations": [
+    {"nextContinuationData": {"continuation": "T"}}]}})
+BARE = _one_tab({"sectionListRenderer": {"continuations": [
+    {"reloadContinuationData": {"continuation": "T"}}]}})
+check("two tabs that differ only in the wrapper no longer log the same line",
+      epg.tab_shapes(WRAPPED)[0] == epg.tab_shapes(BARE)[0], False)
+check("and both are read, because a tab holding nothing else holds its own",
+      [t.token for t in epg.browse_tabs(WRAPPED)]
+      + [t.token for t in epg.browse_tabs(BARE)],
+      ["T", "T", "T", "T"])
+check("but a refresh timer is not a tab's content",
+      epg.browse_tabs(_one_tab({"sectionListRenderer": {"continuations": [
+          {"timedContinuationData": {"continuation": "T",
+                                     "timeoutMs": 30000}}]}})),
+      [])
 # The whole-tab search is safe only where there is no content to confuse it.
 check("a tab that HAS content still reads its token from its own list",
       [t.token for t in epg.browse_tabs(NETWORK_PAGE)],
@@ -871,6 +898,36 @@ check("a film's tile names its page, not a stream, and says it is a film",
        ("The Two Towers", "", "ONAIRVIDEOID", "", True)])
 check("and its year and rating become the plot",
       tiles[0].subtitle, "2016 \u2022 R")
+
+# Not every listing carries contentType. The one search answered with did
+# not, so a film reached from search was drawn as a folder and opened its
+# page (2026-08-30 00:37). The tile's own DVR toast names the kind too, and
+# it is written per kind: "Movie added to your library...", "Show added to
+# your library...", "Event added to your library...".
+check("a tile with no contentType is still a film if its toast says so",
+      [i.content_type for i in epg.parse_items(
+          {"unpluggedBrowseItemRenderer": {
+              "primaryText": {"runs": [{"text": "The Blues Brothers"}]},
+              "navigationEndpoint": {"browseEndpoint": {"browseId": "UC8"}},
+              "menu": {"menuRenderer": {"items": [
+                  {"toggleMenuServiceItemRenderer": {"defaultToastText": {
+                      "runs": [{"text": "Movie added to your library. We'll "
+                                        "record it as it becomes available."}]
+                  }}}]}}}})],
+      ["MOVIE"])
+check("and a series is still a series",
+      [i.content_type for i in epg.parse_items(
+          {"unpluggedBrowseItemRenderer": {
+              "primaryText": {"runs": [{"text": "Rick and Morty"}]},
+              "navigationEndpoint": {"browseEndpoint": {"browseId": "UC9"}},
+              "menu": {"menuRenderer": {"items": [
+                  {"toggleMenuServiceItemRenderer": {"defaultToastText": {
+                      "runs": [{"text": "Show added to your library. We'll "
+                                        "record upcoming episodes."}]
+                  }}}]}}}})],
+      ["SHOW"])
+check("contentType still wins where the tile has one",
+      tiles[0].content_type, "MOVIE")
 
 # The tile's menu carries the DVR params outright. They are not read from
 # there -- api.dvr_params rebuilds them -- but a capture taken two days
