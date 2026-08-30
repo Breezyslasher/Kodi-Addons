@@ -180,6 +180,13 @@ on parsing that would silently fail to hide anything it could not parse, which
 is the worst property a parental control can have. Not implemented, and this
 is the reason.
 
+**Updated 2026-08-30.** That text is now parsed, from the guide airing's info
+panel and from a show's episodes, so the coverage is measurable rather than
+hypothetical: **738 of the 989 airings** in one guide carry a rating this can
+read. The conclusion is unchanged and the number is why -- a parental control
+that lets a quarter of the schedule through unfiltered is worse than none --
+but it is now a known quarter rather than an unknown one.
+
 **Area** is read-only from here. `unpluggedCurrentLocationSettingItemRenderer`
 reports `"Pittsburgh Area - 16066"`, but changing it runs
 `unpluggedRequestTwofactorLocationCommand` and
@@ -241,8 +248,8 @@ Five exist across all of them, so **no tab is missing**:
 | `browse` | 99 | implemented |
 | `log_event` | 50 | telemetry, deliberately not sent |
 | `search` | 20 | implemented |
-| `suggest` | 33 | implemented, and useless here: a browser gets entity suggestions naming the kind, this client gets ten plain query strings |
-| `tenx_player` | 25 | not implemented, but no longer unknown: `{"channelIds": [...]}` in, and a `tenxStreams` list back, one `templatedUrl` per channel — itag 133, `source=yt_tv_broadcast`, `xtags=tenx=1`, with `&sq=` to fill in and a `refreshIntervalSeconds` of 120. The guide's live preview mosaic, and nothing else |
+| `suggest` | 33 | **not called.** `Client.suggest` and `epg.suggestion_kinds` both exist and nothing reaches them: a browser gets entity suggestions naming the kind, this client gets ten plain query strings, so the call was removed and the reader kept. Dead code either way |
+| `tenx_player` | 25 | **not implemented, and the one real feature gap.** `{"channelIds": [...]}` in, and a `tenxStreams` list back, one `templatedUrl` per channel — itag 133, `source=yt_tv_broadcast`, `xtags=tenx=1`, with `&sq=` to fill in and a `refreshIntervalSeconds` of 120. It is the guide's live preview mosaic: the moving thumbnail of what each channel is showing right now. Everything needed to fetch it is known; what is not known is whether Kodi can render a second decoding video into a list, which is the part to establish before writing any of it |
 | `att/get` | 6 | not needed — the add-on mints its own proof-of-origin |
 | `next` | 5 | **not implemented.** `{"videoId": ..., "params": ..., "unpluggedWatchNextOptions": null}` — the watch-next panel. No response body captured |
 | `player` | 5 | implemented |
@@ -264,13 +271,27 @@ in Kodi logs.
 
 ### The gap worth closing
 
-Nothing on the list is now a *feature* the add-on lacks. `start_dvr` /
-`stop_dvr` was the last one and is implemented; the Browse tab was the last
-feed not read and is implemented.
+Re-checked against the code on 2026-08-30 rather than left as written.
 
-Everything still on the not-implemented list is either telemetry, an
-attestation the add-on already satisfies another way, a write to account
-settings the web UI owns, or an endpoint whose response was never captured.
+**One feature gap**: `tenx_player`, the guide's live preview mosaic. Its
+request and response are both known; the open question is Kodi-side, not
+protocol-side.
+
+**One thing unknown rather than missing**: `next`, the watch-next panel. Five
+calls captured, no response body among them, so there is nothing to say about
+what it would add.
+
+**Two blocked, and the blocker is named**: `update_live_guide_order` and
+`update_station_visibility` embed the account's market as `508` and `160662`,
+and those appear in no captured response at all. Sourcing them for an
+arbitrary account is what would have to be solved first.
+
+**One piece of dead code**: `Client.suggest` and `epg.suggestion_kinds` are
+reachable by nothing.
+
+Everything else on the not-implemented list is telemetry, an attestation the
+add-on already satisfies another way, a write to account settings the web UI
+owns, or `FEunplugged_overlays`, which was captured and is empty.
 
 ## Endpoints
 
