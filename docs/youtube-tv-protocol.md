@@ -415,6 +415,74 @@ four pages of six hours, which is the shape the web client's live tab actually
 uses and the only one any capture measures. Against the capture it hands Kodi
 1555 programmes across 148 channels where it previously handed 148.
 
+### Pagination brings more hours, not more channels
+
+Worth stating plainly because it decides what the loop stops on. Across the
+eleven pages of the 2026-08-29 20:22 capture, **every page carried the same
+148 rows in the same order**. What grows is the schedule:
+
+| pages | airings | median per channel | max |
+| --- | --- | --- | --- |
+| 1 | 962 | 6 | — |
+| 2 | 1576 | 10 | 23 |
+| 4 | 2708 | 17 | 38 |
+| 8 | 4657 | 29 | 67 |
+| 11 | 6306 | 40 | 90 |
+
+After merging all eleven: **zero duplicate airings, zero channels out of time
+order, zero missing names or logos**, and the guide reaches 2026-09-05 — the
+full week `maxDurationMs` allows. The eleventh page still handed back a token,
+so the server does not appear to run out.
+
+So "until no more channels come back" is not a stop condition: no page ever
+adds a channel. The loop stops when a page adds no *new airing*, when the token
+repeats, or at a page cap, and the cap is purely how far ahead the guide
+reaches. IPTV Manager fetches eight (about 29 airings per channel); the addon's
+own per-channel view fetches four.
+
+### The channel order is a token sent beside the browseId
+
+The live tab's order dropdown offers five, and picking one re-requests
+`FEunplugged_epg` with a `continuation` **alongside** the browseId rather than
+instead of it:
+
+```
+80226972 {
+  2: "FEunplugged_epg"
+  3: "8gMEIgIwAQ%3D%3D"          # itself 62 { 4 { 6: <order> } }
+  22 { 1 { 1: maxAiringsPerStation, 3: maxDurationMs,
+           4: initialEpgFetchStartTimeMs,
+           5: initialEpgFetchDurationMs, 6: paginationDurationMs } }
+}
+```
+
+Field 22 repeats, field for field, the `epgOptions` the request body already
+carries -- so the token is **rebuilt** from those values rather than copied; a
+stored copy would ask for a window from somebody else's session. Only field 6
+of the inner selector separates the five:
+
+| Order | field 6 | selector |
+| --- | --- | --- |
+| Default (locals first) | 1 | `8gMEIgIwAQ%3D%3D` |
+| Custom (as arranged on the web) | 2 | `8gMEIgIwAg%3D%3D` |
+| Most watched | 3 | `8gMEIgIwAw%3D%3D` |
+| A-Z | 4 | `8gMEIgIwBA%3D%3D` |
+| Z-A | 5 | `8gMEIgIwBQ%3D%3D` |
+
+`api.epg_order_token` reproduces all five of the capture's own tokens **byte
+for byte**, which is what makes it a reconstruction rather than a guess, and
+`tools/checks/test_pages.py` pins them so it stays that way. Measured, the
+orders really do differ: Default begins KDKA-TV, WTAE 4, NBC 11, FOX 53 while
+Most watched begins KDKA+, FOX News, WTAE 4, KDKA-TV.
+
+The setting defaults to sending **no** token, which keeps the previous
+behaviour: the account's own last choice on tv.youtube.com decides.
+
+Two neighbouring endpoints were captured and are *not* implemented, since
+neither is needed to read a guide: `update_live_guide_order`, which writes a
+custom order as a list of `{externalId, settingsGroup}`, and
+`update_station_visibility`, which hides one station by id.
+
 ### The PVR guide is IPTV Manager's copy, not this addon's
 
 The Kodi TV section's guide is populated by whatever consumes

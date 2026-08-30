@@ -172,6 +172,7 @@ redoing.
 | --- | --- |
 | Maximum resolution | Cap the height ISA selects, on hardware that cannot decode 1080p smoothly |
 | Client version | The web player version the addon claims to be. Google bumps it regularly; a stale value is the likeliest cause of a sudden sign-in failure |
+| Channel order | Which of YouTube TV's five orderings the guide comes back in -- default, your custom order, most watched, A-Z, Z-A. Left alone it uses whatever the account last chose on the web |
 | Licence proxy port | Only if something else on the machine already uses it |
 
 ## How it fits together

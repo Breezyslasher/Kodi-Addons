@@ -145,6 +145,22 @@
 		</category>
 		<category id="integration" label="30045">
 			<group id="1">
+				<setting id="epg.order" type="string" label="30083" help="30084">
+					<level>0</level>
+					<default></default>
+					<constraints>
+						<options>
+							<option label="30085"></option>
+							<option label="30086">default</option>
+							<option label="30087">custom</option>
+							<option label="30088">watched</option>
+							<option label="30089">az</option>
+							<option label="30090">za</option>
+						</options>
+						<allowempty>true</allowempty>
+					</constraints>
+					<control type="list" format="string"/>
+				</setting>
 				<setting id="iptv.install" type="action" label="30046">
 					<level>0</level>
 					<data>InstallAddon(service.iptv.manager)</data>

@@ -444,5 +444,37 @@ check("the name and logo survive the merge",
 check("'now' is still the marked airing after merging",
       fresh[0].now.video_id, "NOW")
 
+# -- the channel-order token -----------------------------------------------
+# The guide's order is chosen with a continuation sent *alongside* the
+# browseId. The token repeats the same epgOptions the request body carries,
+# so it is rebuilt from those values rather than copied -- a stale copy
+# would ask for somebody else's window. These five are the exact tokens the
+# 2026-08-29 live tab's own order dropdown offered; reproducing them byte
+# for byte is what makes the builder a reconstruction and not a guess.
+from lib import api  # noqa: E402
+
+REAL_ORDER_TOKENS = {
+    "default": "4qmFsgJBEg9GRXVucGx1Z2dlZF9lcGcaEDhnTUVJZ0l3QVElM0QlM0SyARsKGQgYGICIsqACIICrgf6ENCiQkaAKMLCMuwU%3D",
+    "custom": "4qmFsgJBEg9GRXVucGx1Z2dlZF9lcGcaEDhnTUVJZ0l3QWclM0QlM0SyARsKGQgYGICIsqACIICrgf6ENCiQkaAKMLCMuwU%3D",
+    "watched": "4qmFsgJBEg9GRXVucGx1Z2dlZF9lcGcaEDhnTUVJZ0l3QXclM0QlM0SyARsKGQgYGICIsqACIICrgf6ENCiQkaAKMLCMuwU%3D",
+    "az": "4qmFsgJBEg9GRXVucGx1Z2dlZF9lcGcaEDhnTUVJZ0l3QkElM0QlM0SyARsKGQgYGICIsqACIICrgf6ENCiQkaAKMLCMuwU%3D",
+    "za": "4qmFsgJBEg9GRXVucGx1Z2dlZF9lcGcaEDhnTUVJZ0l3QlElM0QlM0SyARsKGQgYGICIsqACIICrgf6ENCiQkaAKMLCMuwU%3D",
+}
+
+for name, want_token in REAL_ORDER_TOKENS.items():
+    check("the %s order token is rebuilt exactly" % name,
+          api.epg_order_token(api.EPG_ORDERS[name], 24, 604800000,
+                              1788044400000, 21498000, 11454000),
+          want_token)
+
+check("the five orders are distinct",
+      len(set(REAL_ORDER_TOKENS.values())), 5)
+check("a window change changes the token",
+      api.epg_order_token(1, 24, 604800000, 1788044400000, 21498000,
+                          11454000)
+      == api.epg_order_token(1, 40, 604800000, 1788044400000, 21498000,
+                             11454000),
+      False)
+
 print("failures:", len(failures))
 sys.exit(1 if failures else 0)
