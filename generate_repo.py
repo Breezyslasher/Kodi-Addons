@@ -75,7 +75,9 @@ def main():
     print(f"Generated: addons.xml.md5 ({md5_hash})")
     
     print("\nDone! Don't forget to:")
-    print("1. Create zip files for each addon in the 'zips' folder")
+    print("1. Build the zips:  python3 tools/build_addon_zip.py")
+    print("   (it writes zips/<addon>/<addon>-<version>.zip, and leaves out")
+    print("    docs, tools, caches and any baked_* credentials)")
     print("2. Also put a copy of repository.breezyslasher zip in 'zips' folder")
 
 if __name__ == "__main__":
