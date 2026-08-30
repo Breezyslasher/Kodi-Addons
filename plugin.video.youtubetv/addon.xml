@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.65" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.66" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,23 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.66 - The bail is a torn-down module, not a bad value
+- The logs say it plainly: in every run the first pair of values solves
+  correctly, and every solve after a playback has opened and closed bails.
+  It was never the input -- all eight values a device got wrong solve
+  correctly elsewhere, against a byte-identical player.
+- Kodi tears a plugin's modules down when the script ends, and that blanks
+  their globals. What this add-on still holds afterwards -- it keeps a
+  local server for the SABR bridge -- is then full of Nones where its
+  functions were. A blanked global raises inside the interpreter, the
+  interpreter reports it as the script throwing, and the player's own
+  catch answers with a constant. That constant is the bail.
+- The diagnostic added last build walked into the same thing and said so:
+  "'NoneType' object is not callable".
+- So a bail now names which module globals went blank and re-imports them
+  before giving up. There is no javascript runtime on Android to fall back
+  to, which is why this mattered there first.
+
 2026.8.31.65 - Dialogs that fit what they have to say
 - The sign-in code dialog spent two of its three lines on blank lines and
   the third on "On another device, open:", which pushed the code itself

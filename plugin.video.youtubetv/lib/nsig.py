@@ -268,6 +268,24 @@ def build_program(js, value):
         name, json.dumps(value))
 
 
+def _reimported_solve(js, value):
+    """Solve again with freshly imported modules.
+
+    Dropping the torn-down modules from sys.modules and importing them
+    again gives the interpreter its functions back. Cheaper than the
+    alternative -- there is no JavaScript runtime on Android to fall back
+    to -- and it costs nothing when the modules were fine, because this
+    only runs when a bail has already happened.
+    """
+    import sys as _sys
+    package = __name__.rsplit(".", 1)[0]
+    for module in ("jsinterp", "jsutils", "js2py_fixes"):
+        _sys.modules.pop(package + "." + module, None)
+    from .jsinterp import JSInterpreter
+    name, _program = build_program(js, value)
+    return JSInterpreter(js).call_function(name, value)
+
+
 def _solve_with_interpreter(js, name, value):
     from .jsinterp import JSInterpreter
     return JSInterpreter(js).call_function(name, value)
@@ -426,38 +444,106 @@ _DATE_LITERAL = re.compile(r'new Date\("([^"]+)"\)')
 _DATES_SAID = [False]
 
 
+def _plain_index(text):
+    """The same index worked out with nothing but datetime.
+
+    A second opinion that shares no code with unified_timestamp, so a log
+    showing the two disagreeing says the parse is what differs rather than
+    something around it.
+    """
+    import datetime as dt
+    found = re.match(r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})"
+                     r"(?:\.(\d+))?([+-])(\d{2}):(\d{2})$", text)
+    if not found:
+        return "unmatched"
+    year, month, day, hour, minute, second = (int(found.group(i))
+                                              for i in range(1, 7))
+    sign = -1 if found.group(8) == "-" else 1
+    offset = dt.timedelta(hours=int(found.group(9)),
+                          minutes=int(found.group(10))) * sign
+    when = dt.datetime(year, month, day, hour, minute, second) - offset
+    return int((when - dt.datetime(1970, 1, 1)).total_seconds())
+
+
+def _emptied_modules():
+    """Module-level names that have become None, per module.
+
+    Kodi runs each plugin invocation as a script and tears its modules down
+    when it ends, and CPython's teardown blanks a module's globals. Modules
+    that a still-running thread -- this addon keeps a local HTTP server for
+    the SABR bridge -- or a later invocation still holds are then full of
+    Nones where their functions were.
+
+    That is what the logs show. In every run the first pair of values
+    solves correctly, and every solve *after a playback has opened and
+    closed* bails. It is not the input: all eight values a device got wrong
+    solve correctly elsewhere. A blanked global raises inside the
+    interpreter, the interpreter reports it as the script throwing, and the
+    player's own catch answers with a constant -- which is exactly the bail
+    being seen. The diagnostic added for this hit the same thing head-on
+    and said so: "'NoneType' object is not callable".
+    """
+    import sys as _sys
+    emptied = {}
+    for module in ("jsinterp", "jsutils", "js2py_fixes", "kodiutils"):
+        found = _sys.modules.get(__name__.rsplit(".", 1)[0] + "." + module)
+        if found is None:
+            continue
+        blank = [key for key, value in vars(found).items()
+                 if value is None and not key.startswith("__")]
+        if blank:
+            emptied[module] = blank
+    return emptied
+
+
 def _report_dates(js):
     """What every ``new Date("...")`` in the transform works out to, once.
 
     The transform is a pure function of its input -- no clock, no random,
     no browser -- and it computes exactly the same answer on every machine
     that was tried: all eight values a real Android box got wrong solve
-    correctly here, against a byte-identical player and a byte-identical
-    sliced program.
+    correctly on a desktop, against a byte-identical player and a
+    byte-identical sliced program, at every Python from 3.10 to 3.13.
 
-    The one construct in it that leaves Python's own arithmetic is this
-    one. The player hides array indices behind dates with fractional-hour
-    offsets -- ``new Date("1969-12-31T17:30:49.000-06:30")/1E3`` is 49 --
-    so an index is an ISO-8601 parse, and a parse is the only thing here
-    that a platform can disagree about. An index that comes out different
-    reads a different slot, which throws, which is exactly the bail being
-    seen. So on a bail, say what each one came to: two logs from two
-    platforms then answer it outright.
+    The one construct in it that leaves plain arithmetic is this one. The
+    player hides array indices behind dates with fractional-hour offsets --
+    ``new Date("1969-12-31T17:30:49.000-06:30")/1E3`` is 49 -- so an index
+    is an ISO-8601 parse, and a parse is the only thing here that a
+    platform can disagree about. An index that comes out different reads a
+    different slot, which throws, which is the bail being seen.
+
+    Every date is caught on its own. The first cut of this wrapped the
+    whole loop in one try and a single failure -- "'NoneType' object is not
+    callable", on a device, from somewhere inside the parse -- threw away
+    the report entirely, which is the one outcome that teaches nothing.
     """
     if _DATES_SAID[0]:
         return
     _DATES_SAID[0] = True
     try:
-        from .jsutils import unified_timestamp
-        found = []
-        for text in dict.fromkeys(_DATE_LITERAL.findall(js)):
-            stamp = unified_timestamp(text, False)
-            found.append("%s -> %s" % (text, "unparsed" if stamp is None
-                                       else int(stamp)))
-        kodiutils.log("nsig: the dates the transform indexes with -- %s"
-                      % "; ".join(found) or "none")
+        import sys as _sys
+        kodiutils.log("nsig: python %s" % _sys.version.replace("\n", " "))
+    except Exception:
+        pass
+    try:
+        texts = list(dict.fromkeys(_DATE_LITERAL.findall(js)))
     except Exception as exc:
-        kodiutils.log("nsig: could not report the dates: %s" % exc)
+        kodiutils.log("nsig: could not find the dates: %r" % exc)
+        return
+    for text in texts:
+        try:
+            from .jsutils import unified_timestamp
+            stamp = unified_timestamp(text, False)
+            said = "unparsed" if stamp is None else int(stamp)
+        except Exception as exc:
+            said = "raised %s: %s" % (type(exc).__name__, exc)
+        try:
+            plain = _plain_index(text)
+        except Exception as exc:
+            plain = "raised %s: %s" % (type(exc).__name__, exc)
+        mark = "" if str(said) == str(plain) else "   <-- DISAGREE"
+        kodiutils.log("nsig: date %s -> %s (plain: %s)%s"
+                      % (text, said, plain, mark))
 
 
 def bailed(result, value):
@@ -538,9 +624,25 @@ def solve(js, value, player_id=""):
         result = ""
     why = bailed(result, value) if result else ""
     if why:
-        kodiutils.log("nsig: the built-in interpreter %s; trying a runtime"
-                      % why)
+        kodiutils.log("nsig: the built-in interpreter %s" % why)
         _report_dates(js)
+        # Before reaching for a runtime, try the far likelier cause. See
+        # _emptied_modules: a torn-down module is the difference between
+        # the first solve of a session and every one after a playback.
+        emptied = _emptied_modules()
+        if emptied:
+            kodiutils.log("nsig: modules with blanked globals -- %s"
+                          % "; ".join("%s: %s" % (where, ", ".join(names[:8]))
+                                      for where, names in emptied.items()))
+            try:
+                result = _reimported_solve(js, value)
+                why = bailed(result, value) if result else "produced nothing"
+                kodiutils.log("nsig: after re-importing, %s"
+                              % ("still bailed" if why else "it solved"))
+            except Exception as exc:
+                kodiutils.log("nsig: re-importing did not help: %r" % exc)
+        if why:
+            kodiutils.log("nsig: trying a runtime")
     if not result or why:
         runtime, name, result = _solve_with_runtime(js, value)
     if not result:
