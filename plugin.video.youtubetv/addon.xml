@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.33" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.34" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,23 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.34 - Search is rows, and the films are on its second page
+- Search never showed a film because it was read one page deep. "blues"
+  answers with Shows, Sports and "On now &amp; upcoming", and hands back a
+  continuation carrying "From your library", "On demand" and Movies --
+  where The Blues Brothers is, saying MOVIE plainly. Search now follows
+  that, sent to search rather than to browse, and lists the rows YouTube TV
+  grouped its results into rather than one flat list.
+- Fixes "Suggested titles", which in .32 and .33 opened the addon's front
+  page. The entry was there and the route answering it was not: an edit
+  failed and only the label was reapplied. A new check compares every url
+  the addon draws against every action it dispatches, which catches exactly
+  that and nothing else did.
+- The entry is now "Extras and suggested titles" and a title's page expands
+  the shelves it defers, which is where a show keeps its seasons and where
+  extras would be. No capture yet names a trailer or a bonus feature, so
+  every tab is logged: the first title that has any will say where.
+
 2026.8.31.33 - A title's page opens on the title
 - Search calls a film a SHOW -- "blues" answered with 11 SHOW and 3
   SPORTS_TEAM and no film at all -- so a film found by search is a folder,

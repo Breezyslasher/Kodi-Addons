@@ -1018,6 +1018,18 @@ class Api(object):
     def search(self, query):
         return self.call("search", {"query": query})
 
+    def search_continuation(self, token):
+        """The next page of a search.
+
+        Sent to search rather than to browse, which is where every other
+        continuation in this addon goes. It matters: the film rows arrive on
+        the *second* page -- "blues" answered with Shows, Sports and "On now
+        & upcoming" first, and "On demand" and "Movies" only after -- so a
+        search read one page deep finds no films and looks like a client
+        that cannot tell a film from a show.
+        """
+        return self.call("search", {"continuation": token})
+
     def suggest(self, query):
         return self.call("suggest", {"input": query})
 

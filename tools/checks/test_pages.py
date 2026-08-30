@@ -956,6 +956,57 @@ check("the rebuilt DVR params match a second capture's, byte for byte",
       unquote(api.dvr_params("UCUlwmd1Fk7Tr2XLsLe3rYcQ")),
       epg.first(MOVIE_TILE, "startDvrParams"))
 
+# -- search groups its results, and defers the films -----------------------
+# The search of 2026-08-30 01:00. "blues" answers with Shows, Sports and
+# "On now & upcoming" and hands back a continuation carrying "From your
+# library", "On demand" and Movies -- where The Blues Brothers is, saying
+# MOVIE plainly. Read one page deep, a search finds no film at all, which
+# is what made it look like search could not tell a film from a show.
+SEARCH_PAGE1 = {"contents": {"sectionListRenderer": {
+    "contents": [
+        {"shelfRenderer": {
+            "title": {"runs": [{"text": "Shows"}]},
+            "content": {"horizontalListRenderer": {"items": [
+                {"unpluggedBrowseItemRenderer": {
+                    "contentType": "SHOW",
+                    "primaryText": {"runs": [{"text": "Blue Bloods"}]},
+                    "navigationEndpoint": {"browseEndpoint": {
+                        "browseId": "UCSHOW1"}}}}]}}}},
+        {"shelfRenderer": {
+            "title": {"runs": [{"text": "Sports"}]},
+            "content": {"horizontalListRenderer": {"items": [
+                {"unpluggedBrowseItemRenderer": {
+                    "contentType": "SPORTS_TEAM",
+                    "primaryText": {"runs": [{"text": "St. Louis Blues"}]},
+                    "navigationEndpoint": {"browseEndpoint": {
+                        "browseId": "UCTEAM1"}}}}]}}}},
+    ],
+    "continuations": [{"nextContinuationData": {"continuation": "PAGE-2"}}]}}}
+
+SEARCH_PAGE2 = {"contents": {"sectionListRenderer": {"contents": [
+    {"shelfRenderer": {
+        "title": {"runs": [{"text": "Movies"}]},
+        "content": {"horizontalListRenderer": {"items": [
+            {"unpluggedBrowseItemRenderer": {
+                "contentType": "MOVIE",
+                "primaryText": {"runs": [{"text": "The Blues Brothers"}]},
+                "navigationEndpoint": {"browseEndpoint": {
+                    "browseId": "UC8todI5O2ZpZ5FhZ6aVMmKw"}}}}]}}}},
+]}}}
+
+check("a search is rows, grouped by what its results are",
+      [(r.title, len(r.items)) for r in epg.page_shelves(SEARCH_PAGE1)],
+      [("Shows", 1), ("Sports", 1)])
+check("and its first page names no film at all",
+      [i.content_type for r in epg.page_shelves(SEARCH_PAGE1) for i in r.items],
+      ["SHOW", "SPORTS_TEAM"])
+check("the films are behind the page's own continuation",
+      epg.page_continuation(SEARCH_PAGE1), "PAGE-2")
+check("and there The Blues Brothers says MOVIE plainly",
+      [(r.title, [(i.title, i.content_type) for i in r.items])
+       for r in epg.page_shelves(SEARCH_PAGE2)],
+      [("Movies", [("The Blues Brothers", "MOVIE")])])
+
 # -- a page about one title, against a page about a channel ----------------
 # Rogue One's page, kept by the diagnostic on 2026-08-30 00:49. Two things
 # a network page does not have: a header that names the title and says
