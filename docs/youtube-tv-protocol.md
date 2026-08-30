@@ -1267,6 +1267,35 @@ first and last are somewhere to go:
 So a title's page always reads as two tabs and drops two, by design, and
 that is not a shape worth keeping a copy of.
 
+Its **header** is a different renderer from a channel's, and that is what
+tells the two pages apart:
+
+| Page | Header |
+| --- | --- |
+| A film or show | `unpluggedContentDetailsHeaderRenderer` |
+| A channel | `unpluggedNetworkPromoHeaderRenderer` |
+
+Which matters because only one of them has tabs that are a menu. A
+channel's Live, Series and Movies are different parts of a channel; a
+title's Watch now and Suggested are the thing and then some notes about it.
+
+The title header also carries what the tiles do not:
+
+```json
+{"contentType": "MOVIE",
+ "title": {"simpleText": "Rogue One: A Star Wars Story"},
+ "secondaryText": {"simpleText": "PG-13 • 2016"},
+ "subscribeButton": {"dvrButtonRenderer": {
+     "dvrOn": false, "dvrOnAndRecording": false,
+     "serviceEndpoints": [{"startDvrEndpoint": {…}}, {"stopDvrEndpoint": {…}}]}}}
+```
+
+**`dvrOn` is the library state** -- the thing no tile carries, and the
+reason a tile has to offer both "record" and "stop recording". On a page it
+is known, so only the action that applies is offered. The Watch now tile
+adds a `duration` ("2:13:57"), and the About tab a real synopsis; a tile
+carries neither.
+
 `contentType` is not the same everywhere. Search answers with the field on
 the same renderer -- `unpluggedBrowseItemRenderer x14 carries [contentType,
 navigationEndpoint, primaryText, style, thumbnail, trackingParams]` -- and
@@ -1277,9 +1306,11 @@ it. The DVR toast, written per kind, stands in where the field is absent
 altogether.
 
 What is *not* there is the state. `isToggled` appears on none of the 2007
-toggle renderers across every capture, so the tile still cannot say whether
-a show is already being recorded, and both "record" and "stop recording"
-are still offered rather than the one that applies.
+toggle renderers across every capture, so a *tile* cannot say whether a show
+is already being recorded, and both "record" and "stop recording" are
+offered there rather than the one that applies. The title's own page can
+say -- see `dvrOn` above -- and on a page only the applicable one is
+offered.
 
 ### Categories, continued
 

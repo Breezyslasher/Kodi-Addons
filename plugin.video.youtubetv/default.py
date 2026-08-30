@@ -513,17 +513,45 @@ def _add_items(items, content="videos"):
     finish(content)
 
 
-def _add_item(item):
-    """One row, without ending the directory."""
+def _dvr_one(browse_id, name, recording):
+    """The one DVR entry that applies, where the page says which.
+
+    A tile cannot say whether a title is already in the library, so both
+    entries are offered there. A title's own page can -- its header carries
+    dvrOn -- and offering both when the answer is known is how a recording
+    gets cancelled by somebody aiming for the other one.
+    """
+    if not browse_id:
+        return []
+    if recording:
+        return [("YouTube TV: remove %s from your library" % name,
+                 "RunPlugin(%s)" % url(action="dvr", on="0",
+                                       browse_id=browse_id, name=name))]
+    return [("YouTube TV: add %s to your library" % name,
+             "RunPlugin(%s)" % url(action="dvr", on="1",
+                                   browse_id=browse_id, name=name))]
+
+
+def _add_item(item, plot="", dvr=None):
+    """One row, without ending the directory.
+
+    ``plot`` overrides the tile's own line, for a page that carries a real
+    synopsis its tiles do not. ``dvr`` is (browse_id, name, recording) where
+    the page knows the library state, and adds the one entry that applies.
+    """
     listitem = xbmcgui.ListItem(label=_label_of(item))
     listitem.setArt({"thumb": item.art, "fanart": item.art})
     info = listitem.getVideoInfoTag()
     info.setTitle(item.title)
-    if item.subtitle:
-        info.setPlot(item.subtitle)
+    if plot or item.subtitle:
+        info.setPlot(plot or item.subtitle)
+    if item.duration:
+        info.setDuration(item.duration)
     info.setMediaType("video")
     if item.playable:
         listitem.setProperty("IsPlayable", "true")
+        if dvr:
+            listitem.addContextMenuItems(_dvr_one(*dvr))
         xbmcplugin.addDirectoryItem(
             HANDLE,
             url(action="play", video_id=item.video_id, label=item.title),
@@ -733,6 +761,28 @@ def route_browse(browse_id, name, params=""):
         # which reads as a listing with some folders lost in it rather than
         # as a network with a Live tab. A page carrying a single tab has no
         # menu to be: that one is listed in place.
+        #
+        # A page about one *title* is the other exception, and the header
+        # names it: a film or show carries an
+        # unpluggedContentDetailsHeaderRenderer where a network carries an
+        # unpluggedNetworkPromoHeaderRenderer. Its tabs are not a menu --
+        # they are the thing, and then some notes about it -- so Rogue One
+        # opens on Rogue One, with Suggested behind it, rather than on two
+        # folders. That is what a film reached from search needs: search
+        # calls it a SHOW, so it is a folder, and this is the page it opens.
+        header = epg.title_header(response)
+        if header and tabs[0].items:
+            recording = epg.dvr_state(response)
+            dvr = (browse_id, name or epg.text(header.get("title")),
+                   recording) if recording is not None else None
+            plot = epg.page_description(response)
+            for item in tabs[0].items:
+                _add_item(item, plot=plot, dvr=dvr)
+            _list_sections(tabs[1:], "browse_section",
+                           extra={"browse_id": browse_id, "params": params})
+            finish("movies" if header.get("contentType") == "MOVIE"
+                   else "videos")
+            return
         if len(tabs) == 1 and tabs[0].items:
             _add_items(tabs[0].items)
             return
