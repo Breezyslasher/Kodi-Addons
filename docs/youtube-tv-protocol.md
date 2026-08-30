@@ -560,6 +560,42 @@ empty option value and `allowempty` beside `<options>`, where `max_height`,
 integer now. Whether that ever mattered is **not established** -- the folder
 was deleted in the same step.
 
+### The whole chain, once the schedule was readable
+
+Measured 2026-08-29 20:53, and worth writing down because the failure was at a
+different layer each time:
+
+| stage | programmes |
+| --- | --- |
+| the add-on, `iptv manager: offering` | 8050 |
+| IPTV Merge, `Wrote … EPG programme entries` | 8050 |
+| pvr.iptvsimple, `LoadEpgEntries - Loaded` | 8046 |
+| Kodi's guide | still one per channel |
+
+The last row was Kodi's own EPG cache (`Running database version Epg16`), not
+anything upstream: `grep -c GetEPGForChannel` over the whole session returns
+**0**, so Kodi never asked the client for EPG at all. IPTV Merge's
+disable/enable cycle reloads the *add-on*; it does not invalidate Kodi's cache,
+which refreshes on Kodi's own schedule. Settings → PVR & Live TV → Guide →
+Clear data forces it, and the grid then filled completely.
+
+A tell worth recognising: the channel *list* had already changed to the new
+merge's order while the grid had not. A fresh playlist against a stale EPG is
+exactly that shape.
+
+### A marker on every programme is a claim that every programme plays
+
+Kodi draws a marker on any EPG entry it is given a stream url for. `lib/iptv.py`
+gave one to every airing carrying a video id, with a comment saying only the
+one on now would resolve -- which was honest by accident, because before the
+side-sheet id was read the only airings *with* an id were the 143 on the air.
+
+Reading the other 846 gave all 8050 a url and marked a week's schedule
+playable. Now only `on_air` airings get one: 989 programmes, 143 urls, one per
+channel. That is the guide's own statement of which airing is live, and the
+only one this add-on has established plays -- a future airing cannot, and
+catch-up on a past one is a separate entitlement.
+
 ### The PVR guide is IPTV Manager's copy, not this addon's
 
 The Kodi TV section's guide is populated by whatever consumes
