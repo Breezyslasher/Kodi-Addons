@@ -1179,22 +1179,51 @@ def _row(*items):
     return [epg.Section("Top picks", list(items))]
 
 
-client = _FakeClient({"UCFILM": "MOVIE"})
+# The remembered details are stubbed the way the remembered kinds are: left
+# alone, a run would write its fixtures into the profile and the next run
+# would ask for nothing and pass for the wrong reason.
+remembered = {}
+api.remembered_meta = lambda: dict(remembered)
+api.remember_meta = lambda found: remembered.update(found)
+default._REMEMBERED_META.clear()
+default._LOADED_META[0] = False
+
+# A page is owed for two reasons, and both are checked here: an id whose
+# kind is unknown, and an id whose kind is known but whose details are not.
+# Asking only the first is why a listing stayed bare -- once the kinds were
+# remembered nothing was fetched again, so the genres and the cast had
+# nowhere to come from.
+remembered.clear()
+remembered["UCDETAILED"] = {"genres": ["Comedy"]}
+default._REMEMBERED_META.clear()
+default._LOADED_META[0] = False
+
+client = _FakeClient({"UCFILM": "MOVIE", "UCKNOWNFILM": "MOVIE",
+                      "UCDETAILED": "MOVIE"})
 row = _row(epg.Item(browse_id="UCFILM", title="The Blues Brothers",
                     content_type="SHOW"),
            epg.Item(video_id="V1", title="An airing"),
            epg.Item(browse_id="UCKNOWNFILM", title="Rogue One",
+                    content_type="MOVIE"),
+           epg.Item(browse_id="UCDETAILED", title="Airplane!",
                     content_type="MOVIE"))
 asked, films = default._type_results(client, row)
 check("a film the search called a show is put right by its own page",
       [(i.title, i.content_type) for i in row[0].items],
       [("The Blues Brothers", "MOVIE"), ("An airing", ""),
-       ("Rogue One", "MOVIE")])
-check("and only the one that needed asking was asked",
-      (client.asked, asked, films), (["UCFILM"], 1, 2))
+       ("Rogue One", "MOVIE"), ("Airplane!", "MOVIE")])
+check("a page is asked for an unknown kind and for unknown details alike",
+      (sorted(client.asked), asked), (["UCFILM", "UCKNOWNFILM"], 2))
+check("but not for an airing, nor for one already known through and through",
+      ("V1" in client.asked, "UCDETAILED" in client.asked), (False, False))
+remembered.clear()
+default._REMEMBERED_META.clear()
 
 # A search whose results are all remembered should cost nothing.
 api.remembered_kinds = lambda: {"UCFILM": "MOVIE", "UCTEAM": "SPORTS_TEAM"}
+remembered["UCFILM"] = {"genres": ["Comedy"]}
+default._REMEMBERED_META.clear()
+default._LOADED_META[0] = False
 quiet = _FakeClient({}, suggests={"UCFILM": "Movie"})
 quiet_row = _row(epg.Item(browse_id="UCFILM", title="The Blues Brothers",
                           content_type="SHOW"),
@@ -1206,6 +1235,8 @@ check("a search that needs nothing asks for nothing",
 check("and it is still typed, from memory",
       [i.content_type for i in quiet_row[0].items], ["MOVIE", "SPORTS_TEAM"])
 api.remembered_kinds = lambda: {}
+remembered.clear()
+default._REMEMBERED_META.clear()
 
 # suggest is not one of the steps, and this is why. In a browser it answers
 # with the kind in words beside the browse id, which is what this reads;
@@ -1370,12 +1401,8 @@ check("and one that plays still keeps them apart",
 # on selection now, so that page is the one screen nobody opens -- which is
 # why a build that read every field correctly still showed a year and a
 # rating and nothing else.
-remembered = {}
-api.remembered_meta = lambda: dict(remembered)
-api.remember_meta = lambda found: remembered.update(found)
 default._REMEMBERED_META.clear()
-default._LOADED_META[0] = False
-
+default._LOADED_META[0] = False       # make it read the stub again
 remembered["UCROGUE"] = {"genres": ["Science fiction"], "year": 2016,
                          "mpaa": "PG-13", "directors": ["Gareth Edwards"],
                          "studio": "Disney", "plot": "Jyn Erso.",
