@@ -1152,8 +1152,18 @@ Adult Swim carries [content, title, trackingParams];
 ```
 
 The wrapper between is the entire difference and it was the one thing not
-being printed. The web client uses `nextContinuationData`; this one does
-not. The reader now takes any continuation inside a tab that holds nothing
+being printed. Printed, it is `reloadContinuationData`:
+
+```
+Series carries [content, title, trackingParams]; content [sectionListRenderer]
+  holding sectionListRenderer x1; strings under
+  sectionListRenderer/continuations/reloadContinuationData/continuation
+```
+
+The web client uses `nextContinuationData` for the same tab. Both name the
+tab's content; `page_continuation` accepts only the first, deliberately,
+because on a page of shelves a reloadContinuationData is the page again.
+With that read, AMC gives 5 tabs, ABC 8 and Animal Planet 4, all of them. The reader now takes any continuation inside a tab that holds nothing
 else -- a tab with no items has no shelves to confuse it -- skipping only a
 `timedContinuationData`, which is a refresh timer and asks for the same
 empty tab back. And `_inside` prints the path to a string rather than its
