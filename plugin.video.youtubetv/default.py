@@ -652,7 +652,7 @@ def _search_pages(client, response, limit=4):
     return pages
 
 
-def _type_results(client, query, rows, limit=24, workers=6):
+def _type_results(client, rows, limit=24, workers=6):
     """What each result actually is, asked for in the cheapest order.
 
     Search types a film SHOW and its tiles carry no menu, so nothing in a
@@ -660,18 +660,26 @@ def _type_results(client, query, rows, limit=24, workers=6):
     what they cost:
 
     1. What is already remembered. A title does not change what it is.
-    2. **suggest**, which answers in words beside the same browse id --
-       "The Blues Brothers / Movie", "Air Disasters / Show", "St. Louis
-       Blues / Team". One call for the whole query.
-    3. The result's own page, for whatever is left, fetched together the
+    2. The result's own page, for whatever is left, fetched together the
        way a show page's deferred shelves are.
 
     Everything learned is remembered, so the second search for the same
-    thing asks for none of it.
+    thing asks for none of it. That is what carries this: "john" cost 24
+    lookups the first time, 3 the second, and "blues" none at all.
+
+    **suggest is not one of the steps, though it should have been.** In a
+    browser it answers with the kind in words beside the browse id, and
+    that is what epg.suggestion_kinds reads. Asked by this client it
+    answers with ten searchSuggestionRenderers -- plain query text -- and
+    no entity suggestions whatever, so there is nothing in it to read. The
+    reader stays because the shape is real; the call does not, because it
+    cost a request per search and returned nothing.
 
     Bounded: nothing playable and nothing already known is looked up, and
     at most ``limit`` pages are fetched for one search, so a query that
-    answers with a hundred folders does not become a hundred requests.
+    answers with a hundred folders does not become a hundred requests. The
+    cap converges rather than truncating -- what it did not reach this time
+    is unknown next time, and gets asked then.
     """
     known = dict(api.remembered_kinds())
 
@@ -690,44 +698,12 @@ def _type_results(client, query, rows, limit=24, workers=6):
                     left.append(item.browse_id)
         return left
 
-    # What is remembered first, and if that accounts for everything, stop
-    # here: the second search for the same thing should cost nothing at
-    # all, and asking for suggestions it has no use for is still a request.
-    wanted = apply(known)
-    told = 0
+    # What is remembered first. If that accounts for everything, nothing is
+    # asked for at all -- the second search for the same thing should cost
+    # nothing.
+    wanted = apply(known)[:limit]
     if not wanted:
-        return 0, 0, _films(rows)
-
-    if query:
-        try:
-            suggested = client.suggest(query)
-        except (auth.AuthError, api.ApiError) as exc:
-            kodiutils.log("suggestions did not open: %s" % exc)
-            suggested = {}
-        offered = epg.suggestion_kinds(suggested)
-        if not offered:
-            # It answered and said nothing this could read. The reader was
-            # written from a browser's suggest, and "john" came back with
-            # 24 results still needing a page each and not one typed here,
-            # so this client's answer is a different shape. Its renderers
-            # are the only thing that says how.
-            kodiutils.log("suggestions for %r typed nothing -- %s"
-                          % (query,
-                             "; ".join(epg.renderer_sample(suggested, 6))
-                             or "no renderers at all"))
-        # Only where nothing is remembered: what a page said outranks a
-        # suggestion, having come from the title itself.
-        fresh = {bid: kind for bid, kind in offered.items()
-                 if bid not in known}
-        if fresh:
-            known.update(fresh)
-            wanted = apply(known)
-            told = len(fresh)
-
-    wanted = wanted[:limit]
-    if not wanted:
-        api.remember_kinds(known)
-        return told, 0, _films(rows)
+        return 0, _films(rows)
 
     def ask(browse_id):
         try:
@@ -746,11 +722,8 @@ def _type_results(client, query, rows, limit=24, workers=6):
                 found[browse_id] = kind
     known.update(found)
     api.remember_kinds(known)
-    for row in rows:
-        for item in row.items:
-            if item.browse_id in found:
-                item.content_type = found[item.browse_id]
-    return told, len(wanted), _films(rows)
+    apply(known)
+    return len(wanted), _films(rows)
 
 
 def _films(rows):
@@ -772,10 +745,10 @@ def _list_search(client, query, response):
     # listed under a row called Shows is the thing to find, and it can be
     # in either place -- YouTube TV names these rows and this addon names a
     # category's -- so both say what they actually hold.
-    told, asked, films = _type_results(client, query, rows)
-    kodiutils.log("search %r: %d page(s), %d row(s), %d typed by suggestion, "
-                  "%d page(s) asked, %d film(s) -- %s"
-                  % (query, len(pages), len(rows), told, asked, films,
+    asked, films = _type_results(client, rows)
+    kodiutils.log("search %r: %d page(s), %d row(s), %d page(s) asked, "
+                  "%d film(s) -- %s"
+                  % (query, len(pages), len(rows), asked, films,
                      "; ".join("%s (%s)" % (r.title, _kinds_in(r.items))
                                for r in rows) or "nothing"))
     # The per-item dump that answered this is gone; what it found is

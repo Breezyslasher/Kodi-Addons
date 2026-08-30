@@ -241,7 +241,7 @@ Five exist across all of them, so **no tab is missing**:
 | `browse` | 99 | implemented |
 | `log_event` | 50 | telemetry, deliberately not sent |
 | `search` | 20 | implemented |
-| `suggest` | 33 | implemented — and it is where the kind of a thing comes from |
+| `suggest` | 33 | implemented, and useless here: a browser gets entity suggestions naming the kind, this client gets ten plain query strings |
 | `tenx_player` | 25 | not implemented, but no longer unknown: `{"channelIds": [...]}` in, and a `tenxStreams` list back, one `templatedUrl` per channel — itag 133, `source=yt_tv_broadcast`, `xtags=tenx=1`, with `&sq=` to fill in and a `refreshIntervalSeconds` of 120. The guide's live preview mosaic, and nothing else |
 | `att/get` | 6 | not needed — the add-on mints its own proof-of-origin |
 | `next` | 5 | **not implemented.** `{"videoId": ..., "params": ..., "unpluggedWatchNextOptions": null}` — the watch-next panel. No response body captured |
@@ -1114,7 +1114,15 @@ carries [contentType, navigationEndpoint, primaryText, style, thumbnail,
 trackingParams]` -- so the DVR toast that names the kind elsewhere is not
 there to fall back on either. Nothing *in a search result* says "film".
 
-**`suggest` says, in words.** Asked `{"input": "blues"}` it answers with
+**`suggest` says, in words — but only to a browser.** Asked by
+`TVHTML5_UNPLUGGED` it answers with ten `searchSuggestionRenderer`s
+carrying `[navigationEndpoint, suggestion, trackingParams]` — plain query
+text — and **no `entitySuggestionRenderer` at all**, so there is nothing in
+it to type anything by. The addon does not call it for this. What follows
+is the browser's answer, kept because the shape is real and the reader for
+it costs nothing to keep.
+
+ Asked `{"input": "blues"}` it answers with
 `entitySuggestionRenderer`s carrying a browse id and the kind spelled out
 beside it, in one 20 KB call for the whole query:
 
@@ -1136,7 +1144,7 @@ Its `searchNavigationEndpoint` also carries `searchEndpoint.params:
 "cgIgAQ%3D%3D"`, which is where the per-query `params` form above comes
 from: it is the endpoint attached to clicking a suggestion.
 
-**The page one level down answers for the rest.** A result's own
+**So the page one level down answers for all of it.** A result's own
 `unpluggedContentDetailsHeaderRenderer` says `contentType: "MOVIE"`, and it
 is the same header that makes a film play from a category. So the addon
 asks it: the pages of the results it cannot type are fetched together, the
