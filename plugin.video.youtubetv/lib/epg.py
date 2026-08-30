@@ -6,7 +6,11 @@ first time Google inserts a wrapper -- everything here searches by key name and
 tolerates absence. A missing description is not worth an exception.
 """
 
+import base64
+import binascii
+import re
 import time
+from urllib.parse import unquote
 
 from . import kodiutils
 
@@ -363,6 +367,113 @@ def _endpoint_id(node, endpoint, key):
     return ""
 
 
+def _varint(data, at):
+    shift = value = 0
+    while at < len(data):
+        byte = data[at]
+        at += 1
+        value |= (byte & 0x7F) << shift
+        if not byte & 0x80:
+            return value, at
+        shift += 7
+        if shift > 63:
+            break
+    return None, at
+
+
+def _protobuf_strings(data, depth=0):
+    """Every length-delimited field in a protobuf, and those nested inside.
+
+    A deliberately small reader: enough to walk a token whose schema is not
+    published, and no more. Anything it cannot make sense of ends the walk
+    rather than guessing, because a wrong offset in a protobuf produces
+    plausible nonsense rather than an error.
+    """
+    at = 0
+    while at < len(data):
+        tag, at = _varint(data, at)
+        if tag is None:
+            return
+        wire = tag & 7
+        if wire == 0:
+            value, at = _varint(data, at)
+            if value is None:
+                return
+        elif wire == 1:
+            at += 8
+        elif wire == 5:
+            at += 4
+        elif wire == 2:
+            length, at = _varint(data, at)
+            if length is None or at + length > len(data):
+                return
+            chunk = data[at:at + length]
+            at += length
+            yield chunk
+            if depth < 4:
+                for inner in _protobuf_strings(chunk, depth + 1):
+                    yield inner
+        else:
+            return          # a group; not something these tokens use
+
+
+# What a browse id looks like: "UCmXMw6OyWJH1O6cA7JZS9Fg" for a show or a
+# team, "SEEV_g_11z7gny2t0" for an event. Long enough, and made only of the
+# characters an id is made of, which is what separates it from the protobuf
+# framing around it.
+_BROWSE_ID = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+
+
+def sidesheet_id(params):
+    """The browse id buried in an unpluggedGetSidesheetCommand's params.
+
+    The TV client's Library tiles do not navigate: each carries a
+    navigationEndpoint holding unpluggedGetSidesheetCommand, which opens a
+    detail panel. There is no browseId field anywhere on the tile, so all
+    nineteen were dropped as naming nowhere to go.
+
+    The id is inside the command's params, base64 of a small protobuf. In
+    the 2026-08-29 capture every one of the nineteen decoded to a nested
+    field holding the same id the web client puts in a plain browseEndpoint
+    -- UCmXMw6OyWJH1O6cA7JZS9Fg for Pittsburgh Steelers, and so on for all
+    seven distinct titles -- which is what makes reading it a measurement
+    rather than a hope.
+
+    The outer field number varies by what the tile is (3 for a movie, 4 for
+    a show, 7 for a sports team), so the walk is by shape rather than by
+    field number: the first nested string that looks like an id.
+    """
+    if not isinstance(params, str) or not params:
+        return ""
+    token = unquote(params)
+    try:
+        raw = base64.urlsafe_b64decode(token + "=" * (-len(token) % 4))
+    except (binascii.Error, ValueError):
+        return ""
+    for chunk in _protobuf_strings(raw):
+        try:
+            found = chunk.decode("ascii")
+        except UnicodeDecodeError:
+            continue
+        if _BROWSE_ID.match(found):
+            return found
+    return ""
+
+
+def _sidesheet_browse_id(node):
+    """The id a tile hides in a side-sheet command, if it has one."""
+    for carrier in _ENDPOINT_CARRIERS:
+        block = node.get(carrier)
+        if not isinstance(block, dict):
+            continue
+        command = block.get("unpluggedGetSidesheetCommand")
+        if isinstance(command, dict):
+            found = sidesheet_id(command.get("params"))
+            if found:
+                return found
+    return ""
+
+
 def _popup_video_id(node):
     """The video a tile hides behind a "how would you like to watch?" dialog.
 
@@ -508,7 +619,8 @@ def parse_items(response):
         browse_id = "" if video_id else (
             _endpoint_id(renderer, "browseEndpoint", "browseId")
             or (renderer.get("browseId")
-                if isinstance(renderer.get("browseId"), str) else ""))
+                if isinstance(renderer.get("browseId"), str) else "")
+            or _sidesheet_browse_id(renderer))
         if not video_id and not browse_id:
             return
         # Keyed by destination *and* start time. Destination alone collapsed
@@ -564,6 +676,7 @@ def unplayable_count(response):
                             and not _popup_video_id(value)
                             and not value.get("videoId")
                             and not value.get("browseId")
+                            and not _sidesheet_browse_id(value)
                             and title not in seen):
                         seen.add(title)
                         count += 1

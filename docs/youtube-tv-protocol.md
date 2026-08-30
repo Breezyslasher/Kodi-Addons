@@ -324,7 +324,7 @@ The items were never behind the token — they are inline in each cell's
 `gridRenderer`, which the sampler also confirmed (`gridRenderer x9 carries
 [continuations, items, trackingParams]`).
 
-#### The Library's tiles do not navigate — they open a side sheet
+#### The Library's tiles do not navigate — they open a side sheet, with the id inside
 
 Accepting any endpoint that names an id was not it either. With the sampler
 reporting one level further in:
@@ -340,8 +340,36 @@ detail panel, which is consistent with the `unpluggedSidesheetRenderer`,
 `unpluggedSidesheetTextHeaderRenderer` and `unpluggedSidesheetContentRenderer`
 the first shape dump counted in the same response.
 
-Whether that command carries a browse id of its own or has to be fetched is
-not yet known, and is the next thing to read out of `library-shape.json`.
+The id is inside the command, and no fetch is needed. `params` is base64 of a
+small protobuf:
+
+```
+":\x1c\n\x18UCmXMw6OyWJH1O6cA7JZS9Fg\x10\x01@\x01P\x01`\x01"
+```
+
+— an outer length-delimited field wrapping field 1, the browse id. The outer
+field number is what the tile *is*: 3 for a movie, 4 for a show, 5 for an
+event, 7 for a sports team, matching the `requestType`
+(`UNPLUGGED_SIDESHEET_REQUEST_TYPE_SHOW` and friends). So `sidesheet_id` walks
+the token by shape rather than by field number, taking the first nested string
+that looks like an id, with a small protobuf reader that stops rather than
+guesses when an offset stops making sense.
+
+The check that this is right: eight titles appear in both the web and the TV
+capture, and on seven of them the id read out of the TV token is **the same id**
+the web client puts in a plain `browseEndpoint`. The eighth is the scheduled
+game, where the TV client's `EVENT` token names `UCzqrIe11dHk2TcbCDfLg7mg`
+while the web client navigates to `SEEV_g_11z7gny2t0` — two different entities
+for the same fixture. That token also carries an eleven-character string after
+the entity id, the length of a video id. Which of the two the TV client's own
+side sheet opens is not established here; the first is taken, because that is
+the one the other seven verify.
+
+With it, the TV Library reads in full: nine tabs, 26 tiles, nothing counted
+unplayable.
+
+    New for you 2, Recently recorded 2, Most watched 2, Scheduled 7,
+    Series 4, Sports 1, All 5, Purchased 2, Expired 1
 
 Whether `onSelectCommand` is actually used by the TV client remains
 unverified.
@@ -358,6 +386,22 @@ Those ten episodes do have a `navigationEndpoint` — holding
 `unpluggedInitiateInlinePurchaseCommand`. They are not episodes the account
 lacks rights to; they are **buy prompts**. Dropping them is correct, and the
 count of ten this file has quoted throughout is accurate.
+
+### The PVR guide is IPTV Manager's copy, not this addon's
+
+The Kodi TV section's guide is populated by whatever consumes
+`?action=iptv_epg` -- service.iptv.manager directly, or plugin.program.iptv.merge,
+which speaks the same protocol and merges several sources into the M3U and
+XMLTV that pvr.iptvsimple reads. Either way the pull happens **on its own
+schedule** and the result is cached; the addon cannot trigger a refresh. So a guide fix shows up in the addon's own Guide
+folder immediately and in the TV section only after IPTV Manager next runs --
+which is why one programme per channel survived the fix that took the guide
+from 144 airings to 953. Confirming a guide change means looking at the
+addon's own Guide, or forcing the merge/refresh by hand. In the 20:06 log
+neither had run: there is no `iptv manager: offering N airing(s)` line
+anywhere, which is the addon's own record of having been asked.
+
+`lib/iptv.py` goes through the same `parse_epg`, so it needs no separate fix.
 
 ### The guide census
 

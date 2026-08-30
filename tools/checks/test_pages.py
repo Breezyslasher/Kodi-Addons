@@ -21,6 +21,7 @@ Account data is deliberately not committed: these are the structures, with
 the titles and ids replaced.
 """
 
+import base64
 import copy
 import os
 import sys
@@ -348,6 +349,59 @@ check("'now' is the marked airing, whatever the clock says",
       stations[0].now.video_id, "NOW")
 check("next up is the one after it", stations[0].next_up.video_id
       if stations[0].next_up else "", "LATER")
+
+# -- the id inside a side-sheet command ------------------------------------
+# The TV client's Library tiles carry no browseId anywhere. Each has a
+# navigationEndpoint holding unpluggedGetSidesheetCommand, whose base64
+# params are a small protobuf with the id nested inside. The outer field
+# number varies by what the tile is -- 3 for a movie, 4 for a show, 7 for a
+# sports team -- so the reader walks by shape, not by field number.
+#
+# Tokens here are built rather than copied, so the check proves the reader
+# and not one account's library.
+def _proto(outer_field, browse_id, extra=b""):
+    inner = b"\x0a" + bytes([len(browse_id)]) + browse_id.encode()
+    inner += extra
+    return bytes([outer_field << 3 | 2, len(inner)]) + inner
+
+
+def _b64(raw):
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+for field, name in ((3, "a movie"), (4, "a show"), (7, "a sports team")):
+    check("the id is read out of %s's params" % name,
+          epg.sidesheet_id(_b64(_proto(field, "UCmXMw6OyWJH1O6cA7JZS9Fg"))),
+          "UCmXMw6OyWJH1O6cA7JZS9Fg")
+
+# An event's params carry the entity id first and a second, shorter string
+# after it; the first is the one that matches what the web client navigates
+# to on the tiles that appear in both captures.
+check("an event's params give the entity, not the trailing string",
+      epg.sidesheet_id(_b64(_proto(5, "UCzqrIe11dHk2TcbCDfLg7mg",
+                                   extra=b"\x10\x00\x18\x01 \x01\x2a\x0bAAAAAAAAAAA"))),
+      "UCzqrIe11dHk2TcbCDfLg7mg")
+
+check("percent-encoded padding is handled",
+      epg.sidesheet_id(_b64(_proto(4, "UCSHOWSHOWSHOWSHOWSHOWx")) + "%3D"),
+      "UCSHOWSHOWSHOWSHOWSHOWx")
+check("junk is declined, not guessed at", epg.sidesheet_id("not base64 !!"), "")
+check("an empty token is declined", epg.sidesheet_id(""), "")
+check("a token holding no id is declined",
+      epg.sidesheet_id(_b64(b"\x10\x01\x18\x02")), "")
+
+SIDESHEET = {"contents": [{"unpluggedBrowseItemRenderer": {
+    "primaryText": _runs("A show"),
+    "contentType": "SHOW",
+    "thumbnail": {"thumbnails": [{"url": "//x/y", "width": 100}]},
+    "navigationEndpoint": {"unpluggedGetSidesheetCommand": {
+        "requestType": "UNPLUGGED_SIDESHEET_REQUEST_TYPE_SHOW",
+        "params": _b64(_proto(4, "UCmXMw6OyWJH1O6cA7JZS9Fg"))}}}}]}
+found = epg.parse_items(SIDESHEET)
+check("a side-sheet tile becomes a folder",
+      [(i.title, i.browse_id) for i in found],
+      [("A show", "UCmXMw6OyWJH1O6cA7JZS9Fg")])
+check("and is not counted unplayable", epg.unplayable_count(SIDESHEET), 0)
 
 print("failures:", len(failures))
 sys.exit(1 if failures else 0)
