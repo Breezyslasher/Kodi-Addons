@@ -1037,17 +1037,42 @@ continuation in this addon goes:
 POST /youtubei/v1/search?alt=json    {"continuation": "EnESBWJsdWVzGmhjallLTkVOblVWRkZRbWhCUTJk"}
 ```
 
-**The TV client groups it differently.** Asked as `TVHTML5_UNPLUGGED` the
-same query answers with four rows across three pages -- `Top picks (14)`,
-`On now & upcoming (6)`, `From your library (1)`, `On demand (6)` -- putting
-films, shows and teams together in one row where a browser separates them.
-Every tile still carries its `contentType`. The addon does **not** regroup
-them: rows it invents are rows the service does not have. The row's own
-continuation is worth nothing, though -- spending it added 0 items, twice.
+**The TV client answers a search differently, and mistypes films in it.**
+The same query as `TVHTML5_UNPLUGGED` gives four rows across three pages
+against the browser's six, and the types do not agree:
+
+| | Browser (client 41) | Kodi (TVHTML5_UNPLUGGED) |
+| --- | --- | --- |
+| rows | Shows, Sports, On now & upcoming, From your library, On demand, Movies | Top picks, On now & upcoming, From your library, On demand |
+| The Blues Brothers | `MOVIE`, in Movies *and* in On now & upcoming | **`SHOW`**, in Top picks |
+| Blues Brothers 2000 | -- | **`SHOW`** |
+| On demand tiles | `MOVIE x5, SHOW x3` | no `contentType` at all |
+| a Movies row | 7 films | none |
+
+Two separate things, from the log of 2026-08-30 01:29:
+
+* `unpluggedBrowseItemRenderer` carries `contentType` here as it does
+  everywhere, and **the value is wrong for films**: The Blues Brothers and
+  Blues Brothers 2000 both come back `SHOW`. So nothing in a search result
+  says "film", and a film found by search is a folder.
+* `unpluggedGridVideoRenderer` carries no `contentType` at all -- its keys
+  are `[badge, description, endTimeSeconds, entityPageNavigationEndpoint,
+  onMultiviewPress, primaryText, secondaryText, startTimeSeconds, style,
+  thumbnail, trackingParams]`. Those tiles are *airings*, not titles, and
+  untyped is right for them. They navigate by
+  `entityPageNavigationEndpoint`, so unlike the browser's, they do not
+  carry a videoId either.
+
+The film is not lost: opening it lands on its own page, whose
+`unpluggedContentDetailsHeaderRenderer` says `contentType: "MOVIE"` and
+whose Watch now tab holds the film. That is one click more than a film
+found in a category, which types itself correctly and plays on selection.
+
+The addon does **not** regroup these rows: rows it invents are rows the
+service does not have. The row's own continuation is worth nothing either
+-- spending it added 0 items, twice.
 
 `SPORTS_TEAM` is a fourth `contentType`, alongside MOVIE, SHOW and EVENT.
-The "On demand" row is worth noting separately: its tiles carry a
-**videoId** rather than a browseId, so those play with no page fetch at all.
 
 ### Search — `POST /youtubei/v1/search?alt=json`
 
