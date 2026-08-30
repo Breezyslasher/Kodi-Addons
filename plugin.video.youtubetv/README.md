@@ -30,9 +30,10 @@ not document. See [Status](#status).
   suggestions, and its extras where a title has any -- is on the context
   menu. A series stays a folder, because it is one
 * Search across live and on-demand, in the rows YouTube TV groups it into.
-  It calls a film a show here, so each result's own page is asked what it
-  is -- together, and remembered -- and films found that way play on
-  selection like any other
+  It calls a film a show here, so the kind is asked for: the suggestions
+  endpoint spells it out beside the browse id in one call, a result's own
+  page answers for whatever that misses, and both are remembered. Films
+  found by search play on selection like any other
 * Browsing a show to its episodes --
   including the seasons the show page defers rather than lists
 * Widevine playback via InputStream Adaptive at up to 1080p

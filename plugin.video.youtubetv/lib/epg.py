@@ -1266,6 +1266,41 @@ def _duration(renderer):
 HEADER = "unpluggedContentDetailsHeaderRenderer"
 
 
+_SUGGESTION_KINDS = {"movie": "MOVIE", "show": "SHOW", "team": "SPORTS_TEAM",
+                     "event": "EVENT", "network": "NETWORK"}
+
+
+def suggestion_kinds(response):
+    """{browse id: kind} from a suggest response, and the answer is in words.
+
+    Search types a film SHOW and its tiles carry no menu, so nothing in a
+    search result says what a thing is. **suggest does**, plainly, next to
+    the same browse id: "The Blues Brothers / Movie", "Air Disasters /
+    Show", "St. Louis Blues / Team". One 20 KB call for a query, against a
+    page fetch for every result that needs typing.
+
+    Read out of the suggestion's secondaryContainer, from the text renderer
+    rather than the badge beside it -- that badge is "$", which says a title
+    must be bought, not what it is.
+    """
+    found = {}
+    for entry in walk(response, "entitySuggestionRenderer"):
+        if not isinstance(entry, dict):
+            continue
+        endpoint = first(entry, "browseEndpoint")
+        browse_id = (endpoint or {}).get("browseId")
+        if not isinstance(browse_id, str) or not browse_id:
+            continue
+        for holder in walk(entry.get("secondaryContainer") or {},
+                           "unpluggedTextRenderer"):
+            said = text((holder or {}).get("text")).strip().lower()
+            kind = _SUGGESTION_KINDS.get(said)
+            if kind:
+                found[browse_id] = kind
+                break
+    return found
+
+
 def browse_rows(response, least=20):
     """(categories, networks) off the Browse tab.
 

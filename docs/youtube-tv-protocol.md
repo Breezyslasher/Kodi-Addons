@@ -241,8 +241,8 @@ Five exist across all of them, so **no tab is missing**:
 | `browse` | 99 | implemented |
 | `log_event` | 50 | telemetry, deliberately not sent |
 | `search` | 20 | implemented |
-| `suggest` | 17 | implemented (`Api.suggest`, not yet wired to a route) |
-| `tenx_player` | 25 | **not implemented.** Takes `{"channelIds": [...]}`. No response body survives in any capture, so what it returns is unknown |
+| `suggest` | 33 | implemented — and it is where the kind of a thing comes from |
+| `tenx_player` | 25 | not implemented, but no longer unknown: `{"channelIds": [...]}` in, and a `tenxStreams` list back, one `templatedUrl` per channel — itag 133, `source=yt_tv_broadcast`, `xtags=tenx=1`, with `&sq=` to fill in and a `refreshIntervalSeconds` of 120. The guide's live preview mosaic, and nothing else |
 | `att/get` | 6 | not needed — the add-on mints its own proof-of-origin |
 | `next` | 5 | **not implemented.** `{"videoId": ..., "params": ..., "unpluggedWatchNextOptions": null}` — the watch-next panel. No response body captured |
 | `player` | 5 | implemented |
@@ -1114,7 +1114,29 @@ carries [contentType, navigationEndpoint, primaryText, style, thumbnail,
 trackingParams]` -- so the DVR toast that names the kind elsewhere is not
 there to fall back on either. Nothing *in a search result* says "film".
 
-**The page one level down does.** A result's own
+**`suggest` says, in words.** Asked `{"input": "blues"}` it answers with
+`entitySuggestionRenderer`s carrying a browse id and the kind spelled out
+beside it, in one 20 KB call for the whole query:
+
+```
+St. Louis Blues     Team    UC0tM0q-x5pc3lvV96zv1Wjw
+The Blues Brothers  Movie   UC8todI5O2ZpZ5FhZ6aVMmKw
+Blues on Beale      Movie   UCYrKyBwbQW9PMoGAoC0HiqQ   (badge "$")
+Air Disasters       Show    UChwvXpAFBPfOhiayQfNhwTQ
+Airplane!           Movie   UCboHgTIRnHZyX7GiIHGDxKw
+```
+
+The word is in the suggestion's `secondaryContainer`, in an
+`unpluggedTextRenderer`; the `unpluggedTextBadgeRenderer` next to it holds
+`"$"`, which says a title must be bought rather than what it is. It covers
+the handful of entities matching the typed prefix -- six for these queries
+-- not everything a search returns.
+
+Its `searchNavigationEndpoint` also carries `searchEndpoint.params:
+"cgIgAQ%3D%3D"`, which is where the per-query `params` form above comes
+from: it is the endpoint attached to clicking a suggestion.
+
+**The page one level down answers for the rest.** A result's own
 `unpluggedContentDetailsHeaderRenderer` says `contentType: "MOVIE"`, and it
 is the same header that makes a film play from a category. So the addon
 asks it: the pages of the results it cannot type are fetched together, the
