@@ -3513,12 +3513,45 @@ one session between audio and video too** -- the same behaviour Android
 hardcodes. A checked answer and a hardcoded one come out the same here, so
 the stub is not what breaks YouTube TV on Android.
 
-That leaves finding 1 -- audio reported `SSD_SECURE_PATH` and handed to
-`CDVDAudioCodecAndroidMediaCodec` rather than decrypted in process -- as the
-one difference not ruled out. It is not established: no Android kodi.log
-exists, every one so far reading `Platform: Linux x86 64-bit`. The addon now
-logs its platform and ISA version beside the session id, so the next one says
-outright which decrypter ran.
+### Settled on device: encrypted audio plays on Kodi 21 Android
+
+An Android log finally exists -- `Platform: Android ARM 64-bit`, Kodi 21.2,
+inputstream.adaptive **21.5.23**, the exact configuration the Apple TV notes
+say cannot work -- and a live channel played with both tracks:
+
+```
+Manifest successfully parsed (Periods: 1, Streams in first period: 2, Type: VOD)
+Opening stream: 1001 source: 256
+Creating video codec with codec id: 27
+CDVDVideoCodecAndroidMediaCodec::Open Secure decoder requested: true (stream flags: 1)
+Opening stream: 1002 source: 256
+CDVDAudioCodecFFmpeg::Open() Successful opened audio decoder ac3
+CDVDAudioCodecAndroidMediaCodec Open Android MediaCodec amc-ac3
+Creating audio stream (codec id: 86019, channels: 6, sample rate: 48000, no pass-through)
+```
+
+with the two tracks on **different key ids** -- `key ids {146:
+'d29e68442f8d5df6', 381: '3b60e66196425c9d'}` -- which is the condition that
+breaks Apple. AC-3 5.1 was actually created, the video ran the L1 secure
+decoder, and the whole log holds **zero ERROR lines**: no
+`CDVDAudioCodecAndroidMediaCodec::Decode ExceptionCheck`, no `kNoKey`.
+Playback ended because the viewer stopped it fourteen seconds later.
+
+So the prediction from the licence evidence holds. One licence carrying every
+track key makes the hardcoded `HasLicenseKey` harmless, and finding 1 --
+audio reported `SSD_SECURE_PATH` and handed to
+`CDVDAudioCodecAndroidMediaCodec` -- is not a fault either: that is the
+normal Android path and it works. **There is no Android decryption patch to
+write.**
+
+What did fail in that run was VOD, and not in the decoder: both films ended
+`CVideoPlayer::OpenInputStream - error opening`, behind 11 `HTTP 403 from the
+SABR endpoint` and 12 `Failed to resolve
+'rr3---sn-5ghnugvob-2pus.googlevideo.com' ([Errno 7] No address associated
+with hostname)`. The first DNS failure was at 03:29:35, four minutes before
+the live channel played at 03:33 -- so name resolution was already failing on
+that device and it is not something the film provoked. Live streams from
+`tv.youtube.com` were unaffected throughout.
 
 ## No JavaScript runtime, anywhere in the addon
 
