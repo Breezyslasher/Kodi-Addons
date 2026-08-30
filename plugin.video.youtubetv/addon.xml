@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.41" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.42" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,17 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.42 - The search call was not the one a real client makes
+- Every search in every capture sends params beside the query -- seven of
+  them, and not one sends the query alone, which is what this addon sent.
+  Scanning the request bodies of all twenty-three captures, search was the
+  only endpoint whose shape here did not match.
+- It now sends the query-independent form, copied verbatim from a plain
+  search rather than rebuilt. Whether that is what makes a film come back
+  typed SHOW is not established -- the browser sent two different forms and
+  typed it MOVIE either way -- but the call is right now, and the search
+  log says what came back typed as what.
+
 2026.8.31.41 - Why a film found by search is not a film
 - Answered, and by neither guess. The renderer is the same one that works
   everywhere else and it does carry contentType. The value is wrong: this

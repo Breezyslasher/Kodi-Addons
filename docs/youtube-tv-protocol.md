@@ -1076,6 +1076,23 @@ service does not have. The row's own continuation is worth nothing either
 
 ### Search — `POST /youtubei/v1/search?alt=json`
 
+**A real search sends `params`.** Scanning the request bodies of every
+capture, this is the one endpoint the addon was calling with a shape no
+client uses: seven captured searches send `{"query": ..., "params": ...}`
+(one adds `suggestStats`), and none sends the query alone.
+
+Two forms appear, and only one of them is ours to send:
+
+| params | Decoded | Seen for |
+| --- | --- | --- |
+| `6gMOCgASABoAIgAqADIAQgA%3D` | field 61 wrapping seven empty sub-fields — "no filters" | "blues" *and* "St. Louis Blues", unchanged between them |
+| `cgIgAw%3D%3D`, `cgIgAg%3D%3D` | field 14 wrapping one varint, 3 then 2 | one query each, after picking a suggestion |
+
+The second tracks which suggestion was clicked and changes per query, so
+the addon sends the first, copied verbatim. It is **not** established that
+this is what decides how a film is typed: the browser sent both forms and
+typed The Blues Brothers `MOVIE` either way.
+
 ```json
 { "query": "rick", "params": "6gMOCgASABoAIgAqADIAQgA%3D" }
 ```
