@@ -1382,6 +1382,37 @@ check("and so is a list of networks",
 # should name it in a log rather than go quietly missing.
 check("and a label it does not know is reported rather than dropped",
       fields["unknown"], ["Composers: Michael Giacchino"])
+
+# The shape this client actually sends, which the browser never does. John
+# Wick: Chapter 4's About tab named it at 2026-08-30 02:04 --
+# ".../attributes/simpleText" beside ".../attributes/runs/text" -- and only
+# the runs were being looked at. A whole line in one string came back
+# unlabelled, which is how the genres line is recognised, so each attribute
+# in turn overwrote the genres with itself and a show reached Kodi with
+# none: Rick and Morty's page says "Animated, Action, Adventure, Comedy".
+flat = epg.about_fields({"unpluggedContentDetailsAboutFieldsRenderer": {
+    "attributes": [{"simpleText": "Animated, Action, Adventure, Comedy"},
+                   {"simpleText": "On Adult Swim, Cartoon Network, HBO Max"},
+                   {"simpleText": "Released 2013"},
+                   {"simpleText": "Directors: Justin Roiland"}]}})
+check("a whole About line in one string is read label and all",
+      (flat["genres"], flat["network"], flat["year"], flat["directors"]),
+      (["Animated", "Action", "Adventure", "Comedy"],
+       ["Adult Swim", "Cartoon Network", "HBO Max"], 2013,
+       ["Justin Roiland"]))
+# A colon alone does not make a label. "Sports: the documentary" is a
+# genres line, not a field called Sports.
+check("and a colon this cannot name leaves the line unlabelled",
+      epg.about_fields({"unpluggedContentDetailsAboutFieldsRenderer": {
+          "attributes": [{"simpleText": "Comedy: Stand-up, Variety"}]
+      }})["genres"], ["Comedy: Stand-up", "Variety"])
+# Only the first unlabelled line is the genres. A second one is reported
+# rather than allowed to overwrite it.
+check("a second unlabelled line does not overwrite the genres",
+      epg.about_fields({"unpluggedContentDetailsAboutFieldsRenderer": {
+          "attributes": [{"simpleText": "Animated, Comedy"},
+                         {"simpleText": "Something else entirely"}]
+      }})["genres"], ["Animated", "Comedy"])
 # The photo is on the person renderer beside the name. Without it Kodi
 # draws the silhouette it uses for an actor it has no picture of, which is
 # what the cast row was: five names under five blank outlines.
@@ -1579,6 +1610,10 @@ check("only the upright one is offered as a poster",
 check("and both are still a thumb",
       [i[3].art.get("thumb") for i in xbmcplugin.ITEMS],
       ["poster.jpg", "still.jpg"])
+# A show's page carries no portrait image at all -- everything on it is
+# 3840x2160 -- so a wide one is offered as what it is instead.
+check("a wide image is offered as landscape",
+      xbmcplugin.ITEMS[1][3].art.get("landscape"), "still.jpg")
 
 # -- a cache that cannot say it is out of date -----------------------------
 # Nothing refetches a title it already knows about, so a cache written

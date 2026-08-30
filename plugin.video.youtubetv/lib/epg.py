@@ -1371,20 +1371,48 @@ def page_description(response):
     return ""
 
 
+def _from_one_string(whole):
+    """One About line that arrived as a single string, as (label, value).
+
+    ``Provider: Lionsgate``, ``Directors: Chad Stahelski``, ``Released
+    2016``, ``On FX`` -- and ``Action, Thriller``, which is the genres and
+    carries no label at all.
+
+    The label is only claimed when it is one this knows, so a genres line
+    is never mistaken for one: a colon is not enough on its own.
+    """
+    whole = whole.strip()
+    label, sep, value = whole.partition(":")
+    if sep and label.strip().lower() in _ABOUT_FIELDS:
+        return label.strip(), value.strip()
+    for word in ("Released", "On"):
+        if whole.startswith(word + " "):
+            return word, whole[len(word) + 1:].strip()
+    return "", whole
+
+
 def _attribute(node):
     """One About line as (label, value).
 
-    Two shapes, both from Rogue One's page. A labelled line marks its label
-    bold -- ``Provider: `` then ``Disney``, ``Directors`` then ``: `` then
-    ``Gareth Edwards`` -- and an unlabelled one just reads ``Released 2016``
-    or ``On FX``. The genres line has no label at all, being simply
-    "Science fiction, Adventure, Action, Fantasy".
+    Three shapes. A labelled line marks its label bold -- ``Provider: ``
+    then ``Disney``, ``Directors`` then ``: `` then ``Gareth Edwards``; an
+    unlabelled one reads ``Released 2016`` or ``On FX``; and the genres
+    line has no label at all, being simply "Science fiction, Adventure,
+    Action, Fantasy".
+
+    The third shape is a whole line in one ``simpleText``, and it is what
+    this client actually sends. Only the browser's runs were ever looked
+    at, so every simpleText attribute came back unlabelled -- which is how
+    the genres line is recognised -- and each one in turn overwrote the
+    genres with itself. John Wick: Chapter 4's About tab named all three
+    paths on this client at 2026-08-30 02:04:
+    ``.../attributes/simpleText`` beside ``.../attributes/runs/text``.
     """
     if not isinstance(node, dict):
         return "", ""
     said = node.get("simpleText")
     if isinstance(said, str):
-        return "", said.strip()
+        return _from_one_string(said)
     runs = node.get("runs")
     if not isinstance(runs, list):
         return "", ""
@@ -1394,12 +1422,8 @@ def _attribute(node):
                     if isinstance(run, dict) and not run.get("bold"))
     if bold:
         return bold.strip().strip(":").strip(), plain.strip()
-    whole = "".join(run.get("text", "") for run in runs
-                    if isinstance(run, dict)).strip()
-    for word in ("Released", "On"):
-        if whole.startswith(word + " "):
-            return word, whole[len(word) + 1:].strip()
-    return "", whole
+    return _from_one_string("".join(run.get("text", "") for run in runs
+                                    if isinstance(run, dict)))
 
 
 _ABOUT_FIELDS = {"released": "year", "provider": "studio", "on": "network",
@@ -1441,9 +1465,17 @@ def about_fields(response):
             # actually sent can say whether they were unread or unsent.
             found["lines"].append("%s=%s" % (label or "-", value))
             if not label:
-                # The unlabelled line is the genres, comma separated.
-                found["genres"] = [part.strip() for part in value.split(",")
-                                   if part.strip()]
+                # The unlabelled line is the genres, comma separated -- and
+                # the *first* one is. A line this cannot label is not
+                # thereby the genres, and letting each in turn overwrite
+                # the last is how "Animated, Action, Adventure, Comedy"
+                # became whatever came after it.
+                if not found["genres"]:
+                    found["genres"] = [part.strip()
+                                       for part in value.split(",")
+                                       if part.strip()]
+                else:
+                    found["unknown"].append("unlabelled: %s" % value)
                 continue
             field = _ABOUT_FIELDS.get(label.lower())
             if field == "year":

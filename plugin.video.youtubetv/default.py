@@ -442,7 +442,8 @@ def route_station(station_id, name):
         # channel logo only when neither exists. A programme with no still
         # was showing the channel's logo while its show's artwork sat in
         # what had just been fetched for it.
-        item.setArt({"thumb": airing.art or known.get("art") or station.logo,
+        shown = airing.art or known.get("art") or station.logo
+        item.setArt({"thumb": shown, "landscape": shown,
                      "fanart": known.get("art") or airing.art or station.logo})
         info = item.getVideoInfoTag()
         info.setTitle(airing.title)
@@ -613,12 +614,19 @@ def _add_item(item, plot="", dvr=None, meta=None):
     # A tile's own image is the poster. The wide one behind it is the
     # page's banner, which no tile carries -- 3840x2160 on John Wick.
     banner = known.get("art") or item.art
+    wide = item.art if not item.upright else banner
     art = {"thumb": item.art or banner, "fanart": banner}
     # Only an upright image is a poster. A show's tile is a wide still, and
     # putting that in a skin's poster slot is what made Marshals look
-    # stretched out of shape.
+    # stretched out of shape. A show's page carries no portrait image at
+    # all -- everything on it is 3840x2160 -- so where there is no poster
+    # there is none to give, and a skin showing its own placeholder is the
+    # honest outcome. The wide image is offered as landscape, which is what
+    # it is, for the skins that ask for that.
     if item.art and item.upright:
         art["poster"] = item.art
+    if wide:
+        art["landscape"] = wide
     listitem.setArt(art)
     info = listitem.getVideoInfoTag()
     info.setTitle(item.title)
@@ -1706,10 +1714,11 @@ def _page_meta(response, header=None):
         kodiutils.log("about says something new -- %s"
                       % "; ".join(about["unknown"]))
     # A page that yields little says what it did send, a few times per run.
-    # A film gives genres, a director and a cast; a show gave a synopsis and
-    # nothing else, and whether the rest was unread or unsent is not
-    # established.
-    if not meta["genres"] and not meta["cast"] and _BARE[0] < 3:
+    # Keyed on the genres alone, not on the genres and the cast together: a
+    # show fetches its cast from the tab that defers it, so requiring both
+    # to be empty meant the one case that needed naming -- a show with a
+    # cast and no genres -- was the one case that never printed.
+    if not meta["genres"] and _BARE[0] < 3:
         _BARE[0] += 1
         kodiutils.log("%s: its about carried [%s]"
                       % (epg.text((header or {}).get("title")) or "a title",
