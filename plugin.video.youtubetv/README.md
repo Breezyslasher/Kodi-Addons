@@ -110,7 +110,7 @@ addon or to a browser on the same account, and no format has ever carried
 track to use it on.
 
 The full analysis, including every request tried and every conclusion since
-retired, is in [docs/youtube-tv-protocol.md](../docs/youtube-tv-protocol.md).
+retired, is in [docs/youtube-tv-protocol.md](docs/youtube-tv-protocol.md).
 
 ## Requirements
 

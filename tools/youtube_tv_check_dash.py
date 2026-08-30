@@ -2,7 +2,7 @@
 """Settle whether YouTube TV's DASH manifest is usable by InputStream Adaptive.
 
 Five browser captures established the shape of the YouTube TV private API
-(see docs/youtube-tv-protocol.md), but they cannot answer the one question a
+(see plugin.video.youtubetv/docs/youtube-tv-protocol.md), but they cannot answer the one question a
 Kodi addon depends on. Every `player` response offers a `dashManifestUrl`
 alongside a `serverAbrStreamingUrl`, and the web player always takes the SABR
 path -- so no HAR will ever show the DASH manifest being fetched. It has to be
