@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.40" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.41" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,21 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.41 - Why a film found by search is not a film
+- Answered, and by neither guess. The renderer is the same one that works
+  everywhere else and it does carry contentType. The value is wrong: this
+  client types The Blues Brothers and Blues Brothers 2000 as SHOW, where a
+  browser types both MOVIE. That is the movies-in-shows report -- the
+  service calling a film a show.
+- The tiles in "On now &amp; upcoming" and "On demand" carry no type at
+  all, and that is not a fault: they are airings rather than titles.
+- So nothing in a search result says "film", and one found there stays a
+  folder. It is not lost -- opening it lands on its page, which says MOVIE
+  and opens on the film. A film found in a category types itself correctly
+  and plays on selection.
+- Nothing changed in what is listed. The diagnostic that settled it is
+  retired and what it found is written down.
+
 2026.8.31.40 - Which renderer a search row is made of
 - A browser answers "blues" with The Blues Brothers typed MOVIE inside
   "On now &amp; upcoming"; the same row here comes back with nothing typed
