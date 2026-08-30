@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.32" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.33" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,20 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.33 - A title's page opens on the title
+- Search calls a film a SHOW -- "blues" answered with 11 SHOW and 3
+  SPORTS_TEAM and no film at all -- so a film found by search is a folder,
+  and what it opens is its page. That page now opens on the film, with
+  Suggested behind it, instead of on two folders. A channel page still
+  opens on its tabs: the two are different renderers in the header, and
+  only one of them is a menu.
+- A film's runtime and synopsis are read: "2:13:57" and the About tab's
+  description, neither of which its tile carries.
+- On a title's page the library entry is the one that applies. The page
+  says which -- its header carries dvrOn -- where a tile cannot, and
+  offering both when the answer is known is how a recording gets cancelled
+  by somebody aiming for the other one.
+
 2026.8.31.32 - Suggested titles, instead of a page you have already used
 - "Go to &lt;title&gt;" on a film is now "Suggested titles" and opens them
   directly. A film's page is four tabs -- Watch now, About, Lead cast,

@@ -364,11 +364,12 @@ class Item(object):
     """Something the UI can show: a folder to browse, or a video to play."""
 
     __slots__ = ("video_id", "browse_id", "params", "title", "subtitle",
-                 "art", "start_ms", "end_ms", "source", "content_type")
+                 "art", "start_ms", "end_ms", "source", "content_type",
+                 "duration")
 
     def __init__(self, video_id="", browse_id="", title="", subtitle="",
                  art="", start_ms=0, end_ms=0, params="", source="",
-                 content_type=""):
+                 content_type="", duration=0):
         self.video_id = video_id
         self.browse_id = browse_id
         # What the browse endpoint asks for *within* that page. The Browse
@@ -391,6 +392,10 @@ class Item(object):
         # worth playing on selection -- from a series, which is a folder of
         # episodes. 1048 MOVIE, 303 SHOW and 1 EVENT across the captures.
         self.content_type = content_type
+        # Seconds, where the tile says. A film's page gives it as "2:13:57"
+        # rather than a number, which Kodi will show as a runtime once it
+        # is one.
+        self.duration = duration
 
     @property
     def playable(self):
@@ -790,6 +795,7 @@ def parse_items(response):
             end_ms=_seconds_ms(renderer, "endTimeSeconds"),
             source=source,
             content_type=_content_type(renderer),
+            duration=_duration(renderer),
         ))
 
     visit(response)
@@ -1235,6 +1241,65 @@ def action_text(response, default=""):
                 if said:
                     return said
     return default
+
+
+def _duration(renderer):
+    """A tile's runtime in seconds, from a number or from "2:13:57"."""
+    seconds = renderer.get("lengthSeconds")
+    try:
+        if seconds:
+            return int(seconds)
+    except (TypeError, ValueError):
+        pass
+    written = text(renderer.get("duration"))
+    if not written:
+        return 0
+    total = 0
+    for part in written.split(":"):
+        try:
+            total = total * 60 + int(part)
+        except ValueError:
+            return 0
+    return total
+
+
+HEADER = "unpluggedContentDetailsHeaderRenderer"
+
+
+def title_header(response):
+    """The header of a page about one title, or None.
+
+    A film or show page carries an unpluggedContentDetailsHeaderRenderer; a
+    network page carries an unpluggedNetworkPromoHeaderRenderer. That is the
+    difference between a page whose tabs are a menu -- Live, Series, Movies,
+    each a different part of a channel -- and a page whose tabs are one
+    thing and some notes about it, where the tab menu is in the way.
+    """
+    found = first(response, HEADER)
+    return found if isinstance(found, dict) else None
+
+
+def page_description(response):
+    """A title's synopsis, which its About tab holds and nothing else does."""
+    for block in walk(response, "unpluggedContentDetailsAboutFieldsRenderer"):
+        said = text(block.get("description") if isinstance(block, dict) else None)
+        if said:
+            return said
+    return ""
+
+
+def dvr_state(response):
+    """True if this title is in the library, False if not, None if unsaid.
+
+    A tile cannot say -- isToggled is on none of them -- but a title's own
+    page can: its header's dvrButtonRenderer carries dvrOn outright. So on
+    a page, and only on a page, the one action that applies can be offered
+    instead of both.
+    """
+    for button in walk(response, "dvrButtonRenderer"):
+        if isinstance(button, dict) and "dvrOn" in button:
+            return bool(button["dvrOn"])
+    return None
 
 
 _TOAST_KINDS = (("Movie", "MOVIE"), ("Show", "SHOW"), ("Event", "EVENT"))

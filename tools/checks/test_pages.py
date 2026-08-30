@@ -956,6 +956,67 @@ check("the rebuilt DVR params match a second capture's, byte for byte",
       unquote(api.dvr_params("UCUlwmd1Fk7Tr2XLsLe3rYcQ")),
       epg.first(MOVIE_TILE, "startDvrParams"))
 
+# -- a page about one title, against a page about a channel ----------------
+# Rogue One's page, kept by the diagnostic on 2026-08-30 00:49. Two things
+# a network page does not have: a header that names the title and says
+# whether it is in the library, and tabs that are not a menu -- Watch now
+# and Suggested are the film and then some notes about it, so opening it on
+# two folders puts a page in front of the thing that was picked.
+TITLE_PAGE = {
+    "header": {"unpluggedContentDetailsHeaderRenderer": {
+        "title": {"simpleText": "Rogue One: A Star Wars Story"},
+        "contentType": "MOVIE",
+        "secondaryText": {"simpleText": "PG-13 \u2022 2016"},
+        "subscribeButton": {"dvrButtonRenderer": {
+            "dvrOn": False,
+            "dvrOnAndRecording": False,
+            "serviceEndpoints": [
+                {"startDvrEndpoint": {"id": "UCzr9LCG9h5w1Pj102XRVLGw"}},
+                {"stopDvrEndpoint": {"id": "UCzr9LCG9h5w1Pj102XRVLGw"}}]}}}},
+    "contents": {"singleColumnBrowseResultsRenderer": {"tabs": [
+        {"tabRenderer": {"title": "Watch now", "selected": True,
+                         "content": {"sectionListRenderer": {"contents": [
+                             {"unpluggedGridVideoRenderer": {
+                                 "primaryText": {"simpleText":
+                                                 "Rogue One: A Star Wars Story"},
+                                 "duration": {"simpleText": "2:13:57"},
+                                 "navigationEndpoint": {"watchEndpoint": {
+                                     "videoId": "joldJiP04hk"}}}}]}}}},
+        {"tabRenderer": {"title": "About", "content": {"sectionListRenderer": {
+            "contents": [{"unpluggedContentDetailsAboutFieldsRenderer": {
+                "description": {"simpleText":
+                                "Recruited by the Rebel Alliance, Jyn Erso "
+                                "joins forces with a spy."}}}]}}}},
+        {"tabRenderer": {"title": "Suggested", "content": {"sectionListRenderer": {
+            "contents": [{"unpluggedBrowseItemRenderer": {
+                "contentType": "MOVIE",
+                "primaryText": {"simpleText": "Solo"},
+                "navigationEndpoint": {"browseEndpoint": {
+                    "browseId": "UCSOLO"}}}}]}}}},
+    ]}}}
+
+check("a title page is told from a channel page by its header",
+      [bool(epg.title_header(TITLE_PAGE)),
+       bool(epg.title_header(NETWORK_PAGE))],
+      [True, False])
+check("its tabs are the title and then notes about it",
+      [(t.title, len(t.items)) for t in epg.browse_tabs(TITLE_PAGE)],
+      [("Watch now", 1), ("Suggested", 1)])
+check("the synopsis is in About and nowhere else",
+      epg.page_description(TITLE_PAGE),
+      "Recruited by the Rebel Alliance, Jyn Erso joins forces with a spy.")
+check("2:13:57 becomes a runtime in seconds",
+      epg.browse_tabs(TITLE_PAGE)[0].items[0].duration, 8037)
+
+# A tile cannot say whether a title is in the library -- isToggled is on
+# none of the 2007 toggle renderers in any capture -- but the title's own
+# page can, and offering both actions when the answer is known is how a
+# recording gets cancelled by somebody aiming for the other one.
+check("a title page says whether it is in the library",
+      epg.dvr_state(TITLE_PAGE), False)
+check("and a page with no such button says nothing rather than guessing",
+      epg.dvr_state(NETWORK_PAGE), None)
+
 # -- what a DVR call answers with ------------------------------------------
 # Both DVR endpoints came back with actions + responseContext and nothing
 # else (2026-08-29). The message inside actions is the only report of what
