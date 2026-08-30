@@ -1378,6 +1378,87 @@ check("and so is a list of networks",
                                    {"text": "Adult Swim, Cartoon Network"}]}]
       }})["network"],
       ["Adult Swim", "Cartoon Network"])
+# -- what a guide airing keeps in its info panel ---------------------------
+# An epgAiringRenderer has eight keys and not one of them is a picture, a
+# synopsis, a genre or a rating: 0 of the 989 airings in the 2026-08-30
+# guide carry a "thumbnail" at all. Its epgInfoPanelRenderer carries all
+# four, on 989 of the 989. Reading only the airing is why the guide was a
+# column of channel logos with a title and nothing else.
+def _panel(primary, secondary, tertiary):
+    def badged(said):
+        return {"unpluggedBadgedTextRenderer": {"items": [
+            {"unpluggedTextRenderer": {"text": {"simpleText": said}}}]}}
+    return {"epgAiringRenderer": {
+        "beginTimeMs": "1000", "endTimeMs": "2000",
+        "title": {"simpleText": "True Crime: 48 Hours"},
+        "videoId": "vid1",
+        "infoPanel": {"epgInfoPanelRenderer": {
+            "thumbnail": {"thumbnails": [{"url": "//img/still",
+                                          "width": 2560, "height": 1440}]},
+            "primaryContainer": badged(primary),
+            "secondaryContainer": badged(secondary),
+            "tertiaryContainer": badged(tertiary)}}}}
+
+
+aired = epg.parse_airing(_panel(
+    "Sat, Aug 29, 11:00\u202fPM \u2022 KDKA+ \u2022 Aired Mar 1, 2025 "
+    "\u2022 S38 E20 \u2022 The Hit-and-Run Homicide of Davis McClendon "
+    "\u2022 TV-14",
+    "A hit-and-run leaves one dead.",
+    "Newsmagazine \u2022 Crime \u2022 Law")["epgAiringRenderer"])
+check("a guide airing's picture is in its info panel, not on the airing",
+      aired.art, "https://img/still")
+check("and so is its synopsis", aired.description, "A hit-and-run leaves one dead.")
+check("and its genres", aired.genres, ["Newsmagazine", "Crime", "Law"])
+# Read part by part, not by position: the line comes in two to seven parts
+# and which are present varies. A channel name must never be taken for a
+# rating, nor a date for a runtime.
+check("and its rating and episode numbers, whatever else is on the line",
+      (aired.mpaa, aired.season, aired.episode, aired.episode_title),
+      ("TV-14", 38, 20, "The Hit-and-Run Homicide of Davis McClendon"))
+check("a date on that line is not read as a runtime", aired.duration, 0)
+
+film = epg.parse_airing(_panel("KDKA+ \u2022 2 hr \u2022 R",
+                               "Aimless friends drift.",
+                               "Drama")["epgAiringRenderer"])
+check("a written runtime is read as one", film.duration, 7200)
+check("and the channel beside it is not mistaken for a rating",
+      (film.mpaa, film.genres), ("R", ["Drama"]))
+
+# An episode keeps its runtime in a COUNTER badge and its numbers in one
+# line of text: Rick and Morty's S9 E10 is "24:03" and "S9 E10 * Field of
+# Dreams". A show's header carries neither.
+episodes = {"unpluggedCompactVideoRenderer": {
+    "primaryText": {"runs": [{"text": "S9 E10 \u2022 Field of Dreams"}]},
+    "secondaryText": {"runs": [{"text": "Adult Swim \u2022 TV-14 \u2022 13d ago"}]},
+    "badge": {"unpluggedTextBadgeRenderer": {
+        "label": {"runs": [{"text": "24:03"}]}, "type": "COUNTER"}},
+    "navigationEndpoint": {"watchEndpoint": {"videoId": "ep1"}}}}
+check("a show's rating and runtime come off its episodes, having no header",
+      epg.episode_facts(episodes), ("TV-14", 1443))
+# The VOD badge beside it is a version, not a runtime.
+check("and a badge that is not a counter is not read as a runtime",
+      epg._counter_badge({"badge": {"unpluggedTextBadgeRenderer": {
+          "label": {"runs": [{"text": "VOD"}]}, "type": "VIDEO_VERSION"}}}), 0)
+one = epg.parse_items(episodes)
+check("an episode's numbers and name are three fields, not one string",
+      [(i.season, i.episode, i.title, i.duration) for i in one],
+      [(9, 10, "Field of Dreams", 1443)])
+
+# "2013 - Present" and "1994 - 2004": a show gives years where a film gives
+# a release date. 45 of them were reported unlabelled in one run.
+ran = epg.about_fields({"unpluggedContentDetailsAboutFieldsRenderer": {
+    "attributes": [{"simpleText": "Animated, Comedy"},
+                   {"simpleText": "2013 \u2013 Present"}]}})
+ended = epg.about_fields({"unpluggedContentDetailsAboutFieldsRenderer": {
+    "attributes": [{"simpleText": "Comedy"},
+                   {"simpleText": "1994 \u2013 2004"}]}})
+check("a show's years say when it started and whether it is still running",
+      ((ran["year"], ran["status"]), (ended["year"], ended["status"])),
+      ((2013, "Continuing"), (1994, "Ended")))
+check("and are not mistaken for the genres",
+      (ran["genres"], ended["genres"]), (["Animated", "Comedy"], ["Comedy"]))
+
 # A label this does not know is reported, not dropped: a title carrying one
 # should name it in a log rather than go quietly missing.
 check("and a label it does not know is reported rather than dropped",

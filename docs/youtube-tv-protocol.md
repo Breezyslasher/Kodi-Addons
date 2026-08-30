@@ -3396,6 +3396,54 @@ one height at a time, tallest first, stepping down on a refusal.
 A post-licence probe ruled the licence out on the way: with one in hand,
 an HD offer that named no height was refused exactly as before.
 
+## The guide's info panel
+
+An `epgAiringRenderer` carries eight keys -- `beginTimeMs`, `endTimeMs`,
+`primaryText`, `navigationEndpoint`, `infoPanel`, `entitiesDvrStatus`,
+`entitiesBellFollowStatus`, `trackingParams` -- and **not one of them is a
+picture, a synopsis, a genre or a rating.** 0 of the 989 airings in the
+2026-08-30 guide carry a `thumbnail` key at all.
+
+All of it is one level down, in `infoPanel/epgInfoPanelRenderer`, present on
+989 of the 989:
+
+| key | holds |
+| --- | --- |
+| `thumbnail` | a 2560x1440 still |
+| `primaryContainer` | `"KDKA+ * 2 hr * R"`, or `"Sat, Aug 29, 11:00 PM * KDKA+ * Aired Mar 1, 2025 * S38 E20 * The Hit-and-Run Homicide of Davis McClendon * TV-14"` |
+| `secondaryContainer` | the synopsis |
+| `tertiaryContainer` | `"Animated * Sitcom * Comedy"` |
+
+Each container wraps its text two renderers deep --
+`unpluggedBadgedTextRenderer` holding `unpluggedTextRenderer` holding the
+text -- so a reader that flattens one node reads nothing from it.
+
+The primary line comes in **two to seven** bullet-separated parts (489 of
+six, 192 of five, 173 of four, 80 of three, 32 of two, 15 of one, 9 of
+seven), and which parts are present varies by programme, so it must be read
+part by part rather than by position. Coverage across the 989: a still on
+989, a synopsis on 929, genres on 985, a rating on 738.
+
+## What a show's page does not carry
+
+A film's `unpluggedContentDetailsHeaderRenderer` says `"PG-13 * 2016"`. A
+show's says neither: Rick and Morty's `secondaryText` is `"2013 - Present"`
+and there is no rating anywhere above it. Its **episodes** carry both --
+each `unpluggedCompactVideoRenderer`'s `secondaryText` reads `"Adult Swim *
+TV-14 * 13d ago"`, and each has an `unpluggedTextBadgeRenderer` of `type:
+"COUNTER"` holding `"24:03"`. A `type: "VIDEO_VERSION"` badge sits beside it
+holding `"VOD"`, which is not a runtime.
+
+An episode's `primaryText` is `"S9 E10 * Field of Dreams"` -- season,
+number and name in one string.
+
+A show's About carries an unlabelled `"2013 - Present"` / `"1994 - 2004"`
+line where a film carries `Released 2016`.
+
+**A show's page carries no portrait image at all.** Every thumbnail on Rick
+and Morty's page, banner included, is 3840x2160, so there is nothing to put
+in a poster slot.
+
 ## No JavaScript runtime, anywhere in the addon
 
 Two things needed one, and neither does now.
