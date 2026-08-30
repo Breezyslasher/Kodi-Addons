@@ -3479,9 +3479,46 @@ key ids** -- a real session logged `key ids {146: 'd29e68442f8d5df6', 381:
 '3b60e66196425c9d'}` -- so this is the one place where a track's key
 identity is deliberately not checked.
 
-Which of these actually bites has not been established: no Android kodi.log
-exists. The addon now logs its platform and ISA version beside the session
-id so the next one says outright which decrypter ran.
+### The Apple TV addon's Android bug does not transfer
+
+`plugin.video.appletv/docs/inputstream-adaptive-issue.md` has finding 3 pinned
+down, verified in source and on device, at the same line: on Kodi 21 the
+video session claims every key, **the audio licence is never requested** (one
+licence request on Kodi 21 against one per key on Kodi 22), and encrypted
+audio then fails every sample with
+`CDVDAudioCodecAndroidMediaCodec::Decode ExceptionCheck`. It records that no
+manifest-side workaround exists, and that ISA 22 replaced the stub with a
+real per-key check (`HasKeyId`, key status USABLE), which is why the same
+device plays on Kodi 22.
+
+**That failure depends on a premise YouTube TV does not share.** It bites
+Apple because, in that document's words, "Apple keys audio separately from
+video, so playing needs one DRM session (licence) per key". YouTube TV
+returns every track's key in one licence. From a real session:
+
+```
+licence granted: 1957 bytes, 12 formats [DRM_TRACK_TYPE_UHD1=..., DRM_TRACK_TYPE_HD=...,
+    DRM_TRACK_TYPE_SD=..., DRM_TRACK_TYPE_AUDIO=..., ...]
+licence: recorded key ids for 2IECsw7f3y8
+    [DRM_TRACK_TYPE_AUDIO, DRM_TRACK_TYPE_HD, DRM_TRACK_TYPE_SD, DRM_TRACK_TYPE_UHD1]
+```
+
+One licence request for the whole playback -- `grep -c` says 1 -- carrying
+twelve keys over four track types, audio among them.
+
+The confirmation is on the desktop side. Desktop `HasKeyId`
+(`widevine/WVCencSingleSampleDecrypter.cpp:646`) really does search `m_keys`,
+and with the audio key in that one licence it finds it, so **desktop shares
+one session between audio and video too** -- the same behaviour Android
+hardcodes. A checked answer and a hardcoded one come out the same here, so
+the stub is not what breaks YouTube TV on Android.
+
+That leaves finding 1 -- audio reported `SSD_SECURE_PATH` and handed to
+`CDVDAudioCodecAndroidMediaCodec` rather than decrypted in process -- as the
+one difference not ruled out. It is not established: no Android kodi.log
+exists, every one so far reading `Platform: Linux x86 64-bit`. The addon now
+logs its platform and ISA version beside the session id, so the next one says
+outright which decrypter ran.
 
 ## No JavaScript runtime, anywhere in the addon
 
