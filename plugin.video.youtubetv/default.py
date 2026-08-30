@@ -1687,6 +1687,25 @@ def route_library_section(name, token=""):
     _add_items(_learned(client, name, _follow_pages(client, section)))
 
 
+def _why_not():
+    """What to tell someone whose play produced nothing.
+
+    The bridge knows why and used to keep it: an n that could not be signed
+    and no runtime to retry it with was shown as "YouTube did not offer a
+    DASH manifest", which sent a real Android failure looking for a DASH
+    path that was never the problem. The generic line is now only for the
+    case it actually describes.
+    """
+    from lib import sabr_bridge
+    said = ""
+    try:
+        said = sabr_bridge.last_failure()
+    except Exception:
+        said = ""
+    return said or ("YouTube did not offer a DASH manifest for this stream, "
+                    "only its own SABR endpoint, which Kodi cannot play.")
+
+
 def route_play(video_id, label):
     client = _client()
     if not client:
@@ -1704,9 +1723,7 @@ def route_play(video_id, label):
         return
 
     if item is None:
-        kodiutils.ok_dialog(
-            "YouTube did not offer a DASH manifest for this stream, only its "
-            "own SABR endpoint, which Kodi cannot play.", "Cannot play this")
+        kodiutils.ok_dialog(_why_not(), "Cannot play this")
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
 

@@ -833,12 +833,15 @@ def solve_n(url):
     except Exception as exc:
         kodiutils.log_error("sabr bridge: no player js, n cannot be solved: %s"
                             % exc)
+        _WHY[0] = ("YouTube's player script could not be fetched, so the "
+                   "media url cannot be signed: %s" % exc)
         return ""
     try:
         rewritten = manifest_mod.rewrite_n(
             _WRAP % url, lambda value: nsig.solve(js, value, player_id))
     except Exception as exc:
         kodiutils.log_error("sabr bridge: could not solve n: %s" % exc)
+        _WHY[0] = ("The media url could not be signed: %s" % exc)
         return ""
     return rewritten[len("<BaseURL>"):-len("</BaseURL>")]
 
@@ -978,8 +981,22 @@ def _audio_itag():
         return 0
 
 
+# Why the last playable_url() gave up, in a sentence fit to show. Without
+# it every failure here reached the viewer as "YouTube did not offer a DASH
+# manifest", which is the fallback text and was true of none of them: the n
+# transform bailing and no runtime to retry it with was reported as YouTube
+# having sent the wrong thing.
+_WHY = [""]
+
+
+def last_failure():
+    """Why the last playable_url() returned nothing, or ""."""
+    return _WHY[0]
+
+
 def playable_url(player_response, max_height=1080):
     """Open a session for this response and return the manifest url for ISA."""
+    _WHY[0] = ""
     streaming = player_response.get("streamingData") or {}
     sabr_url = streaming.get("serverAbrStreamingUrl") or ""
     if not sabr_url:
@@ -998,6 +1015,8 @@ def playable_url(player_response, max_height=1080):
     video = _pick(formats, "video/", max_height)
     if not audio or not video:
         kodiutils.log_error("sabr bridge: no audio/video pair to ask for")
+        _WHY[0] = ("This stream offers no audio and video pair this addon "
+                   "can ask for.")
         return ""
 
     # A url pasted here replaces the one we were issued, n and all. It
