@@ -60,17 +60,21 @@ def _sign_in():
     """
     client_id, secret = oauth.credentials()
     if not client_id:
+        # Trimmed to what someone has to do, in the order they do it. The
+        # long version was four sentences of reassurance around two
+        # instructions and arrived cut off in the ok box.
         kodiutils.ok_dialog(
-            "Signing in needs a Google API project, and none was found.\n\n"
-            "The easiest fix is the YouTube add-on (plugin.video.youtube): "
-            "set that up as its own instructions describe, and this add-on "
-            "reuses the same project automatically -- nothing to paste here, "
-            "and none of its quota is spent, because this add-on never calls "
-            "googleapis.com.\n\n"
-            "Otherwise, make one at console.cloud.google.com -- enable the "
-            "YouTube Data API v3, then an OAuth client ID of type \"TVs and "
-            "Limited Input devices\" -- and paste the ID and secret into "
-            "this add-on's settings, under Account.",
+            "Signing in needs a Google API project. None was found.\n\n"
+            "Easiest: set up the YouTube add-on (plugin.video.youtube) as "
+            "its instructions describe. This add-on reuses that project "
+            "automatically -- nothing to paste, and none of its quota is "
+            "spent.\n\n"
+            "Otherwise, at console.cloud.google.com:\n"
+            "1. Enable the YouTube Data API v3.\n"
+            "2. Create an OAuth client ID, type \"TVs and Limited Input "
+            "devices\".\n"
+            "3. Paste the ID and secret into this add-on's settings, under "
+            "Account.",
             "Nothing to sign in with")
         return False
 
@@ -82,10 +86,17 @@ def _sign_in():
 
     url = started.get("verification_url") or "https://www.google.com/device"
     progress = xbmcgui.DialogProgress()
+    # Three lines, and all three carry something. A progress dialog shows
+    # three; this spent two of them on blank lines and a third on "On
+    # another device, open:", which pushed the code itself off the bottom
+    # -- the one thing the dialog exists to show. The scheme is dropped
+    # from the url for the same reason: it is width, not information.
     progress.create("Sign in with a code",
-                    "On another device, open:\n\n[B]%s[/B]\n\n"
-                    "and enter the code:  [B]%s[/B]"
-                    % (url, started.get("user_code")))
+                    "On another device open [B]%s[/B]\n"
+                    "and enter this code:\n"
+                    "[B]%s[/B]"
+                    % (re.sub(r"^https?://(www\.)?", "", url),
+                       started.get("user_code")))
     deadline = time.time() + min(int(started.get("expires_in") or 300), 900)
     try:
         token = oauth.poll_for_token(
