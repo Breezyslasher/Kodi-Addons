@@ -652,25 +652,41 @@ def _search_pages(client, response, limit=4):
     return pages
 
 
-def _type_by_page(client, rows, limit=24, workers=6):
-    """Ask each result's own page what it is, since the search will not.
+def _type_results(client, query, rows, limit=24, workers=6):
+    """What each result actually is, asked for in the cheapest order.
 
-    Search types a film SHOW -- The Blues Brothers and Blues Brothers 2000
-    both -- and nothing on the tile contradicts it: there is no menu there,
-    so not even the DVR toast is available. The page one level down does
-    say, in the header this addon already reads, and that header is what
-    made a film play from a category.
+    Search types a film SHOW and its tiles carry no menu, so nothing in a
+    search result says. Three things do, and they are tried in order of
+    what they cost:
 
-    So the pages are fetched, together rather than one after another, the
-    way a show page's deferred shelves are. What they answer is kept: a
-    title does not change what it is, and the same searches come back.
+    1. What is already remembered. A title does not change what it is.
+    2. **suggest**, which answers in words beside the same browse id --
+       "The Blues Brothers / Movie", "Air Disasters / Show", "St. Louis
+       Blues / Team". One call for the whole query.
+    3. The result's own page, for whatever is left, fetched together the
+       way a show page's deferred shelves are.
 
-    Bounded on both sides. Nothing already typed MOVIE, nothing playable,
-    and nothing already known is fetched at all; and at most ``limit``
-    lookups happen for one search, so a query that answers with a hundred
-    folders does not turn into a hundred requests.
+    Everything learned is remembered, so the second search for the same
+    thing asks for none of it.
+
+    Bounded: nothing playable and nothing already known is looked up, and
+    at most ``limit`` pages are fetched for one search, so a query that
+    answers with a hundred folders does not become a hundred requests.
     """
-    known = api.remembered_kinds()
+    known = dict(api.remembered_kinds())
+    told = 0
+    if query:
+        try:
+            offered = epg.suggestion_kinds(client.suggest(query))
+        except (auth.AuthError, api.ApiError) as exc:
+            kodiutils.log("suggestions did not open: %s" % exc)
+            offered = {}
+        # Only where nothing is remembered: what a page said outranks a
+        # suggestion, having come from the title itself.
+        for browse_id, kind in offered.items():
+            if browse_id not in known:
+                known[browse_id] = kind
+                told += 1
     wanted = []
     for row in rows:
         for item in row.items:
@@ -684,7 +700,8 @@ def _type_by_page(client, rows, limit=24, workers=6):
                 wanted.append(item.browse_id)
     wanted = wanted[:limit]
     if not wanted:
-        return 0, 0
+        api.remember_kinds({k: v for k, v in known.items()})
+        return told, 0, _films(rows)
 
     def ask(browse_id):
         try:
@@ -701,12 +718,18 @@ def _type_by_page(client, rows, limit=24, workers=6):
         for browse_id, kind in pool.map(ask, wanted):
             if kind:
                 found[browse_id] = kind
-    api.remember_kinds(found)
+    known.update(found)
+    api.remember_kinds(known)
     for row in rows:
         for item in row.items:
             if item.browse_id in found:
                 item.content_type = found[item.browse_id]
-    return len(wanted), sum(1 for k in found.values() if k == "MOVIE")
+    return told, len(wanted), _films(rows)
+
+
+def _films(rows):
+    return sum(1 for row in rows for item in row.items
+               if item.content_type == "MOVIE")
 
 
 def _list_search(client, query, response):
@@ -723,10 +746,10 @@ def _list_search(client, query, response):
     # listed under a row called Shows is the thing to find, and it can be
     # in either place -- YouTube TV names these rows and this addon names a
     # category's -- so both say what they actually hold.
-    asked, films = _type_by_page(client, rows)
-    kodiutils.log("search %r: %d page(s), %d row(s), asked %d page(s) and "
-                  "found %d film(s) -- %s"
-                  % (query, len(pages), len(rows), asked, films,
+    told, asked, films = _type_results(client, query, rows)
+    kodiutils.log("search %r: %d page(s), %d row(s), %d typed by suggestion, "
+                  "%d page(s) asked, %d film(s) -- %s"
+                  % (query, len(pages), len(rows), told, asked, films,
                      "; ".join("%s (%s)" % (r.title, _kinds_in(r.items))
                                for r in rows) or "nothing"))
     # The per-item dump that answered this is gone; what it found is

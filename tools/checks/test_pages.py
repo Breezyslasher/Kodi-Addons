@@ -1152,14 +1152,27 @@ api.remember_kinds = lambda found: None
 
 
 class _FakeClient(object):
-    def __init__(self, kinds):
+    def __init__(self, kinds, suggests=None):
         self.kinds = kinds
+        self.suggests = suggests or {}
         self.asked = []
+        self.suggested = 0
 
     def browse(self, browse_id, params=None):
         self.asked.append(browse_id)
         return {"header": {"unpluggedContentDetailsHeaderRenderer": {
             "contentType": self.kinds.get(browse_id, "SHOW")}}}
+
+    def suggest(self, query):
+        self.suggested += 1
+        return {"contents": [{"searchSuggestionsSectionRenderer": {"contents": [
+            {"entitySuggestionRenderer": {
+                "navigationEndpoint": {"browseEndpoint": {"browseId": bid}},
+                "secondaryContainer": {"unpluggedBadgedTextRenderer": {"items": [
+                    {"unpluggedTextBadgeRenderer": {"label": {"simpleText": "$"}}},
+                    {"unpluggedTextRenderer": {"text": {"simpleText": word}}},
+                ]}}}}
+            for bid, word in self.suggests.items()]}}]}
 
 
 def _row(*items):
@@ -1172,18 +1185,37 @@ row = _row(epg.Item(browse_id="UCFILM", title="The Blues Brothers",
            epg.Item(video_id="V1", title="An airing"),
            epg.Item(browse_id="UCKNOWNFILM", title="Rogue One",
                     content_type="MOVIE"))
-asked, films = default._type_by_page(client, row)
+told, asked, films = default._type_results(client, "", row)
 check("a film the search called a show is put right by its own page",
       [(i.title, i.content_type) for i in row[0].items],
       [("The Blues Brothers", "MOVIE"), ("An airing", ""),
        ("Rogue One", "MOVIE")])
 check("and only the one that needed asking was asked",
-      (client.asked, asked, films), (["UCFILM"], 1, 1))
+      (client.asked, asked, films), (["UCFILM"], 1, 2))
+
+# suggest answers in words beside the same browse id, one call for the whole
+# query, so it is asked before any page is.
+told_client = _FakeClient({}, suggests={"UCFILM": "Movie", "UCTEAM": "Team"})
+told_row = _row(epg.Item(browse_id="UCFILM", title="The Blues Brothers",
+                         content_type="SHOW"),
+                epg.Item(browse_id="UCTEAM", title="St. Louis Blues",
+                         content_type="SPORTS_TEAM"))
+told, asked, films = default._type_results(told_client, "blues", told_row)
+check("a suggestion types a result without fetching its page",
+      (told, asked, films, told_client.asked, told_client.suggested),
+      (2, 0, 1, [], 1))
+check("and the film it named is a film now",
+      [(i.title, i.content_type) for i in told_row[0].items],
+      [("The Blues Brothers", "MOVIE"), ("St. Louis Blues", "SPORTS_TEAM")])
+# The "$" badge beside it says a title must be bought, not what it is.
+check("the price badge is not mistaken for a kind",
+      epg.suggestion_kinds(told_client.suggest("x")),
+      {"UCFILM": "MOVIE", "UCTEAM": "SPORTS_TEAM"})
 
 busy = _FakeClient({})
 many = _row(*[epg.Item(browse_id="UC%d" % n, title="t%d" % n,
                        content_type="SHOW") for n in range(50)])
-default._type_by_page(busy, many, limit=24)
+default._type_results(busy, "", many, limit=24)
 check("a query answering with fifty folders does not make fifty requests",
       len(busy.asked), 24)
 
