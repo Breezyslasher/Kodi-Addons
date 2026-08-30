@@ -1392,7 +1392,7 @@ def about_fields(response):
     dropped, so a title carrying one names it in a log instead of it going
     quietly missing.
     """
-    found = {"genres": [], "unknown": []}
+    found = {"genres": [], "unknown": [], "lines": []}
     for block in walk(response, "unpluggedContentDetailsAboutFieldsRenderer"):
         if not isinstance(block, dict):
             continue
@@ -1403,6 +1403,11 @@ def about_fields(response):
             label, value = _attribute(entry)
             if not value:
                 continue
+            # Kept verbatim as well as parsed. A show carries less than a
+            # film and it is not established what: Saturday Night Live came
+            # back with a synopsis and nothing else, and only the lines it
+            # actually sent can say whether they were unread or unsent.
+            found["lines"].append("%s=%s" % (label or "-", value))
             if not label:
                 # The unlabelled line is the genres, comma separated.
                 found["genres"] = [part.strip() for part in value.split(",")
@@ -1425,24 +1430,43 @@ def about_fields(response):
 
 
 def cast_of(response):
-    """(name, role) for each of a title's lead cast, in the page's order."""
+    """(name, role, photo) for a title's lead cast, in the page's order.
+
+    The photo is on the person renderer beside the name, protocol-relative
+    like every other image here. Without it Kodi draws the silhouette it
+    uses for an actor it has no picture of.
+    """
     people = []
     for person in walk(response, "unpluggedPersonRenderer"):
         if not isinstance(person, dict):
             continue
         name = text(person.get("name"))
         if name:
-            people.append((name, text(person.get("role"))))
+            people.append((name, text(person.get("role")),
+                           thumbnail(person.get("thumbnail") or {},
+                                     prefer_width=288)))
     return people
 
 
-def rating_and_year(node, default=""):
-    """("PG-13", 2016) out of a header's "PG-13 * 2016".
+def title_art(header):
+    """A title page's own banner, which its tiles do not carry."""
+    if not isinstance(header, dict):
+        return ""
+    return thumbnail(header.get("banner") or {}, prefer_width=1920)
 
-    Either half can be missing -- a show reads "TV-14" alone on some pages
-    -- so they are told apart by shape: four digits is the year and
-    anything else is the rating.
-    """.replace("*", "\u2022")
+
+_RATING = re.compile(r"^(?:TV-[A-Z0-9]{1,3}|G|PG|PG-13|R|NC-17|NR|UR|X)$")
+
+
+def rating_and_year(node, default=""):
+    """("PG-13", 2016) out of a header's "PG-13 \u2022 2016".
+
+    Told apart by shape, and each half only claimed by something that
+    looks like it. Four digits is the year. A rating is one of the handful
+    of things a rating can be -- and anything else is neither: Saturday
+    Night Live's header reads "NBC", which was being shown as "Rated: NBC"
+    for want of asking what a rating looks like.
+    """
     rating, year = default, 0
     for part in text(node).replace("\u2022", "|").split("|"):
         part = part.strip()
@@ -1450,7 +1474,7 @@ def rating_and_year(node, default=""):
             continue
         if len(part) == 4 and part.isdigit():
             year = int(part)
-        elif not rating or rating == default:
+        elif _RATING.match(part.upper()) and rating == default:
             rating = part
     return rating, year
 

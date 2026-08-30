@@ -1,6 +1,6 @@
 class ListItem(object):
-    def __init__(self, label="", **kw): self.label=label; self._p={}
-    def setArt(self,*a,**k): pass
+    def __init__(self, label="", **kw): self.label=label; self._p={}; self.art={}
+    def setArt(self, art=None, **k): self.art = dict(art or {})
     def setProperty(self,k,v): self._p[k]=v
     def addContextMenuItems(self,items): self.menu=list(items)
     def getVideoInfoTag(self):

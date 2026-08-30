@@ -575,8 +575,11 @@ def _set_meta(info, meta):
     people = meta.get("cast")
     if people and hasattr(info, "setCast") and hasattr(xbmc, "Actor"):
         try:
-            info.setCast([xbmc.Actor(name, role, order)
-                          for order, (name, role) in enumerate(people)])
+            # Remembered as pairs before the photos were read, so a cast
+            # kept by an older build still lists rather than raising.
+            info.setCast([xbmc.Actor(person[0], person[1], order,
+                                     person[2] if len(person) > 2 else "")
+                          for order, person in enumerate(people)])
         except Exception as exc:
             kodiutils.log("could not set the cast: %s" % exc)
 
@@ -590,7 +593,12 @@ def _add_item(item, plot="", dvr=None, meta=None):
     ``meta`` is the rest of what that page said: genres, cast, director.
     """
     listitem = xbmcgui.ListItem(label=_label_of(item))
-    listitem.setArt({"thumb": item.art, "fanart": item.art})
+    known = meta or _meta_for(item.browse_id) or {}
+    # A tile's own image is the poster. The wide one behind it is the
+    # page's banner, which no tile carries -- 3840x2160 on John Wick.
+    banner = known.get("art") or item.art
+    listitem.setArt({"thumb": item.art or banner, "poster": item.art or banner,
+                     "fanart": banner})
     info = listitem.getVideoInfoTag()
     info.setTitle(item.title)
     if plot or item.subtitle:
@@ -598,7 +606,7 @@ def _add_item(item, plot="", dvr=None, meta=None):
     if item.duration:
         info.setDuration(item.duration)
     info.setMediaType("video")
-    meta = meta or _meta_for(item.browse_id)
+    meta = known or None
     if item.content_type == "SHOW":
         info.setMediaType("tvshow")
     if meta:
@@ -1630,20 +1638,33 @@ def _page_meta(response, header=None):
     rating, year = epg.rating_and_year((header or {}).get("secondaryText"))
     meta = {"genres": about.get("genres") or [],
             "directors": about.get("directors") or [],
-            "cast": [list(pair) for pair in epg.cast_of(response)],
+            "cast": [list(person) for person in epg.cast_of(response)],
             "plot": about.get("description", ""),
             "year": about.get("year") or year,
             "mpaa": rating,
-            "studio": about.get("studio", "")}
+            # A show names a network where a film names a provider, and
+            # both are the studio as far as a listing is concerned.
+            "studio": about.get("studio") or about.get("network", ""),
+            "art": epg.title_art(header)}
     for name in ("writers", "producers", "network"):
         if about.get(name):
             meta[name] = about[name]
     if about.get("unknown"):
         kodiutils.log("about says something new -- %s"
                       % "; ".join(about["unknown"]))
+    # A page that yields little says what it did send, a few times per run.
+    # A film gives genres, a director and a cast; a show gave a synopsis and
+    # nothing else, and whether the rest was unread or unsent is not
+    # established.
+    if not meta["genres"] and not meta["cast"] and _BARE[0] < 3:
+        _BARE[0] += 1
+        kodiutils.log("%s: its about carried [%s]"
+                      % (epg.text((header or {}).get("title")) or "a title",
+                         "; ".join(about.get("lines") or []) or "nothing"))
     return {key: value for key, value in meta.items() if value}
 
 
+_BARE = [0]
 _REMEMBERED_META = {}
 _LOADED_META = [False]
 
