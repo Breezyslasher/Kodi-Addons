@@ -98,6 +98,21 @@ See the [addon README](script.webhook.runner/README.md) for details.
 
 ---
 
+### [YouTube TV](plugin.video.youtubetv/) *(experimental)*
+Your YouTube TV subscription in Kodi: the live channel list, the 7-day guide, Home, your Library, Networks, YouTube TV's own categories, search, and recording a series from the context menu.
+
+**How it works:** YouTube TV stopped serving entitled media as plain DASH segments, so there is no manifest for InputStream Adaptive to fetch. The addon speaks Google's own **SABR** protocol and bridges the result back to ISA as DASH over localhost, alongside a licence proxy for YouTube's JSON-wrapped, rotating-key Widevine exchange — which ISA cannot speak on its own. The `n` parameter every media URL carries is solved by a JavaScript interpreter written in Python, so no box needs node or deno installed.
+
+**Confirmed working:** Kodi 21.3 and 22.0 on Linux x86-64, and Kodi 21.2 on Android ARM64 — live channels and films, with metadata, artwork and 1080p Widevine playback. Should also work on Windows, macOS, Linux ARM (LibreELEC, Raspberry Pi) and other Android devices, which meet the same requirements. **Cannot work on iOS, tvOS or Xbox**, which have no Widevine CDM.
+
+**Known limits:** private, undocumented endpoints that may change without notice. The guide's live preview mosaic is the one feature of the official app not implemented. Sign-in needs your own Google API project — the addon ships none, and reuses the YouTube addon's if you have it set up.
+
+See the [addon README](plugin.video.youtubetv/README.md) for the full picture, and [the protocol notes](plugin.video.youtubetv/docs/youtube-tv-protocol.md) for how it was worked out.
+
+**Requirements:** a paid YouTube TV subscription, Kodi 21+, InputStream Adaptive 21.5.22+ with a working Widevine CDM, and the addon's service enabled
+
+---
+
 ## Installation
 
 ### Method 1: Repository Installation (Recommended)
@@ -124,23 +139,34 @@ See the [addon README](script.webhook.runner/README.md) for details.
 
 This repository uses automated workflows to build and distribute addons:
 
-- **GitHub Actions**: Automatically builds addon ZIP files
-- **Repository Generator**: `generate_repo.py` creates the repository metadata
+- **GitHub Actions**: `.github/workflows/generate-repo.yml` runs on every push to
+  `main`. It builds each addon's ZIP, copies the declared artwork next to it so
+  Kodi's add-on browser has an icon, regenerates `zips/addons.xml` and its MD5,
+  and leaves out `docs`, `tools`, `tests` and `__pycache__` — an addon's notes
+  belong in the repository, not in every install
+- **Local builds**: `python3 tools/build_addon_zip.py [addon]` does the same
+  thing on a workstation. It also refuses to include `baked_*.py`, which is
+  where a personal build keeps its own credentials, unless `--personal` says so
+- **Repository Generator**: `generate_repo.py` regenerates `zips/addons.xml`
+  alone, as a manual fallback when the workflow has not run
 - **Version Management**: Each addon maintains its own versioning
 
 ### Repository Structure
 ```
 Kodi-Addons/
-├── plugin.audio.audiobookshelf/     # Audiobookshelf addon
 ├── context.plexkodiconnect.download/ # Plex download addon
+├── plugin.audio.audiobookshelf/     # Audiobookshelf addon
+├── plugin.video.appletv/            # Apple TV+ addon
+├── plugin.video.youtubetv/          # YouTube TV addon
 ├── script.akl.heroic/               # Heroic Games Launcher AKL plugin
 ├── script.scrcpy-launcher/          # scrcpy launcher addon
 ├── script.webhook.runner/           # Webhook runner addon
 ├── service.watchparty/              # Watch Party sync addon
 ├── repository.breezyslasher/        # Repository metadata
+├── tools/                          # Build and check scripts
 ├── zips/                           # Generated ZIP files
 ├── .github/workflows/              # CI/CD workflows
-└── generate_repo.py               # Repository generator
+└── generate_repo.py                # Repository generator (manual fallback)
 ```
 
 ## Contributing
@@ -154,12 +180,14 @@ While these are personal projects, I welcome feedback and suggestions:
 ## License
 
 Each addon has its own license:
+- **Apple TV**: GPL-3.0-or-later
 - **Audiobookshelf**: GPL-3.0-or-later
 - **Heroic Games Launcher for AKL**: GPL-2.0
 - **PlexKodiConnect Download**: MIT
 - **scrcpy Launcher**: MIT
 - **Watch Party**: MIT
 - **Webhook Runner**: MIT
+- **YouTube TV**: GPL-3.0-or-later
 
 ## Links
 

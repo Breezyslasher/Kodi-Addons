@@ -1,1426 +1,698 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addons>
-    <addon id="repository.breezyslasher" name="Breezyslasher Repository" version="2026.8.12" provider-name="Breezyslasher">
-        <requires>
-            <import addon="xbmc.addon" version="12.0.0"/>
-        </requires>
-        <extension point="xbmc.addon.repository" name="Breezyslasher Repository">
-            <dir minversion="19.0.0">
-                <info compressed="false">https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/refs/heads/main/zips/addons.xml</info>
-                <checksum>https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/refs/heads/main/zips/addons.xml.md5</checksum>
-                <datadir zip="true">https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips/</datadir>
-            </dir>
-        </extension>
-        <extension point="xbmc.addon.metadata">
-            <summary>Breezyslasher's Kodi Addon Repository</summary>
-            <description>Install addons from Breezyslasher's repository</description>
-            <platform>all</platform>
-            <assets>
-                <icon>icon.png</icon>
-            </assets>
-        </extension>
-    </addon>
-    <addon id="context.plexkodiconnect.download" version="2025.12.12" name="PlexKodiConnect Download" provider-name="Breezyslasher">
-        <requires>
-            <import addon="xbmc.python" version="3.0.0"/>
-        </requires>
-        <extension point="kodi.context.item">
-            <menu id="kodi.core.main">
-                <item library="default.py">
-                    <label>Download from Plex</label>
-                    <visible>
-                        [String.Contains(ListItem.Path,plex)] | 
-                        [String.Contains(ListItem.Path,plugin://plugin.audio.plexkodiconnect)] |
-                        [String.StartsWith(ListItem.Path,musicdb://)] |
-                        [String.StartsWith(ListItem.Path,videodb://tvshows)] |
-                        [String.IsEqual(Container.Content,artists)] |
-                        [String.IsEqual(Container.Content,albums)] |
-                        [String.IsEqual(Container.Content,songs)]
-                    </visible>
-                </item>
-            </menu>
-        </extension>
-        <extension point="xbmc.addon.metadata">
-            <assets>
-                <icon>icon.png</icon>
-            </assets>
-            <summary lang="en_GB">Download Plex media for offline viewing/listening</summary>
-            <description lang="en_GB">Adds a context menu option to download movies, TV shows, and music from PlexKodiConnect to your Kodi device for offline use. Supports downloading individual items, entire albums/seasons, or full artists/shows.</description>
-            <language>en</language>
-            <platform>all</platform>
-            <license>MIT</license>
-        </extension>
-    </addon>
-
-    <addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.7.24" provider-name="Breezyslasher">
-    	<requires>
-    		<import addon="xbmc.python" version="3.0.1"/>
-    		<import addon="script.module.requests" version="2.31.0" />
-    	</requires>
-    	<extension point="xbmc.python.pluginsource" library="default.py">
-    		<provides>audio</provides>
-    	</extension>
-    	<extension point="xbmc.addon.metadata">
-    		<summary lang="en_GB">Audiobookshelf client for Kodi</summary>
-    		<description lang="en_GB">Stream audiobooks and podcasts from your Audiobookshelf server. Features include:
-
-    * Stream audiobooks (M4B, MP3, multi-file)
-    * Stream podcasts with episode management
-    * Progress sync with server
-    * Download for offline playback
-    * Chapter navigation
-    * Resume playback
-    * Search and add new podcasts
-    * Find new episodes (from RSS)
-    * API Key or Username/Password authentication</description>
-    		<language></language>
-    		<platform>all</platform>
-    		<license>GPL-3.0-or-later</license>
-    		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
-    		<assets>
-    			<icon>resources/icon.png</icon>
-    			<fanart>resources/fanart.jpg</fanart>
-    		</assets>
-    		<news>
-    2026.7.24 - Separate libraries
-    - CHANGED: Each Audiobookshelf library is now listed separately instead
-      of merged into single Audiobooks/Podcasts folders. Enable "Group
-      libraries by type" in settings for the old grouped view.
-
-    2026.7.10 - API key login
-    - NEW: Optional API Key setting; when set it is used directly as the
-      bearer token (no login/refresh) and overrides username/password.
-
-    2026.7.9 - Kodi repo compliance
-    - Settings localized via strings.po; icon flattened (no transparency);
-      LICENSE renamed to LICENSE.txt; fanart added.
-
-    2026.7.8 - Chronological offline queues
-    - Downloads store the episode publish date so offline auto-play queues
-      order chronologically, matching the online queue.
-
-    2026.7.7 - Auto-play: mixed streamed/downloaded
-    - Auto-play queues mix streamed and downloaded episodes; also works
-      fully offline. No resume dialog between episodes.
-
-    2026.7.6 - Auto-play next podcast episode
-    - "Auto-play next episode" setting (default off) plays a native Kodi
-      playlist from the selected episode forward. Progress tracked per
-      episode.
-
-    2026.7.5 - Progress sync fix
-    - Progress upload no longer loops forever; empty/non-JSON 2xx responses
-      are treated as success.
-
-    2026.5.28 - Now-playing cover art, author, JWT auth
-    - Covers/author on the now-playing screen; JWT auth with auto refresh
-      (requires server v2.26.0+).
-    		</news>
-    	</extension>
-    </addon>
-    <addon id="plugin.video.appletv" name="Apple TV" version="2026.8.12" provider-name="Breezyslasher">
-    	<requires>
-    		<import addon="xbmc.python" version="3.0.1"/>
-    		<import addon="script.module.requests" version="2.31.0"/>
-    		<import addon="inputstream.adaptive" version="21.0.0"/>
-    		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
-    	</requires>
-    	<extension point="xbmc.python.pluginsource" library="default.py">
-    		<provides>video</provides>
-    	</extension>
-    	<extension point="xbmc.service" library="service.py"/>
-    	<extension point="xbmc.addon.metadata">
-    		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
-    		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, live sports and your iTunes movie and TV library, playing back through InputStream Adaptive with Widevine DRM.
-
-    EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
-
-    Features:
-    * Apple ID sign-in with two-factor authentication
-    * Browse Apple TV+ Originals (shows and movies)
-    * Live sports: MLS, Formula 1 and MLB
-    * Browse your iTunes purchased/rented movie and TV library
-    * Search the Apple TV catalogue
-    * Widevine playback via InputStream Adaptive</description>
-    		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
-    		<language></language>
-    		<platform>all</platform>
-    		<license>GPL-3.0-or-later</license>
-    		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
-    		<assets>
-    			<icon>resources/icon.png</icon>
-    			<fanart>resources/fanart.jpg</fanart>
-    		</assets>
-    		<news>
-    2026.8.10 - iTunes library is back
-    - The iTunes movie and TV library returns, on top of all the Apple TV+ and
-      live-sports work: your purchased/rented films and shows list under "My iTunes
-      Library", grouped into Films and TV Shows (television by season), with resume
-      points where the store knows them. It has its own sign-in, separate from
-      Apple TV+, and can also use a pasted store session.
-    - Purchase playback asks Apple's store/Android licence path for a redownload
-      and reports the exact reason if it is refused. Note the standing wall: an
-      iTunes purchase's key server needs a device keybag Apple issues only to its
-      own hardware, so purchase *playback* may still be blocked even though the
-      library lists and resolves; browsing and naming work regardless.
-    - Search can include the store again: with "Search Apple TV+ only" turned off,
-      search returns titles that exist only as purchases (Green Book, Oppenheimer,
-      ...), not just Apple TV+ originals. It stays on by default, since a purchase
-      may not play past the keybag wall.
-    - Playing an iTunes purchase now shows a plain message instead of a generic DRM
-      error. The purchase streams over Widevine (as Apple's own Android app plays
-      it), but the key server refuses it (status -1020) without a device keybag its
-      client apps attach, which this add-on cannot reproduce.
-    - Experimental: the redownload stream is now fetched as the Android TV app
-      (caller=vz), matching the identity the licence request uses, instead of as the
-      Windows desktop client. Paste a fresh Android (mz_at_ssl) session to test
-      whether the coherent Android path licenses where the mixed one did not.
-    - The account-wide Continue Watching row is back, and the Featured hero row: the
-      cross-service resume list (which mixes in iTunes films in progress, unlike the
-      per-tab Up Next) and the "Apple Original Shows and Movies" shelf both return
-      to the home screen.
-    - The iTunes library locker now also tries the Android (mz_at_ssl) session, not
-      only the store-page one, so a single pasted session can populate both Continue
-      Watching and the library instead of 403-ing the library.
-    - The iTunes library now lists via the Apple TV app's own MediaAPI route
-      (/v1/me/purchases, types=movies / tv-shows), read off the app's LibraryPage
-      code. It authenticates with the ordinary Apple TV+ sign-in (bearer +
-      media-user-token), so films and shows you own list with no store-page or
-      Android session needed at all -- the website has no library tab, but this is
-      the call the app makes.
-    - Family Sharing in the library: each family member who shares purchases is
-      listed (the app's /v1/me/purchases/shared/members call), and opening one shows
-      their shared films -- same Apple TV+ session, no store login.
-    - FIX: a film whose MediaAPI description came back as an object rather than a
-      string crashed the whole library list; the plot is now read correctly and can
-      never break the listing.
-    - Library titles now resolve to their canonical id (as the app does), so a
-      purchased film carries its trailers, bonus features, cast and the normal play
-      path -- and resumes where you left off, via the app's playback-positions call
-      (/v1/me/playback/positions). All on the ordinary Apple TV+ session.
-    2026.8.10 - Subtitles: a steady 10-second sync
-    - FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
-      both films and shows (the previous per-title guess got some titles wrong).
-      A new "Subtitle delay in seconds" setting lets you trim it if you ever need
-      a different value.
-    2026.8.10 - Subtitles: every language, and synced on every title
-    - All of Apple's subtitle languages are now fetched, not just yours and
-      English (in parallel, so it stays quick). Turn it back to two in settings if
-      you prefer.
-    - FIX: the timing shift is now read from each title's own video, so subtitles
-      line up whether a title needs a 10-second offset (some shows) or none
-      (some films) -- one build had synced one and not the other.
-    2026.8.10 - One subtitle entry per language, not two
-    - The blank subtitle tracks InputStream Adaptive lists for on-demand titles
-      (Apple's WebVTT, which it cannot render) are now removed from the stream, so
-      each language shows once -- the working fetched copy -- instead of twice.
-      The fetched tracks are your Kodi language and English; other languages,
-      which never displayed anyway, are no longer listed.
-    2026.8.10 - "Key Plays" only while a game is live
-    - Key Plays are a live game's moments so far, to catch up on during the
-      broadcast. A finished game has Highlights instead, so Key Plays now shows
-      only while a game is actually airing -- not on finished games or races.
-    2026.8.10 - Subtitle timing
-    - Subtitles were running early because Apple's timing map (X-TIMESTAMP-MAP)
-      was dropped when the track was saved. That offset is now applied to the cue
-      times, so subtitles line up with the video. If any are still out, it is a
-      fixed number of seconds -- say how far and which way and it can be trimmed.
-    2026.8.10 - Subtitles on films, shows and replays (new)
-    - Apple's on-demand subtitles are WebVTT that InputStream Adaptive lists but
-      leaves blank on screen. The addon now fetches the track (your Kodi language,
-      and English) and hands Kodi its own copy to display, so subtitles work on
-      films, shows and finished-game replays. Turn it off in settings if you like.
-      Live games are not covered -- their captions are baked into the video.
-      New; please report any timing offset so the sync can be dialled in.
-    2026.8.10 - Browsing keeps working after you sign out
-    - FIX: Signing out wiped the app's anonymous browsing token along with your
-      account, so every tab (Apple TV+, MLS, F1, MLB) then had to rebuild it from
-      scratch on each screen -- and if that failed, the catalogue failed with it,
-      clearing up only when you signed back in. Sign-out now keeps that browsing
-      token (it is not account data) and clears only your account, so the catalogue
-      keeps loading signed out. Playback still needs a sign-in.
-    2026.8.10 - "Clubs" only on soccer
-    - The "Clubs" context-menu entry (a match's two clubs) now shows only on
-      soccer fixtures (MLS, Leagues Cup). A Formula 1 race and an MLB game are not
-      club-vs-club, so it no longer appears on them.
-    2026.8.10 - Stop a doomed watch-history call on live games
-    - FIX: Playing a live game (Watch from Start, Catch Up, Key Plays, Resume)
-      logged a 400 from Apple's now-playing endpoint. That endpoint is for
-      on-demand titles only -- the web client never calls it for a live event --
-      so a live game's linear id was always rejected. The addon no longer makes
-      that call for a live stream (playback was never affected; the error is just
-      gone). Finished games and films still report as before.
-    2026.8.10 - Fix "event has not started" on games that already happened
-    - FIX: A finished game could say "this event has not started yet" with a
-      future date. Its start time was being read from the whole detail document,
-      which also lists upcoming games, so every game reported the same upcoming
-      kick-off. The start time is now read from the game's own entry, so a played
-      game is recognised as played (and, if it will not play, says why).
-    2026.8.10 - MLB
-    - Added an MLB tab. Baseball on Apple TV+ is the same kind of live event as MLS
-      and F1 under the hood, so its games, Big Inning, shows and recaps play (and
-      resume, and pick home/away commentary) exactly like the other sports. MLB
-      sits under Apple TV+ rather than being its own channel, so it is listed as a
-      room; if it ever comes up empty, Apple has reissued the room and it needs a
-      refresh.
-    2026.8.10 - Clearer message when a title will not play
-    - A title with no stream for you now says why: "not part of your subscription,
-      or blacked out in your region" when you are signed in, or a plain "sign in
-      first" when you are not -- instead of one catch-all that named both causes
-      and pointed at the log.
-    2026.8.10 - Finished games resume like a film again
-    - FIX: A finished game (a replay) is not live, so it should resume where you
-      left off like any on-demand title -- but the live-game change had it start
-      over instead. Now only a game that is actually airing skips Kodi's resume
-      (its start is the live menu's job); a finished one resumes normally. Which
-      is which is read from the event's own live flag, no guesswork.
-    2026.8.10 - Live games: "Resume where you left off" is now a menu choice
-    - Kodi used to seek a live game to your last position on its own, overriding
-      whatever mode you picked. It no longer does. Instead, when Apple has a saved
-      position for the game, the live menu adds a "Resume where you left off"
-      option next to Watch Live / from Start / Catch Up, so jumping there is your
-      choice -- and the other modes start exactly where they should.
-    2026.8.10 - Live games: resume shows the choices; a clear "too many devices"
-    - FIX: Resuming an in-progress live game from Continue Watching skipped the
-      Watch Live / from Start / Catch Up choice and jumped straight to the saved
-      point (and even when the choice showed, it was ignored). A live game now
-      always offers the three, and the one you pick decides where it starts.
-    - When Apple refuses the stream because the account is watching on too many
-      devices, that now says so plainly instead of failing as a generic playback
-      error.
-    2026.8.10 - Live games: full rewind window (Watch from Start / Catch Up)
-    - FIX: Watch from Start jumped in near the live edge instead of the broadcast
-      start, and scrubbing/Catch Up would snap back to "now". Apple only serves the
-      deep rewind window (the whole broadcast so far) when the player asks for it
-      with linearScrubbingSupported, which the web client sends on every live
-      manifest but the addon did not. The addon now sends it, so a live game can be
-      rewound to its start and seeked through its key plays.
-    2026.8.10 - Live games: freed on app close, not marked watched
-    - FIX: Closing Kodi while a live game was still playing could leave the stream
-      holding a session with Apple (its lease was only released on a clean Stop).
-      The session is now also released when the app quits.
-    - FIX: Leaving a live game marked it as watched, because at the live edge the
-      position equals the stream length. A live game now only reports its position,
-      never "finished", so it is not marked watched before it is over.
-    2026.8.10 - Your language first on a live game, quieter log
-    - A live game with commentary in more than one language now lists your
-      language first (Apple's order was arbitrary -- Spanish sometimes sat above
-      English), so the top of the picker is the one you most likely want.
-    - A game with no key plays no longer logs a 404 as an error.
-    2026.8.10 - Tell Apple when a stream stops (frees your session)
-    - NEW: Closing a video now releases its streaming licence with Apple, the way
-      the web client does -- it re-sends the licence request with the action set
-      to "stop". Without this, a closed live game kept counting against Apple's
-      concurrent-stream limit until it timed out, which could make the next live
-      stream refuse to start. The release runs in the background so closing stays
-      instant.
-    2026.8.10 - Key Plays and Catch Up for live games (experimental)
-    - NEW: "Key Plays" on a live game's context menu lists its goals and big
-      moments; picking one jumps the game to that moment and plays on. The list
-      follows Apple's own, however few or many there are.
-    - NEW: "Catch Up" joins the live options (Watch Live / Watch from Start /
-      Catch Up) and plays the key moments in turn, skipping the lulls between --
-      the same key plays Apple's own Catch Up seeks through.
-    - Both work by seeking the live DVR to each moment's time; seeking a live
-      stream is best effort, so this is experimental and may land a little early
-      or late.
-    2026.8.10 - Watch a live game from the start, and clearer errors offline
-    - NEW: Playing a game that is airing live now asks whether to Watch Live (the
-      live edge) or Watch from Start (the broadcast from its beginning), the same
-      startOver stream the web player uses. Apple's third option, Catch Up, is a
-      fast-forward-to-live player trick Kodi cannot reproduce, so it is left out.
-    - FIX: When the network drops mid-play, key collection could not reach Apple
-      and the stream was wrongly treated as unencrypted, failing with "DRM
-      license server not configured". A fetch failure is now kept distinct from a
-      keyless stream, so an outage no longer masquerades as a DRM problem.
-    2026.8.8 - Cast members open their own page
-    - NEW: A name in "Cast and crew" is now a folder. Opening it shows that
-      person's other work -- their Movies, Shows, and roles as producer or guest
-      -- exactly as Apple lists it. Their page opens with an "About" entry whose
-      Information holds Apple's biography, birth date and birthplace, with a
-      headshot. Before, cast names were dead text.
-    2026.8.8 - Mark watched on your Apple account
-    - NEW: A "Mark watched on Apple TV" entry on films, shows, episodes and
-      fixtures tells Apple the title is watched (the same POST /play-history the
-      website sends), so it counts as watched on your other devices and leaves
-      Continue Watching. Kodi's own "Mark as watched" only sets a local flag and
-      never reached Apple; this does. Marking unwatched is not offered yet.
-    2026.8.8 - Continue Watching shows only what you have started
-    - NEW: Apple's "Continue Watching on Apple TV" shelf also lists titles you
-      have merely added to your Watchlist (Apple marks them "AddedToUpNext"), so
-      a film you never played appeared there the moment you watchlisted it. A new
-      setting, on by default, keeps only the titles you have actually started;
-      the watchlisted ones still show on the Watchlist. Turn it off to mirror
-      Apple exactly.
-    2026.8.7 - Housekeeping: remove dead code
-    - Internal only, no change to behaviour: removed unused code left over from
-      earlier versions -- the Watchlist fetch that nothing calls (the list is
-      shown via Apple's own shelf), two unused helpers, an unused sign-in proof
-      accessor, and an unused import.
-    2026.8.7 - Drop the addon-made "Following" folder
-    - The "Following" folder was not something Apple sends; it was assembled from
-      the follow flags on the club tiles. Apple already lists a club you follow as
-      its own shelf on the tab, so the extra folder is gone. Following and
-      unfollowing a club still works from the club's context menu, and the star
-      on a followed club still updates on the spot.
-    2026.8.7 - Following and Watchlist update on the spot
-    - FIX: Following or unfollowing a club, or adding or removing a Watchlist
-      title, showed no change until you left to the main menu and came back into
-      the tab. The screen now refreshes in place: the Watchlist is re-read from
-      Apple, and a club's follow state is updated in the cached tab so the
-      Following folder and the club tiles reflect it at once.
-    2026.8.7 - Clubs show their crest
-    - NEW: A football club now shows its crest. Apple ships the badge as a square
-      logo, the one shape the artwork sort treated as "not artwork", so clubs
-      were listed blank; the crest is used for them now (as a transparent png).
-    2026.8.7 - Fix a stray settings entry, and name the list consistently
-    - FIX: "Add to Watchlist" in a title's context menu showed the text of the
-      new live-events height setting instead. The setting had been given a label
-      number already in use, so the two collided; it now has its own.
-    - FIX: The pop-up after adding or removing a title still said "Up Next"
-      though the menu and folder call the list "Watchlist", as Apple does. All
-      three now say "Watchlist".
-    2026.8.7 - Resuming a match plays the feed it belongs to
-    - FIX: A sporting event you had part-watched offered Resume before asking
-      which feed to play, and then applied that position to whichever feed you
-      picked -- so resuming an hour into the full replay could seek clean past
-      the end of the half-hour race. The saved position belongs to one feed, so
-      the event now plays that feed when you resume, its length matching the
-      position. Where the feed cannot be identified, the resume is dropped rather
-      than risk seeking past the end.
-    2026.8.7 - A flaky manifest fetch no longer breaks a fresh play
-    - FIX: Starting a title the instant the previous one closed sometimes hit a
-      transient 500 from Apple's manifest server while collecting keys. That was
-      misread as "this stream has no DRM", so it played in the clear and failed
-      ("license server url has not been configured"). The manifest fetch now
-      retries a server error, and if it still cannot be read the stream is
-      treated as encrypted -- the licence proxy finds the keys as it serves the
-      variants -- rather than played in the clear.
-    2026.8.7 - Live events play in HD, where Apple grants the key
-    - FIX: A live event (Formula 1, MLS) failed with a DRM error (-1004). Apple
-      licenses a live event's keys per quality band, and for these it does not
-      grant the SD band's key at all -- only the HD H.264 band, which is the tier
-      its own web player uses. The addon was capped to SD, as it is for on-demand
-      titles, so it asked for the one key Apple refuses. Live events now use a
-      separate, higher cap (1080p by default, in Settings) and reach the tier
-      Apple actually licenses.
-    2026.8.7 - A future event says so instead of erroring
-    - FIX: Playing a sporting event that has not started yet showed a stream
-      download error and a DRM failure. It now shows the kick-off time, as it
-      was meant to: when the detail lookup withholds a stream because the event
-      is still to come, playback stops on that reason instead of falling through
-      to an inline stream that Apple has not published yet.
-    2026.8.7 - Streamlined to a clean Apple TV+ client
-    - This build is the Apple TV+ web client on its own: sign-in, Originals and
-      the brand tabs, Search, and Widevine playback. The iTunes purchase
-      library, Continue Watching and the Featured row have been removed for a
-      focused, dependable core.
-    2026.8.7 - Owned TV names itself, and a token escape hatch
-    - Your purchased TV episodes now show their real titles and show name even
-      when Apple has pulled the title from sale. Apple keeps no catalogue entry
-      for a delisted purchase, so the episode is named from the address of its
-      own page, which still carries the name.
-    - NEW: An advanced "Developer token override" setting. If Apple ever
-      changes its website so the addon can no longer read its own session
-      token, paste one from a browser and the addon keeps working.
-    2026.8.3 - Resume where you left off, trailers fixed
-    - NEW: A title part-watched on another Apple device now resumes at the
-      right place here. Apple states the position on each item of the
-      Continue Watching shelf; the addon was discarding it.
-    - FIX: Trailers played no picture at all. Their init segment, which holds
-      the MOOV atom, was pointed at the addon's own proxy instead of Apple.
-    - FIX: Trailers played in the wrong colours -- Apple offers them in Dolby
-      Vision, which Kodi renders with badly shifted colours. Those variants
-      are skipped now whether or not a stream is encrypted.
-    - The list you add titles to is called "Watchlist", as Apple calls it,
-      rather than "Up Next", and sits on each brand tab rather than in the
-      main menu, since Apple keeps a separate one per tab.
-    - The "Continue Watching" menu entry is gone. It asked for the player's
-      Up Next tab, which Apple refuses outside playback, and it was never
-      needed: that shelf is already listed on the Apple TV+ tab.
-    2026.7.31.19 - Faster browsing
-    - The session token is kept for an hour instead of being scraped again on
-      every screen. Kodi starts a new process for each navigation, so the
-      addon was downloading a megabyte of page markup before every listing.
-      If a kept token is ever rejected, it refreshes and retries once.
-    2026.7.31.18 - Choose a match feed, related rows, real sign-out
-    - NEW: A match that offers more than one feed now asks which to play: the
-      full replay or the short recap, and English, Spanish or French
-      commentary. Each is listed with its runtime.
-    - NEW: "Related" on a title lists more like it; on a match it lists the
-      other games in the league, and "Clubs" lists the two sides.
-    - Sign out now ends the session with Apple instead of only forgetting the
-      tokens locally. The tokens are cleared either way.
-    2026.7.31.17 - Shows open to their seasons
-    - NEW: A show with more than one season opens to a season list with each
-      season's episode count, instead of every episode in one flat run. A
-      179-episode show now opens to five seasons.
-    - Shows with a single season still go straight to their episodes.
-    2026.7.31.16 - Continue Watching, and a better Search
-    - NEW: "Continue Watching" in the main menu lists what you have part
-      watched, the same list the addon now feeds by reporting playback.
-    - NEW: Opening Search without typing anything shows Apple's browse page
-      instead of an empty list.
-    - NEW: After typing, Apple's suggestions are offered, with what you typed
-      kept as the first choice.
-    2026.7.31.15 - Following section, and a real follow toggle
-    - NEW: A "Following" folder at the top of the MLS tab lists the clubs you
-      follow. Apple's own favourites shelf there is an empty placeholder the
-      website fills in itself, so the addon does the same from the follow flag
-      each club carries.
-    - The club context menu now offers only the action that applies: Follow on
-      a club you do not follow, Unfollow on one you do. A capture of following
-      a club confirms the flag updates on the very next request.
-    2026.7.31.14 - Followed clubs are marked
-    - Clubs you follow are marked with a * in "Browse All Clubs", and the
-      context menu offers the fitting action first. Apple reports the follow
-      state on each club tile, so this needs no extra request.
-    2026.7.31.13 - Grand Prix weekends open
-    - NEW: The 22 race tiles on the Formula 1 tab are folders now. Each opens
-      its weekend: practice, qualifying and the race, the Sky Sports feed, and
-      the round's highlights, interviews and team-radio clips.
-    - That was the last navigation tile still being hidden; rooms, clubs and
-      Grand Prix weekends now all open.
-    2026.7.31.12 - Up Next list and subscription status
-    - NEW: "Up Next" in the main menu lists what is on your watchlist, so the
-      titles you add are visible in Kodi rather than only on Apple's clients.
-    - NEW: Settings shows your Apple TV+ subscription status: whether it is
-      active, when it renews or expires, and whether it comes through Family
-      Sharing.
-    2026.7.31.11 - Trailers play
-    - FIX: Trailers carry no DRM at all -- no key of any kind in the manifest.
-      The addon was still asking InputStream Adaptive for a Widevine session,
-      which then waited for a licence that could never arrive. Streams with no
-      keys now play as plain HLS.
-    - Trailers play at full quality: the 360-line, H.264 and SDR limits exist
-      only to satisfy the Widevine CDM, which an unencrypted stream never
-      reaches.
-    - FIX: Key collection read its key from the first variant in the manifest,
-      which is usually one the quality filter drops. Since Apple keys each tier
-      separately, that was the wrong key. It now reads from the variants that
-      are actually played, and says so in the log when a stream has no keys.
-    2026.7.31.10 - Watch history syncs to your Apple account
-    - NEW: What you watch through the addon now updates Apple's Continue
-      Watching, and resumes at the right place on your other Apple devices.
-      Progress is reported every 30 seconds and once more when playback stops;
-      past 95% the title counts as finished. Trailers and bonus features are
-      never reported.
-    - The utsk session token is now requested from Apple's own configurations
-      endpoint when the web shell does not carry one, instead of relying on
-      scraping alone.
-    2026.7.31.9 - Follow clubs and manage Up Next
-    - NEW: Context menu on an MLS club follows or unfollows it.
-    - NEW: Context menu on any title, episode or sporting event adds it to
-      Up Next or removes it.
-    - Both directions are offered rather than one toggle, because Apple gives
-      no way to read back what is already followed or listed. Neither sends
-      anything unless you are signed in.
-    2026.7.31.8 - MLS club pages open
-    - NEW: The 30 clubs under "Browse All Clubs" are folders now. Each opens
-      its team page: Featured, Matches, Past Matches, Every Goal, best-of
-      reels and player compilations.
-    2026.7.31.7 - Browse categories (rooms) open
-    - NEW: The category tiles under "Browse All Apple Originals" -- Kids amp;
-      Family, Sci-Fi, Comedies, Coming to Apple TV and the rest -- are folders
-      now instead of being hidden. Each opens its own canvas of shelves.
-    2026.7.31.6 - Open a shelf the way the website does
-    - Opening a shelf now refetches it from the start instead of continuing
-      from the copy the home page embedded. Personalised shelves return a
-      different selection each time, so pairing a stale first page with freshly
-      paged ones could leave gaps.
-    2026.7.31.5 - Shelves open to all their items
-    - A canvas only sends each shelf's first page. Opening a shelf now follows
-      its own paging token to the end, so "All Documentaries" is no longer 20
-      items when Apple has more.
-    - Shelves with more to fetch show their count as "20+".
-    2026.7.31.4 - Every shelf on a tab, not just the first page
-    - Channel canvases are paged: the response carries a nextToken offset to
-      hand back for the next batch of shelves. The addon now walks that to the
-      end, as the website does.
-    - Apple TV+ goes from 10 shelves to 20, MLS from 5 to 13. Formula 1 sends
-      no token and is a single page.
-    2026.7.31.3 - MLS and Formula 1 tabs, bonus content
-    - NEW: The MLS and Formula 1 brand tabs from tv.apple.com's home page are
-      now browsable alongside Apple TV+, each with all of its shelves.
-    - NEW: "Bonus content" context-menu entry sits next to "Play trailer" on
-      movies and shows (Ted Lasso has twelve bonus features).
-    - The sports channels list clip types (highlights, interviews, key plays)
-      that have no detail endpoint of their own but carry their stream in the
-      shelf itself; that stream is kept so the clips play.
-    - Navigation tiles (teams, Grand Prix rounds, browse rooms) no longer
-      appear as playable items, since Apple gives them no stream at all.
-    2026.7.31.2 - Play trailers from the context menu
-    - NEW: Movies and shows have a "Play trailer" context-menu entry. Apple
-      lists a title's trailers in its detail response, each already carrying
-      its own stream, so no extra request is needed. Titles with several
-      trailers (Ted Lasso has seven) offer a chooser.
-    - Trailers play without a subscription, so a missing media-user-token no
-      longer blocks them.
-    2026.7.31.1 - Artwork no longer cut off
-    - Apple ships both tall posters and wide stills for a title. The addon now
-      reads each artwork's declared dimensions, sends the tall one to Kodi's
-      poster slot and the wide one to thumb/fanart, and requests each at its
-      own aspect ratio instead of forcing everything into a 16:9 box.
-    - Titles with no tall artwork (episodes, sporting events) simply get no
-      poster rather than a cropped one; logos and team badges are ignored.
-    2026.7.31 - Encrypted playback working (Kodi 22 required)
-    - REQUIRES Kodi 22 with InputStream Adaptive 22 or newer. Playback uses
-      the inputstream.adaptive.drm property, which the 21.x series does not
-      have, so Kodi 21 support has been dropped rather than left broken.
-    - NEW: Sporting events play, list their kick-off time, and report when a
-      game has not started yet instead of failing.
-    - Playback now works on Kodi 22 with InputStream Adaptive 22, using the
-      new inputstream.adaptive.drm property (secure_decoder, pre_init_data).
-    - Streams are limited to the lowest quality tier (360p by default), H.264
-      and SDR: Apple keys each tier separately and the CDM reports the higher
-      tiers' keys as output restricted, cannot decode HEVC, and Kodi renders
-      Dolby Vision with shifted colours.
-    - Key ids are supplied to ISA via KEYID and the init segment's tenc box,
-      which Apple leaves empty.
-    2026.7.30 - Experimental release (matched to real web client)
-    - NEW: Apple ID sign-in rebuilt from a real tv.apple.com capture:
-      authorize -> SRP init/complete with X-Apple-HC hashcash -> two-factor
-      (trusted-device or SMS) -> session trust. Real OAuth client id.
-    - NEW: Catalogue via confirmed UTS endpoints (Apple TV+ Originals
-      channel canvas, search) with tokens scraped from the web shell.
-    - NEW: Widevine playback pipeline: HLS via InputStream Adaptive with a
-      local licence proxy that wraps the challenge in Apple's fpsRequest
-      JSON envelope (Apple serves Widevine to non-Apple clients).
-    - NOTE: Two playback tokens (account media-user-token and the per-title
-      playback token) are still being reproduced; advanced settings accept
-      pasted values to test playback meanwhile. SD only (Widevine L3).
-    		</news>
-    	</extension>
-    </addon>
-    <addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.68" provider-name="Breezyslasher">
-    	<requires>
-    		<import addon="xbmc.python" version="3.0.0"/>
-    		<import addon="script.module.requests" version="2.31.0"/>
-    		<import addon="inputstream.adaptive" version="21.5.22"/>
-    		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
-    	</requires>
-    	<extension point="xbmc.python.pluginsource" library="default.py">
-    		<provides>video</provides>
-    	</extension>
-    	<extension point="xbmc.service" library="service.py"/>
-    	<extension point="xbmc.addon.metadata">
-    		<summary lang="en_GB">YouTube TV live channels and on-demand for Kodi (experimental)</summary>
-    		<description lang="en_GB">Watch the live channel lineup and on-demand catalogue from your own YouTube TV subscription, playing back through InputStream Adaptive with Widevine DRM.
-
-    EXPERIMENTAL: Google provides no public API for YouTube TV. This addon speaks the same private InnerTube endpoints as the YouTube TV web player, identifying itself as the WEB_UNPLUGGED client. Sign-in is by importing cookies from a browser already signed in to tv.youtube.com; Google does not permit scripted password login.
-
-    Playback depends on the DASH manifest that the player endpoint offers alongside its own SABR streaming URL. The web player itself always takes the SABR path, so the DASH route is documented but lightly travelled -- if Google stops serving it, this addon stops working and there is no fallback short of reimplementing SABR.
-
-    Features:
-    * Live channel list and 7-day electronic programme guide
-    * On-demand titles and search
-    * Widevine playback via InputStream Adaptive, up to 1080p where the account allows
-    * Local licence proxy handling YouTube's JSON-wrapped, rotating-key Widevine exchange
-
-    Your subscription, your account, your lineup. Nothing is proxied through a third party.</description>
-    		<disclaimer lang="en_GB">Not affiliated with or endorsed by Google LLC. YouTube and YouTube TV are trademarks of Google LLC. This addon uses private, undocumented endpoints that Google's terms of service do not permit third-party clients to call; use it with your own subscription and accept the risk to your account.</disclaimer>
-    		<language></language>
-    		<platform>all</platform>
-    		<license>GPL-3.0-or-later</license>
-    		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
-    		<assets>
-    			<icon>resources/icon.png</icon>
-    			<fanart>resources/fanart.png</fanart>
-    		</assets>
-    		<news>
-    2026.8.31.68 - One path for n, in Python, with no fallback
-    - The fallback that shelled out to node, deno, bun or quickjs is gone,
-      along with the setting that pointed at one and the flatpak plumbing that
-      went looking for it on the host. About 150 lines, and subprocess and
-      tempfile with them.
-    - It was never the path that worked. The bundled interpreter answers the
-      player's own transform exactly, and the fallback could not run where it
-      was most needed: there is nothing to find on Android or LibreELEC, which
-      is precisely where the failures it was meant to cover happened. Every
-      time it was reached on a real device it reported "no runtime found" and
-      the play failed anyway.
-    - A failure now says what the interpreter did, rather than advising an
-      install that would not have helped.
-    - The "Cold start the proof-of-origin token" switch keeps its old id so a
-      box that has it set keeps its setting; it now only does what its name
-      says.
-
-    2026.8.31.67 - The date parse no longer depends on a torn-down module
-    - Named exactly, by the last build's own diagnostic: every one of the
-      player's eight date literals came back "'NoneType' object is not
-      callable", while the same value worked out correctly beside it.
-    - Those dates are the n transform's array indices -- the player hides them
-      as new Date("1969-12-31T17:30:49.000-06:30")/1E3, which is 49 -- and the
-      parse went through a helper that reaches for calendar and email.utils.
-      Kodi blanks a plugin's module globals when the script ends, so after one
-      playback those were gone and every index came out wrong. A wrong index
-      reads a wrong slot, which throws, which the player answers with a
-      constant, which googlevideo refuses with a 403.
-    - The interpreter now reads a date literal with nothing but datetime,
-      imported inside the function itself. Against the exact failure a real
-      device reported, all eight values that had been failing solve correctly.
-    - The bail probe also called nothing and so reported nothing. It calls the
-      helpers now and names the ones that have stopped answering.
-
-    2026.8.31.66 - The bail is a torn-down module, not a bad value
-    - The logs say it plainly: in every run the first pair of values solves
-      correctly, and every solve after a playback has opened and closed bails.
-      It was never the input -- all eight values a device got wrong solve
-      correctly elsewhere, against a byte-identical player.
-    - Kodi tears a plugin's modules down when the script ends, and that blanks
-      their globals. What this add-on still holds afterwards -- it keeps a
-      local server for the SABR bridge -- is then full of Nones where its
-      functions were. A blanked global raises inside the interpreter, the
-      interpreter reports it as the script throwing, and the player's own
-      catch answers with a constant. That constant is the bail.
-    - The diagnostic added last build walked into the same thing and said so:
-      "'NoneType' object is not callable".
-    - So a bail now names which module globals went blank and re-imports them
-      before giving up. There is no javascript runtime on Android to fall back
-      to, which is why this mattered there first.
-
-    2026.8.31.65 - Dialogs that fit what they have to say
-    - The sign-in code dialog spent two of its three lines on blank lines and
-      the third on "On another device, open:", which pushed the code itself
-      off the bottom -- the one thing it exists to show. Three lines now, all
-      three carrying something, and the url without its scheme.
-    - Kodi's ok box is a fixed size, about four lines. Anything taller now
-      goes to the full-screen text viewer instead of being cut off, which is
-      every long message in the add-on and not only the sign-in one.
-    - The "no Google API project" instructions are shorter and numbered, so
-      they read as the three steps they are.
-
-    2026.8.31.64 - The other messages that named the wrong cause
-    - Playing a channel had one sentence for three different things: a channel
-      no longer in the lineup, a channel with no programme listed now, and a
-      programme the guide names no stream for. A stale bookmark was told
-      "nothing is playing right now", which reads as "wait a while" for
-      something that is never coming back. Each says its own thing now, and the
-      third says what it usually means -- the channel is not in your plan.
-    - An empty message no longer shows an empty box. Most dialogs here pass an
-      exception's text straight through and not every exception has any, so a
-      failure could arrive as a blank box with an OK button.
-
-    2026.8.31.63 - Say what actually went wrong
-    - "YouTube did not offer a DASH manifest for this stream" was the fallback
-      text shown for every playback failure, and it was true of none of the
-      ones being hit. An n that could not be signed, with no runtime to retry
-      it with, was reported as YouTube having sent the wrong thing -- which
-      sent a real Android failure looking for a DASH path that was never
-      involved. The real reason is shown now; the generic line is kept only
-      for the case it describes.
-    - On a bail, the transform's date-derived array indices are logged. The
-      transform is pure -- no clock, no random -- and every value a real
-      Android box got wrong solves correctly on a desktop against a
-      byte-identical player and program, so the ISO-8601 parses it hides its
-      indices behind are the one thing a platform can disagree about. Two logs
-      from two platforms now answer it outright.
-
-    2026.8.31.62 - An nsig answer that was not an answer
-    - Films failed on Android with an empty-bodied HTTP 403 while live channels
-      played. The cause is in the log: the player's n transform returned
-      "BdHv3wGc_iIzKEBs97-_w8_" followed by the whole input on 4 of 6 solves.
-      Every desktop log across the same player returns a proper 14-character
-      value on all of them.
-    - That prefix is the same across runs and across inputs, so it is a
-      constant the transform falls back to when it decides something is wrong,
-      not a result. A url carrying it is answered 403.
-    - Only the input handed straight back was recognised as a bail. A constant
-      and then the input now counts too: a runtime is tried instead, and if
-      that also bails the play stops with a reason rather than a 403.
-    - The bad value was being written to the on-disk cache and read back for
-      the life of the player release, so one bad solve poisoned every play
-      after it. A cached bail is now dropped and solved again.
-
-    2026.8.31.61 - Say which platform and which decrypter
-    - Every log this addon has been debugged against says "Platform: Linux x86
-      64-bit". InputStream Adaptive picks its Widevine decrypter by platform,
-      so a finding made on one says nothing about the other. The session line
-      now names the Kodi build, the OS, the ISA version, and Android outright.
-    - Nothing about Android playback is changed, because nothing about it has
-      been established: there is no Android log to establish it from.
-
-    2026.8.31.60 - The guide keeps everything one level down
-    - A guide row had a title, a channel logo and nothing else. The reason is
-      that an airing carries none of it: an epgAiringRenderer has eight keys
-      and not one is a picture, a synopsis, a genre or a rating. Not one of the
-      989 airings in the last guide has a "thumbnail" key at all.
-    - The info panel beside it has all four, on 989 of the 989. Now read, the
-      guide gains a 2560x1440 still on every airing, a synopsis on 929, genres
-      on 985 and a rating on 738 -- plus a written runtime ("2 hr") and season
-      and episode numbers where the line carries them.
-    - "What is on now" was still a wall of channel logos. It now shows the
-      programme's still and its show's details, the same as a channel's own
-      schedule, and keeps the channel logo as the icon.
-    - A show has no rating or runtime in its header -- Rick and Morty's reads
-      "2013 - Present" and that is all of it. Its episodes carry both: "Adult
-      Swim / TV-14 / 13d ago" and a badge holding "24:03". Read from there.
-    - An episode's "S9 E10 / Field of Dreams" is three fields in one string.
-      Split, so a skin can sort a season and stops printing the numbers twice.
-    - "2013 - Present" and "1994 - 2004" say whether a show is still running,
-      which Kodi has a field for. They were being reported as unreadable.
-    - Remembered titles are refetched once, for the fields above.
-
-    2026.8.31.59 - A show's genres were being read and then overwritten
-    - Rick and Morty's page does carry "Animated, Action, Adventure, Comedy",
-      and the last release said so while still showing none. The reason is the
-      shape they arrive in: this client sends a whole About line as one string
-      where the browser sends it as marked-up parts, and only the parts were
-      being read. A line in one string came back looking unlabelled -- which is
-      how the genres line is told apart -- so every line after the genres
-      replaced them, and the last line on the page won.
-    - Now a whole line is read label and all, and only the first unlabelled
-      line is the genres. A second one is reported to the log rather than
-      allowed to overwrite it.
-    - Remembered titles are refetched once, since a title read the old way
-      would have kept the wrong genres for good.
-    - A wide image is offered as landscape as well as a thumb. A show's page
-      carries no portrait image at all -- every image on Rick and Morty's page
-      is 3840x2160 -- so there is no poster to give and a skin's placeholder is
-      what an empty poster slot looks like.
-    - A page with no genres now names what its About did send, even when its
-      cast came through. That check wanted both to be empty, so the one case
-      worth printing was the one case that never printed.
-
-    2026.8.31.58 - A programme with no still of its own
-    - The guide showed a channel logo where a programme has no still, while
-      its show's artwork sat in what had just been fetched for it. The still
-      first, then the show's artwork, then the logo.
-    - The empty fields on some shows are the service having nothing, not a
-      field going unread: "Bathroom Makeover" carries only a list of channels
-      and "Paid Programming" carries nothing at all. Titles that do carry
-      genres, like Rick and Morty, show them.
-
-    2026.8.31.57 - The guide has details, and a still is not a poster
-    - The guide gave a title and a channel logo and nothing else. A programme
-      names its show, and a show's page is where the synopsis, the cast and
-      the genres are, so a channel's schedule reads them the way every other
-      listing does -- bounded and remembered, so it fills in over a few visits
-      and then costs nothing.
-    - A show looked stretched because its tile is a wide still and was being
-      offered as a poster. A film's tile is 2560x3840 and is one; a show's is
-      not. Only the upright ones go in that slot now.
-
-    2026.8.31.56 - Production companies, and studios as several
-    - Shows do carry genres and always did -- Rick and Morty's page says
-      "Animated, Action, Adventure, Comedy" and this reads it. What was
-      missing was the refetch, which .55 fixed.
-    - Films name their production companies, which the log turned up rather
-      than a guess: "Production Companies: Escape Artists, Zhiv, Mace Neufeld
-      Productions". Those are the studio now, ahead of the provider.
-    - And a list of them is a list. "Adult Swim, Cartoon Network, HBO Max" was
-      reaching Kodi as one studio with commas in its name; it is three.
-
-    2026.8.31.55 - Why the cast photographs never appeared
-    - They were read in .54 and stayed blank, because nothing refetches a
-      title it already knows about: every title had been remembered by a build
-      that stored names alone, and a stale answer had no way to say so. What
-      is remembered now names the version it was written by, and an older one
-      is thrown away rather than read.
-    - A show's cast is fetched while a listing is being read, not only when
-      the show is opened -- the info panel is read from the listing, and a
-      show was bare in it. Rationed, because it is a second request per title.
-    - A film can defer its cast too: The Bob's Burgers Movie has MOVIE and
-      LEAD CAST where Rogue One carried twenty-two people on the page. Either
-      way it is followed when the page has none of its own.
-
-    2026.8.31.54 - Cast photographs, artwork, and what a show carries, the page's own artwork, and "Rated: NBC"
-    - The cast had names and blank silhouettes: the photograph is on the
-      person beside the name and was not being read. It is now.
-    - A title's page carries a 3840x2160 banner its tiles do not. That is the
-      fanart behind it now.
-    - Saturday Night Live read "Rated: NBC", because anything that was not a
-      year was taken for a rating. A rating has to look like one now, and a
-      show's network becomes its studio, which is what it is.
-    - Shows carry their cast behind a tab where films carry it on the page --
-      Rick and Morty's LEAD CAST is empty until its token is spent, and then
-      holds seven. It is fetched when a show is opened, which is one request,
-      rather than for every title in a listing, which would be two dozen.
-    - A show gives a span where a film gives a year -- "2013 - Present" -- and
-      the year it started is still a year.
-    - A show has no director. That is the service, not this: three show pages
-      carry genres, a network and a synopsis, and no director line at all.
-
-    2026.8.31.52 - Every listing of titles asks now, not just some
-    - 60 Minutes came up "Type: video", no plot, no cast. Two things: nothing
-      had fetched its page, and nothing had said it was a show.
-    - So every row of titles goes through one path -- a category's, Home's,
-      the Library's, a search's -- because "which screen was it?" kept being
-      the answer to why nothing showed. Airings and teams are still skipped.
-    - And a show is listed as a show rather than as video.
-
-    2026.8.31.51 - The details are actually fetched now
-    - Still empty, and for two reasons. A page was only ever fetched to find
-      out *what* a thing is, so once the kinds were remembered nothing was
-      fetched again and the genres and the cast had nowhere to come from. A
-      page is owed for missing details now, not just for a missing kind.
-    - And a category's rows never asked at all, which is where they were being
-      looked at. They ask now, capped at 24 a row and remembered, so a long
-      row fills itself in over a few visits rather than in one long wait.
-    - An airing is skipped, being playable already, and so is a team: a team's
-      page has no cast and no genres to go and get.
-
-    2026.8.31.50 - The details reach the listing this time
-    - Last build read every field correctly and put them on the one screen
-      nobody opens: a film's own page, which films stopped opening the moment
-      they started playing on selection. The details are kept now when a page
-      is fetched -- which already happens, to find out what a thing is -- and
-      a listing shows what is known about each title.
-    - So a search fills in as it types its results, and anything played or
-      opened is remembered. A category does not fetch pages, so its titles
-      carry what their tiles carry until something has opened them; 93 films
-      is not worth 93 requests to fill a listing.
-    - Films nobody has bought show their suggestions at last. Watch now is
-      dropped for holding nothing, About and Lead cast for naming nowhere to
-      go, and asking for two tabs then threw away the one that was left.
-
-    2026.8.31.49 - What a film's page says about it, and films nobody bought
-    - On-demand titles carried a year and a rating and nothing else. Their own
-      page carries genres, a real synopsis, the studio, who directed it, and
-      the lead cast with the parts they played -- sixteen of them for Rogue
-      One -- and all of it was already being fetched to find out whether the
-      thing was a film at all. It reaches Kodi now.
-    - A label the About tab uses that this does not know is logged rather than
-      dropped, so nothing goes quietly missing.
-    - Fixes suggestions on a film nobody has bought. It has no Watch now items
-      at all, so that tab is dropped for holding nothing and Suggested takes
-      its place -- and reading the first tab as the one that plays then hid
-      the only tab there was. The tab that plays is found by what is in it now.
-    - And such a film says so plainly rather than just failing: it is one to
-      buy, and what its page does hold is on the context menu.
-
-    2026.8.31.48 - Films from search actually play now
-    - The typing was landing on the wrong screen. Listing a search types its
-      rows -- folder names and a log line -- and opening a row drew the items
-      straight from the search, still called shows. So all of that work never
-      reached the films: no playing them, no menu beside them.
-    - The row you open is typed now, which costs nothing because the listing
-      already remembered it. A film plays on selection and carries "Extras and
-      suggested titles"; a show is still a folder.
-    - Checked on the screen rather than in the reader: a listed film must be
-      playable and carry that menu. Every reader was already right when this
-      broke, which is why nothing caught it.
-
-    2026.8.31.47 - The suggestions were a browser's answer
-    - Asked why we do not just ask YouTube TV, and it turned out it will --
-      but only a browser. Asked by this client, suggest answers with ten plain
-      query strings and no entity suggestions at all, so there is nothing in
-      it naming what a thing is. The call is gone; it cost a request per
-      search and returned nothing.
-    - The remembering is what carries this instead, and it is enough: "john"
-      cost 24 lookups the first time and 3 the second, "blues" none at all.
-
-    2026.8.31.46 - Why the suggestions typed nothing
-    - "john" came back with 24 results still needing a page each and not one
-      typed by suggestion, and the call did not fail -- it answered and said
-      nothing this could read. The reader was written from a browser's
-      suggest, so this client's answer is a different shape. When suggestions
-      type nothing, what they did carry is logged.
-
-    2026.8.31.45 - A search that needs nothing asks for nothing
-    - The remembering works: "blues" came back fully typed -- 11 films in Top
-      picks -- with no page fetched and nothing asked, where the first time it
-      cost 19. But the suggestions were still being asked for before anything
-      checked whether they were needed, so a search that had every answer
-      already made a request it had no use for. It checks first now.
-
-    2026.8.31.44 - Ask YouTube TV what a thing is, in one call
-    - It will just tell you. suggest answers with the kind spelled out beside
-      the browse id -- "The Blues Brothers / Movie", "Air Disasters / Show",
-      "St. Louis Blues / Team" -- in one 20 KB call for a whole query, where
-      the last build fetched nineteen pages to learn the same thing.
-    - So the cheapest answer is taken first: what is already remembered, then
-      the suggestions, then a page for whatever is left. The 19 fetches that
-      typed "blues" should be a handful now.
-    - Suggestions cover the entities matching what was typed, not everything a
-      search returns, so pages still answer for the rest -- and what a page
-      says outranks a suggestion, having come from the title itself.
-
-    2026.8.31.43 - Films found by search play again
-    - Search calls a film a show, and sending the params a real search sends
-      changed nothing -- the same rows, the same counts, character for
-      character. It is the answer this client gets, not the question it asks.
-    - So the page one level down is asked instead. It says MOVIE plainly, in
-      the same header that already makes a film play from a category, and the
-      pages are fetched together rather than one after another.
-    - The answers are remembered, because a title does not change what it is
-      and the same searches come back. Nothing playable is asked about,
-      nothing already known is asked again, and at most 24 pages are fetched
-      for one search however many folders it answers with.
-
-    2026.8.31.42 - The search call was not the one a real client makes
-    - Every search in every capture sends params beside the query -- seven of
-      them, and not one sends the query alone, which is what this addon sent.
-      Scanning the request bodies of all twenty-three captures, search was the
-      only endpoint whose shape here did not match.
-    - It now sends the query-independent form, copied verbatim from a plain
-      search rather than rebuilt. Whether that is what makes a film come back
-      typed SHOW is not established -- the browser sent two different forms and
-      typed it MOVIE either way -- but the call is right now, and the search
-      log says what came back typed as what.
-
-    2026.8.31.41 - Why a film found by search is not a film
-    - Answered, and by neither guess. The renderer is the same one that works
-      everywhere else and it does carry contentType. The value is wrong: this
-      client types The Blues Brothers and Blues Brothers 2000 as SHOW, where a
-      browser types both MOVIE. That is the movies-in-shows report -- the
-      service calling a film a show.
-    - The tiles in "On now &amp; upcoming" and "On demand" carry no type at
-      all, and that is not a fault: they are airings rather than titles.
-    - So nothing in a search result says "film", and one found there stays a
-      folder. It is not lost -- opening it lands on its page, which says MOVIE
-      and opens on the film. A film found in a category types itself correctly
-      and plays on selection.
-    - Nothing changed in what is listed. The diagnostic that settled it is
-      retired and what it found is written down.
-
-    2026.8.31.40 - Which renderer a search row is made of
-    - A browser answers "blues" with The Blues Brothers typed MOVIE inside
-      "On now &amp; upcoming"; the same row here comes back with nothing typed
-      at all, which is why a film sits among shows and opens as a folder.
-      Either the renderer is a different one or it is the same one with the
-      field left out. Each row's items now log the renderer they came from,
-      and the page logs what every renderer on it carries.
-
-    2026.8.31.39 - What is in each search row, by name
-    - The counts said this search holds no film at all: 11 SHOW and 3
-      SPORTS_TEAM in Top picks, and nothing typed in the other three rows,
-      where the same query in a browser answers with a Movies row. So either a
-      film is typed SHOW here or it is in one of the untyped rows, and only
-      the titles say which. They are logged now.
-
-    2026.8.31.38 - Search says what its rows hold too
-    - The same line a category logs, for a search: every row by kind as well
-      as by count. A film under a row called Shows is the thing to find and it
-      can be in either place -- YouTube TV names a search's rows, this addon
-      names a category's -- so both now say what they actually hold.
-
-    2026.8.31.37 - Search rows are YouTube TV's again
-    - "Top picks" is put back the way it arrives. Splitting it into Movies,
-      Shows and Sports was an invention: those rows do not exist on the
-      service when it answers this client, and the row that does was not the
-      thing that was wrong.
-    - Opening a category now logs the params it asked for and the kinds each
-      row came back holding. All five categories are one browse id and differ
-      only in those params, so films listed under Shows are either the wrong
-      category being asked for or what YouTube TV puts in that one, and those
-      two lines say which. No change to what is shown until they do.
-
-    2026.8.31.36 - One button fewer
-    - "Sign in again" is gone. Signing in again was the answer when a session
-      went wrong; it has not been for a while.
-
-    2026.8.31.35 - Networks and the categories are on the front page
-    - Networks opens the networks. It was a folder holding a folder of them
-      and a folder of categories, which put a channel two folders down.
-    - Sports, Shows, Movies, News and Family are entries on the front page now
-      rather than inside Browse inside Networks. They come off a 712 KB tab, so
-      they are remembered on disk and the menu never waits on a request for
-      them: the service fetches them once a week in the background, and
-      opening Networks refreshes them too.
-
-    2026.8.31.34 - Search is rows, and the films are on its second page
-    - Search never showed a film because it was read one page deep. "blues"
-      answers with Shows, Sports and "On now &amp; upcoming", and hands back a
-      continuation carrying "From your library", "On demand" and Movies --
-      where The Blues Brothers is, saying MOVIE plainly. Search now follows
-      that, sent to search rather than to browse, and lists the rows YouTube TV
-      grouped its results into rather than one flat list.
-    - Fixes "Suggested titles", which in .32 and .33 opened the addon's front
-      page. The entry was there and the route answering it was not: an edit
-      failed and only the label was reapplied. A new check compares every url
-      the addon draws against every action it dispatches, which catches exactly
-      that and nothing else did.
-    - The entry is now "Extras and suggested titles" and a title's page expands
-      the shelves it defers, which is where a show keeps its seasons and where
-      extras would be. No capture yet names a trailer or a bonus feature, so
-      every tab is logged: the first title that has any will say where.
-
-    2026.8.31.33 - A title's page opens on the title
-    - Search calls a film a SHOW -- "blues" answered with 11 SHOW and 3
-      SPORTS_TEAM and no film at all -- so a film found by search is a folder,
-      and what it opens is its page. That page now opens on the film, with
-      Suggested behind it, instead of on two folders. A channel page still
-      opens on its tabs: the two are different renderers in the header, and
-      only one of them is a menu.
-    - A film's runtime and synopsis are read: "2:13:57" and the About tab's
-      description, neither of which its tile carries.
-    - On a title's page the library entry is the one that applies. The page
-      says which -- its header carries dvrOn -- where a tile cannot, and
-      offering both when the answer is known is how a recording gets cancelled
-      by somebody aiming for the other one.
-
-    2026.8.31.32 - Suggested titles, instead of a page you have already used
-    - "Go to &lt;title&gt;" on a film is now "Suggested titles" and opens them
-      directly. A film's page is four tabs -- Watch now, About, Lead cast,
-      Suggested -- and this addon reads two: the one that plays, which picking
-      the film already does, and the one that recommends. Harry Potter and the
-      Order of the Phoenix suggests 39, John Wick Chapter 2 suggests 26.
-    - Search does carry contentType after all, on the same renderer, and not
-      one of 14 results read as a film -- so the vocabulary is not the same
-      everywhere. The kind is matched on the word now rather than the whole
-      string, and a value with no word in it is logged rather than dropped.
-    - Stops keeping a copy of a page when a tab goes unread. It answered what
-      it was written for, and a title's page drops two tabs by design: About
-      and Lead cast name a description and a cast list, not somewhere to go.
-
-    2026.8.31.31 - Live stays a tab
-    - A network opens on its tabs again. Live is a kind of its own, and folding
-      it into the page put eleven programmes above four folders on AMC, which
-      reads as a listing with some folders lost in it. A page carrying a single
-      tab has no menu to be, so that one is still listed in place.
-    - Says what a search result carries, because a film found by search is
-      still drawn as a folder: it has neither the contentType nor the library
-      toast that a film's tile in a category has.
-
-    2026.8.31.30 - A page opens on what it is about
-    - Picking a film from search still opened its page, because a search tile
-      carries no contentType and was drawn as a folder. The tile's DVR toast
-      names the kind too -- "Movie added to your library..." against "Show
-      added to your library..." -- so that is read when the field is absent.
-    - And a page with tabs now opens on the first tab's contents rather than on
-      a menu of tabs, with the rest following as folders. Picking a film only
-      to be shown "Watch now" and "Suggested" put a page, half of it
-      recommendations, in front of the thing that was picked.
-    - Picking a film plays the film, not your recording of it: John Wick 3
-      named two, the on-demand copy and an AMC airing from four weeks ago, and
-      the page lists the film first.
-    - The other two tabs of a network page read at last. Both are wrapped in
-      something the web client does not use; a tab holding no items holds no
-      shelves either, so whatever continuation is in one is now taken as its
-      own -- except a refresh timer, which only asks for the empty tab back.
-
-    2026.8.31.29 - A film plays when you pick it
-    - Selecting a film plays it instead of opening its page. A tile carries no
-      video id -- only its page -- so the id is fetched on selection, which is
-      the same one request opening the page cost, spent on watching instead.
-    - What tells a film from a series is contentType, which every tile carries:
-      MOVIE, SHOW or EVENT. A series is still a folder, because it is one.
-    - The page moves to the context menu as "Go to &lt;title&gt;", beside record
-      and stop recording -- which is where YouTube TV's own tile keeps it.
-    - A film's year and rating now show as its plot.
-
-    2026.8.31.28 - Say what the unread tabs actually hold
-    - Adult Swim still opens on two of its four tabs. Every tab on the page
-      carries [content, title, trackingParams], the two that read and the two
-      that do not alike, so the tab's own keys cannot say why. The log now says
-      what is inside an unread tab's content, and the page itself is kept in
-      the addon's data folder as network-tabs.json, visitor id stripped.
-    - No behaviour change otherwise. Two readings of this from a log line have
-      each been wrong about a different thing; this one is meant to be looked
-      at rather than inferred.
-
-    2026.8.31.27 - The other tabs, and rows that do not stay put
-    - Adult Swim's four tabs are all four sent, and all four carry a content:
-      the two not on screen defer themselves as a continuationCommand, where
-      the web client uses the older nextContinuationData. A tab holding no
-      items holds no shelves either, so any continuation in it is now taken as
-      that tab's own, in either shape.
-    - A category is not the same page twice -- two requests for Movies gave
-      "Drama movies" and then "Drama thriller movies" -- so a row folder now
-      carries its own token and spends it when the page comes back reshuffled,
-      instead of reporting a row you can see as gone.
-    - A page reached by opening a row expands the shelves it defers. Show pages
-      arrive behind a tab now, and a season list behind one was ten empty
-      shelves.
-
-    2026.8.31.26 - The tabs a network page did not show
-    - Adult Swim came back with two tabs here and four in a browser. A tab that
-      arrives carrying no content at all was being dropped, so one is now read
-      by whatever it does carry: a bare continuation, or a browse endpoint
-      naming a page of its own, which is opened as that page.
-    - Every tab on a network page is logged now, read or not. If the two that
-      are missing were never sent rather than dropped, that is a different fix
-      -- a different request -- and only the log says which.
-
-    2026.8.31.25 - A network is tabs, and a category is rows
-    - A network page opened on what was on now and nothing else, because that
-      is all it ships: ABC is eight tabs -- LIVE, SERIES, DRAMA, COMEDY, NEWS,
-      REALITY, DAYTIME, LATE NIGHT -- and the seven that are not on screen
-      carry one continuation token each. The tabs are listed as folders and
-      spent when opened: AMC's give 26 series, 60 films, 23 originals.
-    - The five categories now open as their rows -- "Picked for you", "On now
-      &amp; upcoming", "Thriller movies" -- with more rows fetched the way Home's are,
-      and the fifteen genre chips under them listed as folders of their own.
-    - No longer offers to record a network or a genre. The DVR takes a show's
-      id, and neither of those is a show.
-
-    2026.8.31.24 - Networks
-    - A Networks folder: every network the account can watch -- 256 of them,
-      against 147 stations in the guide, because a network is a brand and not a
-      channel slot -- under YouTube TV's own Sports, Shows, Movies, News and
-      Family categories.
-    - The five categories are one browse id and differ only in their params, so
-      the params now travel with a folder. Without them the five collapsed into
-      one, the way two airings of a show did before start times broke that tie.
-    - A recording now reports what YouTube TV says about it. Both DVR calls
-      answer with an actions block, which is where a refusal arrives too -- as a
-      200 with a different sentence in it -- so its words are shown rather than
-      a message this addon made up.
-
-    2026.8.31.23 - Recording
-    - Record or stop recording a series, from the context menu on any show or on
-      any programme in a channel's schedule. YouTube TV records a series rather
-      than an airing, and every airing names its show in entitiesDvrStatus --
-      including the one on the air, which carries no show id anywhere else.
-    - Both "record" and "stop recording" are offered rather than the one that
-      applies: nothing in the responses says which a show is already doing, and
-      a wrong guess would silently cancel a recording.
-
-    2026.8.31.22 - No programme claims to be playable
-    - Marking only the airing on the air was still wrong, because the guide is
-      built when the merge runs and read hours later: by then the marker is on
-      a programme that has ended and the one actually on has none. No programme
-      carries a play url now. Selecting a live programme in Kodi's guide plays
-      its channel, and the channel url resolves what is on at the moment it is
-      played, which is the one thing here that cannot go stale.
-
-    2026.8.31.21 - Only what is on now is marked playable
-    - Kodi draws a marker on every guide entry it is given a stream url for,
-      and every one of the 8050 airings was getting one -- a week of schedule
-      claiming to be playable. Only the airing on the air gets a url now, which
-      is the only one that plays: 989 programmes, 143 urls, one per channel.
-
-    2026.8.31.20 - The guide's whole schedule, on the TV client
-    - Found it. The guide sends 989 airings and the add-on was reading 143.
-      Only the airing currently on the air carries a watchEndpoint; the other
-      846 carry an unpluggedGetSidesheetCommand and no videoId field at all,
-      the same mechanism the Library's tiles use. The programme's id is inside
-      it, alongside the show's, and is now read. 143 airings become 989, a
-      median of 7 per channel.
-
-    2026.8.31.19 - Find out why the guide has no schedule
-    - On this account the guide comes back with one airing per channel, 143 for
-      148 stations, where the browser capture the reader was written from had
-      953. The continuation adds nothing. Both are now reported and the
-      responses kept, so the difference can be read rather than guessed at.
-    - The guide window is asked for on the hour, which is what both captures do
-      and what this was not doing.
-
-    2026.8.31.18 - Channel order setting, rebuilt
-    - Kodi stopped starting with 2026.8.31.17 installed, on both Kodi 21.3 and
-      22.0, with no stack trace in the crash log. The Channel order setting was
-      the one thing that build added which Kodi itself parses, and it was the
-      only list in settings.xml written as a string with an empty option value
-      and allowempty beside options. It is now an integer with plain numeric
-      values, exactly like every other list in the file.
-
-    2026.8.31.17 - Channel order
-    - A Channel order setting, offering YouTube TV's own five orderings:
-      default, the custom order arranged on the web, most watched, A-Z and
-      Z-A. Left alone it changes nothing and the account's own choice decides.
-    - The guide pages eight deep for the Kodi TV section rather than four.
-      Pagination brings more hours, not more channels: every page carries the
-      same lineup, and eleven pages took one lineup from 962 airings to 6306.
-
-    2026.8.31.16 - The guide's later pages
-    - A later page of the guide names no channel: each row carries only a
-      stationId and more airings, with no station renderer, so every airing
-      past the first page was dropped. Reading the row's own id and merging
-      takes the guide from 953 airings to 1555, a median of 10 per channel.
-    - The Kodi PVR guide asked for one twenty-four hour window, a shape no
-      capture covers. It now asks for four pages of six hours, which is what
-      the web client does, and hands over 1555 programmes where it handed 148.
-
-    2026.8.31.15 - The Library reads in full
-    - The TV client's Library tiles do not navigate anywhere: each carries an
-      unpluggedGetSidesheetCommand that opens a detail panel, with no browseId
-      field on the tile at all. The id is inside the command's params, base64
-      of a small protobuf, and is now read from it. Nine tabs, 26 tiles.
-    - Checked against the web capture: on seven of the eight titles that appear
-      in both, the id read out of the token is the same one the web client
-      navigates to.
-
-    2026.8.31.14 - The guide's whole schedule
-    - The guide showed what was on and nothing after it, on every channel. Page
-      one holds 953 airings and only 144 were read: every airing carries its id
-      in a plain videoId field, and only the one on the air also gets a
-      watchEndpoint, which was the only place being looked. 953 airings now, a
-      median of 6 per channel.
-    - That endpoint is the guide's own word for "which one is on now", so it is
-      recorded and preferred over comparing timestamps. Live channels resolves
-      to the same programme as before on every station that had one.
-
-    2026.8.31.13 - Library items
-    - The TV client's Library tiles carry a primaryText, a thumbnail and a
-      navigationEndpoint, and were dropped anyway: what sits inside that
-      endpoint is called neither watchEndpoint nor browseEndpoint. Any endpoint
-      naming a videoId or a browseId is now followed, whatever it is called.
-      One level down only, so a dialog's buttons and a tile's menu are still
-      not rows, and an endpoint naming no id -- a buy prompt -- is still
-      nowhere to go.
-
-    2026.8.31.12 - Say why a Library tab is empty
-    - The diagnostic that was meant to explain an empty tab stayed quiet,
-      twice over: it fired only when the whole page listed nothing, and one
-      item in Scheduled was enough to silence it for the other eight tabs;
-      and it asked for a title and a thumbnail before reporting a renderer,
-      so a client filing those elsewhere reported as nothing at all.
-    - Any empty tab now reports, and the fallback sampler asks for nothing:
-      it lists what each renderer in the response actually carries. The page
-      is written to library-shape.json again as well.
-
-    2026.8.31.11 - Library tiles
-    - The TV client's Library named its nine tabs correctly and every one was
-      empty, though the response holds 26 tiles. A tile's endpoint is now looked
-      for under onSelectCommand, tapCommand and entityPageNavigationEndpoint as
-      well as navigationEndpoint; every capture parses identically to before.
-    - When a page answers and holds nothing readable, the keys its tiles carry
-      are logged, which names the key to read next.
-
-    2026.8.31.10 - Station names and logos
-    - Only 7 of 148 stations carry a name field; the rest are named by the
-      accessibility label on their logo. That label and the logo are now
-      searched for across the whole station renderer instead of under one key,
-      so a client that files the logo elsewhere no longer loses both.
-    - Guide and Live channels count nameless and logoless stations apart from
-      dropped ones, and log the fields the stations actually carry.
-
-    2026.8.31.9 - The Library reads on the TV client
-    - The TV client sends the Library in unpluggedLibraryContinuation with a
-      chip row of nine tabs against nine cells, where the web client sends a
-      section list with filter and sort dropdowns and their cross product. Both
-      are read now, and the pairing is checked against the cell count either way.
-    - Asking as the web client instead is not an option: the bearer is refused
-      for it with HTTP 400 INVALID_ARGUMENT. That retry is gone.
-    - Guide and Live channels now say what they drop and why: how many stations
-      parsed, how many carried no airings, and how many have a programme with no
-      video id, naming them.
-
-    2026.8.31.8 - Library on the TV client
-    - The Library grid was read off a web-client capture and the TV client
-      answers with a different container: 0 rows, 0 filters, one item listed.
-      Rows are now also found by shape, with no container name needed, the
-      Library is retried as the web client when the first answer cannot be
-      read, and an unreadable page is written to library-shape.json in the
-      add-on's profile directory so the real shape can be seen.
-
-    2026.8.31 - Home and Library
-    - Home: the front page YouTube TV builds for the account -- Resume watching,
-      Top picks for you and the twenty genre rows behind them, each row a folder.
-    - Library: recordings, purchases and scheduled recordings, with the account's
-      own Shows / Movies / Sports / Events / Purchased filters as folders.
-    - A scheduled recording that is on the air now is playable. It carries no
-      watchEndpoint, only a "Join live / Start from beginning" dialog with one
-      inside, so it used to be dropped from the listing altogether.
-    - Two airings of one show are two rows again, with the time in front of the
-      title. Deduplicating on destination alone had collapsed them into one.
-
-    2026.8.28 - Key ids carried between plays
-    - The licence response names a key id per track type; ISA never had one, and
-      opened every session with an unknown KID. Those ids are now recorded and
-      supplied through pre_init_data on the next play of the same title.
-
-    2026.8.27 - First cut
-    - Live channel list and EPG from browse(FEunplugged_epg), on-demand and search,
-      Widevine playback through a local licence proxy. Playback is unverified
-      pending a check that the DASH manifest actually serves; see
-      docs/youtube-tv-protocol.md.
-    		</news>
-    	</extension>
-    </addon>
-    <addon id="script.akl.heroic" name="Heroic Games Launcher plugin for AKL" version="2026.8.12.7" provider-name="Breezyslasher">
-      <requires>
-          <import addon="xbmc.python" version="3.0.0"/>
-          <import addon="script.module.akl" version="1.2.0"/>
-      </requires>
-      <extension point="xbmc.python.script" library="default.py">
-        <provides>game</provides>
-      </extension>
-      <extension point="xbmc.addon.metadata">
-        <summary lang="en_GB">Heroic Games Launcher scanner, scraper and launcher plugin for AKL.</summary>
-        <description lang="en_GB">
-        Advanced Kodi Launcher (AKL) plugin for the Heroic Games Launcher on Linux, Windows and macOS.
-    It scans your Heroic library (Epic Games, GOG, Amazon Prime Gaming and sideloaded games) directly from
-    Heroic's local store cache, launches games through Heroic (Flatpak, native Linux, Windows or macOS
-    install) and scrapes titles, plots, developers and artwork from the data Heroic already keeps on disk.
-    No credentials or API keys needed.
-        </description>
+<addon id="repository.breezyslasher" name="Breezyslasher Repository" version="2026.8.12" provider-name="Breezyslasher">
+    <requires>
+        <import addon="xbmc.addon" version="12.0.0"/>
+    </requires>
+    <extension point="xbmc.addon.repository" name="Breezyslasher Repository">
+        <dir minversion="19.0.0">
+            <info compressed="false">https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/refs/heads/main/zips/addons.xml</info>
+            <checksum>https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/refs/heads/main/zips/addons.xml.md5</checksum>
+            <datadir zip="true">https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips/</datadir>
+        </dir>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary>Breezyslasher's Kodi Addon Repository</summary>
+        <description>Install addons from Breezyslasher's repository</description>
         <platform>all</platform>
-        <license>GNU General Public License version 2</license>
-        <website>https://github.com/Breezyslasher/Kodi-Addons</website>
-        <source>https://github.com/Breezyslasher/Kodi-Addons/tree/main/script.akl.heroic</source>
         <assets>
-          <icon>media/icon.png</icon>
-          <fanart>media/fanart.jpg</fanart>
+            <icon>icon.png</icon>
         </assets>
-        <news>Scraper now pulls year, genre, rating, store tags, poster/banner art and screenshots from Heroic-side caches (Epic metadata, Amazon details, PCGamingWiki scores).</news>
-      </extension>
-    </addon>
-    <addon id="script.scrcpy-launcher" name="scrcpy Launcher" version="2026.6.12" provider-name="Breezyslasher">
-        <requires>
-            <import addon="xbmc.python" version="3.0.0"/>
-        </requires>
-        <extension point="xbmc.python.script" library="main.py">
-            <provides>executable</provides>
-        </extension>
-        <extension point="xbmc.service" library="service.py" start="startup"/>
-        <extension point="xbmc.addon.metadata">
-            <summary lang="en_GB">Android device and Samsung DeX streaming with auto-detect</summary>
-            <description lang="en_GB">Stream your Android device screen or the Samsung DeX desktop on Kodi using scrcpy. DeX display id is auto-detected; Virtual Desktop mode (--new-display) works without an active DeX session. Works with LibreELEC and desktop Linux.</description>
-            <platform>linux</platform>
-            <license>MIT</license>
-            <website>https://github.com/Schlumpf7/scrcpy-launcher-matrix-</website>
-            <source>https://github.com/Schlumpf7/scrcpy-launcher-matrix-</source>
-            <disclaimer>Requires USB debugging enabled on your Android device.</disclaimer>
-            <assets>
-                <icon>resources/Android_Robot.png</icon>
-            </assets>
-            <news>
-    v2026.6.12 - Samsung DeX + simpler menu
-    - NEW: Samsung DeX mirroring with auto-detected display id
-    - NEW: Virtual Desktop mode (--new-display) - desktop windowing
-      without an active DeX session (One UI 7 / Android 15+)
-    - NEW: Detect Displays menu action
-    - CHANGED: menu collapsed to Stream Device / Samsung DeX /
-      Virtual Desktop / Detect Displays / Settings - each asks USB vs
-      WiFi only if an IP is configured, otherwise defaults to USB
-    - FIXED: dropped removed --forward-all-clicks flag; uses
-      --mouse-bind for scrcpy 2.0+ (forwards right/middle clicks)
-    - UPDATED: bundled scrcpy 3.3.4 to 4.0 on x86_64 (SDL3,
-      self-contained); aarch64 stays on 3.3.4 (no official arm64 build)
-    - Inspired by TuxDex, without miraclecast/root/network changes
-            </news>
-        </extension>
-    </addon>
-    <addon id="script.webhook.runner" version="2026.7.13" name="Webhook Runner" provider-name="Breezyslasher">
-      <requires>
-        <import addon="xbmc.python" version="3.0.1"/>
-      </requires>
-      <extension point="xbmc.python.script" library="resources/lib/default.py">
-        <provides>executable</provides>
-      </extension>
-      <extension point="xbmc.service" library="resources/lib/service.py"/>
-      <extension point="xbmc.addon.metadata">
-        <summary lang="en_GB">Run Home Assistant webhooks from Kodi</summary>
-        <description lang="en_GB">Create webhooks and trigger them via Keymap Editor or Kodi events. Each webhook gets a unique ID that can be mapped to any button using Keymap Editor, or fired automatically on playback/system events (playback start/stop/pause, screensaver, Kodi start/stop).</description>
+    </extension>
+</addon>
+<addon id="context.plexkodiconnect.download" version="2025.12.12" name="PlexKodiConnect Download" provider-name="Breezyslasher">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="kodi.context.item">
+        <menu id="kodi.core.main">
+            <item library="default.py">
+                <label>Download from Plex</label>
+                <visible>
+                    [String.Contains(ListItem.Path,plex)] | 
+                    [String.Contains(ListItem.Path,plugin://plugin.audio.plexkodiconnect)] |
+                    [String.StartsWith(ListItem.Path,musicdb://)] |
+                    [String.StartsWith(ListItem.Path,videodb://tvshows)] |
+                    [String.IsEqual(Container.Content,artists)] |
+                    [String.IsEqual(Container.Content,albums)] |
+                    [String.IsEqual(Container.Content,songs)]
+                </visible>
+            </item>
+        </menu>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <assets>
+            <icon>icon.png</icon>
+        </assets>
+        <summary lang="en_GB">Download Plex media for offline viewing/listening</summary>
+        <description lang="en_GB">Adds a context menu option to download movies, TV shows, and music from PlexKodiConnect to your Kodi device for offline use. Supports downloading individual items, entire albums/seasons, or full artists/shows.</description>
+        <language>en</language>
         <platform>all</platform>
         <license>MIT</license>
-        <source>https://github.com/Breezyslasher/Kodi-Addons</source>
-        <assets>
-          <icon>resources/icon.png</icon>
-        </assets>
-      </extension>
-    </addon>
-    <addon id="service.watchparty" version="2026.7.26" name="Watch Party" provider-name="Breezyslasher">
-      <requires>
-        <import addon="xbmc.python" version="3.0.1"/>
-      </requires>
-      <extension point="xbmc.python.script" library="resources/lib/default.py">
-        <provides>executable</provides>
-      </extension>
-      <extension point="xbmc.service" library="resources/lib/service.py"/>
-      <extension point="xbmc.addon.metadata">
-        <summary lang="en_GB">Watch together across Kodi devices — a SyncLounge-style watch party, on the couch or over the internet</summary>
-        <description lang="en_GB">Real-time synchronized playback for Kodi. Host a party on one device or on the bundled standalone relay (VPS, Raspberry Pi or Docker — no port forwarding for anyone), friends join with a room code, and play, pause and seek stay mirrored everywhere with clock-offset compensation and automatic drift correction.
+    </extension>
+</addon>
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.7.24" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0" />
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>audio</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Audiobookshelf client for Kodi</summary>
+		<description lang="en_GB">Stream audiobooks and podcasts from your Audiobookshelf server. Features include:
 
-    Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every device resolves the stream with its own account. Library items match by IMDb/TVDb id or show/season/episode, so a friend with their own copy of the same movie follows without any shared source. The party auto-pauses while someone buffers, an optional host mode locks playback control to whoever started the item, and members joining or leaving show as notifications. A live web dashboard at /status shows rooms, members and positions on any relay, and the saved relay address and room code make rejoining a two-click affair.</description>
-        <platform>all</platform>
+* Stream audiobooks (M4B, MP3, multi-file)
+* Stream podcasts with episode management
+* Progress sync with server
+* Download for offline playback
+* Chapter navigation
+* Resume playback
+* Search and add new podcasts
+* Find new episodes (from RSS)
+* API Key or Username/Password authentication</description>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>
+2026.7.24 - Separate libraries
+- CHANGED: Each Audiobookshelf library is now listed separately instead
+  of merged into single Audiobooks/Podcasts folders. Enable "Group
+  libraries by type" in settings for the old grouped view.
+
+2026.7.10 - API key login
+- NEW: Optional API Key setting; when set it is used directly as the
+  bearer token (no login/refresh) and overrides username/password.
+
+2026.7.9 - Kodi repo compliance
+- Settings localized via strings.po; icon flattened (no transparency);
+  LICENSE renamed to LICENSE.txt; fanart added.
+
+2026.7.8 - Chronological offline queues
+- Downloads store the episode publish date so offline auto-play queues
+  order chronologically, matching the online queue.
+
+2026.7.7 - Auto-play: mixed streamed/downloaded
+- Auto-play queues mix streamed and downloaded episodes; also works
+  fully offline. No resume dialog between episodes.
+
+2026.7.6 - Auto-play next podcast episode
+- "Auto-play next episode" setting (default off) plays a native Kodi
+  playlist from the selected episode forward. Progress tracked per
+  episode.
+
+2026.7.5 - Progress sync fix
+- Progress upload no longer loops forever; empty/non-JSON 2xx responses
+  are treated as success.
+
+2026.5.28 - Now-playing cover art, author, JWT auth
+- Covers/author on the now-playing screen; JWT auth with auto refresh
+  (requires server v2.26.0+).
+		</news>
+	</extension>
+</addon>
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.12" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, live sports and your iTunes movie and TV library, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+
+Features:
+* Apple ID sign-in with two-factor authentication
+* Browse Apple TV+ Originals (shows and movies)
+* Live sports: MLS, Formula 1 and MLB
+* Browse your iTunes purchased/rented movie and TV library
+* Search the Apple TV catalogue
+* Widevine playback via InputStream Adaptive</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>
+2026.8.10 - iTunes library is back
+- The iTunes movie and TV library returns, on top of all the Apple TV+ and
+  live-sports work: your purchased/rented films and shows list under "My iTunes
+  Library", grouped into Films and TV Shows (television by season), with resume
+  points where the store knows them. It has its own sign-in, separate from
+  Apple TV+, and can also use a pasted store session.
+- Purchase playback asks Apple's store/Android licence path for a redownload
+  and reports the exact reason if it is refused. Note the standing wall: an
+  iTunes purchase's key server needs a device keybag Apple issues only to its
+  own hardware, so purchase *playback* may still be blocked even though the
+  library lists and resolves; browsing and naming work regardless.
+- Search can include the store again: with "Search Apple TV+ only" turned off,
+  search returns titles that exist only as purchases (Green Book, Oppenheimer,
+  ...), not just Apple TV+ originals. It stays on by default, since a purchase
+  may not play past the keybag wall.
+- Playing an iTunes purchase now shows a plain message instead of a generic DRM
+  error. The purchase streams over Widevine (as Apple's own Android app plays
+  it), but the key server refuses it (status -1020) without a device keybag its
+  client apps attach, which this add-on cannot reproduce.
+- Experimental: the redownload stream is now fetched as the Android TV app
+  (caller=vz), matching the identity the licence request uses, instead of as the
+  Windows desktop client. Paste a fresh Android (mz_at_ssl) session to test
+  whether the coherent Android path licenses where the mixed one did not.
+- The account-wide Continue Watching row is back, and the Featured hero row: the
+  cross-service resume list (which mixes in iTunes films in progress, unlike the
+  per-tab Up Next) and the "Apple Original Shows and Movies" shelf both return
+  to the home screen.
+- The iTunes library locker now also tries the Android (mz_at_ssl) session, not
+  only the store-page one, so a single pasted session can populate both Continue
+  Watching and the library instead of 403-ing the library.
+- The iTunes library now lists via the Apple TV app's own MediaAPI route
+  (/v1/me/purchases, types=movies / tv-shows), read off the app's LibraryPage
+  code. It authenticates with the ordinary Apple TV+ sign-in (bearer +
+  media-user-token), so films and shows you own list with no store-page or
+  Android session needed at all -- the website has no library tab, but this is
+  the call the app makes.
+- Family Sharing in the library: each family member who shares purchases is
+  listed (the app's /v1/me/purchases/shared/members call), and opening one shows
+  their shared films -- same Apple TV+ session, no store login.
+- FIX: a film whose MediaAPI description came back as an object rather than a
+  string crashed the whole library list; the plot is now read correctly and can
+  never break the listing.
+- Library titles now resolve to their canonical id (as the app does), so a
+  purchased film carries its trailers, bonus features, cast and the normal play
+  path -- and resumes where you left off, via the app's playback-positions call
+  (/v1/me/playback/positions). All on the ordinary Apple TV+ session.
+2026.8.10 - Subtitles: a steady 10-second sync
+- FIX: subtitles are shifted by a flat 10 seconds, the offset that lines up
+  both films and shows (the previous per-title guess got some titles wrong).
+  A new "Subtitle delay in seconds" setting lets you trim it if you ever need
+  a different value.
+2026.8.10 - Subtitles: every language, and synced on every title
+- All of Apple's subtitle languages are now fetched, not just yours and
+  English (in parallel, so it stays quick). Turn it back to two in settings if
+  you prefer.
+- FIX: the timing shift is now read from each title's own video, so subtitles
+  line up whether a title needs a 10-second offset (some shows) or none
+  (some films) -- one build had synced one and not the other.
+2026.8.10 - One subtitle entry per language, not two
+- The blank subtitle tracks InputStream Adaptive lists for on-demand titles
+  (Apple's WebVTT, which it cannot render) are now removed from the stream, so
+  each language shows once -- the working fetched copy -- instead of twice.
+  The fetched tracks are your Kodi language and English; other languages,
+  which never displayed anyway, are no longer listed.
+2026.8.10 - "Key Plays" only while a game is live
+- Key Plays are a live game's moments so far, to catch up on during the
+  broadcast. A finished game has Highlights instead, so Key Plays now shows
+  only while a game is actually airing -- not on finished games or races.
+2026.8.10 - Subtitle timing
+- Subtitles were running early because Apple's timing map (X-TIMESTAMP-MAP)
+  was dropped when the track was saved. That offset is now applied to the cue
+  times, so subtitles line up with the video. If any are still out, it is a
+  fixed number of seconds -- say how far and which way and it can be trimmed.
+2026.8.10 - Subtitles on films, shows and replays (new)
+- Apple's on-demand subtitles are WebVTT that InputStream Adaptive lists but
+  leaves blank on screen. The addon now fetches the track (your Kodi language,
+  and English) and hands Kodi its own copy to display, so subtitles work on
+  films, shows and finished-game replays. Turn it off in settings if you like.
+  Live games are not covered -- their captions are baked into the video.
+  New; please report any timing offset so the sync can be dialled in.
+2026.8.10 - Browsing keeps working after you sign out
+- FIX: Signing out wiped the app's anonymous browsing token along with your
+  account, so every tab (Apple TV+, MLS, F1, MLB) then had to rebuild it from
+  scratch on each screen -- and if that failed, the catalogue failed with it,
+  clearing up only when you signed back in. Sign-out now keeps that browsing
+  token (it is not account data) and clears only your account, so the catalogue
+  keeps loading signed out. Playback still needs a sign-in.
+2026.8.10 - "Clubs" only on soccer
+- The "Clubs" context-menu entry (a match's two clubs) now shows only on
+  soccer fixtures (MLS, Leagues Cup). A Formula 1 race and an MLB game are not
+  club-vs-club, so it no longer appears on them.
+2026.8.10 - Stop a doomed watch-history call on live games
+- FIX: Playing a live game (Watch from Start, Catch Up, Key Plays, Resume)
+  logged a 400 from Apple's now-playing endpoint. That endpoint is for
+  on-demand titles only -- the web client never calls it for a live event --
+  so a live game's linear id was always rejected. The addon no longer makes
+  that call for a live stream (playback was never affected; the error is just
+  gone). Finished games and films still report as before.
+2026.8.10 - Fix "event has not started" on games that already happened
+- FIX: A finished game could say "this event has not started yet" with a
+  future date. Its start time was being read from the whole detail document,
+  which also lists upcoming games, so every game reported the same upcoming
+  kick-off. The start time is now read from the game's own entry, so a played
+  game is recognised as played (and, if it will not play, says why).
+2026.8.10 - MLB
+- Added an MLB tab. Baseball on Apple TV+ is the same kind of live event as MLS
+  and F1 under the hood, so its games, Big Inning, shows and recaps play (and
+  resume, and pick home/away commentary) exactly like the other sports. MLB
+  sits under Apple TV+ rather than being its own channel, so it is listed as a
+  room; if it ever comes up empty, Apple has reissued the room and it needs a
+  refresh.
+2026.8.10 - Clearer message when a title will not play
+- A title with no stream for you now says why: "not part of your subscription,
+  or blacked out in your region" when you are signed in, or a plain "sign in
+  first" when you are not -- instead of one catch-all that named both causes
+  and pointed at the log.
+2026.8.10 - Finished games resume like a film again
+- FIX: A finished game (a replay) is not live, so it should resume where you
+  left off like any on-demand title -- but the live-game change had it start
+  over instead. Now only a game that is actually airing skips Kodi's resume
+  (its start is the live menu's job); a finished one resumes normally. Which
+  is which is read from the event's own live flag, no guesswork.
+2026.8.10 - Live games: "Resume where you left off" is now a menu choice
+- Kodi used to seek a live game to your last position on its own, overriding
+  whatever mode you picked. It no longer does. Instead, when Apple has a saved
+  position for the game, the live menu adds a "Resume where you left off"
+  option next to Watch Live / from Start / Catch Up, so jumping there is your
+  choice -- and the other modes start exactly where they should.
+2026.8.10 - Live games: resume shows the choices; a clear "too many devices"
+- FIX: Resuming an in-progress live game from Continue Watching skipped the
+  Watch Live / from Start / Catch Up choice and jumped straight to the saved
+  point (and even when the choice showed, it was ignored). A live game now
+  always offers the three, and the one you pick decides where it starts.
+- When Apple refuses the stream because the account is watching on too many
+  devices, that now says so plainly instead of failing as a generic playback
+  error.
+2026.8.10 - Live games: full rewind window (Watch from Start / Catch Up)
+- FIX: Watch from Start jumped in near the live edge instead of the broadcast
+  start, and scrubbing/Catch Up would snap back to "now". Apple only serves the
+  deep rewind window (the whole broadcast so far) when the player asks for it
+  with linearScrubbingSupported, which the web client sends on every live
+  manifest but the addon did not. The addon now sends it, so a live game can be
+  rewound to its start and seeked through its key plays.
+2026.8.10 - Live games: freed on app close, not marked watched
+- FIX: Closing Kodi while a live game was still playing could leave the stream
+  holding a session with Apple (its lease was only released on a clean Stop).
+  The session is now also released when the app quits.
+- FIX: Leaving a live game marked it as watched, because at the live edge the
+  position equals the stream length. A live game now only reports its position,
+  never "finished", so it is not marked watched before it is over.
+2026.8.10 - Your language first on a live game, quieter log
+- A live game with commentary in more than one language now lists your
+  language first (Apple's order was arbitrary -- Spanish sometimes sat above
+  English), so the top of the picker is the one you most likely want.
+- A game with no key plays no longer logs a 404 as an error.
+2026.8.10 - Tell Apple when a stream stops (frees your session)
+- NEW: Closing a video now releases its streaming licence with Apple, the way
+  the web client does -- it re-sends the licence request with the action set
+  to "stop". Without this, a closed live game kept counting against Apple's
+  concurrent-stream limit until it timed out, which could make the next live
+  stream refuse to start. The release runs in the background so closing stays
+  instant.
+2026.8.10 - Key Plays and Catch Up for live games (experimental)
+- NEW: "Key Plays" on a live game's context menu lists its goals and big
+  moments; picking one jumps the game to that moment and plays on. The list
+  follows Apple's own, however few or many there are.
+- NEW: "Catch Up" joins the live options (Watch Live / Watch from Start /
+  Catch Up) and plays the key moments in turn, skipping the lulls between --
+  the same key plays Apple's own Catch Up seeks through.
+- Both work by seeking the live DVR to each moment's time; seeking a live
+  stream is best effort, so this is experimental and may land a little early
+  or late.
+2026.8.10 - Watch a live game from the start, and clearer errors offline
+- NEW: Playing a game that is airing live now asks whether to Watch Live (the
+  live edge) or Watch from Start (the broadcast from its beginning), the same
+  startOver stream the web player uses. Apple's third option, Catch Up, is a
+  fast-forward-to-live player trick Kodi cannot reproduce, so it is left out.
+- FIX: When the network drops mid-play, key collection could not reach Apple
+  and the stream was wrongly treated as unencrypted, failing with "DRM
+  license server not configured". A fetch failure is now kept distinct from a
+  keyless stream, so an outage no longer masquerades as a DRM problem.
+2026.8.8 - Cast members open their own page
+- NEW: A name in "Cast and crew" is now a folder. Opening it shows that
+  person's other work -- their Movies, Shows, and roles as producer or guest
+  -- exactly as Apple lists it. Their page opens with an "About" entry whose
+  Information holds Apple's biography, birth date and birthplace, with a
+  headshot. Before, cast names were dead text.
+2026.8.8 - Mark watched on your Apple account
+- NEW: A "Mark watched on Apple TV" entry on films, shows, episodes and
+  fixtures tells Apple the title is watched (the same POST /play-history the
+  website sends), so it counts as watched on your other devices and leaves
+  Continue Watching. Kodi's own "Mark as watched" only sets a local flag and
+  never reached Apple; this does. Marking unwatched is not offered yet.
+2026.8.8 - Continue Watching shows only what you have started
+- NEW: Apple's "Continue Watching on Apple TV" shelf also lists titles you
+  have merely added to your Watchlist (Apple marks them "AddedToUpNext"), so
+  a film you never played appeared there the moment you watchlisted it. A new
+  setting, on by default, keeps only the titles you have actually started;
+  the watchlisted ones still show on the Watchlist. Turn it off to mirror
+  Apple exactly.
+2026.8.7 - Housekeeping: remove dead code
+- Internal only, no change to behaviour: removed unused code left over from
+  earlier versions -- the Watchlist fetch that nothing calls (the list is
+  shown via Apple's own shelf), two unused helpers, an unused sign-in proof
+  accessor, and an unused import.
+2026.8.7 - Drop the addon-made "Following" folder
+- The "Following" folder was not something Apple sends; it was assembled from
+  the follow flags on the club tiles. Apple already lists a club you follow as
+  its own shelf on the tab, so the extra folder is gone. Following and
+  unfollowing a club still works from the club's context menu, and the star
+  on a followed club still updates on the spot.
+2026.8.7 - Following and Watchlist update on the spot
+- FIX: Following or unfollowing a club, or adding or removing a Watchlist
+  title, showed no change until you left to the main menu and came back into
+  the tab. The screen now refreshes in place: the Watchlist is re-read from
+  Apple, and a club's follow state is updated in the cached tab so the
+  Following folder and the club tiles reflect it at once.
+2026.8.7 - Clubs show their crest
+- NEW: A football club now shows its crest. Apple ships the badge as a square
+  logo, the one shape the artwork sort treated as "not artwork", so clubs
+  were listed blank; the crest is used for them now (as a transparent png).
+2026.8.7 - Fix a stray settings entry, and name the list consistently
+- FIX: "Add to Watchlist" in a title's context menu showed the text of the
+  new live-events height setting instead. The setting had been given a label
+  number already in use, so the two collided; it now has its own.
+- FIX: The pop-up after adding or removing a title still said "Up Next"
+  though the menu and folder call the list "Watchlist", as Apple does. All
+  three now say "Watchlist".
+2026.8.7 - Resuming a match plays the feed it belongs to
+- FIX: A sporting event you had part-watched offered Resume before asking
+  which feed to play, and then applied that position to whichever feed you
+  picked -- so resuming an hour into the full replay could seek clean past
+  the end of the half-hour race. The saved position belongs to one feed, so
+  the event now plays that feed when you resume, its length matching the
+  position. Where the feed cannot be identified, the resume is dropped rather
+  than risk seeking past the end.
+2026.8.7 - A flaky manifest fetch no longer breaks a fresh play
+- FIX: Starting a title the instant the previous one closed sometimes hit a
+  transient 500 from Apple's manifest server while collecting keys. That was
+  misread as "this stream has no DRM", so it played in the clear and failed
+  ("license server url has not been configured"). The manifest fetch now
+  retries a server error, and if it still cannot be read the stream is
+  treated as encrypted -- the licence proxy finds the keys as it serves the
+  variants -- rather than played in the clear.
+2026.8.7 - Live events play in HD, where Apple grants the key
+- FIX: A live event (Formula 1, MLS) failed with a DRM error (-1004). Apple
+  licenses a live event's keys per quality band, and for these it does not
+  grant the SD band's key at all -- only the HD H.264 band, which is the tier
+  its own web player uses. The addon was capped to SD, as it is for on-demand
+  titles, so it asked for the one key Apple refuses. Live events now use a
+  separate, higher cap (1080p by default, in Settings) and reach the tier
+  Apple actually licenses.
+2026.8.7 - A future event says so instead of erroring
+- FIX: Playing a sporting event that has not started yet showed a stream
+  download error and a DRM failure. It now shows the kick-off time, as it
+  was meant to: when the detail lookup withholds a stream because the event
+  is still to come, playback stops on that reason instead of falling through
+  to an inline stream that Apple has not published yet.
+2026.8.7 - Streamlined to a clean Apple TV+ client
+- This build is the Apple TV+ web client on its own: sign-in, Originals and
+  the brand tabs, Search, and Widevine playback. The iTunes purchase
+  library, Continue Watching and the Featured row have been removed for a
+  focused, dependable core.
+2026.8.7 - Owned TV names itself, and a token escape hatch
+- Your purchased TV episodes now show their real titles and show name even
+  when Apple has pulled the title from sale. Apple keeps no catalogue entry
+  for a delisted purchase, so the episode is named from the address of its
+  own page, which still carries the name.
+- NEW: An advanced "Developer token override" setting. If Apple ever
+  changes its website so the addon can no longer read its own session
+  token, paste one from a browser and the addon keeps working.
+2026.8.3 - Resume where you left off, trailers fixed
+- NEW: A title part-watched on another Apple device now resumes at the
+  right place here. Apple states the position on each item of the
+  Continue Watching shelf; the addon was discarding it.
+- FIX: Trailers played no picture at all. Their init segment, which holds
+  the MOOV atom, was pointed at the addon's own proxy instead of Apple.
+- FIX: Trailers played in the wrong colours -- Apple offers them in Dolby
+  Vision, which Kodi renders with badly shifted colours. Those variants
+  are skipped now whether or not a stream is encrypted.
+- The list you add titles to is called "Watchlist", as Apple calls it,
+  rather than "Up Next", and sits on each brand tab rather than in the
+  main menu, since Apple keeps a separate one per tab.
+- The "Continue Watching" menu entry is gone. It asked for the player's
+  Up Next tab, which Apple refuses outside playback, and it was never
+  needed: that shelf is already listed on the Apple TV+ tab.
+2026.7.31.19 - Faster browsing
+- The session token is kept for an hour instead of being scraped again on
+  every screen. Kodi starts a new process for each navigation, so the
+  addon was downloading a megabyte of page markup before every listing.
+  If a kept token is ever rejected, it refreshes and retries once.
+2026.7.31.18 - Choose a match feed, related rows, real sign-out
+- NEW: A match that offers more than one feed now asks which to play: the
+  full replay or the short recap, and English, Spanish or French
+  commentary. Each is listed with its runtime.
+- NEW: "Related" on a title lists more like it; on a match it lists the
+  other games in the league, and "Clubs" lists the two sides.
+- Sign out now ends the session with Apple instead of only forgetting the
+  tokens locally. The tokens are cleared either way.
+2026.7.31.17 - Shows open to their seasons
+- NEW: A show with more than one season opens to a season list with each
+  season's episode count, instead of every episode in one flat run. A
+  179-episode show now opens to five seasons.
+- Shows with a single season still go straight to their episodes.
+2026.7.31.16 - Continue Watching, and a better Search
+- NEW: "Continue Watching" in the main menu lists what you have part
+  watched, the same list the addon now feeds by reporting playback.
+- NEW: Opening Search without typing anything shows Apple's browse page
+  instead of an empty list.
+- NEW: After typing, Apple's suggestions are offered, with what you typed
+  kept as the first choice.
+2026.7.31.15 - Following section, and a real follow toggle
+- NEW: A "Following" folder at the top of the MLS tab lists the clubs you
+  follow. Apple's own favourites shelf there is an empty placeholder the
+  website fills in itself, so the addon does the same from the follow flag
+  each club carries.
+- The club context menu now offers only the action that applies: Follow on
+  a club you do not follow, Unfollow on one you do. A capture of following
+  a club confirms the flag updates on the very next request.
+2026.7.31.14 - Followed clubs are marked
+- Clubs you follow are marked with a * in "Browse All Clubs", and the
+  context menu offers the fitting action first. Apple reports the follow
+  state on each club tile, so this needs no extra request.
+2026.7.31.13 - Grand Prix weekends open
+- NEW: The 22 race tiles on the Formula 1 tab are folders now. Each opens
+  its weekend: practice, qualifying and the race, the Sky Sports feed, and
+  the round's highlights, interviews and team-radio clips.
+- That was the last navigation tile still being hidden; rooms, clubs and
+  Grand Prix weekends now all open.
+2026.7.31.12 - Up Next list and subscription status
+- NEW: "Up Next" in the main menu lists what is on your watchlist, so the
+  titles you add are visible in Kodi rather than only on Apple's clients.
+- NEW: Settings shows your Apple TV+ subscription status: whether it is
+  active, when it renews or expires, and whether it comes through Family
+  Sharing.
+2026.7.31.11 - Trailers play
+- FIX: Trailers carry no DRM at all -- no key of any kind in the manifest.
+  The addon was still asking InputStream Adaptive for a Widevine session,
+  which then waited for a licence that could never arrive. Streams with no
+  keys now play as plain HLS.
+- Trailers play at full quality: the 360-line, H.264 and SDR limits exist
+  only to satisfy the Widevine CDM, which an unencrypted stream never
+  reaches.
+- FIX: Key collection read its key from the first variant in the manifest,
+  which is usually one the quality filter drops. Since Apple keys each tier
+  separately, that was the wrong key. It now reads from the variants that
+  are actually played, and says so in the log when a stream has no keys.
+2026.7.31.10 - Watch history syncs to your Apple account
+- NEW: What you watch through the addon now updates Apple's Continue
+  Watching, and resumes at the right place on your other Apple devices.
+  Progress is reported every 30 seconds and once more when playback stops;
+  past 95% the title counts as finished. Trailers and bonus features are
+  never reported.
+- The utsk session token is now requested from Apple's own configurations
+  endpoint when the web shell does not carry one, instead of relying on
+  scraping alone.
+2026.7.31.9 - Follow clubs and manage Up Next
+- NEW: Context menu on an MLS club follows or unfollows it.
+- NEW: Context menu on any title, episode or sporting event adds it to
+  Up Next or removes it.
+- Both directions are offered rather than one toggle, because Apple gives
+  no way to read back what is already followed or listed. Neither sends
+  anything unless you are signed in.
+2026.7.31.8 - MLS club pages open
+- NEW: The 30 clubs under "Browse All Clubs" are folders now. Each opens
+  its team page: Featured, Matches, Past Matches, Every Goal, best-of
+  reels and player compilations.
+2026.7.31.7 - Browse categories (rooms) open
+- NEW: The category tiles under "Browse All Apple Originals" -- Kids amp;
+  Family, Sci-Fi, Comedies, Coming to Apple TV and the rest -- are folders
+  now instead of being hidden. Each opens its own canvas of shelves.
+2026.7.31.6 - Open a shelf the way the website does
+- Opening a shelf now refetches it from the start instead of continuing
+  from the copy the home page embedded. Personalised shelves return a
+  different selection each time, so pairing a stale first page with freshly
+  paged ones could leave gaps.
+2026.7.31.5 - Shelves open to all their items
+- A canvas only sends each shelf's first page. Opening a shelf now follows
+  its own paging token to the end, so "All Documentaries" is no longer 20
+  items when Apple has more.
+- Shelves with more to fetch show their count as "20+".
+2026.7.31.4 - Every shelf on a tab, not just the first page
+- Channel canvases are paged: the response carries a nextToken offset to
+  hand back for the next batch of shelves. The addon now walks that to the
+  end, as the website does.
+- Apple TV+ goes from 10 shelves to 20, MLS from 5 to 13. Formula 1 sends
+  no token and is a single page.
+2026.7.31.3 - MLS and Formula 1 tabs, bonus content
+- NEW: The MLS and Formula 1 brand tabs from tv.apple.com's home page are
+  now browsable alongside Apple TV+, each with all of its shelves.
+- NEW: "Bonus content" context-menu entry sits next to "Play trailer" on
+  movies and shows (Ted Lasso has twelve bonus features).
+- The sports channels list clip types (highlights, interviews, key plays)
+  that have no detail endpoint of their own but carry their stream in the
+  shelf itself; that stream is kept so the clips play.
+- Navigation tiles (teams, Grand Prix rounds, browse rooms) no longer
+  appear as playable items, since Apple gives them no stream at all.
+2026.7.31.2 - Play trailers from the context menu
+- NEW: Movies and shows have a "Play trailer" context-menu entry. Apple
+  lists a title's trailers in its detail response, each already carrying
+  its own stream, so no extra request is needed. Titles with several
+  trailers (Ted Lasso has seven) offer a chooser.
+- Trailers play without a subscription, so a missing media-user-token no
+  longer blocks them.
+2026.7.31.1 - Artwork no longer cut off
+- Apple ships both tall posters and wide stills for a title. The addon now
+  reads each artwork's declared dimensions, sends the tall one to Kodi's
+  poster slot and the wide one to thumb/fanart, and requests each at its
+  own aspect ratio instead of forcing everything into a 16:9 box.
+- Titles with no tall artwork (episodes, sporting events) simply get no
+  poster rather than a cropped one; logos and team badges are ignored.
+2026.7.31 - Encrypted playback working (Kodi 22 required)
+- REQUIRES Kodi 22 with InputStream Adaptive 22 or newer. Playback uses
+  the inputstream.adaptive.drm property, which the 21.x series does not
+  have, so Kodi 21 support has been dropped rather than left broken.
+- NEW: Sporting events play, list their kick-off time, and report when a
+  game has not started yet instead of failing.
+- Playback now works on Kodi 22 with InputStream Adaptive 22, using the
+  new inputstream.adaptive.drm property (secure_decoder, pre_init_data).
+- Streams are limited to the lowest quality tier (360p by default), H.264
+  and SDR: Apple keys each tier separately and the CDM reports the higher
+  tiers' keys as output restricted, cannot decode HEVC, and Kodi renders
+  Dolby Vision with shifted colours.
+- Key ids are supplied to ISA via KEYID and the init segment's tenc box,
+  which Apple leaves empty.
+2026.7.30 - Experimental release (matched to real web client)
+- NEW: Apple ID sign-in rebuilt from a real tv.apple.com capture:
+  authorize -> SRP init/complete with X-Apple-HC hashcash -> two-factor
+  (trusted-device or SMS) -> session trust. Real OAuth client id.
+- NEW: Catalogue via confirmed UTS endpoints (Apple TV+ Originals
+  channel canvas, search) with tokens scraped from the web shell.
+- NEW: Widevine playback pipeline: HLS via InputStream Adaptive with a
+  local licence proxy that wraps the challenge in Apple's fpsRequest
+  JSON envelope (Apple serves Widevine to non-Apple clients).
+- NOTE: Two playback tokens (account media-user-token and the per-title
+  playback token) are still being reproduced; advanced settings accept
+  pasted values to test playback meanwhile. SD only (Widevine L3).
+		</news>
+	</extension>
+</addon>
+<addon id="script.akl.heroic" name="Heroic Games Launcher plugin for AKL" version="2026.8.12.7" provider-name="Breezyslasher">
+  <requires>
+      <import addon="xbmc.python" version="3.0.0"/>
+      <import addon="script.module.akl" version="1.2.0"/>
+  </requires>
+  <extension point="xbmc.python.script" library="default.py">
+    <provides>game</provides>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Heroic Games Launcher scanner, scraper and launcher plugin for AKL.</summary>
+    <description lang="en_GB">
+    Advanced Kodi Launcher (AKL) plugin for the Heroic Games Launcher on Linux, Windows and macOS.
+It scans your Heroic library (Epic Games, GOG, Amazon Prime Gaming and sideloaded games) directly from
+Heroic's local store cache, launches games through Heroic (Flatpak, native Linux, Windows or macOS
+install) and scrapes titles, plots, developers and artwork from the data Heroic already keeps on disk.
+No credentials or API keys needed.
+    </description>
+    <platform>all</platform>
+    <license>GNU General Public License version 2</license>
+    <website>https://github.com/Breezyslasher/Kodi-Addons</website>
+    <source>https://github.com/Breezyslasher/Kodi-Addons/tree/main/script.akl.heroic</source>
+    <assets>
+      <icon>media/icon.png</icon>
+      <fanart>media/fanart.jpg</fanart>
+    </assets>
+    <news>Scraper now pulls year, genre, rating, store tags, poster/banner art and screenshots from Heroic-side caches (Epic metadata, Amazon details, PCGamingWiki scores).</news>
+  </extension>
+</addon>
+<addon id="script.webhook.runner" version="2026.7.13" name="Webhook Runner" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Run Home Assistant webhooks from Kodi</summary>
+    <description lang="en_GB">Create webhooks and trigger them via Keymap Editor or Kodi events. Each webhook gets a unique ID that can be mapped to any button using Keymap Editor, or fired automatically on playback/system events (playback start/stop/pause, screensaver, Kodi start/stop).</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="script.scrcpy-launcher" name="scrcpy Launcher" version="2026.6.12" provider-name="Breezyslasher">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="xbmc.python.script" library="main.py">
+        <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.service" library="service.py" start="startup"/>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Android device and Samsung DeX streaming with auto-detect</summary>
+        <description lang="en_GB">Stream your Android device screen or the Samsung DeX desktop on Kodi using scrcpy. DeX display id is auto-detected; Virtual Desktop mode (--new-display) works without an active DeX session. Works with LibreELEC and desktop Linux.</description>
+        <platform>linux</platform>
         <license>MIT</license>
-        <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+        <website>https://github.com/Schlumpf7/scrcpy-launcher-matrix-</website>
+        <source>https://github.com/Schlumpf7/scrcpy-launcher-matrix-</source>
+        <disclaimer>Requires USB debugging enabled on your Android device.</disclaimer>
         <assets>
-          <icon>resources/icon.png</icon>
+            <icon>resources/Android_Robot.png</icon>
         </assets>
-      </extension>
-    </addon>
+        <news>
+v2026.6.12 - Samsung DeX + simpler menu
+- NEW: Samsung DeX mirroring with auto-detected display id
+- NEW: Virtual Desktop mode (--new-display) - desktop windowing
+  without an active DeX session (One UI 7 / Android 15+)
+- NEW: Detect Displays menu action
+- CHANGED: menu collapsed to Stream Device / Samsung DeX /
+  Virtual Desktop / Detect Displays / Settings - each asks USB vs
+  WiFi only if an IP is configured, otherwise defaults to USB
+- FIXED: dropped removed --forward-all-clicks flag; uses
+  --mouse-bind for scrcpy 2.0+ (forwards right/middle clicks)
+- UPDATED: bundled scrcpy 3.3.4 to 4.0 on x86_64 (SDL3,
+  self-contained); aarch64 stays on 3.3.4 (no official arm64 build)
+- Inspired by TuxDex, without miraclecast/root/network changes
+        </news>
+    </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.26" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Watch together across Kodi devices — a SyncLounge-style watch party, on the couch or over the internet</summary>
+    <description lang="en_GB">Real-time synchronized playback for Kodi. Host a party on one device or on the bundled standalone relay (VPS, Raspberry Pi or Docker — no port forwarding for anyone), friends join with a room code, and play, pause and seek stay mirrored everywhere with clock-offset compensation and automatic drift correction.
+
+Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every device resolves the stream with its own account. Library items match by IMDb/TVDb id or show/season/episode, so a friend with their own copy of the same movie follows without any shared source. The party auto-pauses while someone buffers, an optional host mode locks playback control to whoever started the item, and members joining or leaving show as notifications. A live web dashboard at /status shows rooms, members and positions on any relay, and the saved relay address and room code make rejoining a two-click affair.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
 </addons>
