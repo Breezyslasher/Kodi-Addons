@@ -207,8 +207,8 @@ def _fetch_stations(client, hours=3, pages=1):
     Asking for a longer window instead is not the same thing and is not
     what the web client does: it asks for about six hours and paginates.
     """
-    order = kodiutils.get_setting("epg.order", "")
-    response = client.epg(hours=hours, order=order or None)
+    response = client.epg(hours=hours,
+                          order=kodiutils.get_setting_int("epg.order", 0))
     stations = epg.parse_epg(response)
 
     token = epg.continuation_token(response) if pages > 1 else None

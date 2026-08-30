@@ -60,8 +60,10 @@ EPG_BROWSE_ID = "FEunplugged_epg"
 # than replacing it. Whatever is chosen here is what the addon lists and what
 # IPTV Manager numbers its channels by.
 #
-# The numbers are the varint the token carries; the labels are the web
-# client's own.
+# The numbers are the varint the token carries, and they are also the values
+# the setting stores, so a setting reads straight through with no mapping
+# table to get out of step. 0 means "send no token" -- whatever the account
+# last chose on the web.
 EPG_ORDERS = {
     "default": 1,        # the lineup order: locals first
     "custom": 2,         # the order set on tv.youtube.com
@@ -69,6 +71,7 @@ EPG_ORDERS = {
     "az": 4,
     "za": 5,
 }
+EPG_ORDER_VALUES = frozenset(EPG_ORDERS.values())
 
 # The Library is not asked for by browseId. The web client sends it as a
 # continuation token, and a token is what the capture shows going out, so a
@@ -884,14 +887,13 @@ class Api(object):
                 "maxDurationMs": "604800000",
             }},
         }
-        if order in EPG_ORDERS:
+        if order in EPG_ORDER_VALUES:
             # Sent alongside the browseId, not instead of it: that is what
             # the web client does, and the token repeats the same
             # epgOptions that the body carries, so the two are built from
             # one set of values here.
             body["continuation"] = epg_order_token(
-                EPG_ORDERS[order], max_airings, 604800000, start_ms,
-                window, window)
+                order, max_airings, 604800000, start_ms, window, window)
         return self.call("browse", body, client_name=client_name)
 
     def continuation(self, token, client_name=None):

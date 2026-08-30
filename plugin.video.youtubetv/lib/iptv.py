@@ -117,7 +117,7 @@ class IPTVManager(object):
         client = api.Api()
         response = client.epg(hours=hours,
                               max_airings=EPG_AIRINGS_PER_STATION,
-                              order=kodiutils.get_setting("epg.order", "") or None)
+                              order=kodiutils.get_setting_int("epg.order", 0))
         stations = epg_mod.parse_epg(response)
         token = epg_mod.continuation_token(response) if pages > 1 else None
         fetched = 1

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.17" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.18" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,14 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.18 - Channel order setting, rebuilt
+- Kodi stopped starting with 2026.8.31.17 installed, on both Kodi 21.3 and
+  22.0, with no stack trace in the crash log. The Channel order setting was
+  the one thing that build added which Kodi itself parses, and it was the
+  only list in settings.xml written as a string with an empty option value
+  and allowempty beside options. It is now an integer with plain numeric
+  values, exactly like every other list in the file.
+
 2026.8.31.17 - Channel order
 - A Channel order setting, offering YouTube TV's own five orderings:
   default, the custom order arranged on the web, most watched, A-Z and
