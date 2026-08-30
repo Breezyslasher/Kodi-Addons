@@ -662,9 +662,13 @@ def _list_search(client, query, response):
     """
     pages = _search_pages(client, response)
     rows = _sections_of(pages)
+    # By kind as well as by count, the same as a category logs. A film
+    # listed under a row called Shows is the thing to find, and it can be
+    # in either place -- YouTube TV names these rows and this addon names a
+    # category's -- so both say what they actually hold.
     kodiutils.log("search %r: %d page(s), %d row(s) -- %s"
                   % (query, len(pages), len(rows),
-                     ", ".join("%s (%d)" % (r.title, len(r.items))
+                     "; ".join("%s (%s)" % (r.title, _kinds_in(r.items))
                                for r in rows) or "nothing"))
     if rows:
         _list_sections(rows, "search_row", extra={"query": query})
