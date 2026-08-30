@@ -466,34 +466,43 @@ def _plain_index(text):
 
 
 def _emptied_modules():
-    """Module-level names that have become None, per module.
+    """Helpers that have stopped being callable, named.
 
     Kodi runs each plugin invocation as a script and tears its modules down
-    when it ends, and CPython's teardown blanks a module's globals. Modules
-    that a still-running thread -- this addon keeps a local HTTP server for
-    the SABR bridge -- or a later invocation still holds are then full of
-    Nones where their functions were.
+    when it ends, and CPython's teardown blanks a module's globals. What
+    this add-on still holds afterwards -- it keeps a local HTTP server for
+    the SABR bridge -- is then full of Nones where functions were.
 
-    That is what the logs show. In every run the first pair of values
-    solves correctly, and every solve *after a playback has opened and
-    closed* bails. It is not the input: all eight values a device got wrong
-    solve correctly elsewhere. A blanked global raises inside the
-    interpreter, the interpreter reports it as the script throwing, and the
-    player's own catch answers with a constant -- which is exactly the bail
-    being seen. The diagnostic added for this hit the same thing head-on
-    and said so: "'NoneType' object is not callable".
+    Probed rather than scanned. The first cut of this walked the add-on's
+    own modules looking for None values and found none, because the blanked
+    globals were in the standard library the parse reaches for, not here:
+    a device reported every date raising "'NoneType' object is not
+    callable" while this said nothing was wrong. Calling the things that
+    matter and seeing which fail cannot miss that way.
     """
-    import sys as _sys
-    emptied = {}
-    for module in ("jsinterp", "jsutils", "js2py_fixes", "kodiutils"):
-        found = _sys.modules.get(__name__.rsplit(".", 1)[0] + "." + module)
-        if found is None:
-            continue
-        blank = [key for key, value in vars(found).items()
-                 if value is None and not key.startswith("__")]
-        if blank:
-            emptied[module] = blank
-    return emptied
+    gone = []
+    try:
+        import calendar
+        calendar.timegm((1970, 1, 1, 0, 0, 0, 0, 1, 0))
+    except Exception as exc:
+        gone.append("calendar.timegm (%s)" % type(exc).__name__)
+    try:
+        import email.utils
+        email.utils.parsedate_tz("1 Jan 1970 00:00:00 +0000")
+    except Exception as exc:
+        gone.append("email.utils.parsedate_tz (%s)" % type(exc).__name__)
+    try:
+        import contextlib
+        with contextlib.suppress(ValueError):
+            pass
+    except Exception as exc:
+        gone.append("contextlib.suppress (%s)" % type(exc).__name__)
+    try:
+        import datetime as _dt
+        _dt.datetime.strptime("1970-01-01", "%Y-%m-%d")
+    except Exception as exc:
+        gone.append("datetime.strptime (%s)" % type(exc).__name__)
+    return gone
 
 
 def _report_dates(js):
@@ -631,9 +640,8 @@ def solve(js, value, player_id=""):
         # the first solve of a session and every one after a playback.
         emptied = _emptied_modules()
         if emptied:
-            kodiutils.log("nsig: modules with blanked globals -- %s"
-                          % "; ".join("%s: %s" % (where, ", ".join(names[:8]))
-                                      for where, names in emptied.items()))
+            kodiutils.log("nsig: helpers no longer callable -- %s"
+                          % ", ".join(emptied))
             try:
                 result = _reimported_solve(js, value)
                 why = bailed(result, value) if result else "produced nothing"
