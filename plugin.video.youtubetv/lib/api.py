@@ -73,6 +73,13 @@ EPG_ORDERS = {
 }
 EPG_ORDER_VALUES = frozenset(EPG_ORDERS.values())
 
+
+def _order_name(value):
+    for name, number in EPG_ORDERS.items():
+        if number == value:
+            return name
+    return str(value)
+
 # The Library is not asked for by browseId. The web client sends it as a
 # continuation token, and a token is what the capture shows going out, so a
 # token is what is sent here. It is a two-field protobuf -- field 80226972
@@ -899,6 +906,12 @@ class Api(object):
             # one set of values here.
             body["continuation"] = epg_order_token(
                 order, max_airings, 604800000, start_ms, window, window)
+            kodiutils.log("guide: asking for the %s order"
+                          % _order_name(order))
+        elif order:
+            kodiutils.log("guide: order %r is not one of %s, so the "
+                          "account's own choice stands"
+                          % (order, sorted(EPG_ORDERS)))
         return self.call("browse", body, client_name=client_name)
 
     def continuation(self, token, client_name=None):
