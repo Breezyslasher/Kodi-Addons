@@ -1185,7 +1185,7 @@ row = _row(epg.Item(browse_id="UCFILM", title="The Blues Brothers",
            epg.Item(video_id="V1", title="An airing"),
            epg.Item(browse_id="UCKNOWNFILM", title="Rogue One",
                     content_type="MOVIE"))
-told, asked, films = default._type_results(client, "", row)
+asked, films = default._type_results(client, row)
 check("a film the search called a show is put right by its own page",
       [(i.title, i.content_type) for i in row[0].items],
       [("The Blues Brothers", "MOVIE"), ("An airing", ""),
@@ -1193,46 +1193,47 @@ check("a film the search called a show is put right by its own page",
 check("and only the one that needed asking was asked",
       (client.asked, asked, films), (["UCFILM"], 1, 2))
 
-# suggest answers in words beside the same browse id, one call for the whole
-# query, so it is asked before any page is.
-told_client = _FakeClient({}, suggests={"UCFILM": "Movie", "UCTEAM": "Team"})
-told_row = _row(epg.Item(browse_id="UCFILM", title="The Blues Brothers",
-                         content_type="SHOW"),
-                epg.Item(browse_id="UCTEAM", title="St. Louis Blues",
-                         content_type="SPORTS_TEAM"))
-told, asked, films = default._type_results(told_client, "blues", told_row)
-check("a suggestion types a result without fetching its page",
-      (told, asked, films, told_client.asked, told_client.suggested),
-      (2, 0, 1, [], 1))
-check("and the film it named is a film now",
-      [(i.title, i.content_type) for i in told_row[0].items],
-      [("The Blues Brothers", "MOVIE"), ("St. Louis Blues", "SPORTS_TEAM")])
-# The "$" badge beside it says a title must be bought, not what it is.
-# A search whose results are all remembered should cost nothing -- not even
-# the suggestions, which it would have no use for. It ran one anyway until
-# a log read "0 typed by suggestion, 0 page(s) asked" beside a request that
-# had still gone out.
+# A search whose results are all remembered should cost nothing.
 api.remembered_kinds = lambda: {"UCFILM": "MOVIE", "UCTEAM": "SPORTS_TEAM"}
 quiet = _FakeClient({}, suggests={"UCFILM": "Movie"})
 quiet_row = _row(epg.Item(browse_id="UCFILM", title="The Blues Brothers",
                           content_type="SHOW"),
                  epg.Item(browse_id="UCTEAM", title="St. Louis Blues",
                           content_type="SPORTS_TEAM"))
-told2, asked2, films2 = default._type_results(quiet, "blues", quiet_row)
-check("a search that needs nothing asks for nothing, suggestions included",
-      (told2, asked2, quiet.suggested, quiet.asked), (0, 0, 0, []))
+asked2, films2 = default._type_results(quiet, quiet_row)
+check("a search that needs nothing asks for nothing",
+      (asked2, quiet.suggested, quiet.asked), (0, 0, []))
 check("and it is still typed, from memory",
       [i.content_type for i in quiet_row[0].items], ["MOVIE", "SPORTS_TEAM"])
 api.remembered_kinds = lambda: {}
 
-check("the price badge is not mistaken for a kind",
-      epg.suggestion_kinds(told_client.suggest("x")),
+# suggest is not one of the steps, and this is why. In a browser it answers
+# with the kind in words beside the browse id, which is what this reads;
+# asked by *this* client it answers with ten searchSuggestionRenderers --
+# plain query text -- and no entity suggestions at all. The reader is kept
+# because the shape is real; the call is not, because it cost a request per
+# search and returned nothing.
+browser_suggest = _FakeClient(
+    {}, suggests={"UCFILM": "Movie", "UCTEAM": "Team"}).suggest("blues")
+check("a browser's suggestion names the kind beside the browse id",
+      epg.suggestion_kinds(browser_suggest),
       {"UCFILM": "MOVIE", "UCTEAM": "SPORTS_TEAM"})
+# The "$" badge sits in the same container and says a title must be bought.
+check("and the price badge beside it is not mistaken for a kind",
+      "MOVIE" in epg.suggestion_kinds(browser_suggest).values(), True)
+# What this client actually sends: query text, no entities, nothing to read.
+check("this client's suggestions carry no kind to read at all",
+      epg.suggestion_kinds({"contents": [{"searchSuggestionsSectionRenderer": {
+          "contents": [{"searchSuggestionRenderer": {
+              "suggestion": {"runs": [{"text": "john wick"}]},
+              "navigationEndpoint": {"searchEndpoint": {"query": "john wick"}}}}
+          ]}}]}),
+      {})
 
 busy = _FakeClient({})
 many = _row(*[epg.Item(browse_id="UC%d" % n, title="t%d" % n,
                        content_type="SHOW") for n in range(50)])
-default._type_results(busy, "", many, limit=24)
+default._type_results(busy, many, limit=24)
 check("a query answering with fifty folders does not make fifty requests",
       len(busy.asked), 24)
 
