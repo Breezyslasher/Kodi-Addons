@@ -1421,6 +1421,15 @@ check("a listed film carries what was learned when it was typed",
 xbmcplugin.ITEMS[:] = []
 default._add_item(epg.Item(browse_id="UCUNKNOWN", title="Never opened",
                            content_type="MOVIE"))
+# A show should say it is a show. The info dialog read "Type: video" on
+# 60 Minutes, with no plot and no cast, because nothing had fetched its
+# page and nothing had said what it was either.
+xbmcplugin.ITEMS[:] = []
+default._add_item(epg.Item(browse_id="UCSHOW", title="60 Minutes",
+                           content_type="SHOW"))
+check("a show is listed as a show, not as video",
+      xbmcplugin.ITEMS[0][3].info.set.get("setMediaType"), "tvshow")
+
 check("and one nothing is known about is listed all the same",
       "setGenres" in xbmcplugin.ITEMS[0][3].info.set, False)
 remembered.clear()
