@@ -85,10 +85,10 @@ CHIPS_ID = "FEunplugged_chips"
 # varint that differed per query (3, then 2). It tracks which suggestion was
 # clicked, so it is not ours to send.
 #
-# Whether this is what makes the difference to how a film is typed is NOT
-# established: the browser sent both forms and typed The Blues Brothers
-# MOVIE either way. What is established is that the call now matches the
-# capture, which it did not before.
+# It is NOT what makes the difference to how a film is typed. Sending it
+# changed nothing -- "Top picks (SHOW x11, SPORTS_TEAM x3)" before and
+# after, character for character. It is sent because the call was wrong
+# without it, not because it fixed anything.
 SEARCH_PARAMS = "6gMOCgASABoAIgAqADIAQgA%3D"
 
 # The Browse tab is 712 KB and its five categories belong on the addon's
