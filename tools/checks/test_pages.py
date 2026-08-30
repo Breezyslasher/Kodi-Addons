@@ -1459,14 +1459,15 @@ check("a network is not a rating",
 xbmcplugin.ITEMS[:] = []
 default._add_item(epg.Item(video_id="V1", title="Rogue One", duration=8037),
                   plot=fields["description"],
-                  meta=dict(fields, cast=epg.cast_of(ABOUT), mpaa="PG-13"))
+                  meta=dict(fields, cast=epg.cast_of(ABOUT), mpaa="PG-13",
+                            studios=fields["companies"]))
 tag = xbmcplugin.ITEMS[0][3].info.set
 check("the metadata reaches the list item",
       (tag.get("setGenres"), tag.get("setYear"), tag.get("setMpaa"),
        tag.get("setDirectors"), tag.get("setStudios"),
        tag.get("setDuration"), [(a.name, a.role) for a in tag["setCast"]]),
       (["Science fiction", "Adventure", "Action"], 2016, "PG-13",
-       ["Gareth Edwards"], ["Disney"], 8037,
+       ["Gareth Edwards"], ["Lucasfilm", "Allison Shearmur Productions"], 8037,
        [("Felicity Jones", "Jyn Erso"), ("Diego Luna", "Cassian Andor")]))
 
 # -- a film nobody has bought ----------------------------------------------
