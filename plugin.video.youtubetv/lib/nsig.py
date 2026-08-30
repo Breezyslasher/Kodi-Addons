@@ -422,6 +422,44 @@ def _keep(js, player_id):
                       % (player_id, exc))
 
 
+_DATE_LITERAL = re.compile(r'new Date\("([^"]+)"\)')
+_DATES_SAID = [False]
+
+
+def _report_dates(js):
+    """What every ``new Date("...")`` in the transform works out to, once.
+
+    The transform is a pure function of its input -- no clock, no random,
+    no browser -- and it computes exactly the same answer on every machine
+    that was tried: all eight values a real Android box got wrong solve
+    correctly here, against a byte-identical player and a byte-identical
+    sliced program.
+
+    The one construct in it that leaves Python's own arithmetic is this
+    one. The player hides array indices behind dates with fractional-hour
+    offsets -- ``new Date("1969-12-31T17:30:49.000-06:30")/1E3`` is 49 --
+    so an index is an ISO-8601 parse, and a parse is the only thing here
+    that a platform can disagree about. An index that comes out different
+    reads a different slot, which throws, which is exactly the bail being
+    seen. So on a bail, say what each one came to: two logs from two
+    platforms then answer it outright.
+    """
+    if _DATES_SAID[0]:
+        return
+    _DATES_SAID[0] = True
+    try:
+        from .jsutils import unified_timestamp
+        found = []
+        for text in dict.fromkeys(_DATE_LITERAL.findall(js)):
+            stamp = unified_timestamp(text, False)
+            found.append("%s -> %s" % (text, "unparsed" if stamp is None
+                                       else int(stamp)))
+        kodiutils.log("nsig: the dates the transform indexes with -- %s"
+                      % "; ".join(found) or "none")
+    except Exception as exc:
+        kodiutils.log("nsig: could not report the dates: %s" % exc)
+
+
 def bailed(result, value):
     """Why a transform's answer is not a transform, or "" when it is.
 
@@ -502,6 +540,7 @@ def solve(js, value, player_id=""):
     if why:
         kodiutils.log("nsig: the built-in interpreter %s; trying a runtime"
                       % why)
+        _report_dates(js)
     if not result or why:
         runtime, name, result = _solve_with_runtime(js, value)
     if not result:
