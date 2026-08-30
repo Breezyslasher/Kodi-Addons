@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.42" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.43" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,18 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.43 - Films found by search play again
+- Search calls a film a show, and sending the params a real search sends
+  changed nothing -- the same rows, the same counts, character for
+  character. It is the answer this client gets, not the question it asks.
+- So the page one level down is asked instead. It says MOVIE plainly, in
+  the same header that already makes a film play from a category, and the
+  pages are fetched together rather than one after another.
+- The answers are remembered, because a title does not change what it is
+  and the same searches come back. Nothing playable is asked about,
+  nothing already known is asked again, and at most 24 pages are fetched
+  for one search however many folders it answers with.
+
 2026.8.31.42 - The search call was not the one a real client makes
 - Every search in every capture sends params beside the query -- seven of
   them, and not one sends the query alone, which is what this addon sent.

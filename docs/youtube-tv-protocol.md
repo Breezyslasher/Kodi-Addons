@@ -1112,7 +1112,16 @@ cannot ask the way the browser asks. The evidence stands as:
 A search tile also carries no menu -- `unpluggedBrowseItemRenderer x14
 carries [contentType, navigationEndpoint, primaryText, style, thumbnail,
 trackingParams]` -- so the DVR toast that names the kind elsewhere is not
-there to fall back on either. Nothing in a search result says "film".
+there to fall back on either. Nothing *in a search result* says "film".
+
+**The page one level down does.** A result's own
+`unpluggedContentDetailsHeaderRenderer` says `contentType: "MOVIE"`, and it
+is the same header that makes a film play from a category. So the addon
+asks it: the pages of the results it cannot type are fetched together, the
+way a show page's deferred shelves are, and what they answer is kept --
+a title does not change what it is, and the same searches come back.
+Nothing playable is asked about, nothing already known is asked again, and
+one search fetches at most 24 pages however many folders it returns.
 
 ```json
 { "query": "rick", "params": "6gMOCgASABoAIgAqADIAQgA%3D" }

@@ -40,6 +40,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(HERE))
                 + "/plugin.video.youtubetv")
 
 from lib import api, epg  # noqa: E402
+import default  # noqa: E402
 
 failures = []
 
@@ -1136,6 +1137,55 @@ check("a response naming no message says so rather than guessing",
       epg.action_text({"responseContext": {}, "actions": []}), "")
 check("and so does one with no actions at all",
       epg.action_text({"responseContext": {}}), "")
+
+# -- typing a search result by its own page --------------------------------
+# Search types a film SHOW and carries no menu, so nothing on the tile
+# contradicts it. The page one level down does, in the header this addon
+# already reads. These pin who gets asked: not what is playable, not what
+# already says MOVIE, not what has been asked before, and never more than
+# the limit however many folders come back.
+# The remembered kinds are stubbed out. Left alone, the first run would
+# write UCFILM into the profile and every run after it would ask nothing and
+# fail -- a check that passes once is worse than none.
+api.remembered_kinds = lambda: {}
+api.remember_kinds = lambda found: None
+
+
+class _FakeClient(object):
+    def __init__(self, kinds):
+        self.kinds = kinds
+        self.asked = []
+
+    def browse(self, browse_id, params=None):
+        self.asked.append(browse_id)
+        return {"header": {"unpluggedContentDetailsHeaderRenderer": {
+            "contentType": self.kinds.get(browse_id, "SHOW")}}}
+
+
+def _row(*items):
+    return [epg.Section("Top picks", list(items))]
+
+
+client = _FakeClient({"UCFILM": "MOVIE"})
+row = _row(epg.Item(browse_id="UCFILM", title="The Blues Brothers",
+                    content_type="SHOW"),
+           epg.Item(video_id="V1", title="An airing"),
+           epg.Item(browse_id="UCKNOWNFILM", title="Rogue One",
+                    content_type="MOVIE"))
+asked, films = default._type_by_page(client, row)
+check("a film the search called a show is put right by its own page",
+      [(i.title, i.content_type) for i in row[0].items],
+      [("The Blues Brothers", "MOVIE"), ("An airing", ""),
+       ("Rogue One", "MOVIE")])
+check("and only the one that needed asking was asked",
+      (client.asked, asked, films), (["UCFILM"], 1, 1))
+
+busy = _FakeClient({})
+many = _row(*[epg.Item(browse_id="UC%d" % n, title="t%d" % n,
+                       content_type="SHOW") for n in range(50)])
+default._type_by_page(busy, many, limit=24)
+check("a query answering with fifty folders does not make fifty requests",
+      len(busy.asked), 24)
 
 # -- the search call itself ------------------------------------------------
 # Scanning the request bodies of every capture, search was the one endpoint
