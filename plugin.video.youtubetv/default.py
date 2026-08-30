@@ -670,6 +670,18 @@ def _list_search(client, query, response):
                   % (query, len(pages), len(rows),
                      "; ".join("%s (%s)" % (r.title, _kinds_in(r.items))
                                for r in rows) or "nothing"))
+    # And what is actually in them. The counts said this search holds no
+    # film at all -- 11 SHOW and 3 SPORTS_TEAM in Top picks, and nothing
+    # typed in the other three rows -- where the same query in a browser
+    # answers with a Movies row. So either a film is typed SHOW here or it
+    # is in one of the untyped rows, and only the titles say which.
+    for row in rows:
+        kodiutils.log("search %r: %s = %s"
+                      % (query, row.title,
+                         ", ".join("%s [%s]" % (item.title,
+                                                item.content_type or "-")
+                                   for item in row.items[:12])
+                         or "nothing"))
     if rows:
         _list_sections(rows, "search_row", extra={"query": query})
         finish()
