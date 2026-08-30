@@ -599,6 +599,8 @@ def _add_item(item, plot="", dvr=None, meta=None):
         info.setDuration(item.duration)
     info.setMediaType("video")
     meta = meta or _meta_for(item.browse_id)
+    if item.content_type == "SHOW":
+        info.setMediaType("tvshow")
     if meta:
         if not plot and meta.get("plot"):
             info.setPlot(meta["plot"])
@@ -1188,15 +1190,7 @@ def route_browse_section(browse_id, name, params="", token=""):
     if section.browse_id and not section.items and not section.token:
         route_browse(section.browse_id, name, section.params)
         return
-    items = _follow_pages(client, section)
-    # A category's row is titles, and a category fetches no pages of its
-    # own -- which is why its films carried a year and a rating and nothing
-    # else however well the details were read. A network's Live tab is
-    # airings and is skipped by this entirely, being playable already.
-    asked, films = _type_results(client, [epg.Section(name, items)])
-    if asked:
-        kodiutils.log("%s: asked %d page(s) for what they are and what they "
-                      "are about" % (name or "that row", asked))
+    items = _learned(client, name, _follow_pages(client, section))
     if not items:
         kodiutils.notify("Nothing playable under %s" % (name or browse_id))
     _add_items(items)
@@ -1389,7 +1383,7 @@ def route_home_row(name, token=""):
                          % (name or "That row"))
         finish()
         return
-    _add_items(_follow_pages(client, section))
+    _add_items(_learned(client, name, _follow_pages(client, section)))
 
 
 def route_networks():
@@ -1536,7 +1530,7 @@ def route_library_section(name, token=""):
                          % (name or "That row"))
         finish()
         return
-    _add_items(_follow_pages(client, section))
+    _add_items(_learned(client, name, _follow_pages(client, section)))
 
 
 def route_play(video_id, label):
@@ -1668,6 +1662,26 @@ def _meta_for(browse_id):
 # genres, and a film that is already known to be a film is still worth
 # fetching once for what it is about.
 _WORTH_DETAIL = ("MOVIE", "SHOW")
+
+
+def _learned(client, name, items):
+    """Find out what a row's titles are and what they are about.
+
+    Every listing of titles goes through here, because "which screen was
+    it?" kept being the answer to why nothing showed. A category fetches no
+    pages of its own, and neither do Home's rows or the Library's, so their
+    films and shows carried a year and a rating and nothing else however
+    well the details were read elsewhere.
+
+    Airings are skipped, being playable already, and so are teams. What is
+    fetched is remembered, and it is capped, so a long row fills itself in
+    over a few visits rather than in one long wait.
+    """
+    asked, films = _type_results(client, [epg.Section(name, items)])
+    if asked:
+        kodiutils.log("%s: asked %d page(s) -- %d film(s) among them"
+                      % (name or "that row", asked, films))
+    return items
 
 
 def _plays(tabs):
