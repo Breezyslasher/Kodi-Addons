@@ -1040,6 +1040,15 @@ def route_browse(browse_id, name, params=""):
             dvr = (browse_id, name or epg.text(header.get("title")),
                    recording) if recording is not None else None
             meta = _page_meta(response, header)
+            # A show defers its cast where a film inlines it: Rick and
+            # Morty's LEAD CAST tab is empty on the page and holds seven
+            # people behind its token. Worth one request when a show is
+            # opened; not worth one for every title in a listing, which is
+            # why this is here and not in the typing.
+            if not meta.get("cast"):
+                cast = _cast_behind(client, tabs)
+                if cast:
+                    meta["cast"] = [list(person) for person in cast]
             if browse_id:
                 api.remember_meta({browse_id: meta})
             plot = meta.get("plot", "")
@@ -1703,6 +1712,24 @@ def _learned(client, name, items):
         kodiutils.log("%s: asked %d page(s) -- %d film(s) among them"
                       % (name or "that row", asked, films))
     return items
+
+
+def _cast_behind(client, tabs):
+    """A show's cast, from the tab that defers it.
+
+    Found by name, which is what there is: the tab is "LEAD CAST" on a show
+    and "Lead cast" on a film, and nothing else about it says what it holds
+    until it has been fetched. A tab that is already read is not refetched.
+    """
+    for tab in tabs:
+        if "cast" not in tab.title.lower() or not tab.token:
+            continue
+        try:
+            return epg.cast_of(client.continuation(tab.token))
+        except (auth.AuthError, api.ApiError) as exc:
+            kodiutils.log("could not open %s: %s" % (tab.title, exc))
+        return []
+    return []
 
 
 def _plays(tabs):

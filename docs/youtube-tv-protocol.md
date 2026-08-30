@@ -1403,6 +1403,23 @@ first and last are somewhere to go:
 So a title's page always reads as two tabs and drops two, by design, and
 that is not a shape worth keeping a copy of.
 
+**A show's page is not a film's.** Three of them (Rick and Morty,
+Superjail!, Tuca & Bertie) agree:
+
+| | Film | Show |
+| --- | --- | --- |
+| tabs | Watch now, About, Lead cast, Suggested | RECENT or ABOUT, EPISODES, LEAD CAST, SUGGESTED |
+| header `secondaryText` | `PG-13 • 2016` | `2013 – Present`, `2008 – 2014` |
+| genres | inline in About | inline in About |
+| studio | `Provider: Disney` | `On: Adult Swim, Cartoon Network, HBO Max` |
+| director | `Directors: Gareth Edwards` | none — a show has no director line |
+| **cast** | **inline**, 16–28 `unpluggedPersonRenderer` | **deferred**, the LEAD CAST tab is empty and holds 7 behind its token |
+
+So a show costs one request more than a film for the same detail, which is
+why its cast is fetched when the show is opened and not for every title in
+a listing. Its header gives a span rather than a year, and the year it
+started is still a year. Its network is what a film calls a provider.
+
 **A film nobody has bought has no Watch now items either**, so that tab is
 dropped as well and Suggested becomes the first one. Which is why the tab
 holding the title itself has to be found by what is in it rather than by

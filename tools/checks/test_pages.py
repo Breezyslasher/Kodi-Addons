@@ -1355,10 +1355,42 @@ check("and a rating is told from a year by shape, not by position",
 # And a rating has to look like one. Saturday Night Live's header reads
 # "NBC", which was shown as "Rated: NBC" for want of asking what a rating
 # actually is.
-check("a network is not a rating",
-      [epg.rating_and_year({"simpleText": "NBC"}),
+# A show gives a span where a film gives a year, and the year it started
+# is still a year.
+check("a span still yields the year it started",
+      [epg.rating_and_year({"simpleText": "2013 \u2013 Present"}),
        epg.rating_and_year({"simpleText": "1975 \u2013 Present \u2022 NBC"})],
-      [("", 0), ("", 0)])
+      [("", 2013), ("", 1975)])
+
+# A show defers its cast where a film inlines it: Rick and Morty's LEAD
+# CAST tab is empty on the page and holds seven people behind its token.
+CAST_TABS = [epg.Section("RECENT", [epg.Item(video_id="V1", title="an episode")]),
+             epg.Section("LEAD CAST", [], "CAST-TOKEN"),
+             epg.Section("SUGGESTED", [], "SUGGESTED-TOKEN")]
+
+
+class _CastClient(object):
+    def __init__(self): self.asked = []
+
+    def continuation(self, token):
+        self.asked.append(token)
+        return {"unpluggedPersonRenderer": {
+            "name": {"simpleText": "Sarah Chalke"},
+            "role": {"simpleText": "Beth Smith"}}}
+
+
+cast_client = _CastClient()
+check("a show's cast is fetched from the tab that defers it",
+      (default._cast_behind(cast_client, CAST_TABS), cast_client.asked),
+      ([("Sarah Chalke", "Beth Smith", "")], ["CAST-TOKEN"]))
+check("and a page with no such tab asks for nothing",
+      (default._cast_behind(_CastClient(), CAST_TABS[:1] + CAST_TABS[2:]), True),
+      ([], True))
+
+check("a network is not a rating",
+      [epg.rating_and_year({"simpleText": "NBC"})[0],
+       epg.rating_and_year({"simpleText": "1975 \u2013 Present \u2022 NBC"})[0]],
+      ["", ""])
 
 # And that it reaches the item, which is the part that was silently missing
 # the last time everything read correctly.
