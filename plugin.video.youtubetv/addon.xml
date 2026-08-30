@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.55" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.56" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,16 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.56 - Production companies, and studios as several
+- Shows do carry genres and always did -- Rick and Morty's page says
+  "Animated, Action, Adventure, Comedy" and this reads it. What was
+  missing was the refetch, which .55 fixed.
+- Films name their production companies, which the log turned up rather
+  than a guess: "Production Companies: Escape Artists, Zhiv, Mace Neufeld
+  Productions". Those are the studio now, ahead of the provider.
+- And a list of them is a list. "Adult Swim, Cartoon Network, HBO Max" was
+  reaching Kodi as one studio with commas in its name; it is three.
+
 2026.8.31.55 - Why the cast photographs never appeared
 - They were read in .54 and stayed blank, because nothing refetches a
   title it already knows about: every title had been remembered by a build

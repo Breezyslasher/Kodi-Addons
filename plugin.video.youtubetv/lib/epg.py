@@ -1378,7 +1378,12 @@ def _attribute(node):
 _ABOUT_FIELDS = {"released": "year", "provider": "studio", "on": "network",
                  "directors": "directors", "director": "directors",
                  "writers": "writers", "writer": "writers",
-                 "producers": "producers", "producer": "producers"}
+                 "producers": "producers", "producer": "producers",
+                 # Named by the diagnostic rather than guessed at: "about
+                 # says something new -- Production Companies: Escape
+                 # Artists, Zhiv, Mace Neufeld Productions".
+                 "production companies": "companies",
+                 "production company": "companies"}
 
 
 def about_fields(response):
@@ -1419,7 +1424,13 @@ def about_fields(response):
                     found["year"] = int(value[:4])
                 except ValueError:
                     pass
-            elif field in ("directors", "writers", "producers"):
+            elif field in ("directors", "writers", "producers",
+                           "companies"):
+                found[field] = [part.strip() for part in value.split(",")
+                                if part.strip()]
+            elif field in ("studio", "network"):
+                # Several, comma separated: "Adult Swim, Cartoon Network,
+                # HBO Max" is three studios and not one long name.
                 found[field] = [part.strip() for part in value.split(",")
                                 if part.strip()]
             elif field:

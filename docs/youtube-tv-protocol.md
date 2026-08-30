@@ -1411,7 +1411,7 @@ Superjail!, Tuca & Bertie) agree:
 | tabs | Watch now, About, Lead cast, Suggested | RECENT or ABOUT, EPISODES, LEAD CAST, SUGGESTED |
 | header `secondaryText` | `PG-13 • 2016` | `2013 – Present`, `2008 – 2014` |
 | genres | inline in About | inline in About |
-| studio | `Provider: Disney` | `On: Adult Swim, Cartoon Network, HBO Max` |
+| studio | `Production Companies: Lucasfilm, …` and `Provider: Disney` | `On: Adult Swim, Cartoon Network, HBO Max` |
 | director | `Directors: Gareth Edwards` | none — a show has no director line |
 | **cast** | **inline**, 16–28 `unpluggedPersonRenderer` | **deferred**, the LEAD CAST tab is empty and holds 7 behind its token |
 

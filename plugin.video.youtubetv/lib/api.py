@@ -160,7 +160,8 @@ META_CACHE_MAX = 400
 #
 #   1  genres, year, rating, studio, director, synopsis, cast as name+role
 #   2  cast photographs, the page's banner, a show's deferred cast
-META_VERSION = 2
+#   3  production companies, and studios as a list rather than one string
+META_VERSION = 3
 
 
 def remembered_meta():
