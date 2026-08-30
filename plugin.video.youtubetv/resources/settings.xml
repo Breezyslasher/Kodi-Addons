@@ -145,21 +145,26 @@
 		</category>
 		<category id="integration" label="30045">
 			<group id="1">
-				<setting id="epg.order" type="string" label="30083" help="30084">
+				<!-- An integer with non-empty values, like every other list
+				     in this file. The first cut of this was a string setting
+				     whose "leave it alone" option had an empty value, with
+				     allowempty beside options; Kodi stopped starting with
+				     that in place, and settings.xml is the only thing in
+				     that build Kodi itself parses. -->
+				<setting id="epg.order" type="integer" label="30083" help="30084">
 					<level>0</level>
-					<default></default>
+					<default>0</default>
 					<constraints>
 						<options>
-							<option label="30085"></option>
-							<option label="30086">default</option>
-							<option label="30087">custom</option>
-							<option label="30088">watched</option>
-							<option label="30089">az</option>
-							<option label="30090">za</option>
+							<option label="30085">0</option>
+							<option label="30086">1</option>
+							<option label="30087">2</option>
+							<option label="30088">3</option>
+							<option label="30089">4</option>
+							<option label="30090">5</option>
 						</options>
-						<allowempty>true</allowempty>
 					</constraints>
-					<control type="list" format="string"/>
+					<control type="list" format="integer"/>
 				</setting>
 				<setting id="iptv.install" type="action" label="30046">
 					<level>0</level>
