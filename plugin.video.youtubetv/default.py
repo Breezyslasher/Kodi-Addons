@@ -700,10 +700,21 @@ def _type_results(client, query, rows, limit=24, workers=6):
 
     if query:
         try:
-            offered = epg.suggestion_kinds(client.suggest(query))
+            suggested = client.suggest(query)
         except (auth.AuthError, api.ApiError) as exc:
             kodiutils.log("suggestions did not open: %s" % exc)
-            offered = {}
+            suggested = {}
+        offered = epg.suggestion_kinds(suggested)
+        if not offered:
+            # It answered and said nothing this could read. The reader was
+            # written from a browser's suggest, and "john" came back with
+            # 24 results still needing a page each and not one typed here,
+            # so this client's answer is a different shape. Its renderers
+            # are the only thing that says how.
+            kodiutils.log("suggestions for %r typed nothing -- %s"
+                          % (query,
+                             "; ".join(epg.renderer_sample(suggested, 6))
+                             or "no renderers at all"))
         # Only where nothing is remembered: what a page said outranks a
         # suggestion, having come from the title itself.
         fresh = {bid: kind for bid, kind in offered.items()
