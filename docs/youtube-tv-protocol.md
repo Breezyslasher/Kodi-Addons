@@ -1089,9 +1089,30 @@ Two forms appear, and only one of them is ours to send:
 | `cgIgAw%3D%3D`, `cgIgAg%3D%3D` | field 14 wrapping one varint, 3 then 2 | one query each, after picking a suggestion |
 
 The second tracks which suggestion was clicked and changes per query, so
-the addon sends the first, copied verbatim. It is **not** established that
-this is what decides how a film is typed: the browser sent both forms and
-typed The Blues Brothers `MOVIE` either way.
+the addon sends the first, copied verbatim.
+
+**It is not what decides how a film is typed.** Sending it changed nothing:
+`Top picks (SHOW x11, SPORTS_TEAM x3)` before and after, character for
+character (2026-08-30 01:36). The call was wrong and is now right, and the
+mistyping is something else.
+
+What is left is the client identity, and that is not testable from here: a
+bearer token is refused as `WEB_UNPLUGGED` with HTTP 400, so this addon
+cannot ask the way the browser asks. The evidence stands as:
+
+* the **same account, same query, same request shape**, typed `MOVIE` as
+  client 41 and `SHOW` as client 65;
+* the **same client 65** types a film `MOVIE` in a *category* -- not
+  inferred from a capture but from the addon itself, which only offers to
+  play what it reads as a film, and which played John Wick 3, John Wick 4
+  and Airplane! straight from the Movies category;
+* so it is the search endpoint's answer to this client, and nothing the
+  addon sends changes it.
+
+A search tile also carries no menu -- `unpluggedBrowseItemRenderer x14
+carries [contentType, navigationEndpoint, primaryText, style, thumbnail,
+trackingParams]` -- so the DVR toast that names the kind elsewhere is not
+there to fall back on either. Nothing in a search result says "film".
 
 ```json
 { "query": "rick", "params": "6gMOCgASABoAIgAqADIAQgA%3D" }
