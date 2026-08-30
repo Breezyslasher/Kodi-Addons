@@ -1430,6 +1430,21 @@ check("and the labels are the page's own words",
       [label for label, _t in epg.section_continuations(SEASONS)],
       ["Season 26", "Extras"])
 
+# A show with one shelf is not a menu: it lists its episodes as before.
+# Several shelves and the folders are the listing, because the page's own
+# episodes are the same episodes -- Family Feud carried 383 over thirteen
+# seasons holding 4,192 between them.
+ONE_SHELF = copy.deepcopy(SEASONS)
+_sel = ONE_SHELF["contents"]["singleColumnBrowseResultsRenderer"]["tabs"][0][
+    "tabRenderer"]["content"]["sectionListRenderer"]["contents"][1][
+    "unpluggedSelectableSectionRenderer"]
+_sel["selectors"] = _sel["selectors"][:1]
+_sel["contents"] = _sel["contents"][:1]
+check("one shelf is read as one, so the episodes still list",
+      len(epg.section_continuations(ONE_SHELF)), 1)
+check("and several are read as several, so the folders take over",
+      len(epg.section_continuations(SEASONS)), 2)
+
 # -- a date parse that survives Kodi tearing its modules down --------------
 # The player hides the n transform's array indices behind dates with
 # fractional-hour offsets: new Date("1969-12-31T17:30:49.000-06:30")/1E3 is

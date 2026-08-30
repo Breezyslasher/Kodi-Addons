@@ -777,8 +777,22 @@ def _add_item(item, plot="", dvr=None, meta=None):
             listitem, isFolder=False)
     else:
         if item.source not in _NOT_A_SHOW:
+            # The same menu a film gets, for the same reason. A show's page
+            # is its episodes; its cast and its suggestions are two more
+            # tabs beside them, and listing those as folders *inside* the
+            # show put "Lead cast (0)" and "Suggested (0)" under the
+            # episodes -- two empty-looking folders in the way of the thing
+            # somebody opened the show for. A film keeps them on the menu
+            # and a show has no reason to differ.
+            extra = []
+            if item.browse_id:
+                extra = [("Cast and suggested titles",
+                          "Container.Update(%s)"
+                          % url(action="browse_suggested",
+                                browse_id=item.browse_id, name=item.title,
+                                params=item.params))]
             listitem.addContextMenuItems(
-                _dvr_menu(item.browse_id, item.title))
+                extra + _dvr_menu(item.browse_id, item.title))
         xbmcplugin.addDirectoryItem(
             HANDLE,
             url(action="browse", browse_id=item.browse_id,
@@ -1225,9 +1239,22 @@ def route_browse(browse_id, name, params=""):
             deferred = epg.section_continuations(response)
             shown = list(playing.items)
             if len(deferred) < 2:
-                # One shelf is not a menu. Nothing is gained by making
+                # One shelf is not a menu. A show with a single season, or
+                # none, lists its episodes and nothing is gained by making
                 # somebody open a folder to reach the only thing in it.
                 shown = _expand_sections(client, response, shown)
+            else:
+                # Several seasons: the folders are the listing. The page's
+                # own episodes are not listed beside them, because they are
+                # the same episodes -- Family Feud carried 383 of them over
+                # thirteen seasons that hold 4,192 between them -- and a
+                # show that opens on 383 rows with the seasons below has
+                # buried the thing it was asked for.
+                kodiutils.log("%s: %d shelf/ves, so the page's own %d "
+                              "item(s) are left to them"
+                              % (name or browse_id, len(deferred),
+                                 len(shown)))
+                shown = []
             for item in shown:
                 _add_item(item, plot=plot, dvr=dvr, meta=meta)
             if len(deferred) >= 2:
@@ -1251,9 +1278,12 @@ def route_browse(browse_id, name, params=""):
                              ", ".join("%s (%d)" % (t.title, len(t.items))
                                        for t in tabs if t is not playing)
                              or "nothing"))
-            _list_sections([t for t in tabs if t is not playing],
-                           "browse_section",
-                           extra={"browse_id": browse_id, "params": params})
+            # The tabs beside the one that plays are *not* listed here any
+            # more. They are the cast and the suggestions, they arrive
+            # empty with a token each, and as folders they read "Lead cast
+            # (0)" and "Suggested (0)" sitting under the episodes. They are
+            # on the show's context menu instead, under "Cast and suggested
+            # titles", which is where a film has kept them all along.
             finish("movies" if header.get("contentType") == "MOVIE"
                    else "videos")
             return
