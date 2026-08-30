@@ -46,7 +46,12 @@ not document. See [Status](#status).
 * A local licence proxy that handles YouTube's JSON-wrapped, rotating-key
   Widevine exchange, which InputStream Adaptive cannot speak on its own
 * A SABR client and a bridge that serves it to InputStream Adaptive as DASH,
-  because YouTube TV no longer delivers entitled media any other way
+  because a token session is never offered a `dashManifestUrl`. YouTube TV
+  does still serve DASH -- on cookies, which is how this addon signed in for
+  most of its life and what the protocol notes were read from. Eight request
+  shapes were tried on a bearer token, five sending less than the browser and
+  three sending more, and all eight came back `dash=False`, so retiring the
+  cookie jar left SABR as the only way in
 
 ## Status
 
