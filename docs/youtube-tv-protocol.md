@@ -483,6 +483,41 @@ neither is needed to read a guide: `update_live_guide_order`, which writes a
 custom order as a list of `{externalId, settingsGroup}`, and
 `update_station_visibility`, which hides one station by id.
 
+### The TV client's guide carries one airing per channel
+
+Measured on the account, 2026-08-29 20:44, running 2026.8.31.18:
+
+    guide: 148 station(s), 143 airing(s), 143 playable now
+    iptv manager: page 2 added 0 airing(s)
+    iptv manager: offering 143 airing(s) across 143 channel(s)
+
+The web capture the reader was written from returned **953** airings for these
+same 148 stations over a six-hour window, and its second page another 748. The
+addon's own request returns one per station and a continuation that adds
+nothing.
+
+Every fix so far has been verified against `WEB_UNPLUGGED` captures while the
+addon asks as `TVHTML5_UNPLUGGED`, and the Library has already shown that the
+two clients are answered differently -- a different container, a different
+selector, tiles that open a side sheet instead of navigating. So the likeliest
+reading is that the TV client is answered with a now-and-next grid rather than
+a schedule, but that is **not established**: there is no capture of the TV
+client's guide, and page one may equally be carrying airings this reader
+cannot see.
+
+One log line separates those two cases, and it is now printed: `describe`
+counts the `epgAiringRenderer`s in the response. About 143 of them means the
+server sent one each and more must be asked for; about 950 means they arrived
+and the parser is dropping them.
+
+Both responses are kept when this happens -- `guide-shape.json` for page one,
+`guide-page-shape.json` for a continuation that adds nothing.
+
+One difference was closed on the way past, since both captures agree on it and
+matching costs nothing: the guide window is now asked for **on the hour**.
+1788044400000 and 1788048000000 are 496679 and 496680 hours since the epoch,
+exactly; the addon was sending whatever millisecond it happened to be.
+
 ### A crash during install leaves the add-on unloadable
 
 Recorded because two changes were made at once and the conclusion is

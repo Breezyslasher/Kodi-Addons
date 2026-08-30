@@ -875,7 +875,12 @@ class Api(object):
         One call covers a window; the response carries a continuation token for
         the next. Google caps the reachable range at ``maxDurationMs``, a week.
         """
+        # Aligned to the hour when not given one. Both captures start on an
+        # exact hour -- 1788044400000 and 1788048000000 are 496679 and
+        # 496680 hours since the epoch, with no remainder -- where this sent
+        # whatever millisecond it happened to be. Costs nothing to match.
         start_ms = int(start_ms or time.time() * 1000)
+        start_ms -= start_ms % 3600000
         window = int(hours * 3600 * 1000)
         body = {
             "browseId": EPG_BROWSE_ID,
