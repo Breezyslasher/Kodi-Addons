@@ -188,29 +188,29 @@ class IPTVManager(object):
                     entry["description"] = airing.description
                 if airing.art:
                     entry["image"] = airing.art
-                if airing.video_id and airing.on_air:
-                    # Only the programme on the air gets a url, because
-                    # that is the only one that plays: a future airing
-                    # cannot, and catch-up on a past one is a separate
-                    # entitlement this add-on has not established.
-                    #
-                    # Kodi draws a marker on every programme it is given a
-                    # stream for. That used to be honest by accident --
-                    # before the side-sheet id was read, the only airings
-                    # with an id at all were the 143 on the air. Reading
-                    # the rest gave all 8050 a url and marked a whole
-                    # week's schedule playable. on_air is the guide's own
-                    # statement of which one is live, so it decides here.
-                    entry["stream"] = ("plugin://plugin.video.youtubetv/"
-                                       "?action=play&video_id=%s"
-                                       % quote(airing.video_id))
+                # No "stream" on any programme, deliberately. The
+                # JSON-EPG spec calls it "the endpoint that will be called
+                # when this program should play... to directly play a
+                # program from the EPG" -- a catch-up facility, which this
+                # add-on has not established it has.
+                #
+                # Kodi draws a marker on every entry given one. Marking all
+                # 8050 claimed a week of schedule was playable. Marking
+                # only the airing on the air was no better, because the
+                # guide is built when the merge runs and read hours later:
+                # by then the marker sits on a programme that has ended and
+                # the url is dead, while the programme actually on has none.
+                #
+                # Nothing is lost by omitting it. Selecting a live
+                # programme in Kodi's guide plays its channel, and the
+                # channel url is ?action=play_channel, which looks up what
+                # is on at the moment it is played rather than the moment
+                # the guide was built. That is the one thing here that
+                # cannot go stale.
                 programmes.append(entry)
             if programmes:
                 guide[station.station_id] = programmes
                 airings += len(programmes)
-        playable = sum(1 for entries in guide.values()
-                       for entry in entries if "stream" in entry)
         kodiutils.log("iptv manager: offering %d airing(s) across %d "
-                      "channel(s), %d of them playable now"
-                      % (airings, len(guide), playable))
+                      "channel(s)" % (airings, len(guide)))
         return {"version": 1, "epg": guide}
