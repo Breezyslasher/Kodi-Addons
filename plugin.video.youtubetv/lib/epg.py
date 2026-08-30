@@ -111,10 +111,12 @@ class Airing(object):
     """One programme on one channel."""
 
     __slots__ = ("video_id", "title", "description", "start_ms", "end_ms",
-                 "art", "on_air", "show_id")
+                 "art", "on_air", "show_id", "genres", "mpaa", "duration",
+                 "season", "episode", "episode_title")
 
     def __init__(self, video_id, title, description, start_ms, end_ms, art,
-                 on_air=False, show_id=""):
+                 on_air=False, show_id="", genres=(), mpaa="", duration=0,
+                 season=0, episode=0, episode_title=""):
         self.video_id = video_id
         self.title = title
         self.description = description
@@ -127,6 +129,15 @@ class Airing(object):
         # word for "now", and worth more than arithmetic on a clock that may
         # not agree with Google's.
         self.on_air = on_air
+        # Everything the airing's info panel says about it. An airing
+        # renderer itself carries eight keys and none of them is a picture
+        # or a synopsis; all of this is one level down, in the panel.
+        self.genres = list(genres)
+        self.mpaa = mpaa
+        self.duration = duration
+        self.season = season
+        self.episode = episode
+        self.episode_title = episode_title
         # The show this programme belongs to, when the guide says. A
         # side-sheet command names both the programme and its show, and the
         # show is what the DVR records -- YouTube TV records a series, not
@@ -244,16 +255,126 @@ def parse_airing(renderer):
     title = text(renderer.get("title")) or text(renderer.get("primaryText"))
     description = (text(renderer.get("quaternaryText"))
                    or text(renderer.get("tertiaryText")))
+    panel = _airing_panel(renderer)
     return Airing(
         video_id=video_id,
         title=title or "Unknown",
-        description=description,
+        description=description or panel["description"],
         start_ms=_int(renderer.get("beginTimeMs")),
         end_ms=_int(renderer.get("endTimeMs")),
-        art=thumbnail(renderer.get("thumbnail") or {}, prefer_width=1280),
+        # The airing's own thumbnail first, and there has never been one:
+        # not one of the 989 airings in the 2026-08-30 guide carries a
+        # "thumbnail" key at all. The picture is in the info panel beside
+        # it, 2560x1440, on 989 of the 989. That is why the guide was a
+        # column of channel logos.
+        art=(thumbnail(renderer.get("thumbnail") or {}, prefer_width=1280)
+             or panel["art"]),
         on_air=on_air,
         show_id=show_id,
+        genres=panel["genres"],
+        mpaa=panel["mpaa"],
+        duration=panel["duration"],
+        season=panel["season"],
+        episode=panel["episode"],
+        episode_title=panel["episode_title"],
     )
+
+
+# "2 hr", "1 hr 30 min", "45 min" -- how the guide writes a runtime.
+_RUNTIME = re.compile(r"^(?:(\d+)\s*hr)?\s*(?:(\d+)\s*min)?$")
+
+
+def _written_runtime(part):
+    """Seconds out of "2 hr" or "1 hr 30 min", and 0 out of anything else."""
+    found = _RUNTIME.match(part.strip())
+    if not found or not any(found.groups()):
+        return 0
+    return int(found.group(1) or 0) * 3600 + int(found.group(2) or 0) * 60
+
+
+def _airing_panel(renderer):
+    """What a guide airing's info panel says about it.
+
+    **This is where the guide keeps everything.** An epgAiringRenderer has
+    eight keys -- times, a title, an endpoint, a DVR status -- and not one
+    of them is a picture, a synopsis, a genre or a rating. Its
+    epgInfoPanelRenderer has all four, on 989 of the 989 airings in the
+    2026-08-30 guide:
+
+      * ``thumbnail``          a 2560x1440 still
+      * ``primaryContainer``   "KDKA+ * 2 hr * R", or
+                               "Sat, Aug 29, 11:00 PM * KDKA+ * Aired Mar 1,
+                               2025 * S38 E20 * The Hit-and-Run Homicide of
+                               Davis McClendon * TV-14"
+      * ``secondaryContainer`` the synopsis
+      * ``tertiaryContainer``  "Animated * Sitcom * Comedy"
+
+    The primary line is read part by part rather than by position: it comes
+    in two to seven parts, and which parts are present varies by programme.
+    Each part is claimed only by something that recognises it, so a channel
+    name is never taken for a rating and a date is never taken for a
+    runtime.
+    """
+    found = {"art": "", "description": "", "genres": [], "mpaa": "",
+             "duration": 0, "season": 0, "episode": 0, "episode_title": ""}
+    panel = first(renderer, "epgInfoPanelRenderer")
+    if not isinstance(panel, dict):
+        return found
+    found["art"] = thumbnail(panel.get("thumbnail") or {}, prefer_width=1280)
+    found["description"] = deep_text(panel.get("secondaryContainer"))
+    found["genres"] = [part.strip()
+                       for part in deep_text(
+                           panel.get("tertiaryContainer")).split("\u2022")
+                       if part.strip()]
+    parts = [part.strip() for part in
+             deep_text(panel.get("primaryContainer")).split("\u2022")]
+    for index, part in enumerate(parts):
+        if not part:
+            continue
+        numbered = _EPISODE.match(part)
+        if numbered:
+            found["season"] = int(numbered.group(1))
+            found["episode"] = int(numbered.group(2))
+            # The part after the numbers is the episode's name. Taken by
+            # position only here, where the position is defined by the part
+            # before it rather than by counting from the front.
+            if index + 1 < len(parts):
+                found["episode_title"] = parts[index + 1].strip()
+            continue
+        if not found["mpaa"] and _RATING.match(part.upper()):
+            found["mpaa"] = part
+            continue
+        if not found["duration"]:
+            found["duration"] = _written_runtime(part)
+    return found
+
+
+def deep_text(node):
+    """Every string in a small subtree, joined.
+
+    The guide's info panel wraps its lines two renderers deep --
+    unpluggedBadgedTextRenderer holding unpluggedTextRenderer holding the
+    text -- so text(), which reads one node, reads nothing from it.
+    """
+    out = []
+
+    def visit(node):
+        if isinstance(node, dict):
+            if isinstance(node.get("simpleText"), str):
+                out.append(node["simpleText"])
+                return
+            if isinstance(node.get("runs"), list):
+                out.append("".join(run.get("text", "") for run in node["runs"]
+                                   if isinstance(run, dict)))
+                return
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(node)
+    return " ".join(out)
 
 
 def parse_epg(response):
@@ -388,11 +509,12 @@ class Item(object):
 
     __slots__ = ("video_id", "browse_id", "params", "title", "subtitle",
                  "art", "start_ms", "end_ms", "source", "content_type",
-                 "duration", "upright")
+                 "duration", "upright", "season", "episode")
 
     def __init__(self, video_id="", browse_id="", title="", subtitle="",
                  art="", start_ms=0, end_ms=0, params="", source="",
-                 content_type="", duration=0, upright=False):
+                 content_type="", duration=0, upright=False, season=0,
+                 episode=0):
         self.video_id = video_id
         self.browse_id = browse_id
         # What the browse endpoint asks for *within* that page. The Browse
@@ -422,6 +544,11 @@ class Item(object):
         # Whether ``art`` is a poster or a wide still, which decides the
         # slot it belongs in and cannot be told from the url.
         self.upright = upright
+        # Where an episode sits in its series. Written into one line on the
+        # tile -- "S9 E10 * Field of Dreams" -- and Kodi has a field for
+        # each of the three, which is what lets a skin sort a season.
+        self.season = season
+        self.episode = episode
 
     @property
     def playable(self):
@@ -805,6 +932,12 @@ def parse_items(response):
         # The params are part of the destination for the same reason: the
         # Browse tab's five category chips share one browseId and differ
         # only there, and keying without them left one chip of five.
+        season, number, named = episode_of(renderer)
+        if named:
+            # "S9 E10 * Field of Dreams" is three fields in one string, and
+            # Kodi draws its own "9x10" from the numbers. Leaving the whole
+            # line as the title prints the numbers twice.
+            title = named
         key = (video_id or browse_id, params,
                _seconds_ms(renderer, "startTimeSeconds"))
         if key in seen:
@@ -823,6 +956,8 @@ def parse_items(response):
             content_type=_content_type(renderer),
             duration=_duration(renderer),
             upright=is_portrait(renderer.get("thumbnail") or {}),
+            season=season,
+            episode=number,
         ))
 
     visit(response)
@@ -1270,17 +1405,8 @@ def action_text(response, default=""):
     return default
 
 
-def _duration(renderer):
-    """A tile's runtime in seconds, from a number or from "2:13:57"."""
-    seconds = renderer.get("lengthSeconds")
-    try:
-        if seconds:
-            return int(seconds)
-    except (TypeError, ValueError):
-        pass
-    written = text(renderer.get("duration"))
-    if not written:
-        return 0
+def _clock(written):
+    """"24:03" and "2:13:57" as seconds, and anything else as nothing."""
     total = 0
     for part in written.split(":"):
         try:
@@ -1288,6 +1414,53 @@ def _duration(renderer):
         except ValueError:
             return 0
     return total
+
+
+def _counter_badge(renderer):
+    """An episode's runtime, which it keeps in a badge rather than a field.
+
+    A film's tile says ``lengthSeconds``. An episode says nothing of the
+    kind: Rick and Morty's S9 E10 carries its 24:03 in an
+    unpluggedTextBadgeRenderer of ``type: "COUNTER"``, beside a VOD badge
+    of type VIDEO_VERSION that is not a runtime and must not be read as
+    one. So the type is checked, not just the shape of the text.
+    """
+    for badge in walk(renderer, "unpluggedTextBadgeRenderer"):
+        if not isinstance(badge, dict) or badge.get("type") != "COUNTER":
+            continue
+        seconds = _clock(text(badge.get("label")))
+        if seconds:
+            return seconds
+    return 0
+
+
+def _duration(renderer):
+    """A tile's runtime in seconds, from a number, "2:13:57", or a badge."""
+    seconds = renderer.get("lengthSeconds")
+    try:
+        if seconds:
+            return int(seconds)
+    except (TypeError, ValueError):
+        pass
+    written = text(renderer.get("duration"))
+    return _clock(written) if written else _counter_badge(renderer)
+
+
+_EPISODE = re.compile(r"^S(\d+)\s*E(\d+)\b\s*(?:[\u2022|-]\s*)?(.*)$")
+
+
+def episode_of(renderer):
+    """(season, episode, name) for an episode tile, or (0, 0, "").
+
+    An episode's primaryText is the whole thing in one line: Rick and
+    Morty's is "S9 E10 \u2022 Field of Dreams". Kodi has a field for each
+    of the three, and given them a skin sorts and labels a series properly
+    instead of showing one long string.
+    """
+    found = _EPISODE.match(text(renderer.get("primaryText")).strip())
+    if not found:
+        return 0, 0, ""
+    return int(found.group(1)), int(found.group(2)), found.group(3).strip()
 
 
 HEADER = "unpluggedContentDetailsHeaderRenderer"
@@ -1464,6 +1637,19 @@ def about_fields(response):
             # back with a synopsis and nothing else, and only the lines it
             # actually sent can say whether they were unread or unsent.
             found["lines"].append("%s=%s" % (label or "-", value))
+            span = _RUN_SPAN.match(value)
+            if not label and span:
+                # A show's years, which it gives instead of a release date:
+                # "2013 - Present", "1994 - 2004". Named by the diagnostic
+                # -- 45 of them in one run, every one reported unlabelled
+                # -- and it is a year and a status, not a genre.
+                found.setdefault("year", int(span.group(1)))
+                found["status"] = ("Continuing"
+                                   if span.group(2).lower() == "present"
+                                   else "Ended")
+                found["ended"] = (0 if span.group(2).lower() == "present"
+                                  else int(span.group(2)))
+                continue
             if not label:
                 # The unlabelled line is the genres, comma separated -- and
                 # the *first* one is. A line this cannot label is not
@@ -1499,6 +1685,37 @@ def about_fields(response):
     return found
 
 
+def episode_facts(response):
+    """(rating, runtime) that a show keeps on its episodes, not its header.
+
+    A film's header says "PG-13 \u2022 2016". **A show's says neither.**
+    Rick and Morty's is "2013 \u2013 Present" and there is no rating
+    anywhere above it -- which is why a show reached Kodi unrated while a
+    film did not.
+
+    Its episodes have both. Each one's secondaryText reads "Adult Swim
+    \u2022 TV-14 \u2022 13d ago" and each carries a COUNTER badge holding
+    "24:03", so the rating a show is carrying is the one its episodes
+    agree on, and a typical episode's runtime is the show's.
+
+    The first of each is taken rather than a vote: they agree across a
+    series, and one that did not would be a per-episode fact and not the
+    show's anyway.
+    """
+    rating, runtime = "", 0
+    for renderer in walk(response, "unpluggedCompactVideoRenderer"):
+        if not isinstance(renderer, dict):
+            continue
+        if not rating:
+            said, _year = rating_and_year(renderer.get("secondaryText"))
+            rating = said
+        if not runtime:
+            runtime = _counter_badge(renderer)
+        if rating and runtime:
+            break
+    return rating, runtime
+
+
 def cast_of(response):
     """(name, role, photo) for a title's lead cast, in the page's order.
 
@@ -1523,6 +1740,12 @@ def title_art(header):
     if not isinstance(header, dict):
         return ""
     return thumbnail(header.get("banner") or {}, prefer_width=1920)
+
+
+# "2013 - Present", "1994 - 2004" -- the years a show ran, written with an
+# en dash. A film gives "Released 2016" instead and never one of these.
+_RUN_SPAN = re.compile(r"^(\d{4})\s*[\u2013\u2014-]\s*(\d{4}|Present)$",
+                       re.IGNORECASE)
 
 
 _RATING = re.compile(r"^(?:TV-[A-Z0-9]{1,3}|G|PG|PG-13|R|NC-17|NR|UR|X)$")

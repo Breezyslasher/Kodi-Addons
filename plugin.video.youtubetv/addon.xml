@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.59" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.60" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,27 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.60 - The guide keeps everything one level down
+- A guide row had a title, a channel logo and nothing else. The reason is
+  that an airing carries none of it: an epgAiringRenderer has eight keys
+  and not one is a picture, a synopsis, a genre or a rating. Not one of the
+  989 airings in the last guide has a "thumbnail" key at all.
+- The info panel beside it has all four, on 989 of the 989. Now read, the
+  guide gains a 2560x1440 still on every airing, a synopsis on 929, genres
+  on 985 and a rating on 738 -- plus a written runtime ("2 hr") and season
+  and episode numbers where the line carries them.
+- "What is on now" was still a wall of channel logos. It now shows the
+  programme's still and its show's details, the same as a channel's own
+  schedule, and keeps the channel logo as the icon.
+- A show has no rating or runtime in its header -- Rick and Morty's reads
+  "2013 - Present" and that is all of it. Its episodes carry both: "Adult
+  Swim / TV-14 / 13d ago" and a badge holding "24:03". Read from there.
+- An episode's "S9 E10 / Field of Dreams" is three fields in one string.
+  Split, so a skin can sort a season and stops printing the numbers twice.
+- "2013 - Present" and "1994 - 2004" say whether a show is still running,
+  which Kodi has a field for. They were being reported as unreadable.
+- Remembered titles are refetched once, for the fields above.
+
 2026.8.31.59 - A show's genres were being read and then overwritten
 - Rick and Morty's page does carry "Animated, Action, Adventure, Comedy",
   and the last release said so while still showing none. The reason is the

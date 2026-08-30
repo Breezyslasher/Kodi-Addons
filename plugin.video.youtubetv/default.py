@@ -20,10 +20,15 @@ def url(**kwargs):
     return "%s?%s" % (BASE_URL, urlencode(kwargs))
 
 
-def add_dir(label, art=None, plot=None, **params):
+def add_dir(label, art=None, plot=None, fanart=None, **params):
     item = xbmcgui.ListItem(label=label)
-    if art:
-        item.setArt({"thumb": art, "icon": art})
+    if art or fanart:
+        shown = {}
+        if art:
+            shown["thumb"] = shown["icon"] = art
+        if fanart:
+            shown["fanart"] = fanart
+        item.setArt(shown)
     if plot:
         item.getVideoInfoTag().setPlot(plot)
     xbmcplugin.addDirectoryItem(HANDLE, url(**params), item, isFolder=True)
@@ -354,6 +359,15 @@ def route_channels():
         finish()
         return
 
+    # The same reading a channel's own schedule gets. This row is a
+    # programme as much as a channel is -- what is on right now -- so the
+    # programme's show is worth asking about here too.
+    playing = [station.now for station in stations
+               if station.now and station.now.video_id]
+    _learned(client, "on now",
+             [epg.Item(browse_id=now.show_id, title=now.title)
+              for now in playing if now.show_id])
+
     for station in stations:
         now = station.now
         if not now or not now.video_id:
@@ -365,13 +379,30 @@ def route_channels():
         if station.next_up:
             plot += "\n\nNext: %s" % station.next_up.label()
 
+        known = _meta_for(now.show_id) or {}
         item = xbmcgui.ListItem(label=label)
-        item.setArt({"thumb": station.logo, "icon": station.logo,
-                     "fanart": now.art or station.logo})
+        # The programme's own still first, then its show's artwork, and the
+        # channel logo only when there is neither. The channel's schedule
+        # was changed to do this and this listing was not, so "what is on
+        # now" stayed a wall of station logos: the still it should have
+        # been showing was in the guide response all along.
+        #
+        # The logo stays the icon. A row here *is* a channel, whatever is
+        # on it, and a skin that draws an icon beside the artwork should
+        # draw the channel's.
+        shown = now.art or known.get("art") or station.logo
+        item.setArt({"thumb": shown, "landscape": shown,
+                     "icon": station.logo,
+                     "fanart": known.get("art") or now.art or station.logo})
         info = item.getVideoInfoTag()
         info.setTitle(label)
-        info.setPlot(plot)
+        info.setPlot(plot if not known.get("plot")
+                     else "%s\n\n%s" % (plot, known["plot"]))
         info.setMediaType("video")
+        if known:
+            _set_meta(info, known)
+        _set_meta(info, _airing_meta(now))
+        item.addContextMenuItems(_dvr_menu(now.show_id, now.title))
         item.setProperty("IsPlayable", "true")
         xbmcplugin.addDirectoryItem(
             HANDLE,
@@ -397,8 +428,17 @@ def route_guide():
     for station in stations:
         if not station.airings:
             continue
+        now = station.now
+        plot = station.now.title if station.now else None
+        if now and now.description:
+            plot = "%s\n\n%s" % (now.title, now.description)
+        # The channel's logo stays the thumb -- a row here is the channel,
+        # not the programme -- but what is on it now is worth showing
+        # behind, and until the info panel was read there was nothing to
+        # show: an airing carries no picture of its own.
         add_dir(station.name, art=station.logo,
-                plot=station.now.title if station.now else None,
+                fanart=(now.art if now else "") or station.logo,
+                plot=plot,
                 action="station", station_id=station.station_id,
                 name=station.name)
     finish("videos")
@@ -451,6 +491,19 @@ def route_station(station_id, name):
         info.setMediaType("video")
         if known:
             _set_meta(info, known)
+        # The airing's own facts last, because they beat the show's where
+        # both exist: this episode's rating, this episode's runtime.
+        _set_meta(info, _airing_meta(airing))
+        if airing.episode:
+            info.setMediaType("episode")
+            for name, value in (("setSeason", airing.season),
+                                ("setEpisode", airing.episode)):
+                setter = getattr(info, name, None)
+                if setter and value:
+                    try:
+                        setter(value)
+                    except Exception as exc:
+                        kodiutils.log("could not set %s: %s" % (name, exc))
         # A programme names its show, so its series can be recorded from
         # here -- which is the useful thing to do with a listing of what is
         # coming up.
@@ -563,6 +616,20 @@ def _dvr_one(browse_id, name, recording):
                                    browse_id=browse_id, name=name))]
 
 
+def _airing_meta(airing):
+    """What a guide airing says about itself, in the shape _set_meta takes.
+
+    Everything here comes from the airing's info panel, which is where the
+    guide keeps its picture, its synopsis, its genres, its rating, its
+    runtime and its episode numbers -- the airing renderer beside it
+    carries none of them.
+    """
+    meta = {"genres": airing.genres, "mpaa": airing.mpaa}
+    if airing.duration:
+        meta["duration"] = airing.duration
+    return {key: value for key, value in meta.items() if value}
+
+
 def _set_meta(info, meta):
     """Everything a title's own page says about it, onto the info tag.
 
@@ -574,12 +641,20 @@ def _set_meta(info, meta):
     Each setter is guarded on its own: an older Kodi missing one of them
     should cost that field, not the listing.
     """
+    if meta.get("duration"):
+        setter = getattr(info, "setDuration", None)
+        if setter:
+            try:
+                setter(meta["duration"])
+            except Exception as exc:
+                kodiutils.log("could not set the duration: %s" % exc)
     for name, value in (("setGenres", meta.get("genres")),
                         ("setDirectors", meta.get("directors")),
                         ("setWriters", meta.get("writers")),
                         ("setStudios", meta.get("studios")),
                         ("setYear", meta.get("year")),
                         ("setMpaa", meta.get("mpaa")),
+                        ("setTvShowStatus", meta.get("status")),
                         ("setPremiered", meta.get("premiered"))):
         if not value:
             continue
@@ -638,6 +713,18 @@ def _add_item(item, plot="", dvr=None, meta=None):
     meta = known or None
     if item.content_type == "SHOW":
         info.setMediaType("tvshow")
+    if item.season or item.episode:
+        # An episode, and Kodi labels one from the numbers rather than from
+        # the string they were written in.
+        info.setMediaType("episode")
+        for name, value in (("setSeason", item.season),
+                            ("setEpisode", item.episode)):
+            setter = getattr(info, name, None)
+            if setter and value:
+                try:
+                    setter(value)
+                except Exception as exc:
+                    kodiutils.log("could not set %s: %s" % (name, exc))
     if meta:
         if not plot and meta.get("plot"):
             info.setPlot(meta["plot"])
@@ -1695,6 +1782,11 @@ def _page_meta(response, header=None):
     header = header if header is not None else epg.title_header(response)
     about = epg.about_fields(response)
     rating, year = epg.rating_and_year((header or {}).get("secondaryText"))
+    # A show's header carries no rating and no runtime -- Rick and Morty's
+    # secondaryText is "2013 - Present" and that is all of it. Its episodes
+    # carry both, so where the header has nothing they are asked instead.
+    episode_rating, runtime = epg.episode_facts(response)
+    rating = rating or episode_rating
     meta = {"genres": about.get("genres") or [],
             "directors": about.get("directors") or [],
             "cast": [list(person) for person in epg.cast_of(response)],
@@ -1706,6 +1798,11 @@ def _page_meta(response, header=None):
             # networks it is on, and that is the closest thing it has.
             "studios": (about.get("companies") or about.get("studio")
                         or about.get("network") or []),
+            # A typical episode's, for a show; the film's own, for a film.
+            "duration": runtime,
+            # "2013 - Present" and "1994 - 2004" say more than a year: one
+            # of these shows is still running and the other finished.
+            "status": about.get("status", ""),
             "art": epg.title_art(header)}
     for name in ("writers", "producers", "network"):
         if about.get(name):
