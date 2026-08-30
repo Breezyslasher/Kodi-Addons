@@ -653,6 +653,33 @@ def _label_of(item):
     return "%s  %s" % (time.strftime(fmt, when), item.title)
 
 
+def _tell_apart(items):
+    """{index: label} for rows whose titles do not tell them apart.
+
+    A syndicated show names every episode after itself. Family Feud's
+    Season 24 came back as 186 rows reading "Family Feud" 186 times: no
+    episode names, and no season or episode numbers to draw one from.
+
+    The same problem the guide already had -- "two scheduled recordings of
+    one show list as the same word twice" -- and the same answer: put the
+    one thing that differs in front of the label. There the airing time
+    was it; here it is whatever the tile carries beside its title.
+
+    Only rows that actually collide are touched. A season whose episodes
+    are named is left exactly as it is, and so is a colliding row with
+    nothing to tell it apart by.
+    """
+    counts = {}
+    for item in items:
+        counts[item.title] = counts.get(item.title, 0) + 1
+    labels = {}
+    for index, item in enumerate(items):
+        if counts.get(item.title, 0) < 2 or not item.subtitle:
+            continue
+        labels[index] = "%s  --  %s" % (_label_of(item), item.subtitle)
+    return labels
+
+
 def _add_items(items, content="videos"):
     """List parsed items: playable ones resolve, folders browse deeper."""
     for item in items:
@@ -739,7 +766,7 @@ def _set_meta(info, meta):
             kodiutils.log("could not set the cast: %s" % exc)
 
 
-def _add_item(item, plot="", dvr=None, meta=None):
+def _add_item(item, plot="", dvr=None, meta=None, label=None):
     """One row, without ending the directory.
 
     ``plot`` overrides the tile's own line, for a page that carries a real
@@ -747,7 +774,7 @@ def _add_item(item, plot="", dvr=None, meta=None):
     the page knows the library state, and adds the one entry that applies.
     ``meta`` is the rest of what that page said: genres, cast, director.
     """
-    listitem = xbmcgui.ListItem(label=_label_of(item))
+    listitem = xbmcgui.ListItem(label=label or _label_of(item))
     known = meta or _meta_for(item.browse_id) or {}
     # A tile's own image is the poster. The wide one behind it is the
     # page's banner, which no tile carries -- 3840x2160 on John Wick.
@@ -1469,15 +1496,18 @@ def route_season(browse_id, name, params="", token=""):
                   % (name or "a shelf", len(items),
                      ", and %d this account cannot play" % barred if barred
                      else "",
-                     "; ".join(item.title for item in items[:6]) or "nothing"))
+                     "; ".join("%s [%s]" % (item.title, item.subtitle or "-")
+                               for item in items[:4]) or "nothing"))
     if not items:
         kodiutils.notify("Nothing playable under %s"
                          % (name or "that")
                          if not barred else
                          "%s lists %d thing(s) this account cannot play"
                          % (name or "That", barred))
-    for item in items:
-        _add_item(item, plot=plot, dvr=dvr, meta=meta)
+    apart = _tell_apart(items)
+    for index, item in enumerate(items):
+        _add_item(item, plot=plot, dvr=dvr, meta=meta,
+                  label=apart.get(index))
     finish("episodes" if items and items[0].episode else "videos")
 
 

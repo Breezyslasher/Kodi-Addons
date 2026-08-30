@@ -1500,6 +1500,28 @@ check("an episode's offers do not list as episodes of their own",
       [i.title for i in epg.parse_items(EPISODE_WITH_OFFERS)],
       ["Field of Dreams"])
 
+# -- rows whose titles do not tell them apart ------------------------------
+# A syndicated show names every episode after itself: Family Feud's Season
+# 24 came back as 186 rows reading "Family Feud", with no episode names and
+# no numbers to draw one from. The same answer the guide already uses for
+# two recordings of one show -- put the thing that differs in the label.
+_same = [epg.Item(video_id="a", title="Family Feud", subtitle="5d ago"),
+         epg.Item(video_id="b", title="Family Feud", subtitle="2mo ago"),
+         epg.Item(video_id="c", title="Celebrity Week", subtitle="1w ago")]
+_apart = default._tell_apart(_same)
+check("a colliding row says what differs", _apart.get(0),
+      "Family Feud  --  5d ago")
+check("and so does the one it collides with", _apart.get(1),
+      "Family Feud  --  2mo ago")
+# Only rows that actually collide are touched.
+check("a row whose title is already its own is left alone",
+      2 in _apart, False)
+# And a collision with nothing to tell it apart by is left alone too,
+# rather than gaining an empty suffix.
+check("nor is anything added when there is nothing to add",
+      default._tell_apart([epg.Item(video_id="a", title="X"),
+                           epg.Item(video_id="b", title="X")]), {})
+
 # -- a date parse that survives Kodi tearing its modules down --------------
 # The player hides the n transform's array indices behind dates with
 # fractional-hour offsets: new Date("1969-12-31T17:30:49.000-06:30")/1E3 is

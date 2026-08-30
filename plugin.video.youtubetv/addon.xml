@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.73" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.74" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,22 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.74 - Rows whose titles do not tell them apart
+- Dropping the offer rows cut Family Feud's page from 383 to 173 and its
+  Season 24 from 808 to 186, and left what was underneath: 186 rows all
+  reading "Family Feud". A syndicated show names every episode after
+  itself, with no episode names and no numbers to draw one from.
+- The guide already had this problem -- two recordings of one show listing
+  as the same word twice -- and the answer is the same: put the thing that
+  differs in the label. There it was the airing time; here it is whatever
+  the tile carries beside its title.
+- Only rows that actually collide are touched. A season whose episodes are
+  named is untouched, and so is a colliding row with nothing to tell it
+  apart by, which gains no empty suffix.
+- A shelf's log line now says what each row carries beside its title, so
+  the case where there is nothing to tell them apart by is visible rather
+  than guessed at.
+
 2026.8.31.73 - An episode's offers are not more episodes
 - Opening Family Feud's Season 23 listed 380 rows reading "Family Feud;
   Game Show Network / TV-PG / 5d ago; Game Show Network / TV-PG / 2mo ago;
