@@ -1041,9 +1041,9 @@ POST /youtubei/v1/search?alt=json    {"continuation": "EnESBWJsdWVzGmhjallLTkVOb
 same query answers with four rows across three pages -- `Top picks (14)`,
 `On now & upcoming (6)`, `From your library (1)`, `On demand (6)` -- putting
 films, shows and teams together in one row where a browser separates them.
-Every tile still carries its `contentType`, so the addon splits that row
-itself. The row's own continuation is worth nothing here: spending it added
-0 items, twice.
+Every tile still carries its `contentType`. The addon does **not** regroup
+them: rows it invents are rows the service does not have. The row's own
+continuation is worth nothing, though -- spending it added 0 items, twice.
 
 `SPORTS_TEAM` is a fourth `contentType`, alongside MOVIE, SHOW and EVENT.
 The "On demand" row is worth noting separately: its tiles carry a

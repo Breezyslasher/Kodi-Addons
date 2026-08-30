@@ -29,9 +29,7 @@ not document. See [Status](#status).
   so the id is fetched on selection; what is left of that page -- its
   suggestions, and its extras where a title has any -- is on the context
   menu. A series stays a folder, because it is one
-* Search across live and on-demand, listed as a row per kind: this client
-  answers with films, shows and teams in one row called "Top picks", and
-  every tile says which it is
+* Search across live and on-demand, in the rows YouTube TV groups it into
 * Browsing a show to its episodes --
   including the seasons the show page defers rather than lists
 * Widevine playback via InputStream Adaptive at up to 1080p

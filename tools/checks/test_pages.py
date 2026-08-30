@@ -1034,36 +1034,6 @@ check("and there The Blues Brothers says MOVIE plainly",
        for r in epg.page_shelves(SEARCH_PAGE2)],
       [("Movies", [("The Blues Brothers", "MOVIE")])])
 
-# The TV client does not group a search the way the web one does: it puts
-# fourteen results of every kind into one row called "Top picks"
-# (2026-08-30 01:13). Every tile still says what it is, so the row is split
-# rather than left as a heap.
-import default                                                   # noqa: E402
-
-MIXED = epg.Section("Top picks", [
-    epg.Item(browse_id="UC1", title="The Blues Brothers", content_type="MOVIE"),
-    epg.Item(browse_id="UC2", title="Blue Bloods", content_type="SHOW"),
-    epg.Item(browse_id="UC3", title="St. Louis Blues", content_type="SPORTS_TEAM"),
-    epg.Item(browse_id="UC4", title="Blues on Ice", content_type="MOVIE"),
-    epg.Item(video_id="V1", title="Blues tonight"),
-], token="TOP-PICKS")
-ONE_KIND = epg.Section("Movies", [
-    epg.Item(browse_id="UC5", title="Peking Opera Blues", content_type="MOVIE"),
-], token="MOVIES-TOKEN")
-
-check("a row of several kinds becomes a row per kind",
-      [(r.title, [i.title for i in r.items])
-       for r in default._by_kind([MIXED])],
-      [("Movies", ["The Blues Brothers", "Blues on Ice"]),
-       ("Shows", ["Blue Bloods"]),
-       ("Sports", ["St. Louis Blues"]),
-       ("Top picks", ["Blues tonight"])])
-check("a split row keeps no token, which belonged to the whole row",
-      [r.token for r in default._by_kind([MIXED])], ["", "", "", ""])
-check("a row of one kind is left exactly as it was",
-      [(r.title, r.token) for r in default._by_kind([ONE_KIND])],
-      [("Movies", "MOVIES-TOKEN")])
-
 # -- a page about one title, against a page about a channel ----------------
 # Rogue One's page, kept by the diagnostic on 2026-08-30 00:49. Two things
 # a network page does not have: a header that names the title and says

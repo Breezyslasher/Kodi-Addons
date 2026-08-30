@@ -652,42 +652,16 @@ def _search_pages(client, response, limit=4):
     return pages
 
 
-_KIND_ROWS = {"MOVIE": "Movies", "SHOW": "Shows", "SPORTS_TEAM": "Sports",
-              "EVENT": "Events"}
-
-
-def _by_kind(rows):
-    """Split any search row that mixes films, shows and teams.
-
-    The web client answers a search with a row per kind -- Shows, Sports,
-    Movies. This one does not: it puts fourteen results of every kind into
-    one row called "Top picks" (2026-08-30 01:13). Every tile still says
-    what it is, so the row is split here rather than left as a heap.
-
-    A row of one kind is left exactly as it is, name and token and all. A
-    split row keeps no token: the parent's belongs to the whole row and
-    cannot be handed to a part of it, and on this search it fetched nothing
-    anyway -- "Top picks: page 1 added 0 item(s)", twice.
-    """
-    out = []
-    for row in rows:
-        kinds = [k for k in {item.content_type for item in row.items} if k]
-        if len(kinds) < 2:
-            out.append(row)
-            continue
-        for kind in sorted(kinds):
-            mine = [item for item in row.items if item.content_type == kind]
-            out.append(epg.Section(_KIND_ROWS.get(kind, kind.title()), mine))
-        rest = [item for item in row.items if not item.content_type]
-        if rest:
-            out.append(epg.Section(row.title, rest))
-    return out
-
-
 def _list_search(client, query, response):
-    """Search results as rows, one per kind of thing found."""
+    """Search results as the rows YouTube TV grouped them into.
+
+    Its rows, not this addon's. Asked as this client a search comes back as
+    "Top picks" holding every kind at once, where a browser gets Shows,
+    Sports and Movies separately -- but that is how it is sent, and a row
+    invented here is a row that does not exist on the service.
+    """
     pages = _search_pages(client, response)
-    rows = _by_kind(_sections_of(pages))
+    rows = _sections_of(pages)
     kodiutils.log("search %r: %d page(s), %d row(s) -- %s"
                   % (query, len(pages), len(rows),
                      ", ".join("%s (%d)" % (r.title, len(r.items))
@@ -722,7 +696,7 @@ def route_search_row(query, name, token=""):
         kodiutils.ok_dialog(str(exc), "Search failed")
         finish()
         return
-    rows = _by_kind(_sections_of(_search_pages(client, response)))
+    rows = _sections_of(_search_pages(client, response))
     section = next((r for r in rows if r.title == name), None)
     if section is None and token:
         section = epg.Section(name, [], token)
@@ -919,6 +893,15 @@ def route_browse(browse_id, name, params=""):
     _add_items(items)
 
 
+def _kinds_in(items):
+    """How many of each kind a row holds, for the log."""
+    counts = {}
+    for item in items:
+        kind = item.content_type or "-"
+        counts[kind] = counts.get(kind, 0) + 1
+    return ", ".join("%s x%d" % pair for pair in sorted(counts.items()))
+
+
 def route_category(browse_id, name, params):
     """One of the Browse tab's categories: Sports, Shows, Movies, News, Family.
 
@@ -943,9 +926,17 @@ def route_category(browse_id, name, params):
         for page in pages:
             rows.extend(epg.any_rows(page))
     chips = epg.page_chips(first_page)
+    # The params are the whole of what a category is: all five share one
+    # browse id and differ only there. So the request is logged beside what
+    # came back, per row and by kind. Films listed under Shows are then one
+    # of two things, and these two lines say which: the wrong category was
+    # asked for, or this is what YouTube TV puts in that one.
+    kodiutils.log("%s: asked FEunplugged_chips params=%s"
+                  % (name or browse_id, params or "(none)"))
     kodiutils.log("%s: %d page(s), %d row(s), %d chip(s) -- %s"
                   % (name or browse_id, len(pages), len(rows), len(chips),
-                     ", ".join("%s (%d)" % (r.title, len(r.items))
+                     "; ".join("%s (%s)"
+                               % (r.title, _kinds_in(r.items))
                                for r in rows) or "nothing"))
     if not rows and not chips:
         kodiutils.log("%s shape: %s" % (name or browse_id,
