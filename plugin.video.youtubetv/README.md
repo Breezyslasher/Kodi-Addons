@@ -17,9 +17,11 @@ not document. See [Status](#status).
   account's own filters (Shows, Movies, Sports, Events, Purchased) as folders
   and everything listed together at the top
 * **Networks** -- every network the account can watch, each opening on its
-  own tabs (LIVE, SERIES, MOVIES, ORIGINALS -- ABC has eight), and YouTube
-  TV's own Sports, Shows, Movies, News and Family categories, each a page of
-  rows under its fifteen genre chips
+  own tabs (Live, Series, Movies, Originals -- ABC has eight)
+* **Sports, Shows, Movies, News and Family** -- YouTube TV's own categories,
+  on the front page, each a page of rows under its fifteen genre chips. They
+  are read from a 712 KB tab, so they are remembered on disk and the menu
+  never waits on a request for them
 * **Recording** -- record or stop recording a series from the context menu on
   any show, in the Library, in search results, or on any programme in a
   channel's schedule

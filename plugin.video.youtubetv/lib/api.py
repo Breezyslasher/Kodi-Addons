@@ -70,6 +70,43 @@ BROWSE_ID = "FEunplugged_browse"
 # entirely in its params, which is why those travel with a folder.
 CHIPS_ID = "FEunplugged_chips"
 
+# The Browse tab is 712 KB and its five categories belong on the addon's
+# front page, which cannot spend a request -- let alone that one -- drawing
+# a menu. So the categories are kept on disk and the tab is asked for only
+# when that copy is missing or a week old.
+CATEGORY_CACHE = "browse-tab.json"
+CATEGORY_CACHE_AGE = 7 * 24 * 60 * 60
+
+
+def remembered_categories():
+    """The categories last seen, however old, without asking for any.
+
+    What the front page uses. A menu that waits on the network hangs for the
+    request timeout when the network is not there, and these have not
+    changed across any capture.
+    """
+    known = kodiutils.read_json(CATEGORY_CACHE) or {}
+    found = known.get("categories")
+    return found if isinstance(found, list) else []
+
+
+def remember_categories(response):
+    """Keep the categories a Browse tab answered with. Returns them."""
+    categories, _networks = epg.browse_rows(response)
+    kept = [{"title": item.title, "browse_id": item.browse_id,
+             "params": item.params}
+            for item in categories if item.title and item.browse_id]
+    if kept:
+        kodiutils.write_json(CATEGORY_CACHE,
+                             {"when": time.time(), "categories": kept})
+    return kept
+
+
+def categories_are_stale(max_age=CATEGORY_CACHE_AGE):
+    known = kodiutils.read_json(CATEGORY_CACHE) or {}
+    return (not known.get("categories")
+            or (time.time() - known.get("when", 0)) >= max_age)
+
 # The order the guide comes back in. YouTube TV's own live tab offers five,
 # and the choice rides along as a continuation *beside* the browseId rather
 # than replacing it. Whatever is chosen here is what the addon lists and what

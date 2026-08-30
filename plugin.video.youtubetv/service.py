@@ -7,6 +7,7 @@ and the account's watch position only moves if something keeps reporting it.
 """
 
 import json
+import threading
 import time
 
 import xbmc
@@ -175,6 +176,19 @@ class Watchtime(object):
             self.reporter.flush(state="playing" if playing else "paused")
 
 
+def _remember_categories():
+    """Keep the Browse tab's categories fresh for the front page."""
+    if not api.categories_are_stale():
+        return
+    try:
+        kept = api.remember_categories(api.Api().networks())
+    except Exception as exc:
+        kodiutils.log("could not read the categories: %s" % exc)
+        return
+    kodiutils.log("remembered %d category/ies for the front page: %s"
+                  % (len(kept), ", ".join(c["title"] for c in kept) or "none"))
+
+
 def main():
     kodiutils.log("service starting")
     proxy = license_proxy.LicenseProxy()
@@ -192,6 +206,13 @@ def main():
         potoken.prime(api.visitor_data())
     except Exception as exc:
         kodiutils.log("could not start the proof-of-origin mint: %s" % exc)
+
+    # The addon's front page lists YouTube TV's categories, and it reads
+    # them from disk rather than asking: a menu that waits on the network
+    # hangs for the request timeout when there is none. Something has to
+    # put them there, and here is the place -- off the menu's path
+    # entirely, once a week, on a thread of its own.
+    threading.Thread(target=_remember_categories, daemon=True).start()
 
     monitor = Monitor()
     heartbeat = Heartbeat()

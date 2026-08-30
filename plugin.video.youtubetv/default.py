@@ -153,14 +153,21 @@ def _verify_bearer():
     return False, "\n".join(tried), ""
 
 
-def _client():
-    """An Api bound to the stored session, or None once the user is told why."""
+def _client(quiet=False):
+    """An Api bound to the stored session, or None once the user is told why.
+
+    ``quiet`` returns None instead of saying so, for a caller that can do
+    without one -- the front page reads its categories from disk when there
+    is no session to fetch them with, and a dialog there would be in the way
+    of a menu that draws perfectly well.
+    """
     try:
         return api.Api()
     except auth.AuthError:
-        kodiutils.ok_dialog(
-            "Sign in first: choose Sign in, and authorise the code on your "
-            "phone or laptop.", "Not signed in")
+        if not quiet:
+            kodiutils.ok_dialog(
+                "Sign in first: choose Sign in, and authorise the code on your "
+                "phone or laptop.", "Not signed in")
         return None
 
 
@@ -185,9 +192,18 @@ def route_root():
             action="guide")
     add_dir("Library", plot="Your recordings, purchases and what is "
                             "scheduled to record.", action="library")
-    add_dir("Networks", plot="Every network you can watch, and YouTube TV's "
-                             "own Sports, Shows, Movies, News and Family "
-                             "categories.", action="networks")
+    add_dir("Networks", plot="Every network you can watch.",
+            action="networks")
+    # The five categories sit here rather than two folders down. They come
+    # off the Browse tab, which is 712 KB, so they are remembered between
+    # visits: this reads that copy and never waits on a request. The first
+    # draw after signing in has none yet and shows none; opening Networks
+    # fetches the tab and they are here from then on.
+    for category in api.remembered_categories():
+        add_dir(category["title"],
+                plot="What YouTube TV puts under %s." % category["title"],
+                action="browse", browse_id=category["browse_id"],
+                name=category["title"], params=category["params"])
     add_dir("Search", action="search")
     # Offered while already signed in, not only before, so a session that
     # has gone wrong can be replaced without signing out first.
@@ -1167,11 +1183,11 @@ def route_home_row(name, token=""):
 
 
 def route_networks():
-    """YouTube TV's Browse tab: the networks, under its category chips.
+    """Every network in the lineup, one folder from the front page.
 
-    Listed as rows rather than flattened, for the reason Home is: the tab
-    holds 256 networks and five categories, and one list of 261 things is
-    not a menu.
+    The Browse tab holds them in a row beside its category chips, and the
+    chips are on the front page now, so this is that row and nothing else.
+    Two folders to reach a channel was one too many.
     """
     client = _client()
     if not client:
@@ -1183,14 +1199,15 @@ def route_networks():
         finish()
         return
 
-    sections = _networks_sections(pages)
-    kodiutils.log("networks: %d page(s), %d row(s) -- %s"
-                  % (len(pages), len(sections),
-                     ", ".join("%s (%d)" % (s.title, len(s.items))
-                               for s in sections) or "nothing"))
-    if sections:
-        _list_sections(sections, "networks_row")
-        finish()
+    # Whoever opens this has just paid for the tab, so the categories the
+    # front page lists are refreshed here rather than by the front page,
+    # which never waits on a request.
+    categories = api.remember_categories(first_page)
+    _cats, networks = epg.browse_rows(first_page)
+    kodiutils.log("networks: %d network(s), %d category/ies remembered"
+                  % (len(networks.items) if networks else 0, len(categories)))
+    if networks is not None:
+        _add_items(_follow_pages(client, networks))
         return
 
     # The capture is the web client's. Should the TV client answer this tab
@@ -1211,29 +1228,6 @@ def _networks_sections(pages):
     for page in pages:
         rows.extend(epg.any_rows(page))
     return rows
-
-
-def route_networks_row(name, token=""):
-    """One row of the Browse tab, in full."""
-    client = _client()
-    if not client:
-        finish()
-        return
-    _first, pages, error = _whole_page(client, client.networks)
-    if error:
-        kodiutils.ok_dialog(error, "Could not open the networks")
-        finish()
-        return
-    section = next((s for s in _networks_sections(pages) if s.title == name),
-                   None)
-    if section is None and token:
-        section = epg.Section(name, [], token)
-    if section is None:
-        kodiutils.notify("%s is no longer on the Browse tab"
-                         % (name or "That row"))
-        finish()
-        return
-    _add_items(_follow_pages(client, section))
 
 
 def _library_sections(response):
@@ -1541,9 +1535,6 @@ def main():
         return
     elif action == "networks":
         route_networks()
-        return
-    elif action == "networks_row":
-        route_networks_row(params.get("name", ""), params.get("token", ""))
         return
     elif action == "browse":
         route_browse(params.get("browse_id", ""), params.get("name", ""),
