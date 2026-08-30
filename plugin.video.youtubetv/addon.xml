@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.50" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.51" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,17 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.51 - The details are actually fetched now
+- Still empty, and for two reasons. A page was only ever fetched to find
+  out *what* a thing is, so once the kinds were remembered nothing was
+  fetched again and the genres and the cast had nowhere to come from. A
+  page is owed for missing details now, not just for a missing kind.
+- And a category's rows never asked at all, which is where they were being
+  looked at. They ask now, capped at 24 a row and remembered, so a long
+  row fills itself in over a few visits rather than in one long wait.
+- An airing is skipped, being playable already, and so is a team: a team's
+  page has no cast and no genres to go and get.
+
 2026.8.31.50 - The details reach the listing this time
 - Last build read every field correctly and put them on the one screen
   nobody opens: a film's own page, which films stopped opening the moment

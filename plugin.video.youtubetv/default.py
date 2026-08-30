@@ -728,7 +728,15 @@ def _type_results(client, rows, limit=24, workers=6):
     known = dict(api.remembered_kinds())
 
     def apply(source):
-        """Type what ``source`` names; return the ids still unaccounted for."""
+        """Type what ``source`` names; return the ids a page is still owed.
+
+        A page is owed for two reasons, not one. An id whose *kind* is
+        unknown needs it to find out whether the thing is a film. An id
+        whose kind is known but whose *details* are not needs it just as
+        much -- and asking only the first question is why a listing stayed
+        bare: once the kinds were remembered nothing was ever fetched
+        again, so the genres and the cast had nowhere to come from.
+        """
         left = []
         for row in rows:
             for item in row.items:
@@ -737,9 +745,13 @@ def _type_results(client, rows, limit=24, workers=6):
                 said = source.get(item.browse_id)
                 if said:
                     item.content_type = said
-                elif (item.content_type != "MOVIE"
-                        and item.browse_id not in left):
-                    left.append(item.browse_id)
+                kind = said or item.content_type
+                if item.browse_id in left:
+                    continue
+                if not kind and item.content_type != "MOVIE":
+                    left.append(item.browse_id)          # what is it?
+                elif kind in _WORTH_DETAIL and not _meta_for(item.browse_id):
+                    left.append(item.browse_id)          # what is it like?
         return left
 
     # What is remembered first. If that accounts for everything, nothing is
@@ -1177,6 +1189,14 @@ def route_browse_section(browse_id, name, params="", token=""):
         route_browse(section.browse_id, name, section.params)
         return
     items = _follow_pages(client, section)
+    # A category's row is titles, and a category fetches no pages of its
+    # own -- which is why its films carried a year and a rating and nothing
+    # else however well the details were read. A network's Live tab is
+    # airings and is skipped by this entirely, being playable already.
+    asked, films = _type_results(client, [epg.Section(name, items)])
+    if asked:
+        kodiutils.log("%s: asked %d page(s) for what they are and what they "
+                      "are about" % (name or "that row", asked))
     if not items:
         kodiutils.notify("Nothing playable under %s" % (name or browse_id))
     _add_items(items)
@@ -1642,6 +1662,12 @@ def _meta_for(browse_id):
         _REMEMBERED_META.update(api.remembered_meta())
         _LOADED_META[0] = True
     return _REMEMBERED_META.get(browse_id)
+
+
+# Kinds worth a page of their own. A team's page has no cast and no
+# genres, and a film that is already known to be a film is still worth
+# fetching once for what it is about.
+_WORTH_DETAIL = ("MOVIE", "SHOW")
 
 
 def _plays(tabs):
