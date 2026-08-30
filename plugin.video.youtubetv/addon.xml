@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.58" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.59" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,27 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.59 - A show's genres were being read and then overwritten
+- Rick and Morty's page does carry "Animated, Action, Adventure, Comedy",
+  and the last release said so while still showing none. The reason is the
+  shape they arrive in: this client sends a whole About line as one string
+  where the browser sends it as marked-up parts, and only the parts were
+  being read. A line in one string came back looking unlabelled -- which is
+  how the genres line is told apart -- so every line after the genres
+  replaced them, and the last line on the page won.
+- Now a whole line is read label and all, and only the first unlabelled
+  line is the genres. A second one is reported to the log rather than
+  allowed to overwrite it.
+- Remembered titles are refetched once, since a title read the old way
+  would have kept the wrong genres for good.
+- A wide image is offered as landscape as well as a thumb. A show's page
+  carries no portrait image at all -- every image on Rick and Morty's page
+  is 3840x2160 -- so there is no poster to give and a skin's placeholder is
+  what an empty poster slot looks like.
+- A page with no genres now names what its About did send, even when its
+  cast came through. That check wanted both to be empty, so the one case
+  worth printing was the one case that never printed.
+
 2026.8.31.58 - A programme with no still of its own
 - The guide showed a channel logo where a programme has no still, while
   its show's artwork sat in what had just been fetched for it. The still

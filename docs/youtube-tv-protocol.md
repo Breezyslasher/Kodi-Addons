@@ -1396,7 +1396,7 @@ first and last are somewhere to go:
 | Tab | Holds |
 | --- | --- |
 | Watch now | the film, and any recording of it: John Wick 3 gave the on-demand copy and an AMC airing from four weeks earlier, in that order |
-| About | `unpluggedContentDetailsAboutFieldsRenderer` -- a description and `attributes`, no items. **The attributes are the metadata**: an unlabelled line of genres ("Science fiction, Adventure, Action, Fantasy"), then `Released 2016`, `On FX`, `Provider: Disney`, `Directors: Gareth Edwards`. A labelled line marks its label bold; `Released` and `On` are not bold and are read by their leading word |
+| About | `unpluggedContentDetailsAboutFieldsRenderer` -- a description and `attributes`, no items. **The attributes are the metadata**: an unlabelled line of genres ("Science fiction, Adventure, Action, Fantasy"), then `Released 2016`, `On FX`, `Provider: Disney`, `Directors: Gareth Edwards`. A labelled line marks its label bold; `Released` and `On` are not bold and are read by their leading word. **`TVHTML5_UNPLUGGED` also sends a whole line as one `simpleText`** where the browser always sends `runs` -- John Wick: Chapter 4's About named both paths in one response, `attributes/simpleText` beside `attributes/runs/text` (2026-08-30 02:04). A whole line must be split on its own label (`Provider: Lionsgate`, `Directors: Chad Stahelski`), because a line with no label is how the genres line is recognised, and reading every one-string line as unlabelled lets each overwrite the genres in turn |
 | Lead cast | `unpluggedPersonRenderer` x22, each with `name`, the `role` they played, and a searchEndpoint for that name |
 | Suggested | 39 titles for Harry Potter and the Order of the Phoenix, 26 for John Wick Chapter 2 |
 

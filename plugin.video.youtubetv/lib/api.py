@@ -161,7 +161,9 @@ META_CACHE_MAX = 400
 #   1  genres, year, rating, studio, director, synopsis, cast as name+role
 #   2  cast photographs, the page's banner, a show's deferred cast
 #   3  production companies, and studios as a list rather than one string
-META_VERSION = 3
+#   4  About lines that arrive whole in one string, which is what this
+#      client sends and what was leaving a show with no genres
+META_VERSION = 4
 
 
 def remembered_meta():
