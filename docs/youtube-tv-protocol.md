@@ -3553,6 +3553,47 @@ the live channel played at 03:33 -- so name resolution was already failing on
 that device and it is not something the film provoked. Live streams from
 `tv.youtube.com` were unaffected throughout.
 
+## Kodi's module teardown, and the n transform
+
+Settled on an Android device across builds .60 to .67. The symptom was
+films failing with an empty-bodied HTTP 403 while live channels played.
+
+**The chain.** The player hides the `n` transform's array indices behind
+dates with fractional-hour offsets -- `new
+Date("1969-12-31T17:30:49.000-06:30")/1E3` is 49, so that expression means
+`c[49]`. Eight of them appear in the sliced transform. The interpreter
+parsed them with `unified_timestamp`, which reaches for `calendar`,
+`email.utils` and `contextlib`.
+
+Kodi runs each plugin invocation as a script and blanks its module globals
+when it ends. This add-on keeps a local HTTP server for the SABR bridge, so
+it still holds those modules afterwards -- full of `None` where functions
+were. A blanked helper makes the index parse raise, the interpreter reports
+that as the script throwing, and the player's own
+`catch(d){return "BdHv3wGc_iIzKEBs97-_w8_"+a}` answers with a constant. A
+url carrying that constant is refused with a 403 and no body.
+
+**Why it looked like anything but that.** The bail is per-value in
+appearance and per-*session-position* in fact: the first solve after Kodi
+starts is correct and every solve after a playback has opened and closed
+bails. Ruled out along the way, each against real evidence: the player and
+the sliced program are byte-identical on both platforms; all eight values a
+device got wrong solve correctly on a desktop; Python 3.10 through 3.13
+agree (the device is 3.11.7, the desktop 3.11.15); recursion limits down to
+600 agree; hash seeds agree; the transform contains no `Date.now`,
+`Math.random`, `window` or `navigator`; and the player is re-fetched fresh
+at its full 2,879,930 bytes every run.
+
+**The fix.** The interpreter reads an ISO literal itself, with `import
+datetime` inside the function and nothing from module globals. Confirmed on
+device: two consecutive films, the second played after the first had been
+opened and closed, both with video and audio streams and zero bails.
+
+**The general lesson.** Anything this add-on may run after a playback --
+the bridge's server thread, a later plugin invocation -- must not depend on
+module-level imports it cannot see being blanked. A local import inside the
+function is the cheap protection.
+
 ## No JavaScript runtime, anywhere in the addon
 
 Two things needed one, and neither does now.
