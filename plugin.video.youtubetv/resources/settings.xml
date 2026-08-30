@@ -27,16 +27,6 @@
 					<default>true</default>
 					<control type="toggle"/>
 				</setting>
-				<setting id="js_runtime" type="path" label="30037" help="30038">
-					<level>0</level>
-					<default></default>
-					<constraints>
-						<allowempty>true</allowempty>
-					</constraints>
-					<control type="button" format="file">
-						<heading>30037</heading>
-					</control>
-				</setting>
 				<setting id="max_height" type="integer" label="30011" help="30012">
 					<level>0</level>
 					<default>0</default>
@@ -103,6 +93,12 @@
 					</constraints>
 					<control type="list" format="integer"/>
 				</setting>
+				<!-- Named for a JavaScript runtime this add-on no longer has
+				     any use for: the n transform is solved in Python and there
+				     is no fallback to shell out to. The id is kept so a box
+				     that has it set keeps its setting; all it does now is
+				     stop a proof-of-origin token being minted, which is what
+				     lib/potoken.py reads it for. -->
 				<setting id="no_js_runtime" type="boolean" label="30065" help="30066">
 					<level>2</level>
 					<default>false</default>

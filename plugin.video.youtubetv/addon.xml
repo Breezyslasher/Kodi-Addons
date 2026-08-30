@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.67" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.68" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,23 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.68 - One path for n, in Python, with no fallback
+- The fallback that shelled out to node, deno, bun or quickjs is gone,
+  along with the setting that pointed at one and the flatpak plumbing that
+  went looking for it on the host. About 150 lines, and subprocess and
+  tempfile with them.
+- It was never the path that worked. The bundled interpreter answers the
+  player's own transform exactly, and the fallback could not run where it
+  was most needed: there is nothing to find on Android or LibreELEC, which
+  is precisely where the failures it was meant to cover happened. Every
+  time it was reached on a real device it reported "no runtime found" and
+  the play failed anyway.
+- A failure now says what the interpreter did, rather than advising an
+  install that would not have helped.
+- The "Cold start the proof-of-origin token" switch keeps its old id so a
+  box that has it set keeps its setting; it now only does what its name
+  says.
+
 2026.8.31.67 - The date parse no longer depends on a torn-down module
 - Named exactly, by the last build's own diagnostic: every one of the
   player's eight date literals came back "'NoneType' object is not

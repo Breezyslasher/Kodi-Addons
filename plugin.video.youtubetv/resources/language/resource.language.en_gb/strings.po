@@ -92,13 +92,7 @@ msgctxt "#30034"
 msgid "Before playing, asks every YouTube TV client (web, Android, iOS, TV) for the same video and logs what each is offered. Used to find a client served plain URLs rather than SABR."
 msgstr ""
 
-msgctxt "#30037"
-msgid "JavaScript runtime"
-msgstr ""
 
-msgctxt "#30038"
-msgid "Full path to node, deno, bun or quickjs. Needed to compute the n parameter every media URL carries; without it playback is refused. Leave empty to search PATH and the usual locations. Set it explicitly when Kodi is a flatpak or on LibreELEC, where the runtime lives somewhere Kodi does not look."
-msgstr ""
 
 msgctxt "#30035"
 msgid "Resume where you left off"
@@ -177,7 +171,7 @@ msgid "Cold start the proof-of-origin token"
 msgstr ""
 
 msgctxt "#30066"
-msgid "Nothing in this addon needs a JavaScript runtime any more: n is solved by the bundled Python interpreter, and the proof-of-origin token is minted by running BotGuard's own interpreter inside a JavaScript engine written in Python. Turn this on to skip the mint and compute a token arithmetically instead -- it costs nothing and works while YouTube reports StreamProtectionStatus 2, but it is good for thirty minutes rather than twelve hours. It also stops n falling back to a runtime if one happens to be installed, so this is the switch for seeing exactly what a box with Python and nothing else does."
+msgid "Nothing in this addon needs a JavaScript runtime: n is solved by the bundled Python interpreter, and the proof-of-origin token is minted by running BotGuard's own interpreter inside a JavaScript engine written in Python. Turn this on to skip the mint and compute a token arithmetically instead -- it costs nothing and works while YouTube reports StreamProtectionStatus 2, but it is good for thirty minutes rather than twelve hours."
 msgstr ""
 
 msgctxt "#30067"

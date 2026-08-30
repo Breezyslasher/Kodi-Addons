@@ -37,8 +37,6 @@ what the browser sent.
 import json
 import os
 import re
-import subprocess
-import tempfile
 
 from . import kodiutils
 
@@ -52,7 +50,6 @@ VARIANTS_FILE = "player_variants.json"
 # Engines worth looking for, best first. deno and bun need no package manager
 # and run from a single binary, which matters on LibreELEC where there is no
 # package manager at all.
-_RUNTIMES = ("deno", "node", "bun", "qjs", "quickjs")
 # Keep the solved values, not just the player: n is per-URL, but a playback
 # session reuses the same one across every segment request.
 _MEMO = {}
@@ -273,9 +270,8 @@ def _reimported_solve(js, value):
 
     Dropping the torn-down modules from sys.modules and importing them
     again gives the interpreter its functions back. Cheaper than the
-    alternative -- there is no JavaScript runtime on Android to fall back
-    to -- and it costs nothing when the modules were fine, because this
-    only runs when a bail has already happened.
+    the only other option, and it costs nothing when the modules were
+    fine, because this only runs when a bail has already happened.
     """
     import sys as _sys
     package = __name__.rsplit(".", 1)[0]
@@ -289,129 +285,6 @@ def _reimported_solve(js, value):
 def _solve_with_interpreter(js, name, value):
     from .jsinterp import JSInterpreter
     return JSInterpreter(js).call_function(name, value)
-
-
-def in_flatpak():
-    """Whether we are inside a flatpak sandbox."""
-    return os.path.exists("/.flatpak-info")
-
-
-def _runtime_on_path():
-    """Find a JavaScript engine, and say how it has to be invoked.
-
-    Returns (name, argv-prefix). Three places to look, because Kodi is rarely
-    installed the way a developer's shell is:
-
-    * the setting, for anywhere the other two fail;
-    * PATH and the usual directories; and
-    * the host, through flatpak-spawn.
-
-    That last one is the case that actually bit: a flatpak cannot see
-    /usr/bin/node however plainly the user's terminal can, so a runtime that
-    passes the standalone check still leaves the addon reporting none found.
-    flatpak-spawn --host runs it on the host properly, rather than borrowing
-    the host binary into a sandbox whose libraries it was not built against.
-    """
-    # A box may have a runtime and still need to be tested without one:
-    # LibreELEC ships Python and nothing else, and a PC with node would
-    # quietly cover for anything the Python path cannot do.
-    if kodiutils.get_setting_bool("no_js_runtime", False):
-        return "", []
-    configured = kodiutils.get_setting("js_runtime", "")
-    if configured:
-        if os.path.isfile(configured) and os.access(configured, os.X_OK):
-            return os.path.basename(configured), [configured]
-        kodiutils.log("nsig: configured runtime %r is not executable, "
-                      "looking elsewhere" % configured)
-
-    places = [d for d in os.environ.get("PATH", "").split(os.pathsep) if d]
-    places += ["/usr/bin", "/usr/local/bin", "/bin", "/opt/homebrew/bin",
-               "/var/lib/flatpak/exports/bin", "/snap/bin", "/storage"]
-    for name in _RUNTIMES:
-        for directory in places:
-            candidate = os.path.join(directory, name)
-            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-                return name, [candidate]
-
-    # Why it failed matters as much as that it did. A run that reported "no
-    # runtime" in under half a second turned out to be a machine where the
-    # flatpak had never been granted --talk-name=org.freedesktop.Flatpak, so
-    # the host probes could not run at all -- which the message could not say
-    # because it recorded nothing about how it looked.
-    trail = []
-    sandboxed = in_flatpak()
-    spawn = "/usr/bin/flatpak-spawn"
-    trail.append("flatpak=%s spawn=%s" % (sandboxed, os.path.exists(spawn)))
-    if sandboxed and os.path.exists(spawn):
-        for name in _RUNTIMES:
-            try:
-                probe = subprocess.run([spawn, "--host", name, "--version"],
-                                       capture_output=True, timeout=20)
-            except Exception as exc:
-                trail.append("%s:%s" % (name, type(exc).__name__))
-                continue
-            if probe.returncode == 0:
-                kodiutils.log("nsig: using the host's %s through "
-                              "flatpak-spawn" % name)
-                return name, [spawn, "--host", name]
-            trail.append("%s:rc=%d" % (name, probe.returncode))
-    kodiutils.log("nsig: no runtime found -- %s" % " ".join(trail))
-    return None, None
-
-
-def _solve_with_runtime(js, value):
-    """Run the player's own transform in a real JavaScript engine.
-
-    Only the transform: the function sliced out of the player, plus the
-    sentinel globals it checks for. Evaluating two and a half megabytes of
-    YouTube to rewrite one query parameter would be slower and far more
-    fragile.
-    """
-    runtime, argv = _runtime_on_path()
-    if not runtime:
-        if in_flatpak():
-            raise NsigError(
-                "no javascript runtime reachable from inside the flatpak "
-                "(tried %s). Kodi cannot see the host's, so grant it the host "
-                "runner: flatpak override --user "
-                "--talk-name=org.freedesktop.Flatpak tv.kodi.Kodi -- then "
-                "restart Kodi. Failing that, put the full path to a runtime "
-                "in the addon's settings." % ", ".join(_RUNTIMES))
-        raise NsigError(
-            "no javascript runtime found (tried %s). Install one -- on Debian "
-            "or Ubuntu, 'sudo apt install nodejs'; on LibreELEC unpack a node "
-            "or deno build under /storage and set its full path in the "
-            "addon's settings." % ", ".join(_RUNTIMES))
-
-    name, program = build_program(js, value)
-    # quickjs has no console.log-to-stdout convention worth relying on.
-    emit = "print(__r);" if runtime in ("qjs", "quickjs") else "console.log(__r);"
-    # The script goes in the addon's own profile directory, not /tmp.
-    # /tmp inside a flatpak is the sandbox's own, so the host's node -- reached
-    # through flatpak-spawn -- is handed a path that does not exist for it and
-    # reports "Cannot find module". The profile directory is a real host path
-    # visible under the same name on both sides, which is exactly what is
-    # needed to pass a filename across that boundary.
-    try:
-        directory = kodiutils.profile_dir()
-    except Exception:
-        directory = tempfile.gettempdir()
-    script = os.path.join(directory, "nsig_%d.js" % os.getpid())
-    try:
-        with open(script, "w", encoding="utf-8") as handle:
-            handle.write(program + "\n" + emit + "\n")
-        result = subprocess.run(argv + [script], capture_output=True,
-                                timeout=60)
-    finally:
-        try:
-            os.unlink(script)
-        except OSError:
-            pass
-    if result.returncode != 0:
-        raise NsigError("%s exited %d: %s"
-                        % (runtime, result.returncode,
-                           result.stderr.decode("utf-8", "replace")[:300]))
-    return runtime, name, result.stdout.decode("utf-8", "replace").strip()
 
 
 _KEPT = set()
@@ -622,20 +495,25 @@ def solve(js, value, player_id=""):
     # and so does this, in half a second. That takes a JavaScript runtime
     # off the list of things a box must have to play anything.
     name = ""
+    # The only path. There was a fallback to node/deno/bun/qjs through
+    # subprocess, and it is gone: the interpreter answers the player's own
+    # transform exactly, and the fallback could not run where it was most
+    # needed anyway -- there is no runtime to find on Android or LibreELEC,
+    # which is where the failures it was meant to cover actually happened.
     runtime = "the built-in interpreter"
     result = ""
     try:
         name, _program = build_program(js, value)
         result = _solve_with_interpreter(js, name, value)
     except Exception as exc:
-        kodiutils.log("nsig: the built-in interpreter could not solve it (%s), "
-                      "falling back to a runtime" % exc)
+        kodiutils.log("nsig: the built-in interpreter could not solve it: %s"
+                      % exc)
         result = ""
     why = bailed(result, value) if result else ""
     if why:
         kodiutils.log("nsig: the built-in interpreter %s" % why)
         _report_dates(js)
-        # Before reaching for a runtime, try the far likelier cause. See
+        # The likeliest cause by far, and now the only thing to try. See
         # _emptied_modules: a torn-down module is the difference between
         # the first solve of a session and every one after a playback.
         emptied = _emptied_modules()
@@ -649,12 +527,8 @@ def solve(js, value, player_id=""):
                               % ("still bailed" if why else "it solved"))
             except Exception as exc:
                 kodiutils.log("nsig: re-importing did not help: %r" % exc)
-        if why:
-            kodiutils.log("nsig: trying a runtime")
-    if not result or why:
-        runtime, name, result = _solve_with_runtime(js, value)
     if not result:
-        raise NsigError("%s produced nothing for %s" % (runtime, name))
+        raise NsigError("%s() produced nothing for %s" % (name or "?", value))
     why = bailed(result, value)
     if why:
         # The transform bails silently and without erroring. Treating that
