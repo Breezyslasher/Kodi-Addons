@@ -152,10 +152,23 @@ def remember_kinds(found):
 META_CACHE = "titles.json"
 META_CACHE_MAX = 400
 
+# Bumped whenever a title's details start carrying something they did not.
+# Nothing refetches a title it already knows about, so without this a cache
+# written before a field was read keeps that field missing for good: the
+# cast photographs were read in 2026.8.31.54 and stayed blank, because
+# every title had been remembered by a build that stored names alone.
+#
+#   1  genres, year, rating, studio, director, synopsis, cast as name+role
+#   2  cast photographs, the page's banner, a show's deferred cast
+META_VERSION = 2
+
 
 def remembered_meta():
     known = kodiutils.read_json(META_CACHE) or {}
-    return known if isinstance(known, dict) else {}
+    if not isinstance(known, dict) or known.get("version") != META_VERSION:
+        return {}
+    titles = known.get("titles")
+    return titles if isinstance(titles, dict) else {}
 
 
 def remember_meta(found):
@@ -166,7 +179,8 @@ def remember_meta(found):
     known.update(found)
     if len(known) > META_CACHE_MAX:
         known = dict(list(known.items())[-META_CACHE_MAX:])
-    kodiutils.write_json(META_CACHE, known)
+    kodiutils.write_json(META_CACHE,
+                         {"version": META_VERSION, "titles": known})
 
 
 def categories_are_stale(max_age=CATEGORY_CACHE_AGE):

@@ -39,8 +39,13 @@ sys.path.insert(0, HERE + "/stubs")
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE))
                 + "/plugin.video.youtubetv")
 
-from lib import api, epg  # noqa: E402
+from lib import api, epg, kodiutils  # noqa: E402
 import default  # noqa: E402
+
+# Kept before anything stubs them, so the checks that want the real ones
+# can put them back. Two of these checks replace them wholesale.
+REAL_REMEMBERED_META = api.remembered_meta
+REAL_REMEMBER_META = api.remember_meta
 
 failures = []
 
@@ -1152,16 +1157,38 @@ api.remember_kinds = lambda found: None
 
 
 class _FakeClient(object):
-    def __init__(self, kinds, suggests=None):
+    def __init__(self, kinds, suggests=None, defers_cast=False):
         self.kinds = kinds
         self.suggests = suggests or {}
+        self.defers_cast = defers_cast
         self.asked = []
+        self.followed = []
         self.suggested = 0
 
     def browse(self, browse_id, params=None):
         self.asked.append(browse_id)
-        return {"header": {"unpluggedContentDetailsHeaderRenderer": {
+        page = {"header": {"unpluggedContentDetailsHeaderRenderer": {
             "contentType": self.kinds.get(browse_id, "SHOW")}}}
+        if self.defers_cast:
+            page["contents"] = {"singleColumnBrowseResultsRenderer": {"tabs": [
+                {"tabRenderer": {"title": "RECENT", "content": {
+                    "sectionListRenderer": {"contents": [
+                        {"unpluggedVideoRenderer": {
+                            "title": {"simpleText": "an episode"},
+                            "navigationEndpoint": {"watchEndpoint": {
+                                "videoId": "V9"}}}}]}}}},
+                {"tabRenderer": {"title": "LEAD CAST", "content": {
+                    "sectionListRenderer": {"continuations": [
+                        {"reloadContinuationData": {
+                            "continuation": "CAST-%s" % browse_id}}]}}}},
+            ]}}
+        return page
+
+    def continuation(self, token):
+        self.followed.append(token)
+        return {"unpluggedPersonRenderer": {
+            "name": {"simpleText": "Sarah Chalke"},
+            "role": {"simpleText": "Beth"}}}
 
     def suggest(self, query):
         self.suggested += 1
@@ -1387,6 +1414,26 @@ check("and a page with no such tab asks for nothing",
       (default._cast_behind(_CastClient(), CAST_TABS[:1] + CAST_TABS[2:]), True),
       ([], True))
 
+# A show leaves LEAD CAST empty and holds its cast behind a token, and so
+# does a film sometimes -- The Bob's Burgers Movie has MOVIE and LEAD CAST
+# where Rogue One inlined twenty-two people. So the tab is followed when a
+# page carries no cast of its own, and rationed: it is a second request per
+# title, and a row of shows would otherwise cost twice a row of films.
+remembered.clear()
+default._REMEMBERED_META.clear()
+default._LOADED_META[0] = False
+deferring = _FakeClient({}, defers_cast=True)
+show_rows = _row(*[epg.Item(browse_id="UCS%d" % n, title="show %d" % n)
+                   for n in range(5)])
+default._type_results(deferring, show_rows, cast_limit=2)
+check("a deferred cast is followed, and rationed",
+      (len(deferring.asked), len(deferring.followed)), (5, 2))
+check("and the two that were followed have their cast",
+      sum(1 for i in show_rows[0].items
+          if (default._meta_for(i.browse_id) or {}).get("cast")), 2)
+remembered.clear()
+default._REMEMBERED_META.clear()
+
 check("a network is not a rating",
       [epg.rating_and_year({"simpleText": "NBC"})[0],
        epg.rating_and_year({"simpleText": "1975 \u2013 Present \u2022 NBC"})[0]],
@@ -1494,6 +1541,30 @@ check("and one nothing is known about is listed all the same",
       "setGenres" in xbmcplugin.ITEMS[0][3].info.set, False)
 remembered.clear()
 default._REMEMBERED_META.clear()
+
+# -- a cache that cannot say it is out of date -----------------------------
+# Nothing refetches a title it already knows about, so a cache written
+# before a field was read keeps that field missing for good. The cast
+# photographs were read in .54 and stayed blank on a box that had been
+# running .50 to .53: every title was already remembered, by builds that
+# stored names alone.
+_store = {}
+api.remembered_meta, api.remember_meta = REAL_REMEMBERED_META, REAL_REMEMBER_META
+_real_read, _real_write = kodiutils.read_json, kodiutils.write_json
+kodiutils.read_json = lambda name, default=None: _store.get(name, default)
+kodiutils.write_json = lambda name, data: (_store.__setitem__(name, data), True)[1]
+
+api.remember_meta({"UC1": {"cast": [["Keanu Reeves", "John Wick", "photo"]]}})
+check("what is remembered comes back",
+      api.remembered_meta(),
+      {"UC1": {"cast": [["Keanu Reeves", "John Wick", "photo"]]}})
+_store["titles.json"] = {"UC1": {"cast": [["Keanu Reeves", "John Wick"]]}}
+check("a cache from before the photographs is thrown away, not read",
+      api.remembered_meta(), {})
+_store["titles.json"] = {"version": 1, "titles": {"UC1": {"genres": ["x"]}}}
+check("and so is one that names an older version",
+      api.remembered_meta(), {})
+kodiutils.read_json, kodiutils.write_json = _real_read, _real_write
 
 # -- the search call itself ------------------------------------------------
 # Scanning the request bodies of every capture, search was the one endpoint

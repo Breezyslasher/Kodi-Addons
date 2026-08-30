@@ -2,6 +2,7 @@
 
 import re
 import sys
+import threading
 import time
 from urllib.parse import parse_qsl, urlencode
 
@@ -706,7 +707,7 @@ def _search_pages(client, response, limit=4):
     return pages
 
 
-def _type_results(client, rows, limit=24, workers=6):
+def _type_results(client, rows, limit=24, workers=6, cast_limit=12):
     """What each result actually is, asked for in the cheapest order.
 
     Search types a film SHOW and its tiles carry no menu, so nothing in a
@@ -771,12 +772,24 @@ def _type_results(client, rows, limit=24, workers=6):
     if not wanted:
         return 0, _films(rows)
 
+    # A show's cast is a second request, so it is rationed: the first few
+    # titles in a row that need one get one, and the rest fill in on a
+    # later visit. Without this a row of shows costs twice a row of films
+    # and takes twice as long to draw.
+    casts = [cast_limit]
+    guard = threading.Lock()
+
     def ask(browse_id):
         """The page says what it is -- and, in the same breath, all the rest.
 
         Reading only contentType out of it was the reason a listing showed
         a year and a rating and nothing else: the genres, the synopsis and
         the cast were in the response and thrown away.
+
+        A show's cast is not in it, though. A film carries its own inline;
+        a show leaves LEAD CAST empty and holds it behind a token, so that
+        is fetched here rather than only when the show is opened -- the
+        info panel is read from the listing, and a show was bare in it.
         """
         try:
             response = client.browse(browse_id)
@@ -785,8 +798,17 @@ def _type_results(client, rows, limit=24, workers=6):
             return browse_id, "", None
         header = epg.title_header(response)
         kind = (header or {}).get("contentType")
-        return (browse_id, kind if isinstance(kind, str) else "",
-                _page_meta(response, header))
+        meta = _page_meta(response, header)
+        if not meta.get("cast"):
+            with guard:
+                spare = casts[0] > 0
+                if spare:
+                    casts[0] -= 1
+            if spare:
+                cast = _cast_behind(client, epg.browse_tabs(response, least=1))
+                if cast:
+                    meta["cast"] = [list(person) for person in cast]
+        return (browse_id, kind if isinstance(kind, str) else "", meta)
 
     from concurrent.futures import ThreadPoolExecutor
     found, details = {}, {}
