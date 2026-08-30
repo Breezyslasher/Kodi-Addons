@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.31" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.32" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,20 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.32 - Suggested titles, instead of a page you have already used
+- "Go to &lt;title&gt;" on a film is now "Suggested titles" and opens them
+  directly. A film's page is four tabs -- Watch now, About, Lead cast,
+  Suggested -- and this addon reads two: the one that plays, which picking
+  the film already does, and the one that recommends. Harry Potter and the
+  Order of the Phoenix suggests 39, John Wick Chapter 2 suggests 26.
+- Search does carry contentType after all, on the same renderer, and not
+  one of 14 results read as a film -- so the vocabulary is not the same
+  everywhere. The kind is matched on the word now rather than the whole
+  string, and a value with no word in it is logged rather than dropped.
+- Stops keeping a copy of a page when a tab goes unread. It answered what
+  it was written for, and a title's page drops two tabs by design: About
+  and Lead cast name a description and a cast list, not somewhere to go.
+
 2026.8.31.31 - Live stays a tab
 - A network opens on its tabs again. Live is a kind of its own, and folding
   it into the page put eleven programmes above four folders on AMC, which

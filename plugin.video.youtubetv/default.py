@@ -536,10 +536,16 @@ def _add_item(item):
         # own tile keeps it ("Go to The Accountant").
         listitem.setProperty("IsPlayable", "true")
         info.setMediaType("movie")
+        # Not "Go to <title>" any more. A film's page is four tabs --
+        # Watch now, About, Lead cast, Suggested -- and this addon reads
+        # two of them: the one that plays, which selecting the film now
+        # does, and the one that recommends. So the menu offers the half
+        # that is left rather than a page whose other half is the button
+        # that was just pressed.
         listitem.addContextMenuItems(
-            [("Go to %s" % item.title,
+            [("Suggested titles",
               "Container.Update(%s)"
-              % url(action="browse", browse_id=item.browse_id,
+              % url(action="browse_suggested", browse_id=item.browse_id,
                     name=item.title, params=item.params))]
             + _dvr_menu(item.browse_id, item.title))
         xbmcplugin.addDirectoryItem(
@@ -575,10 +581,14 @@ def route_search():
         return
 
     items = epg.parse_search(response)
-    kodiutils.log("search %r: %d result(s), %d of them a film -- %s"
+    kinds = {}
+    for item in items:
+        kinds[item.content_type or "(none)"] = kinds.get(
+            item.content_type or "(none)", 0) + 1
+    kodiutils.log("search %r: %d result(s) -- %s"
                   % (query, len(items),
-                     sum(1 for item in items if item.content_type == "MOVIE"),
-                     "; ".join(epg.renderer_sample(response, 4)) or "nothing"))
+                     ", ".join("%s x%d" % pair
+                               for pair in sorted(kinds.items())) or "nothing"))
     if not items:
         kodiutils.notify("Nothing found for %s" % query)
     _add_items(items)
@@ -711,12 +721,12 @@ def route_browse(browse_id, name, params=""):
         shapes = epg.tab_shapes(response)
         kodiutils.log("%s: tabs on the page -- %s"
                       % (name or browse_id, "; ".join(shapes)))
-        if len(shapes) > len(tabs):
-            # Two rounds of reading this from a log line have each been
-            # wrong about a different thing. Keep the page itself, minus
-            # the visitor id, so what the unread tabs actually hold can be
-            # looked at rather than inferred from renderer names.
-            kodiutils.dump_response("network-tabs.json", response)
+        # The page itself is no longer kept when a tab goes unread. That
+        # answered the question it was written for -- these tabs defer
+        # themselves in a reloadContinuationData, which the line above now
+        # prints the path to -- and a title's page drops two tabs every
+        # time by design: About and Lead cast name a description and 22
+        # people, and neither is somewhere to go.
         # A tab stays a tab while the page has more than one. Live is a
         # kind of its own -- what is on that network now -- and folding it
         # into the page put eleven programmes above four folders on AMC,

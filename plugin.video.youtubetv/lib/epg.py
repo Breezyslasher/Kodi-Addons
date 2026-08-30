@@ -1257,6 +1257,14 @@ def _content_type(renderer):
     """
     named = renderer.get("contentType")
     if isinstance(named, str) and named:
+        # Matched on the word rather than the whole string. A category tile
+        # says "MOVIE"; search answers with the same field on the same
+        # renderer and none of its 14 results matched, so the vocabulary is
+        # not identical everywhere. An unrecognised value is handed back
+        # whole, so the log names it rather than swallowing it.
+        for _word, kind in _TOAST_KINDS:
+            if kind in named.upper():
+                return kind
         return named
     toast = text(first(renderer, "defaultToastText"))
     for word, kind in _TOAST_KINDS:
