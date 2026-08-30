@@ -509,12 +509,12 @@ class Item(object):
 
     __slots__ = ("video_id", "browse_id", "params", "title", "subtitle",
                  "art", "start_ms", "end_ms", "source", "content_type",
-                 "duration", "upright", "season", "episode")
+                 "duration", "upright", "season", "episode", "plot")
 
     def __init__(self, video_id="", browse_id="", title="", subtitle="",
                  art="", start_ms=0, end_ms=0, params="", source="",
                  content_type="", duration=0, upright=False, season=0,
-                 episode=0):
+                 episode=0, plot=""):
         self.video_id = video_id
         self.browse_id = browse_id
         # What the browse endpoint asks for *within* that page. The Browse
@@ -549,6 +549,13 @@ class Item(object):
         # each of the three, which is what lets a skin sort a season.
         self.season = season
         self.episode = episode
+        # The tile's own synopsis, from ``description``. Every episode in a
+        # season shelf carries one -- Rick and Morty's S9 E10 says "Tom
+        # Sawyer, broh." -- and it was being dropped: the subtitle reader
+        # looks at secondaryText, tertiaryText and descriptionSnippet, and
+        # this is none of those. A show that names every episode after
+        # itself has this and little else to tell them apart by.
+        self.plot = plot
 
     @property
     def playable(self):
@@ -979,6 +986,7 @@ def parse_items(response):
             upright=is_portrait(renderer.get("thumbnail") or {}),
             season=season,
             episode=number,
+            plot=text(renderer.get("description")),
         ))
 
     visit(response)

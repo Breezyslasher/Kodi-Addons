@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.75" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.76" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,21 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.76 - The episode synopsis was being dropped
+- Every episode in a season shelf carries a "description" -- Rick and
+  Morty's S9 E10 says "Tom Sawyer, broh." -- and none of it ever reached
+  Kodi. The subtitle reader looks at secondaryText, tertiaryText and
+  descriptionSnippet, and this is none of those.
+- It is the episode's own plot, so it is shown as the plot, in front of
+  the show's, which is the same sentence on every episode.
+- And where two rows' subtitles are word for word the same, the synopsis
+  is what tells them apart now: a show that names every episode after
+  itself still describes each one separately.
+- Checked and not true: a season shelf does not list the same episode more
+  than once. Rick and Morty's Season 9 answers with ten rows and ten
+  distinct episodes; three of them carry no stream because this account
+  cannot play them, and the versions of an episode stay nested inside it.
+
 2026.8.31.75 - Only the part that differs
 - Season 24's rows say "Game Show Network / TV-PG / Recorded 5 months ago"
   on all 186 of them, and two thirds of that is identical everywhere. A

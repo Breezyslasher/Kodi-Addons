@@ -691,12 +691,19 @@ def _tell_apart(items):
             shared &= set(other)
         for i, parts in zip(rows, pieces):
             rest = [part for part in parts if part not in shared]
-            # Nothing differs -- every row says the same thing -- so there
-            # is nothing to add and a bare suffix would only be noise.
-            if not rest:
+            said = " \u2022 ".join(rest)
+            if not said:
+                # The subtitles are word for word the same. The tile's own
+                # synopsis is the next thing that might not be: a show that
+                # names every episode after itself still describes each one
+                # separately.
+                said = (items[i].plot or "")[:70]
+                if said and said == (items[rows[0]].plot or "")[:70] \
+                        and i != rows[0]:
+                    said = ""
+            if not said:
                 continue
-            labels[i] = "%s  --  %s" % (_label_of(items[i]),
-                                        " \u2022 ".join(rest))
+            labels[i] = "%s  --  %s" % (_label_of(items[i]), said)
     return labels
 
 
@@ -815,8 +822,11 @@ def _add_item(item, plot="", dvr=None, meta=None, label=None):
     listitem.setArt(art)
     info = listitem.getVideoInfoTag()
     info.setTitle(item.title)
-    if plot or item.subtitle:
-        info.setPlot(plot or item.subtitle)
+    # The tile's own synopsis first: on a season shelf that is the
+    # episode's, where ``plot`` here is the show's and the same on all of
+    # them.
+    if item.plot or plot or item.subtitle:
+        info.setPlot(item.plot or plot or item.subtitle)
     if item.duration:
         info.setDuration(item.duration)
     info.setMediaType("video")
@@ -1516,7 +1526,9 @@ def route_season(browse_id, name, params="", token=""):
                   % (name or "a shelf", len(items),
                      ", and %d this account cannot play" % barred if barred
                      else "",
-                     "; ".join("%s [%s]" % (item.title, item.subtitle or "-")
+                     "; ".join("%s [%s] {%s}"
+                               % (item.title, item.subtitle or "-",
+                                  (item.plot or "-")[:40])
                                for item in items[:4]) or "nothing"))
     if not items:
         kodiutils.notify("Nothing playable under %s"

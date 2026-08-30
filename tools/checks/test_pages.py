@@ -1482,6 +1482,7 @@ check("so alphabetical puts them in season order",
 # 23 came back as 380 rows of episodes interleaved with their own offers.
 EPISODE_WITH_OFFERS = {"unpluggedCompactVideoRenderer": {
     "primaryText": {"runs": [{"text": "S9 E10 \u2022 Field of Dreams"}]},
+    "description": {"simpleText": "Tom Sawyer, broh."},
     "navigationEndpoint": {"watchEndpoint": {"videoId": "ep1"}},
     "videoVersionList": {"unpluggedVideoVersionListRenderer": {"contents": [
         {"unpluggedCompactVideoVersionRenderer": {
@@ -1499,6 +1500,23 @@ EPISODE_WITH_OFFERS = {"unpluggedCompactVideoRenderer": {
 check("an episode's offers do not list as episodes of their own",
       [i.title for i in epg.parse_items(EPISODE_WITH_OFFERS)],
       ["Field of Dreams"])
+# The tile's own synopsis, which the subtitle reader never looked at: it
+# reads secondaryText, tertiaryText and descriptionSnippet, and this is
+# none of those. A show that names every episode after itself has this and
+# little else to tell them apart by.
+check("and the episode's own synopsis is read, not dropped",
+      [i.plot for i in epg.parse_items(EPISODE_WITH_OFFERS)],
+      ["Tom Sawyer, broh."])
+# When the subtitles are word for word the same, the synopsis is the next
+# thing that might not be.
+_plots = [epg.Item(video_id="a", title="Family Feud", subtitle="A \u2022 B",
+                   plot="Bailey Family vs. Eldafrawy Family"),
+          epg.Item(video_id="b", title="Family Feud", subtitle="A \u2022 B",
+                   plot="Utsey Family vs. Bailey Family")]
+check("identical subtitles fall through to the synopsis",
+      sorted(default._tell_apart(_plots).values()),
+      ["Family Feud  --  Bailey Family vs. Eldafrawy Family",
+       "Family Feud  --  Utsey Family vs. Bailey Family"])
 
 # -- rows whose titles do not tell them apart ------------------------------
 # A syndicated show names every episode after itself: Family Feud's Season
