@@ -1378,6 +1378,22 @@ check("and so is a list of networks",
                                    {"text": "Adult Swim, Cartoon Network"}]}]
       }})["network"],
       ["Adult Swim", "Cartoon Network"])
+# -- a message that fits the box it is shown in ----------------------------
+# Kodi's ok dialog is a fixed box, about four lines of sixty characters.
+# The sign-in instructions are four sentences and were arriving cut in
+# half, so anything past that goes to the full-screen text viewer instead.
+from lib.kodiutils import _needs_room                          # noqa: E402
+
+check("a one-line error still uses the ok box",
+      _needs_room("Could not load the guide: the request timed out"), False)
+check("and four lines still fit it", _needs_room("a" * 58 * 4), False)
+check("but five do not", _needs_room("a" * 58 * 5), True)
+# Measured as wrapped lines, not raw length: a short message is still tall
+# when it is written as paragraphs.
+check("and paragraphs are counted as the lines they take",
+      _needs_room("one\n\ntwo\n\nthree"), True)
+check("an empty message asks for no room at all", _needs_room(""), False)
+
 # -- an nsig answer that is not an answer ----------------------------------
 # Player e937390a on a real Android box returned "BdHv3wGc_iIzKEBs97-_w8_"
 # followed by the whole input on 4 of 6 solves, where every desktop log

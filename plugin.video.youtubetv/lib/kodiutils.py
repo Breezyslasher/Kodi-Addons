@@ -73,7 +73,33 @@ def notify(message, heading=None, icon=xbmcgui.NOTIFICATION_INFO, time_ms=5000):
     xbmcgui.Dialog().notification(heading or ADDON_NAME, message, icon, time_ms)
 
 
+def _needs_room(message):
+    """True when a message will not fit Kodi's ok box.
+
+    That box is a fixed size -- roughly four lines of sixty characters in
+    the stock skins -- and anything past it is cut off or has to be
+    scrolled. Measured as wrapped lines rather than by raw length, so a
+    message that is long only because it has paragraphs is judged on the
+    room it actually needs.
+    """
+    lines = 0
+    for paragraph in (message or "").split("\n"):
+        lines += max(1, -(-len(paragraph) // 58))
+    return lines > 4
+
+
 def ok_dialog(message, heading=None):
+    """Show an error and write it to the log.
+
+    Every failure in this addon ends at a dialog, and until now none of them
+    reached kodi.log -- which made a screenshot the only evidence of what went
+    wrong, and left whole sessions where the log showed a modal opening and
+    closing and nothing else. Log first, then show.
+
+    A message too big for the ok box goes to the text viewer instead, which
+    is full-screen and shows the whole thing at once. The sign-in
+    instructions are four sentences and were arriving cut in half.
+    """
     # An empty message is a blank box with an OK button, which tells a
     # viewer nothing at all and is worse than the heading alone. Most
     # callers here pass str(exc), and not every exception stringifies to
@@ -81,14 +107,14 @@ def ok_dialog(message, heading=None):
     if not (message or "").strip():
         message = ("%s, and the exception said nothing more. The log has "
                    "the detail." % (heading or "That did not work"))
-    """Show an error and write it to the log.
-
-    Every failure in this addon ends at a dialog, and until now none of them
-    reached kodi.log -- which made a screenshot the only evidence of what went
-    wrong, and left whole sessions where the log showed a modal opening and
-    closing and nothing else. Log first, then show.
-    """
     log("%s: %s" % (heading or ADDON_NAME, message))
+    if _needs_room(message):
+        try:
+            xbmcgui.Dialog().textviewer(heading or ADDON_NAME, message)
+            return
+        except Exception:
+            # Older Kodi without textviewer: better a clipped box than none.
+            pass
     xbmcgui.Dialog().ok(heading or ADDON_NAME, message)
 
 

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.64" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.65" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,17 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.65 - Dialogs that fit what they have to say
+- The sign-in code dialog spent two of its three lines on blank lines and
+  the third on "On another device, open:", which pushed the code itself
+  off the bottom -- the one thing it exists to show. Three lines now, all
+  three carrying something, and the url without its scheme.
+- Kodi's ok box is a fixed size, about four lines. Anything taller now
+  goes to the full-screen text viewer instead of being cut off, which is
+  every long message in the add-on and not only the sign-in one.
+- The "no Google API project" instructions are shorter and numbered, so
+  they read as the three steps they are.
+
 2026.8.31.64 - The other messages that named the wrong cause
 - Playing a channel had one sentence for three different things: a channel
   no longer in the lineup, a channel with no programme listed now, and a
