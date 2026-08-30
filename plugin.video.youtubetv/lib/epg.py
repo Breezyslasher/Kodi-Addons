@@ -364,10 +364,11 @@ class Item(object):
     """Something the UI can show: a folder to browse, or a video to play."""
 
     __slots__ = ("video_id", "browse_id", "params", "title", "subtitle",
-                 "art", "start_ms", "end_ms", "source")
+                 "art", "start_ms", "end_ms", "source", "content_type")
 
     def __init__(self, video_id="", browse_id="", title="", subtitle="",
-                 art="", start_ms=0, end_ms=0, params="", source=""):
+                 art="", start_ms=0, end_ms=0, params="", source="",
+                 content_type=""):
         self.video_id = video_id
         self.browse_id = browse_id
         # What the browse endpoint asks for *within* that page. The Browse
@@ -384,6 +385,12 @@ class Item(object):
         # browse id is a show: a network and a genre chip are both folders,
         # and neither can be recorded.
         self.source = source
+        # What YouTube TV says this is: MOVIE, SHOW or EVENT. A tile carries
+        # it plainly, which is worth having because nothing else about a
+        # tile distinguishes a film -- which has one thing to play and is
+        # worth playing on selection -- from a series, which is a folder of
+        # episodes. 1048 MOVIE, 303 SHOW and 1 EVENT across the captures.
+        self.content_type = content_type
 
     @property
     def playable(self):
@@ -782,6 +789,9 @@ def parse_items(response):
             start_ms=_seconds_ms(renderer, "startTimeSeconds"),
             end_ms=_seconds_ms(renderer, "endTimeSeconds"),
             source=source,
+            content_type=(renderer.get("contentType")
+                          if isinstance(renderer.get("contentType"), str)
+                          else ""),
         ))
 
     visit(response)

@@ -1181,6 +1181,54 @@ History, Horror, Musical, Romance, Science fiction, Thriller, Adventure,
 Romantic comedy, Marvel Cinematic Universe, Magic). `page_shelves` drops an
 untitled shelf, correctly, so `page_chips` reads that one separately.
 
+### A tile says what it is, and carries its own DVR endpoints
+
+Every tile on a category page is an `unpluggedBrowseItemRenderer` carrying
+
+```json
+{"contentType": "MOVIE",
+ "primaryText":   {"runs": [{"text": "The Accountant"}]},
+ "secondaryText": {"runs": [{"text": "2016 • R"}]},
+ "navigationEndpoint": {"browseEndpoint": {"browseId": "UCUlwmd1Fk7Tr2XLsLe3rYcQ"}}}
+```
+
+`contentType` is **MOVIE**, **SHOW** or **EVENT** -- 1048, 303 and 1 across
+the captures -- and it is the only thing that separates a film, which has
+one thing to play, from a series, which is a folder of episodes. Nothing
+else does: both are a browseId beginning UC, and **neither tile carries a
+video id at all**. A film's stream is named only on its own page, which is
+why playing one from a listing means fetching that page first.
+
+The tile's `menu.menuRenderer` is where YouTube TV keeps the rest, and it is
+worth reading for two reasons. It offers "Go to \<title\>" -- the page is a
+menu entry on the service's own tile, not the tile's action. And it carries
+the DVR endpoints outright:
+
+```json
+"toggleMenuServiceItemRenderer": {
+  "defaultText":  {"runs": [{"text": "Add to library"}]},
+  "defaultServiceEndpoint": {"startDvrEndpoint": {
+      "startDvrParams": "ChwIARIYVUNVbHdtZDFGazdUcjJYTHNMZTNyWWNR",
+      "id": "UCUlwmd1Fk7Tr2XLsLe3rYcQ"}},
+  "toggledText":  {"runs": [{"text": "Added to library"}]},
+  "toggledServiceEndpoint": {"stopDvrEndpoint": {"stopDvrParams": "…", "id": "…"}},
+  "defaultToastText": {"runs": [{"text":
+      "Movie added to your library. We'll record it as it becomes available."}]}}
+```
+
+Those params are **byte for byte what `api.dvr_params` rebuilds** from the
+id alone -- checked, and pinned by `test_pages.py`. A capture taken two days
+after the one that builder was written from is the only independent
+confirmation of it there is, so it is worth having even though the params
+are not read from here.
+
+What is *not* there is the state. `isToggled` appears on none of the 2007
+toggle renderers across every capture, so the tile still cannot say whether
+a show is already being recorded, and both "record" and "stop recording"
+are still offered rather than the one that applies.
+
+### Categories, continued
+
 Each genre is `FEunplugged_chips` again with longer params --
 `8gMJKgcIoFQIn5YB` for Action against the category's own `8gMFKgMIoFQ%3D` --
 and picking a second narrows further: `8gMQKg4IoFQIn5YBCL98COCWcQ%3D%3D`
