@@ -74,6 +74,13 @@ def notify(message, heading=None, icon=xbmcgui.NOTIFICATION_INFO, time_ms=5000):
 
 
 def ok_dialog(message, heading=None):
+    # An empty message is a blank box with an OK button, which tells a
+    # viewer nothing at all and is worse than the heading alone. Most
+    # callers here pass str(exc), and not every exception stringifies to
+    # anything -- a bare raise of a class does not.
+    if not (message or "").strip():
+        message = ("%s, and the exception said nothing more. The log has "
+                   "the detail." % (heading or "That did not work"))
     """Show an error and write it to the log.
 
     Every failure in this addon ends at a dialog, and until now none of them
