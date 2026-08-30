@@ -119,14 +119,26 @@ class IPTVManager(object):
                               max_airings=EPG_AIRINGS_PER_STATION,
                               order=kodiutils.get_setting_int("epg.order", 0))
         stations = epg_mod.parse_epg(response)
+        airings = sum(len(s.airings) for s in stations)
+        kodiutils.log("iptv manager: page 1 gave %d station(s), %d airing(s)"
+                      % (len(stations), airings))
+        if stations and airings < len(stations) * 2:
+            kodiutils.log("iptv manager: page 1 shape: %s"
+                          % epg_mod.describe(response))
+            kodiutils.dump_response("guide-shape.json", response)
         token = epg_mod.continuation_token(response) if pages > 1 else None
         fetched = 1
         while token and fetched < pages:
             page = client.continuation(token)
             fetched += 1
-            added = epg_mod.merge_airings(stations, epg_mod.parse_epg(page))
-            kodiutils.log("iptv manager: page %d added %d airing(s)"
-                          % (fetched, added))
+            parsed = epg_mod.parse_epg(page)
+            added = epg_mod.merge_airings(stations, parsed)
+            kodiutils.log("iptv manager: page %d parsed %d row(s) and added "
+                          "%d airing(s)" % (fetched, len(parsed), added))
+            if not added:
+                kodiutils.log("iptv manager: page %d shape: %s"
+                              % (fetched, epg_mod.describe(page)))
+                kodiutils.dump_response("guide-page-shape.json", page)
             following = epg_mod.continuation_token(page)
             if not added or not following or following == token:
                 break

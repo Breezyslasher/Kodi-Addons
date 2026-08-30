@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.18" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.19" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,14 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.19 - Find out why the guide has no schedule
+- On this account the guide comes back with one airing per channel, 143 for
+  148 stations, where the browser capture the reader was written from had
+  953. The continuation adds nothing. Both are now reported and the
+  responses kept, so the difference can be read rather than guessed at.
+- The guide window is asked for on the hour, which is what both captures do
+  and what this was not doing.
+
 2026.8.31.18 - Channel order setting, rebuilt
 - Kodi stopped starting with 2026.8.31.17 installed, on both Kodi 21.3 and
   22.0, with no stack trace in the crash log. The Channel order setting was

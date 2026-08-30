@@ -220,8 +220,16 @@ def _fetch_stations(client, hours=3, pages=1):
             kodiutils.log("guide: page %d did not open: %s" % (fetched + 1, exc))
             break
         fetched += 1
-        added = epg.merge_airings(stations, epg.parse_epg(page))
-        kodiutils.log("guide: page %d added %d airing(s)" % (fetched, added))
+        parsed = epg.parse_epg(page)
+        added = epg.merge_airings(stations, parsed)
+        kodiutils.log("guide: page %d parsed %d row(s) and added %d airing(s)"
+                      % (fetched, len(parsed), added))
+        if not added:
+            # A page that answered and gave nothing is the interesting case:
+            # either it holds no airings, or it holds them in a shape this
+            # addon cannot read. Only the response says which.
+            kodiutils.log("guide page %d shape: %s" % (fetched, epg.describe(page)))
+            kodiutils.dump_response("guide-page-shape.json", page)
         following = epg.continuation_token(page)
         if not added or not following or following == token:
             break
@@ -295,10 +303,21 @@ def _guide_census(stations, response):
                                    sorted(fields.items(), key=lambda p: -p[1]))
                          or "none"))
 
-    if not playable or len(empty) + len(silent) > len(stations) / 2 \
-            or len(nameless) > len(stations) / 2:
+    # A guide carrying about one airing per station is a guide with no
+    # schedule in it: the 2026-08-29 web capture returned 953 airings for
+    # these 148 stations over six hours, and this account's own requests
+    # return 143. Whatever the difference is, the response is the only thing
+    # that can say, so it is kept.
+    thin = stations and airings < len(stations) * 2
+    if thin:
+        kodiutils.log("guide: %d airing(s) for %d station(s) -- about one "
+                      "each, so the schedule did not come back"
+                      % (airings, len(stations)))
+    if (not playable or thin
+            or len(empty) + len(silent) > len(stations) / 2
+            or len(nameless) > len(stations) / 2):
         kodiutils.log("guide shape: %s" % epg.describe(response))
-        _dump_shape("guide-shape.json", response)
+        kodiutils.dump_response("guide-shape.json", response)
 
 
 def route_channels():
@@ -576,27 +595,6 @@ def route_browse(browse_id, name):
     _add_items(items)
 
 
-def _dump_shape(name, response):
-    """Write a page this addon could not read to the profile dir.
-
-    A log line can say which renderers came back; it cannot say what they
-    contained. When a container is unrecognised the response itself is what
-    is needed to write the reader, so it is kept where the user can find and
-    send it. responseContext is stripped: it carries the visitor id and
-    nothing about the page.
-    """
-    try:
-        body = {k: v for k, v in response.items() if k != "responseContext"}
-    except AttributeError:
-        return ""
-    if not kodiutils.write_json(name, body):
-        return ""
-    import os
-    path = os.path.join(kodiutils.profile_dir(), name)
-    kodiutils.log("wrote the unread response to %s" % path)
-    return path
-
-
 def _follow_pages(client, section, limit=10):
     """Everything behind a row's continuation token, page after page.
 
@@ -725,7 +723,7 @@ def route_home():
     # and keep the response either way: the shape having changed is the
     # thing worth knowing.
     kodiutils.log("home shape: %s" % epg.describe(first_page))
-    _dump_shape("home-shape.json", first_page)
+    kodiutils.dump_response("home-shape.json", first_page)
     rows = []
     for page in pages:
         rows.extend(epg.any_rows(page))
@@ -806,7 +804,7 @@ def route_library():
                                for s in shelves + filters) or "nothing"))
     if not known:
         kodiutils.log("library shape: %s" % epg.describe(response))
-        _dump_shape("library-shape.json", response)
+        kodiutils.dump_response("library-shape.json", response)
 
     # Any empty tab is worth explaining, not only an entirely empty page:
     # the first time this ran, Scheduled's single item was enough to keep
@@ -816,7 +814,7 @@ def route_library():
             kodiutils.log("library: %s" % line)
         for line in epg.renderer_sample(response):
             kodiutils.log("library: %s" % line)
-        _dump_shape("library-shape.json", response)
+        kodiutils.dump_response("library-shape.json", response)
 
     _list_sections(shelves, "library_section")
     _list_sections(filters[1:], "library_section")

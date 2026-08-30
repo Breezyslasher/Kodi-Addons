@@ -164,6 +164,27 @@ def write_json(filename, data):
         return False
 
 
+def dump_response(filename, response):
+    """Keep a response this addon could not read, where it can be found.
+
+    A log line can say which renderers came back; it cannot say what they
+    held. responseContext is stripped: it carries the visitor id and nothing
+    about the page. Returns the path, or "" if it could not be written.
+    """
+    try:
+        body = {k: v for k, v in response.items() if k != "responseContext"}
+    except AttributeError:
+        return ""
+    if not write_json(filename, body):
+        return ""
+    try:
+        path = os.path.join(profile_dir(), _safe_name(filename))
+    except Exception:
+        return ""
+    log("wrote the unread response to %s" % path)
+    return path
+
+
 def delete_file(filename):
     try:
         path = os.path.join(profile_dir(), _safe_name(filename))
