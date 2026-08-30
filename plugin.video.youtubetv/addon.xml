@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.36" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.37" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,11 +35,18 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
-2026.8.31.36 - A search row per kind, and one button fewer
-- This client does not group a search the way a browser does. It answers
-  with fourteen results of every kind in one row called "Top picks", where
-  a browser gets Shows, Sports and Movies separately. Every tile still says
-  what it is, so the row is split into Movies, Shows and Sports here.
+2026.8.31.37 - Search rows are YouTube TV's again
+- "Top picks" is put back the way it arrives. Splitting it into Movies,
+  Shows and Sports was an invention: those rows do not exist on the
+  service when it answers this client, and the row that does was not the
+  thing that was wrong.
+- Opening a category now logs the params it asked for and the kinds each
+  row came back holding. All five categories are one browse id and differ
+  only in those params, so films listed under Shows are either the wrong
+  category being asked for or what YouTube TV puts in that one, and those
+  two lines say which. No change to what is shown until they do.
+
+2026.8.31.36 - One button fewer
 - "Sign in again" is gone. Signing in again was the answer when a session
   went wrong; it has not been for a while.
 
