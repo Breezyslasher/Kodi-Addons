@@ -194,9 +194,38 @@ def route_root():
     finish()
 
 
-def _fetch_stations(client, hours=3):
+def _fetch_stations(client, hours=3, pages=1):
+    """The lineup, and as much schedule as ``pages`` requests will reach.
+
+    One request covers the window it asks for and hands back a token for the
+    next. The second page of the 2026-08-29 guide carried 748 more airings
+    across the same 148 channels -- describing each channel only on the
+    first page and sending only a stationId and more airings thereafter --
+    so following it takes the same lineup from 953 airings to 1555, a
+    median of 10 per channel rather than 6.
+
+    Asking for a longer window instead is not the same thing and is not
+    what the web client does: it asks for about six hours and paginates.
+    """
     response = client.epg(hours=hours)
     stations = epg.parse_epg(response)
+
+    token = epg.continuation_token(response) if pages > 1 else None
+    fetched = 1
+    while token and fetched < pages:
+        try:
+            page = client.continuation(token)
+        except (auth.AuthError, api.ApiError) as exc:
+            kodiutils.log("guide: page %d did not open: %s" % (fetched + 1, exc))
+            break
+        fetched += 1
+        added = epg.merge_airings(stations, epg.parse_epg(page))
+        kodiutils.log("guide: page %d added %d airing(s)" % (fetched, added))
+        following = epg.continuation_token(page)
+        if not added or not following or following == token:
+            break
+        token = following
+
     _guide_census(stations, response)
     return stations
 
@@ -344,7 +373,7 @@ def route_station(station_id, name):
         finish()
         return
     try:
-        stations = _fetch_stations(client, hours=12)
+        stations = _fetch_stations(client, hours=6, pages=4)
     except (auth.AuthError, api.ApiError) as exc:
         kodiutils.ok_dialog(str(exc), "Could not load the guide")
         finish()

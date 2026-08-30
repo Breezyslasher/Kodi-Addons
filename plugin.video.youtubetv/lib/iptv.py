@@ -34,7 +34,14 @@ from . import api, auth, epg as epg_mod, kodiutils
 # What the guide endpoint reaches for. IPTV Manager refreshes on its own
 # schedule and Google caps the reachable range at a week, so this is a
 # compromise between a useful guide and a response measured in megabytes.
-EPG_HOURS = 24
+#
+# Asked for as several pages of six hours rather than one request for
+# twenty-four. Six hours is what the web client's own live tab asks for,
+# and what every capture measures; a single twenty-four hour request is a
+# shape nothing has been observed answering, and this ran as one for long
+# enough to be worth not repeating.
+EPG_HOURS = 6
+EPG_PAGES = 4
 EPG_AIRINGS_PER_STATION = 40
 
 
@@ -91,9 +98,32 @@ class IPTVManager(object):
     def send_epg(self):
         self._send(self._epg)
 
-    def _stations(self, hours):
-        return epg_mod.parse_epg(api.Api().epg(
-            hours=hours, max_airings=EPG_AIRINGS_PER_STATION))
+    def _stations(self, hours, pages=1):
+        """The lineup, following the guide's pagination ``pages`` deep.
+
+        A later page describes no channel: it carries a stationId and more
+        airings, which parse_epg reads and merge_airings folds in. Before
+        that, every airing past the first page was dropped, and every
+        airing on the first page that was not the one on the air with it --
+        so the Kodi PVR guide showed one programme per channel.
+        """
+        client = api.Api()
+        response = client.epg(hours=hours,
+                              max_airings=EPG_AIRINGS_PER_STATION)
+        stations = epg_mod.parse_epg(response)
+        token = epg_mod.continuation_token(response) if pages > 1 else None
+        fetched = 1
+        while token and fetched < pages:
+            page = client.continuation(token)
+            fetched += 1
+            added = epg_mod.merge_airings(stations, epg_mod.parse_epg(page))
+            kodiutils.log("iptv manager: page %d added %d airing(s)"
+                          % (fetched, added))
+            following = epg_mod.continuation_token(page)
+            if not added or not following or following == token:
+                break
+            token = following
+        return stations
 
     def _channels(self):
         """JSON-STREAMS: one entry per station.
@@ -122,7 +152,7 @@ class IPTVManager(object):
         """JSON-EPG: the schedule, keyed by the same station id."""
         guide = {}
         airings = 0
-        for station in self._stations(hours=EPG_HOURS):
+        for station in self._stations(hours=EPG_HOURS, pages=EPG_PAGES):
             if not station.station_id:
                 continue
             programmes = []
