@@ -770,6 +770,7 @@ def _list_search(client, query, response):
                 items.append(item)
     if not items:
         kodiutils.notify("Nothing found for %s" % query)
+    _type_results(client, [epg.Section(query, items)])
     _add_items(items)
 
 
@@ -794,8 +795,16 @@ def route_search_row(query, name, token=""):
                          % (name or "That row"))
         finish()
         return
-    _add_items(_follow_pages(client, section,
-                             fetch=client.search_continuation))
+    # Typed here, not only where the rows were listed. Listing them types
+    # folder names and a log line; *this* is the screen with the films on
+    # it, and until it was typed too a film from search stayed a folder --
+    # no playing it, and no menu beside it. Costs nothing after the
+    # listing: everything it learned is already remembered.
+    items = _follow_pages(client, section, fetch=client.search_continuation)
+    asked, films = _type_results(client, [epg.Section(name, items)])
+    kodiutils.log("%s: %d item(s), %d page(s) asked, %d film(s)"
+                  % (name or "that row", len(items), asked, films))
+    _add_items(items)
 
 
 def _expand_sections(client, response, items):
