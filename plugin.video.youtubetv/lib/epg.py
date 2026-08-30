@@ -1266,6 +1266,27 @@ def _duration(renderer):
 HEADER = "unpluggedContentDetailsHeaderRenderer"
 
 
+def browse_rows(response, least=20):
+    """(categories, networks) off the Browse tab.
+
+    The tab holds one enormous row of networks -- 256 of them -- and one
+    small row of category chips. Told apart by size rather than by name,
+    because the names are YouTube TV's ("Browse" for the chips, "Networks"
+    for the networks) and a renamed row should not lose the networks.
+
+    The *biggest* row rather than the first one over ``least``: with a
+    threshold alone, two rows that both clear it hand back whichever came
+    first, and the categories would be listed as the networks.
+    """
+    rows = page_shelves(response) or any_rows(response)
+    networks = max(rows, key=lambda row: len(row.items), default=None)
+    if networks is not None and len(networks.items) < least:
+        networks = None
+    categories = [item for row in rows if row is not networks
+                  for item in row.items if item.browse_id]
+    return categories, networks
+
+
 def title_header(response):
     """The header of a page about one title, or None.
 

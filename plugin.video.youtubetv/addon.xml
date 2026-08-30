@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.34" provider-name="Breezyslasher">
+<addon id="plugin.video.youtubetv" name="YouTube TV" version="2026.8.31.35" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,6 +35,15 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 			<fanart>resources/fanart.png</fanart>
 		</assets>
 		<news>
+2026.8.31.35 - Networks and the categories are on the front page
+- Networks opens the networks. It was a folder holding a folder of them
+  and a folder of categories, which put a channel two folders down.
+- Sports, Shows, Movies, News and Family are entries on the front page now
+  rather than inside Browse inside Networks. They come off a 712 KB tab, so
+  they are remembered on disk and the menu never waits on a request for
+  them: the service fetches them once a week in the background, and
+  opening Networks refreshes them too.
+
 2026.8.31.34 - Search is rows, and the films are on its second page
 - Search never showed a film because it was read one page deep. "blues"
   answers with Shows, Sports and "On now &amp; upcoming", and hands back a

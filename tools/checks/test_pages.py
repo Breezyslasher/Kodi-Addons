@@ -956,6 +956,33 @@ check("the rebuilt DVR params match a second capture's, byte for byte",
       unquote(api.dvr_params("UCUlwmd1Fk7Tr2XLsLe3rYcQ")),
       epg.first(MOVIE_TILE, "startDvrParams"))
 
+# -- the Browse tab, split for the front page ------------------------------
+# The five categories go on the addon's front page and the networks one
+# folder from it, so the tab has to come apart into those two. Told apart by
+# size, not by name: "Browse" and "Networks" are YouTube TV's words for them
+# and a rename should not lose 256 channels.
+BIG_TAB = copy.deepcopy(BROWSE_TAB)
+_grid = BIG_TAB["contents"]["sectionListRenderer"]["contents"][1][
+    "shelfRenderer"]["content"]["horizontalListRenderer"]["items"]
+for _n in range(3, 9):                      # make the networks row the big one
+    _more = copy.deepcopy(_grid[0])
+    _more["unpluggedGridChannelRenderer"]["title"] = {
+        "runs": [{"text": "Network %d" % _n}]}
+    _more["unpluggedGridChannelRenderer"]["primaryText"] = {
+        "runs": [{"text": "Network %d" % _n}]}
+    _more["unpluggedGridChannelRenderer"]["navigationEndpoint"] = {
+        "browseEndpoint": {"browseId": "UCNETWORK%d" % _n}}
+    _grid.append(_more)
+
+cats, nets = epg.browse_rows(BIG_TAB, least=4)
+check("the tab comes apart into categories and networks",
+      ([c.title for c in cats], nets.title, len(nets.items)),
+      (["Sports", "Movies"], "Networks", 8))
+check("the biggest row wins, not the first one over the line",
+      epg.browse_rows(BIG_TAB, least=2)[1].title, "Networks")
+check("and no row big enough means no networks row at all",
+      epg.browse_rows(BIG_TAB, least=500)[1], None)
+
 # -- search groups its results, and defers the films -----------------------
 # The search of 2026-08-30 01:00. "blues" answers with Shows, Sports and
 # "On now & upcoming" and hands back a continuation carrying "From your
