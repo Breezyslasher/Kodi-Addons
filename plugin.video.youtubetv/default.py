@@ -670,31 +670,10 @@ def _list_search(client, query, response):
                   % (query, len(pages), len(rows),
                      "; ".join("%s (%s)" % (r.title, _kinds_in(r.items))
                                for r in rows) or "nothing"))
-    # And what is actually in them. The counts said this search holds no
-    # film at all -- 11 SHOW and 3 SPORTS_TEAM in Top picks, and nothing
-    # typed in the other three rows -- where the same query in a browser
-    # answers with a Movies row. So either a film is typed SHOW here or it
-    # is in one of the untyped rows, and only the titles say which.
-    for row in rows:
-        kodiutils.log("search %r: %s = %s"
-                      % (query, row.title,
-                         ", ".join("%s [%s] %s"
-                                   % (item.title, item.content_type or "-",
-                                      item.source or "?")
-                                   for item in row.items[:12])
-                         or "nothing"))
-    # And the renderers those rows are made of. A browser answers the same
-    # query with The Blues Brothers typed MOVIE inside "On now & upcoming";
-    # here that row comes back with nothing typed at all. Either the
-    # renderer is a different one or it is the same one with the field left
-    # out, and the tile's own keys are what say which.
-    seen = []
-    for page in pages:
-        for line in epg.renderer_sample(page, 6):
-            if line not in seen:
-                seen.append(line)
-    kodiutils.log("search %r: renderers -- %s"
-                  % (query, "; ".join(seen[:8]) or "none"))
+    # The per-item dump that answered this is gone; what it found is
+    # written down in _content_type and in the protocol notes. In short:
+    # this client types a film as SHOW here, and its airings carry no type
+    # at all, so nothing in a search result says "film".
     if rows:
         _list_sections(rows, "search_row", extra={"query": query})
         finish()

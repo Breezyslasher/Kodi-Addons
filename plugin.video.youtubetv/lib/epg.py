@@ -1343,11 +1343,16 @@ def _content_type(renderer):
     """
     named = renderer.get("contentType")
     if isinstance(named, str) and named:
-        # Matched on the word rather than the whole string. A category tile
-        # says "MOVIE"; search answers with the same field on the same
-        # renderer and none of its 14 results matched, so the vocabulary is
-        # not identical everywhere. An unrecognised value is handed back
-        # whole, so the log names it rather than swallowing it.
+        # **Trusted only as far as it goes.** A category tile is right: The
+        # Accountant says MOVIE. A *search* tile from this client is not --
+        # it typed The Blues Brothers and Blues Brothers 2000 SHOW, where a
+        # browser types both MOVIE (2026-08-30 01:29). So a film found by
+        # search is a folder, and what settles what it really is is the
+        # header of its own page, which says MOVIE plainly.
+        #
+        # Matched on the word rather than the whole string, because the
+        # vocabulary is not identical everywhere, and an unrecognised value
+        # is handed back whole so a log names it rather than swallowing it.
         for _word, kind in _TOAST_KINDS:
             if kind in named.upper():
                 return kind
