@@ -127,7 +127,24 @@ class TubiAuth(object):
                                   json.dumps({'intentional': True}, separators=(',', ':')),
                                   headers={'Cookie': cookies})
         self.clear()
-        self.log('signed out, %d of 3 told to Tubi' % told, level=xbmc.LOGINFO)
+        # Forgetting the tokens is not signing out while the credentials are
+        # still in settings - the very next call signs straight back in with
+        # them, so from the outside the button does nothing.
+        forgotten = self.forgetCredentials()
+        self.log('signed out, %d of 3 told to Tubi, credentials %s' % (
+            told, 'cleared' if forgotten else 'were not set'), level=xbmc.LOGINFO)
+
+    def forgetCredentials(self):
+        """Empty the stored email and password. True if there were any."""
+        had = False
+        for key in ('login_name', 'login_pass'):
+            try:
+                if self.addon.getSetting(key):
+                    had = True
+                self.addon.setSetting(key, '')
+            except Exception as err:
+                self.log('could not clear %s : %s' % (key, err), level=xbmc.LOGWARNING)
+        return had
 
     def _quietly(self, step, call, *args, **kwargs):
         """Run one sign-out step. Returns 1 when Tubi heard it, 0 otherwise."""

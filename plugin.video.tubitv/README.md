@@ -190,8 +190,14 @@ sign-in.
 
 - **User Email** / **User Password**: your Tubi account credentials
 - **Sign out**: tells Tubi the device is signing out, the same three calls the
-  website makes, then forgets the tokens. If Tubi cannot be reached it still
-  clears them, since a sign-out has to leave the addon signed out either way.
+  website makes, then forgets the tokens *and empties the two credential
+  settings*. If Tubi cannot be reached it still clears both, since a sign-out
+  has to leave the addon signed out either way.
+
+  Clearing the tokens alone was not enough. `default.py` signs in on every
+  plugin invocation, so with the email and password still stored the next
+  browse signed straight back in and wrote a fresh session over the top -
+  which is why `session.json` looked as though it never cleared.
 
 ## How signing in works
 

@@ -180,6 +180,31 @@ class myAddon(t1mAddon):
         self.note('library export : %s' % target)
         return target
 
+    def addMovieToLibrary(self, url):
+        """Write a film's .strm, titled from Tubi rather than from the GUI.
+
+        t1mlib names both the folder and the file from
+        ListItem.Title. A context menu entry runs through RunPlugin, in a
+        process of its own, and that infolabel is read from whatever the
+        GUI happens to have focused by then - so it comes back empty often
+        enough, and the export becomes a nameless ".strm" in the root of
+        the movies folder. The content id is in hand either way, so the
+        title is asked for instead of guessed at.
+        """
+        contentId = uqp(url)
+        try:
+            title = self.api.content(contentId).get('title')
+        except TubiApiError as err:
+            self.report(err)
+            return
+        title = self.cleanFilename(title or '') or contentId
+        target = self.makeLibraryPath('movies', name=title)
+        strm = os.path.join(target, ''.join([title, '.strm']))
+        with open(strm, 'w') as out:
+            out.write(''.join([sys.argv[0], '?mode=GV&url=', qp(contentId)]))
+        self.note('library export : wrote %s' % strm)
+        self.doScan(target)
+
     # ------------------------------------------------------------- listings
 
     @staticmethod
