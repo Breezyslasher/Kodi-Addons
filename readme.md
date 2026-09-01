@@ -84,6 +84,21 @@ See the [addon README](service.watchparty/README.md) for setup and details.
 
 ---
 
+### [TubiTV](plugin.video.tubitv/)
+Browse and watch Tubi — free, ad-supported films and TV shows — from inside Kodi. A fork of Lunatixz's addon, kept here so the sign-in stays maintained.
+
+**Recent updates:**
+- Sign-in repaired — Tubi retired the old login endpoint, so the addon now performs the web client's handshake (signed anonymous device token → account login → web session handover)
+- A failed sign-in no longer kills the addon on startup; Tubi is free to browse, so it carries on anonymously
+- Tokens are cached in the addon profile instead of being re-fetched on every browse and playback
+- Live TV: Tubi's 177 linear channels, with IPTV Manager integration so they appear in the Kodi TV guide
+
+See the [addon README](plugin.video.tubitv/README.md) for details.
+
+**Requirements:** Kodi 19+. `script.module.t1mlib` comes from the official Kodi repository, and a Tubi account is optional.
+
+---
+
 ### [Webhook Runner](script.webhook.runner/)
 Fire Home Assistant (or any) webhooks from Kodi — either by remote-button press or automatically on Kodi events.
 
@@ -137,6 +152,7 @@ Kodi-Addons/
 ├── script.scrcpy-launcher/          # scrcpy launcher addon
 ├── script.webhook.runner/           # Webhook runner addon
 ├── service.watchparty/              # Watch Party sync addon
+├── plugin.video.tubitv/             # TubiTV addon
 ├── repository.breezyslasher/        # Repository metadata
 ├── zips/                           # Generated ZIP files
 ├── .github/workflows/              # CI/CD workflows
@@ -160,6 +176,7 @@ Each addon has its own license:
 - **scrcpy Launcher**: MIT
 - **Watch Party**: MIT
 - **Webhook Runner**: MIT
+- **TubiTV**: GPL-2.0-or-later
 
 ## Links
 

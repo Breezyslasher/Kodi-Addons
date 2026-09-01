@@ -18,7 +18,8 @@ ADDON_FOLDERS = [
     "plugin.video.appletv",
     "script.akl.heroic",
     "script.webhook.runner",
-    "service.watchparty"
+    "service.watchparty",
+    "plugin.video.tubitv"
 ]
 
 def get_addon_xml_content(folder):
