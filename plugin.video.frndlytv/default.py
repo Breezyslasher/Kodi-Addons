@@ -252,10 +252,11 @@ def route_guide_channel(channel_id, name):
             kodiutils.log("could not read the guide's overlays: %s" % exc)
 
     for prog in upcoming:
+        over = overlays.get(prog["path"]) or {}
         label = "%s  %s" % (_clock(prog["start_ms"]), prog["title"])
         item = xbmcgui.ListItem(label=label)
-        _set_guide_meta(item, prog, overlays.get(prog["path"]) or {}, name)
-        item.addContextMenuItems(_recording_menu(prog["path"]))
+        _set_guide_meta(item, prog, over, name)
+        item.addContextMenuItems(_guide_menu(prog, over))
         if live_path and prog["start_ms"] <= now < prog["end_ms"]:
             # On the air: two ways to watch it, so the choice is offered
             # rather than assumed. Joining live is the channel's own path;
@@ -278,6 +279,24 @@ def route_guide_channel(channel_id, name):
                     start=prog["start_ms"], end=prog["end_ms"]),
                 item, isFolder=True)
     finish("videos")
+
+
+def _guide_menu(prog, over):
+    """What a guide airing offers besides watching it.
+
+    The show it belongs to is only knowable from the airing's overlay
+    (``target_browse_episodes``), so these two entries appear when the
+    overlay was fetched and the airing is part of a series -- a film on a
+    channel has no show to go to.
+    """
+    menu = _recording_menu(prog["path"])
+    series = over.get("series")
+    if series:
+        title = over.get("title") or prog["title"]
+        menu.append(("Go to show", "Container.Update(%s)"
+                     % url(action="page", path=series, name=title)))
+        menu.extend(_similar_menu({"path": series, "title": title}))
+    return menu
 
 
 def _set_guide_meta(item, prog, over, channel):

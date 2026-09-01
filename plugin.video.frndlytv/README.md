@@ -45,7 +45,9 @@ Selecting the programme that is on now asks whether to **Play live** or
 channel's gives the live edge, the programme's own gives it from the
 beginning.
 
-Any film or show has **More like this** on its context menu.
+Any film or show has **More like this** on its context menu. A guide airing
+that belongs to a series also has **Go to show**, which opens that show's page
+and its seasons — so you can go from "this is on at 8" to the whole run of it.
 
 Guide rows carry the synopsis, cast, artwork, episode number and certificate —
 none of which is in the schedule itself; it comes from each airing's own
