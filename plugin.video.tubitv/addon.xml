@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.tubitv" name="TubiTV" version="2026.8.11.16" provider-name="Lunatixz, Breezyslasher">
+<addon id="plugin.video.tubitv" name="TubiTV" version="2026.8.31" provider-name="Lunatixz, Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.t1mlib" version="4.0.9"/>
