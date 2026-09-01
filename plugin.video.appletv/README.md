@@ -1,11 +1,13 @@
 # Apple TV for Kodi (experimental)
 
-Sign in with your Apple ID and browse **Apple TV+ Originals** and your
-**iTunes movie library** in Kodi, with playback through **InputStream Adaptive**
-using **Widevine** DRM.
+Sign in with your Apple ID and browse **Apple TV+ Originals**, **live sports**
+and your **iTunes movie and TV library** in Kodi, with playback through
+**InputStream Adaptive** using **Widevine** DRM.
 
-> ⚠️ **Experimental, and requires Kodi 22 with InputStream Adaptive 22.**
-> Playback works, in standard definition only — see *Current status* for why.
+> ⚠️ **Experimental. Desktop needs Kodi 21+; Android needs Kodi 22+** (with the
+> matching InputStream Adaptive). Desktop plays in standard definition (up to
+> 540p); a Widevine-L1 Android device on Kodi 22 plays HD — see *Current
+> status* for why.
 > Everything here is reconstructed from real `tv.apple.com` browser captures;
 > Apple documents none of it and can change it at any time.
 
@@ -24,24 +26,32 @@ using **Widevine** DRM.
 | Playback resolve (`/uts/v3/movies/{id}`, `/episodes/{id}`) | ✅ Returns the `hlsUrl` for the entitled feature (not the trailer) |
 | Widevine licence exchange (`fpsRequest`) | ✅ Local proxy wraps the challenge in Apple's JSON envelope; the returned key id always matches the requested one |
 | Key id delivery (`KEYID` + `tenc` patching) | ✅ Apple omits both; the proxy recovers the key id from the PSSH and supplies it |
-| **Audio decryption and playback** | ✅ Works |
-| **Video decryption and playback** | ✅ Works on Kodi 22 + ISA 22, standard definition only |
+| Your **iTunes library** (purchased/rented films and TV), Family Sharing | ✅ Lists via the app's own MediaAPI route on the ordinary Apple TV+ sign-in; mark-watched and resume sync with Apple |
+| **Audio decryption and playback** | ✅ Works (desktop Kodi 21+; Android needs Kodi 22 — see *HD/4K on Android*) |
+| **Video decryption and playback** | ✅ Works on Kodi 21+ (ISA 21+); SD on desktop, HD on L1 Android (Kodi 22) |
 
 ### Requirements and limits for playback
 
-The addon requires **Kodi 22 with InputStream Adaptive 22 or newer**. Playback
-relies on the `inputstream.adaptive.drm` property, which the 21.x series does
-not have, so Kodi 21 is not supported.
+The addon requires **Kodi 21 or newer** on desktop and **Kodi 22 or newer on
+Android** (see *HD/4K on Android* for the ISA 21 Android audio-licensing bug
+behind that). DRM is configured to match the installed InputStream Adaptive:
+the JSON `inputstream.adaptive.drm` property on **ISA 22.1.5+ (Kodi 22)**, and
+the **legacy individual DRM properties** on **ISA 21 (Kodi 21)**. Kodi 20 and
+earlier are not supported — their ISA predates 21, and in practice the
+Widevine CDMs available there are frequently revoked or unstable, so DRM
+playback fails or crashes even when the addon otherwise runs.
 
 Three constraints decide which stream is played, all enforced automatically by
 the manifest proxy:
 
-1. **Standard definition only.** Apple keys every quality tier separately and
-   the higher tiers demand output protection a software (L3) Widevine CDM
-   cannot provide: the CDM reports those keys as output restricted and the DRM
-   session fails. Only the lowest tier's key is usable, hence the default
-   360-pixel height cap. Apple's own web player picks the same tier for the
-   same reason.
+1. **Standard definition (up to 540p on desktop).** Apple keys every quality
+   tier separately, and the tiers above ~540p demand output protection a
+   software (L3) Widevine CDM cannot provide: Apple still issues the licence,
+   but flags those keys output-restricted (`OnSessionKeysChange` status 3), so
+   the L3 CDM refuses them and the DRM session fails. The **540p tier's key
+   comes back usable** (status 1) and plays, so that is the default height cap
+   — verified on desktop L3 (540p plays with 5.1 audio, 720p is
+   output-restricted), the same ~540p ceiling the Netflix add-on hits on L3.
 2. **H.264 only.** Encrypted video is decoded inside the CDM, whose decoder
    does not handle HEVC (`ToCdmVideoCodec: Unknown video codec 5`). Apple
    publishes H.264 at every tier, so non-H.264 variants are skipped.
@@ -52,6 +62,33 @@ the manifest proxy:
 Raising the height cap on hardware with stronger output protection is
 possible, but on a typical desktop the CDM will refuse the key.
 
+### HD/4K on Android (hardware Widevine L1) — needs Kodi 22
+
+The SD limit above is a property of the **software Widevine L3** CDM on
+desktop, not of the addon. On a **Widevine-L1-certified Android device** (most
+phones, an Nvidia Shield, a certified Android TV box), Kodi's InputStream
+Adaptive uses the device's own **hardware Widevine (L1)** via MediaCodec, and
+Apple's licence server grants it the **HD and 4K tiers** — the same as the
+official app. Verified on an L1 Android device: **1080p H.264 and HEVC tiers
+licence and render**, with **Dolby Digital 5.1 audio**, no bypass. The addon
+probes the Widevine level at playback and, on L1, lifts the default SD height
+cap to **1080 automatically** (a cap the user changed themselves is left
+alone; HEVC/4K stays opt-in via the settings). It also requests a **secure
+MediaCodec** on Android so those L1-protected frames actually display (a
+non-secure decoder shows black).
+
+**Android requires Kodi 22.** On Kodi 21, InputStream Adaptive's Android
+decrypter hardcodes `HasLicenseKey() { return true; }`
+(`src/decrypters/widevineandroid/WVCencSingleSampleDecrypter.cpp:178` in ISA
+21.5.x): the first DRM session claims to hold *every* key, so ISA shares it
+with all streams and **never requests a licence for the audio key**. Apple
+keys audio separately from video, so on Kodi 21 Android the video plays but
+audio can never decrypt (`CDVDAudioCodecAndroidMediaCodec::Decode
+ExceptionCheck` on every sample, playback buffers endlessly). ISA 22 replaced
+the stub with a real per-key check (`HasKeyId`), and both licences are then
+requested and granted — verified in the same device's logs, Kodi 21 vs Kodi
+22. Desktop Kodi 21 is unaffected (its decrypter checks keys properly).
+
 ### What the addon has to do that Apple does not
 
 - Apple sends no `KEYID` on `#EXT-X-KEY` and an all-zero `tenc` default_KID.
@@ -59,7 +96,9 @@ possible, but on a typical desktop the CDM will refuse the key.
   the CDM to decrypt with a key that was never licensed.
 - Apple's licence server wants the challenge wrapped in a JSON envelope with
   the matching key's `uri`, `adamId` and `svcId`; a local proxy does that
-  translation, matching each challenge to its key by key id.
+  translation, matching each challenge to its key by key id. The proxy is
+  bound to localhost and authenticated with a per-session secret, so no other
+  local process or web page can drive it or reach the account tokens.
 - Apple leaves the opening chapters unencrypted and starts encryption several
   chapters in, so the DRM session is pre-initialised via `pre_init_data`.
 
@@ -79,10 +118,14 @@ Netflix and Disney+ Kodi addons use.
 
 Two hard limits remain and neither can be coded away:
 
-1. **Standard definition only.** Kodi ships the **software Widevine L3** CDM,
-   and Apple only issues a usable key for its lowest tier at that level — its
-   own web player selects roughly 360p for the same reason. HD/4K needs the
-   hardware **Widevine L1** DRM found on Apple's devices and certified TVs.
+1. **Standard definition on desktop (max ~540p).** Kodi ships the **software
+   Widevine L3** CDM, and Apple flags the keys for tiers above ~540p as
+   output-restricted, which an L3 CDM cannot use — so desktop tops out at the
+   540p tier (verified: 540p plays, 720p comes back output-restricted). HD/4K
+   needs the hardware **Widevine L1** DRM, which desktop Kodi does not have.
+   **A Widevine-L1-certified Android device running Kodi 22 is the exception**
+   — there Kodi uses the device's hardware L1 and Apple grants HD/4K (see
+   *HD/4K on Android* above; Kodi 21 Android cannot license the audio track).
 2. **Apple gives no public API.** Sign-in, two-factor auth, the catalogue and
    the playback/licence endpoints are all reverse-engineered from Apple's web
    app. Apple changes these deliberately to break unofficial clients, so parts
@@ -95,11 +138,21 @@ supported hardware.
 ## Features
 
 - Apple ID sign-in with two-factor authentication (SRP-6a web flow)
-- Browse the Apple TV+, MLS and Formula 1 tabs (all of each tab's shelves)
+- Browse the Apple TV+, MLS and Formula 1 tabs (all of each tab's shelves); the
+  brand tabs are read live from Apple's own navigation, and Apple TV Channels
+  the account is subscribed to are listed too
 - Browse categories (Kids & Family, Sci-Fi, ...), MLS club pages and F1 Grand Prix weekends as folders
 - Show → season → episode browsing, with episode counts per season
+- **My iTunes Library** — your purchased/rented films and TV, grouped into Films
+  and TV Shows (television by season), on the ordinary Apple TV+ sign-in (no
+  separate store login needed). Includes **Family Sharing**: each member who
+  shares purchases is listed, with their shared films and TV, browsable by genre
 - Search with Apple's suggestions, or browse when nothing is typed
-- The tab's own shelves, including your **Continue Watching** and **Watchlist**, when signed in (Apple serves these on the tab, as on the website)
+- The tab's own shelves, including your **Continue Watching** (which mixes in
+  iTunes films in progress) and **Watchlist**, when signed in
+- **Mark watched** on a title, episode or iTunes purchase — recorded on your
+  Apple account (via play-history, the way the Apple TV app does), so it leaves
+  Continue Watching and shows as watched on your other devices
 - **Play trailer** and **Bonus content** context-menu entries on movies and shows
 - **Follow club** / **Unfollow club** on clubs, with a **Following** folder listing them
 - **Add to / Remove from Watchlist** on any title, episode or event
@@ -109,14 +162,18 @@ supported hardware.
 
 ## Requirements
 
-- **Kodi 22 or later with InputStream Adaptive 22 or later.** This is enforced
-  in `addon.xml`. Playback depends on the `inputstream.adaptive.drm` property,
-  which does not exist in the 21.x series (only `drm_legacy` was added there,
-  in 21.5.0), and on Kodi 21 the video never decrypts.
+- **Kodi 21 or later with InputStream Adaptive 21 or later.** This is enforced
+  in `addon.xml`. DRM setup adapts to the installed ISA: the JSON
+  `inputstream.adaptive.drm` property on ISA 22.1.5+ (Kodi 22), and the legacy
+  individual DRM properties on ISA 21 (Kodi 21). Kodi 20 and earlier are not
+  supported.
 - **Widevine CDM** — the addon uses *InputStream Helper* to install it
   automatically on supported platforms (x86/ARM Linux, Android, Windows).
   Widevine is **not** available on some platforms (e.g. iOS, and Apple silicon
-  without the Android runtime).
+  without the Android runtime). A **revoked or unstable** CDM causes licence
+  refusals (`status -1021`) or crashes on decrypt regardless of the addon; if
+  that happens, install a fresh, known-good CDM (e.g. via *InputStream Helper*'s
+  version picker) before assuming the addon is at fault.
 - An **Apple ID** with an active Apple TV+ subscription and/or iTunes purchases
 
 ## Installation
@@ -141,9 +198,10 @@ Install from the Breezyslasher repository, or from zip:
   web client to Apple's sign-in service. Leave blank to use the built-in
   default; set it only if sign-in stops working and you have captured a current
   key from a browser session at `https://tv.apple.com`.
-- **Maximum video height** — advanced, `360` by default. Higher tiers use keys
-  the CDM reports as output restricted, so raising this generally stops
-  playback; `0` removes the limit.
+- **Maximum video height** — advanced, `540` by default (the highest tier a
+  desktop L3 CDM can use; on an L1 device it is lifted to 1080 automatically).
+  Tiers above ~540p use keys Apple flags output-restricted, so raising this on
+  desktop generally stops playback; `0` removes the limit.
 - **Standard dynamic range only** — advanced, on by default. Skips Dolby Vision
   and HDR variants, which Kodi renders with shifted colours.
 - **H.264 only** — advanced, on by default. The CDM's decoder cannot decode
@@ -173,8 +231,12 @@ Common cases:
   for `status 3` (the CDM refusing an output-restricted key: lower *Maximum
   video height*) or `Unknown video codec 5` (an HEVC variant: enable *H.264
   only*).
-- **Nothing plays and the log has no `drm property` line** — you are on ISA 21
-  or older, which lacks the DRM property this addon needs.
+- **Nothing plays** — check the log for `DRM property set (json drm ...)` or
+  `DRM property set (legacy properties ...)`; the addon logs which form it used
+  for your ISA. A licence refusal with `status -1021`, or a crash right after
+  `License OK`, points at a revoked/unstable Widevine CDM rather than the addon
+  — reinstall a known-good CDM. On Kodi 20 or older (ISA < 21) the addon does
+  not install at all.
 
 ## Legal
 

@@ -23,9 +23,26 @@ Sign in with your Apple ID and browse Apple TV+ Originals, the MLS and Formula 1
 
 **How it works:** Apple TV+ uses FairPlay DRM on Apple devices (which Kodi can't decrypt) but Widevine on its web client (which Kodi can). This addon mimics the Apple TV web client to receive Widevine streams.
 
-**Known limits:** On-demand playback is standard-definition only (Kodi's Widevine L3 CDM); live events (Formula 1, MLS) play in HD, since Apple licenses only that tier for them. Apple's private, undocumented endpoints may need updates whenever Apple changes them. See the [addon README](plugin.video.appletv/README.md) for the full reality check.
+**Resolution:** On a **Widevine-L1 Android device running Kodi 22** (most phones, Nvidia Shield, certified Android TV boxes) Apple's licence server grants the **HD and 4K tiers**: the addon detects hardware (L1) Widevine and plays **1080p automatically**, with HEVC tiers beyond that available by raising *Maximum video height* and turning off *H.264 only* (verified up to ~3K rendering on device). On desktop, playback tops out at **~540p** — Kodi ships the software Widevine **L3** CDM, and Apple flags the keys for tiers above ~540p as output-restricted (which an L3 CDM can't use), so the 540p tier is the ceiling there (verified: 540p plays, 720p is output-restricted). Live events (Formula 1, MLS) play in HD everywhere, since Apple licenses only that tier for them.
 
-**Requirements:** Kodi 22+ with InputStream Adaptive 22 and a Widevine CDM (the encrypted-playback path uses the newer `inputstream.adaptive.drm` property), plus an Apple ID
+**Known limits:** Apple's private, undocumented endpoints may need updates whenever Apple changes them. See the [addon README](plugin.video.appletv/README.md) for the full reality check.
+
+**Requirements:** an Apple ID, a Widevine CDM, and **Kodi 21+ on desktop** or **Kodi 22+ on Android** — Kodi 21's Android InputStream Adaptive can never license Apple's separately-keyed audio track (hardcoded single DRM session, fixed in ISA 22), so Android needs Kodi 22
+
+---
+
+### [Heroic Games Launcher for AKL](script.akl.heroic/)
+Bring your Heroic Games Launcher library (Epic Games Store, GOG, Amazon Games and sideloaded games) into Kodi on Linux, Windows and macOS through [Advanced Kodi Launcher](https://github.com/chrisism/plugin.program.akl).
+
+**Highlights:**
+- Scans Heroic's local library cache directly — no accounts, credentials or API keys needed
+- Launches games through Heroic itself (`heroic://launch/...`), so Proton/Wine settings, cloud saves and playtime tracking keep working
+- Works with Flatpak and native Heroic installs on Linux, the standard Windows install, and Heroic.app on macOS, with auto-detection
+- Scrapes titles, descriptions, developers and artwork from the data Heroic already keeps on disk
+
+See the [addon README](script.akl.heroic/README.md) for details.
+
+**Requirements:** Kodi 19+ on Linux, Windows or macOS, Advanced Kodi Launcher (`script.module.akl` 1.2.0+), Heroic Games Launcher
 
 ---
 
@@ -101,7 +118,7 @@ See the [addon README](script.webhook.runner/README.md) for details.
 ### Method 1: Repository Installation (Recommended)
 
 1. In Kodi: Settings → Add-ons → Install from repository
-2. Add my repository URL: `https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips/repository.breezyslasher/repository.breezyslasher-2026.8.10.zip`
+2. Add my repository URL: `https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/main/zips/repository.breezyslasher/repository.breezyslasher-2026.8.12.zip`
 3. Install "Breezyslasher Repository"
 4. Browse and install addons from the repository
 
@@ -130,7 +147,8 @@ This repository uses automated workflows to build and distribute addons:
 ```
 Kodi-Addons/
 ├── plugin.audio.audiobookshelf/     # Audiobookshelf addon
-├── context.plexkodiconnect.download/ # Plex download addon  
+├── context.plexkodiconnect.download/ # Plex download addon
+├── script.akl.heroic/               # Heroic Games Launcher AKL plugin
 ├── script.scrcpy-launcher/          # scrcpy launcher addon
 ├── script.webhook.runner/           # Webhook runner addon
 ├── service.watchparty/              # Watch Party sync addon
@@ -153,6 +171,7 @@ While these are personal projects, I welcome feedback and suggestions:
 
 Each addon has its own license:
 - **Audiobookshelf**: GPL-3.0-or-later
+- **Heroic Games Launcher for AKL**: GPL-2.0
 - **PlexKodiConnect Download**: MIT
 - **scrcpy Launcher**: MIT
 - **Watch Party**: MIT

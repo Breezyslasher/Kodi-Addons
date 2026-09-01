@@ -1,9 +1,66 @@
-# Notes: HLS + Widevine findings (resolved on ISA 22)
+# Notes: HLS + Widevine findings (resolved)
 
-> **Resolved.** Playback works on Kodi 22 with InputStream Adaptive 22 using the
-> `inputstream.adaptive.drm` property (`secure_decoder`, `pre_init_data`),
-> a 360-pixel height cap and H.264-only variants. The report below documents the
-> ISA 21 behaviour and is kept for reference; there is nothing to file.
+> **Desktop L3 tops out at 540p, not 360.** Apple issues the licence for every
+> tier, but flags the keys for tiers above ~540p as output-restricted
+> (`OnSessionKeysChange` status 3, error system code 49), which a software (L3)
+> CDM cannot use -- the DRM session then fails and the video stream is
+> disabled. The 540p tier's key comes back usable (status 1) and plays with
+> its eac3 audio. Verified on desktop L3: `height cap=720` -> status 3, session
+> fails; `height cap=540` -> status 1, plays. So the on-demand default cap is
+> 540 (matching the ~540p HDCP-free ceiling the Netflix add-on also hits on
+> L3). On an L1 device the cap is lifted to 1080 automatically instead.
+
+> **Resolved on Kodi 21 and 22.** The original `kNoKey` failure is fixed by
+> recovering the key id from the PSSH (`KEYID` + `tenc` patching), the 540-pixel
+> height cap and H.264-only variants. DRM is then configured to match the
+> installed InputStream Adaptive: the JSON `inputstream.adaptive.drm` property
+> (`secure_decoder`, `pre_init_data`) on **ISA 22.1.5+ (Kodi 22)**, and the
+> legacy individual DRM properties (`license_type` / `license_key` /
+> `server_certificate` / `pre_init_data`) on **ISA 21 (Kodi 21)**, which already
+> force a single DRM session. The report below documents the original ISA 21
+> `kNoKey` behaviour and is kept for reference; there is nothing to file.
+
+> **Android (hardware Widevine L1) — HD/4K, Kodi 22 only.** On Android, ISA
+> uses the device's own MediaCodec + system Widevine, which on a certified
+> device is **L1**, so Apple's licence server grants the HD and 4K tiers
+> (verified: 1080p H.264 and a ~3K HEVC tier both licence and render, with
+> eac3 5.1 audio). Two things are needed there and are set only on Android:
+> the **secure decoder** (`secure_decoder: true` in the JSON drm /
+> `inputstream.adaptive.secure_decoder=true` legacy) — L1 decrypts into secure
+> buffers that a non-secure MediaCodec cannot render (`ReleaseOutputBuffer
+> error`, black picture) — and dropping the orphaned ac3/atmos audio renditions
+> whose HEVC/DV variants were filtered (else ISA logs "Cannot find variant for
+> AUDIO GROUP-ID" per rendition). The addon probes the level via
+> `xbmcdrm.CryptoSession(...).GetPropertyString("securityLevel")` and lifts the
+> default 360 cap to 1080 automatically on L1. A couple of transient
+> `InstanceGuard locked` at bitrate switches remain but recover.
+>
+> **Why Kodi 21 on Android cannot work (ISA 21.5.x, verified in source and on
+> device):** Apple keys audio separately from video, so playing needs one DRM
+> session (licence) per key. ISA decides whether a new stream needs its own
+> session by asking the decrypter `HasLicenseKey(session, keyId)`
+> (`src/Session.cpp`, `InitializeDRM`). The **Android** decrypter in ISA 21
+> hardcodes that answer:
+>
+> ```cpp
+> // src/decrypters/widevineandroid/WVCencSingleSampleDecrypter.cpp:178 (21.5.22)
+> bool CWVCencSingleSampleDecrypterA::HasLicenseKey(const std::vector<uint8_t>& keyId)
+> {
+>   // true = one session for all streams, false = one sessions per stream
+>   return true;
+> }
+> ```
+>
+> so the video session claims to hold every key, the audio licence is never
+> requested (device logs show exactly one licence request on Kodi 21 vs one per
+> key on Kodi 22), and encrypted audio fails on every sample
+> (`CDVDAudioCodecAndroidMediaCodec::Decode ExceptionCheck`) — the player then
+> stalls/buffers indefinitely. Manifest-side workarounds don't exist: with
+> `KEYID` omitted, ISA 21 re-extracts the key id from the PSSH
+> (`HLSTree.cpp` "If there is no KID, try to get it from pssh data"). ISA 22
+> replaced the stub with a real per-key check (`HasKeyId`, checks key status
+> USABLE), which is why the same device on Kodi 22.0-BETA1 / ISA 22.3.19 plays
+> HD with 5.1 audio. Desktop ISA 21 checks keys properly and is unaffected.
 
 # Original draft report for InputStream Adaptive
 

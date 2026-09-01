@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addons>
-<addon id="repository.breezyslasher" name="Breezyslasher Repository" version="2026.8.11" provider-name="Breezyslasher">
+<addon id="repository.breezyslasher" name="Breezyslasher Repository" version="2026.8.12" provider-name="Breezyslasher">
     <requires>
         <import addon="xbmc.addon" version="12.0.0"/>
     </requires>
@@ -117,11 +117,11 @@
 		</news>
 	</extension>
 </addon>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.11" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.12" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
-		<import addon="inputstream.adaptive" version="22.0.0"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
 		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
 	</requires>
 	<extension point="xbmc.python.pluginsource" library="default.py">
@@ -590,6 +590,34 @@ Features:
   pasted values to test playback meanwhile. SD only (Widevine L3).
 		</news>
 	</extension>
+</addon>
+<addon id="script.akl.heroic" name="Heroic Games Launcher plugin for AKL" version="2026.8.12.7" provider-name="Breezyslasher">
+  <requires>
+      <import addon="xbmc.python" version="3.0.0"/>
+      <import addon="script.module.akl" version="1.2.0"/>
+  </requires>
+  <extension point="xbmc.python.script" library="default.py">
+    <provides>game</provides>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Heroic Games Launcher scanner, scraper and launcher plugin for AKL.</summary>
+    <description lang="en_GB">
+    Advanced Kodi Launcher (AKL) plugin for the Heroic Games Launcher on Linux, Windows and macOS.
+It scans your Heroic library (Epic Games, GOG, Amazon Prime Gaming and sideloaded games) directly from
+Heroic's local store cache, launches games through Heroic (Flatpak, native Linux, Windows or macOS
+install) and scrapes titles, plots, developers and artwork from the data Heroic already keeps on disk.
+No credentials or API keys needed.
+    </description>
+    <platform>all</platform>
+    <license>GNU General Public License version 2</license>
+    <website>https://github.com/Breezyslasher/Kodi-Addons</website>
+    <source>https://github.com/Breezyslasher/Kodi-Addons/tree/main/script.akl.heroic</source>
+    <assets>
+      <icon>media/icon.png</icon>
+      <fanart>media/fanart.jpg</fanart>
+    </assets>
+    <news>Scraper now pulls year, genre, rating, store tags, poster/banner art and screenshots from Heroic-side caches (Epic metadata, Amazon details, PCGamingWiki scores).</news>
+  </extension>
 </addon>
 <addon id="script.webhook.runner" version="2026.7.13" name="Webhook Runner" provider-name="Breezyslasher">
   <requires>
