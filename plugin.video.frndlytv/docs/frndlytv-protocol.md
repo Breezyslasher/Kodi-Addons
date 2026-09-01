@@ -556,18 +556,27 @@ GET /search/api/tivo/v1/get/search/query?query=gun&limit=16&offset=0&bucket=All
 
 Paged with `offset`, sixteen at a time, while `hasMore` is true.
 
-**Search matches on more than titles.** This is the single most useful thing
-about the endpoint and it is not obvious from its shape:
+**Search matches on more than titles**, which is the most useful thing about
+the endpoint and is not obvious from its shape. It is a relevance ranking over
+titles, people and genre together — not a title match, and not a genre filter
+either:
 
-| query | answers with |
-|-------|--------------|
-| `perry mason` | the series, and a Perry Mason film — 2 results |
-| `Raymond Burr` | Perry Mason, *Count Three and Pray*, *Please Murder Me!* — the **actor's** titles, none with his name in them |
-| `action` | 447 titles — Gunsmoke, NCIS, Bonanza, Monk, Walker Texas Ranger — i.e. the **genre**, not titles containing the word |
+| query | total | of the first 16, how many have the word in the title | what comes back |
+|-------|-------|------|------|
+| `perry mason` | 2 | 2 | the series and a Perry Mason film |
+| `Raymond Burr` | 3 | **0** | Perry Mason, *Count Three and Pray*, *Please Murder Me!* — the **actor's** titles |
+| `drama` | 2417 | **0** | The Golden Girls, Murder She Wrote, Perry Mason, Gunsmoke — the **genre** |
+| `action` | 447 | 1 | Gunsmoke, NCIS, Bonanza, Monk — the genre again |
+| `adventure` | 83 | **13** | *Adventures of Champion*, *Adventures of Sherlock Holmes* — mostly **title** matches |
 
-So searching by person and by genre needs no separate endpoint or parameter;
-it is the same query. That is what makes the fifteen "Browse by Genre" cards
-usable (see below) and what makes a cast list worth being able to search.
+`adventure` is the one that shows what is really happening: where a word is
+common in titles, those rank first and the genre sense is buried; where it is
+not (`drama`, `action`, a person's name), the other senses surface. So this is
+a good way to reach a genre or an actor, and not a guarantee of one.
+
+Searching by person and by genre therefore needs no separate endpoint or
+parameter — it is the same query. That is what makes the fifteen "Browse by
+Genre" cards usable (see below) and a cast list worth being able to search.
 
 `bucket` filters by type. Four values are captured: **`All`**, **`Series`**,
 **`Movie`** and **`Station`**, which the web player labels Shows, Movies and

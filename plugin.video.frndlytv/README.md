@@ -71,12 +71,16 @@ Recordings appear under **My Stuff**.
 Friendly TV's own catalogue search, with **Shows only / Movies only / Channels
 only** filters at the top.
 
-It searches more than titles. A person's name finds what they are in —
-"Raymond Burr" returns *Perry Mason* and two of his films, none of which have
-his name in the title. A genre word finds that genre — "action" returns
-Gunsmoke, NCIS and Bonanza rather than titles containing the word. So the
-**Browse by Genre** row on Home works, and any film or show has **Search the
-cast...** on its context menu to find what else someone is in.
+It searches more than titles — it ranks over titles, people and genre
+together. A person's name finds what they are in: "Raymond Burr" returns
+*Perry Mason* and two of his films, none with his name in the title. A genre
+word usually finds that genre: "drama" returns The Golden Girls, Murder She
+Wrote and Gunsmoke.
+
+That is a ranking rather than a filter, so a word that is also common in
+titles gives those first — "adventure" leads with *Adventures of Sherlock
+Holmes*. Good enough to be worth two ways in: the **Browse by Genre** row on
+Home, and **Search the cast...** on any film or show's context menu.
 
 All results are listed at once rather than behind "Next page" folders. The
 addon fetches the first page, learns the total, and pulls the rest together —
