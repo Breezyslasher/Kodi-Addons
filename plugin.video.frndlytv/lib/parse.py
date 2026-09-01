@@ -222,7 +222,17 @@ def detail(response, api):
     """
     found = {"title": "", "plot": "", "poster": "", "fanart": "", "actions": [],
              "cast": [], "directors": [], "year": 0, "rating": "", "now": "",
-             "airing": "", "expires": ""}
+             "airing": "", "expires": "", "is_favourite": None}
+
+    # The page does say whether this is already a favourite, in a block of its
+    # own rather than on the card: {"isFavourite": false,
+    # "showFavouriteButton": false}. Only isFavourite is read -- the button
+    # flag is false even on pages whose own content pane draws a Favorite
+    # button, so it does not mean what its name suggests.
+    buttons = response.get("pageButtons")
+    if isinstance(buttons, dict) and "isFavourite" in buttons:
+        found["is_favourite"] = bool(buttons["isFavourite"])
+
     for pane in (response.get("data") or []):
         content = pane.get("content")
         if not content:
@@ -254,6 +264,10 @@ def detail(response, api):
                         found["actions"].append(
                             {"label": str(data or sub or "Play"),
                              "path": target})
+                    elif "favourite" in sub or "favorite" in sub:
+                        # "add_to_favourites" vs a removal wording: the button
+                        # the page chose to draw says which state it is in.
+                        found["is_favourite"] = sub.startswith("remove")
                 elif kind == "marker" and sub == "tag":
                     found["year"], found["rating"] = _year_and_rating(data)
                 elif data and kind in ("description", "text", "tag"):
@@ -275,8 +289,23 @@ def detail(response, api):
 
 
 def _names(value):
-    """A comma-separated credit list as names, or []."""
-    return [name.strip() for name in str(value or "").split(",") if name.strip()]
+    """A credit list as names, in either form the service writes it.
+
+    Most pages give a bare list -- "Glenn Ford, Addison Richards, Paul Birch".
+    Some give prose instead -- "Starring Marlon Brand, Karl Malden and Katy
+    Jurado" -- and splitting that on commas alone yields a cast whose first
+    member is "Starring Marlon Brand" and whose last is "and Katy Jurado".
+    """
+    text = str(value or "").strip()
+    if not text:
+        return []
+    text = re.sub(r"^(starring|featuring|with)\s+", "", text, flags=re.I)
+    names = []
+    for part in re.split(r",|\band\b|&", text):
+        part = part.strip(" .")
+        if part:
+            names.append(part)
+    return names
 
 
 def _year_and_rating(tag):

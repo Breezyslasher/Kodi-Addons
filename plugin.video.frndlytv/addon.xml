@@ -81,6 +81,12 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   shows, channels and guide airings alike. Only the verb that applies is
   offered, because the cards carry whether they are already in. These are
   Friendly TV's My Stuff, so they appear there and in its own apps.
+- A cast written as prose is read as names. Most pages send a plain list,
+  but some send "Starring Marlon Brand, Karl Malden and Katy Jurado", which
+  split on commas alone gave a cast whose first member was "Starring Marlon
+  Brand" and whose last was "and Katy Jurado".
+- A title's page says whether it is already a favourite, so the right verb
+  is shown there rather than both.
 - Recording reaches beyond the guide. 1803 of the captured cards say they
   may be recorded -- films and channels among them -- and each names the
   form to use, which is not the one a guide airing names. The card's own

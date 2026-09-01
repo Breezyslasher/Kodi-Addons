@@ -711,8 +711,11 @@ def _add_detail_action(action, detail, media="video", page_path=""):
     _set_detail_meta(item, detail, label, media)
     item.setProperty("IsPlayable", "true")
     if page_path:
+        # The page states whether it is already a favourite, so the right
+        # verb is shown here rather than both.
         item.addContextMenuItems(
-            _favourite_menu(page_path, detail["title"], None) +
+            _favourite_menu(page_path, detail["title"],
+                            detail.get("is_favourite")) +
             _similar_menu({"path": page_path, "title": detail["title"]}))
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action="play", path=action["path"], label=label),
