@@ -73,6 +73,11 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   each title's page -- so those pages are fetched for a listing's films and
   shows on a small pool of threads. One request per title is a real cost, so
   it is a setting with a cap, under Listings.
+- Picking the programme on the air in the guide asks whether to play live or
+  start it over. Those turn out to be two different paths to the same
+  endpoint rather than two kinds of request: the channel's gives the live
+  edge, the programme's own is answered with the programme from its start.
+- "More like this" on any film or show's context menu.
 - The guide carries descriptions, cast, artwork, episode numbers and
   certificates. The schedule endpoint sends a title and two times per airing
   and nothing else; everything readable is in each airing's overlay, fetched

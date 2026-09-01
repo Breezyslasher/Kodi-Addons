@@ -334,6 +334,48 @@ Streams observed: AVC up to **720p**, AAC audio, five video renditions. No
 `HDCP-LEVEL` gating of the kind Apple TV+ uses, and the web player plays these
 tiers on a software (L3) CDM, so no tier filtering is needed.
 
+### Start Over is a different path, not a different request
+
+The web player's Start Over is a **client-side flag** — `setStartOver(true)` in
+the bundle — and the `page/stream` request it makes is byte-for-byte the one it
+makes to play live. The overlay's `target_startover_live` is the *same value*
+as `target_watchlive`, so following it would simply play live again.
+
+What actually differs is which path is asked for:
+
+| path | answers with |
+|------|--------------|
+| `channel/live/<slug>` | `contentType: "live"`, from `sr-live-*`, at the live edge |
+| `epg/play/<program id>` | `contentType: "vod"`, from `sr-vod-gen`, `seekPositionInMillis: 0`, the programme's full duration |
+
+So starting a programme over is asking the stream endpoint for the
+**programme's own path** rather than its channel's. Both come back Widevine
+with a licence url as usual.
+
+Not established: whether `epg/play/<id>` is answered this way for a programme
+still on the air. The capture that proves the VOD shape was of one that had
+already finished. The addon offers the choice and lets the service's own
+refusal speak if there is one.
+
+### Related titles
+
+```
+GET /service/api/v1/foliotabs?tab=morelikethis/<id>&count=56&offset=0
+→ {"response": {"data": [ ...ordinary cards... ]}}
+```
+
+`<id>` is the numeric tail of the title's path — `movies/1058109` and
+`series/shows/521500` ask as `morelikethis/1058109` and `morelikethis/521500`.
+
+When it has nothing to suggest it **refuses rather than returning an empty
+list**, with `status: false` and **code `-4`**:
+
+> Oops! We did not find anything similar right now. Check back later or explore
+> Recommended For You on the Homescreen…
+
+Note the code: search's no-match is `404` and this one is `-4`, so a client
+that special-cases only the first will report this as an error.
+
 ### Stream slots
 
 Friendly TV counts concurrent streams. A slot is taken by the `page/stream`

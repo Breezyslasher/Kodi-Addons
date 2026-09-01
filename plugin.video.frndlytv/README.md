@@ -40,6 +40,13 @@ joins that channel live. Friendly TV offers no catch-up from a guide entry, so
 selecting a later programme tells you what it is and when it is on rather than
 pretending to play it.
 
+Selecting the programme that is on now asks whether to **Play live** or
+**Start over**. Those are two different paths to the same endpoint: the
+channel's gives the live edge, the programme's own gives it from the
+beginning.
+
+Any film or show has **More like this** on its context menu.
+
 Guide rows carry the synopsis, cast, artwork, episode number and certificate —
 none of which is in the schedule itself; it comes from each airing's own
 overlay, under the same *Fetch full descriptions* setting as listings.

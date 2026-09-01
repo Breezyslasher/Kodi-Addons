@@ -16,6 +16,16 @@ import time
 _SXEY = re.compile(r"^\s*S(\d+)\s*-?\s*E[p]?(\d+)", re.IGNORECASE)
 
 
+def content_id(path):
+    """The numeric id in a title's path, which is what "more like this" keys on.
+
+    ``movies/1058109`` and ``series/shows/521500`` both ask for it as
+    ``morelikethis/<id>``, so it is the last segment either way.
+    """
+    tail = str(path or "").rstrip("/").rsplit("/", 1)[-1]
+    return tail if tail.isdigit() else ""
+
+
 def media_of(path):
     """What a page path holds, for a caller that has only the path."""
     return _media_kind(path or "", 0, 0)

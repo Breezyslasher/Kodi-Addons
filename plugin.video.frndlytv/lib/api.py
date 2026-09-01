@@ -75,10 +75,12 @@ class ApiError(Exception):
         self.code = code
 
 
-# What the search API answers with when a query simply matches nothing. It is
-# a refusal in the protocol's terms -- status false, HTTP 200 -- but it is an
-# ordinary empty result in the user's terms.
-NO_MATCHES = 404
+# What the service answers with when there is simply nothing to return. Both
+# are refusals in the protocol's terms -- status false, HTTP 200 -- and
+# ordinary empty results in the user's. Search says 404 ("We didn't find any
+# matches for ..."); the related-titles tab says -4 ("Oops! We did not find
+# anything similar right now").
+NO_MATCHES = (404, -4)
 
 
 class Api(object):
@@ -323,7 +325,7 @@ class Api(object):
             # in the protocol's terms and an empty list in the viewer's. It
             # happens routinely -- the Channels filter matches nothing for
             # most queries -- and must not surface as a failure.
-            if exc.code == NO_MATCHES:
+            if exc.code in NO_MATCHES:
                 kodiutils.log("search %r [%s]: no matches" % (query, bucket))
                 return {"cards": [], "has_more": False, "total": 0}
             raise
@@ -432,6 +434,27 @@ class Api(object):
         kodiutils.log("%s: %d of %d in %.1fs"
                       % (what, len(out), len(wanted), time.time() - started))
         return out
+
+    def more_like_this(self, content_id, count=56, offset=0):
+        """Titles the service considers similar to this one.
+
+        Answers with ordinary cards. When it has nothing to suggest it
+        refuses rather than returning an empty list -- status false with code
+        -4 and a sentence about checking back later -- so that is turned into
+        no results here, the same as an empty search.
+        """
+        if not content_id:
+            return []
+        try:
+            body = self.get("/service/api/v1/foliotabs",
+                            {"tab": "morelikethis/%s" % content_id,
+                             "count": count, "offset": offset})
+        except ApiError as exc:
+            if exc.code in NO_MATCHES:
+                kodiutils.log("more like %s: nothing similar" % content_id)
+                return []
+            raise
+        return (body.get("response") or {}).get("data") or []
 
     def section(self, path, code, count=24, offset=-1):
         """One deferred section's cards.

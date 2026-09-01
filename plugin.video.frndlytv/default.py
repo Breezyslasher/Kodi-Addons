@@ -257,12 +257,15 @@ def route_guide_channel(channel_id, name):
         _set_guide_meta(item, prog, overlays.get(prog["path"]) or {}, name)
         item.addContextMenuItems(_recording_menu(prog["path"]))
         if live_path and prog["start_ms"] <= now < prog["end_ms"]:
-            # Only the airing on the air can be played, and playing it means
-            # joining the channel live. The rest of the schedule is
-            # information: this addon has no catch-up route.
+            # On the air: two ways to watch it, so the choice is offered
+            # rather than assumed. Joining live is the channel's own path;
+            # starting over is the programme's, which the stream endpoint
+            # answers with a VOD from the beginning.
             item.setProperty("IsPlayable", "true")
             xbmcplugin.addDirectoryItem(
-                HANDLE, url(action="play", path=live_path, label=label),
+                HANDLE,
+                url(action="guide_play", path=live_path,
+                    programme=prog["path"], label=label),
                 item, isFolder=False)
         else:
             # Not on the air, so nothing to play -- but an item with an empty
@@ -800,9 +803,21 @@ def _add_card_folder(item):
     listitem = xbmcgui.ListItem(label=label)
     listitem.setArt(_art(item))
     _set_meta(listitem, item, label)
+    menu = _similar_menu(item)
+    if menu:
+        listitem.addContextMenuItems(menu)
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action="page", path=item["path"], name=item["title"]),
         listitem, isFolder=True)
+
+
+def _similar_menu(item):
+    """A "More like this" entry, for a card the service can key on."""
+    if not parse.content_id(item.get("path")):
+        return []
+    return [("More like this", "Container.Update(%s)"
+             % url(action="similar", path=item["path"],
+                   name=item.get("title", "")))]
 
 
 def _add_playable(item, label=None, action="play"):
@@ -811,6 +826,9 @@ def _add_playable(item, label=None, action="play"):
     listitem.setArt(_art(item))
     listitem.setProperty("IsPlayable", "true")
     _set_meta(listitem, item, label)
+    menu = _similar_menu(item)
+    if menu:
+        listitem.addContextMenuItems(menu)
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action=action, path=item["path"], label=label),
         listitem, isFolder=False)
@@ -949,6 +967,51 @@ def _content_of(cards):
     return "videos"
 
 
+def route_guide_play(live_path, programme_path, label=""):
+    """Join the channel live, or start the programme from the beginning.
+
+    Both are the same endpoint with a different path. ``channel/live/<slug>``
+    gives the live edge; the programme's own ``epg/play/<id>`` is answered
+    with a VOD asset whose seek position is zero, which is what starting over
+    means.
+
+    The service decides whether that second one exists for a programme still
+    airing -- if it does not, its own refusal is what gets shown.
+    """
+    if not programme_path:
+        return route_play(live_path, label)
+    choice = xbmcgui.Dialog().select(label or "Watch",
+                                     ["Play live", "Start over"])
+    if choice < 0:
+        return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+    if choice == 0:
+        return route_play(live_path, label)
+    kodiutils.log("starting %s over from %s" % (label, programme_path))
+    route_play(programme_path, label)
+
+
+def route_similar(path, name=""):
+    """Titles the service considers similar to this one."""
+    client = _client()
+    if client is None:
+        return finish()
+    identifier = parse.content_id(path)
+    if not identifier:
+        kodiutils.notify("Nothing to look up for this")
+        return finish()
+    try:
+        raw = client.more_like_this(identifier)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "More like this")
+        return finish()
+    cards = [parse.card(c, client) for c in raw]
+    kodiutils.log("more like %s (%s): %d card(s)"
+                  % (name or path, identifier, len(cards)))
+    if not cards:
+        kodiutils.notify("Nothing similar to %s" % (name or "this"))
+    finish(_add_cards(cards, client))
+
+
 def route_play_page(path, label=""):
     """Play a details page: fetch it, take its play button, resolve that.
 
@@ -1061,6 +1124,11 @@ def main():
         route_play(params.get("path", ""), params.get("label", ""))
     elif action == "play_page":
         route_play_page(params.get("path", ""), params.get("label", ""))
+    elif action == "guide_play":
+        route_guide_play(params.get("path", ""), params.get("programme", ""),
+                         params.get("label", ""))
+    elif action == "similar":
+        route_similar(params.get("path", ""), params.get("name", ""))
     elif action == "signin":
         route_signin()
     elif action == "signout":
