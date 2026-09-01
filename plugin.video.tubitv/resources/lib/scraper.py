@@ -39,6 +39,9 @@ LICENSE_HEADERS = [('Content-Type', 'application/octet-stream'),
 # inputstream.adaptive 21 introduced drm_legacy and deprecated the license_*
 # properties. Older builds only understand the old ones.
 DRM_PROPERTIES_SINCE = 21
+# The same release works the manifest type out for itself and warns about
+# being told; 22 has dropped the property altogether.
+MANIFEST_TYPE_UNTIL = 21
 
 
 # InfoTagVideo's own setters, and the stream detail classes, arrived in Kodi
@@ -61,6 +64,19 @@ def inputstreamMajor():
         return int(version.split('.')[0])
     except Exception:
         return 0
+
+
+def manifestProperties():
+    """Tell inputstream.adaptive the manifest type, on builds that want it.
+
+    Everything Tubi serves is HLS. inputstream.adaptive 21 detects that by
+    itself and logs a deprecation warning on every playback for being told
+    anyway, and 22 has removed the property; older builds still need it.
+    An unreadable version keeps the property rather than dropping it.
+    """
+    if inputstreamMajor() >= MANIFEST_TYPE_UNTIL:
+        return []
+    return [('inputstream.adaptive.manifest_type', 'hls')]
 
 
 class myAddon(t1mAddon):
@@ -423,7 +439,8 @@ class myAddon(t1mAddon):
         liz.setMimeType('application/x-mpegURL')
         liz.setContentLookup(False)
         liz.setProperty('inputstream', 'inputstream.adaptive')
-        liz.setProperty('inputstream.adaptive.manifest_type', 'hls')
+        for key, value in manifestProperties():
+            liz.setProperty(key, value)
         xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, liz)
 
     def getAddonShows(self, url, ilist):
@@ -727,7 +744,8 @@ class myAddon(t1mAddon):
             liz.setMimeType('application/x-mpegURL')
             liz.setContentLookup(False)
             liz.setProperty('inputstream', 'inputstream.adaptive')
-            liz.setProperty('inputstream.adaptive.manifest_type', 'hls')
+            for key, value in manifestProperties():
+                liz.setProperty(key, value)
             for key, value in self.drmProperties(licenseUrl):
                 liz.setProperty(key, value)
         xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, liz)
