@@ -14,7 +14,8 @@ import xbmcvfs
 
 from t1mlib import t1mAddon
 
-from resources.lib.tubi_api import TubiApi, TubiApiError, pickResource
+from resources.lib.tubi_api import (TubiApi, TubiApiError, chooseResource,
+                                    describeResource, pickResource)
 from resources.lib.tubi_api import EPISODE as HISTORY_EPISODE
 from resources.lib.tubi_api import MOVIE as HISTORY_MOVIE
 from resources.lib.tubi_api import SERIES as QUEUE_SERIES
@@ -644,7 +645,13 @@ class myAddon(t1mAddon):
             return
 
         allowHdcp = self.addon.getSetting('allow_hdcp') == 'true'
+        chosen = chooseResource(content, allowHdcp=allowHdcp)
         manifest, licenseUrl = pickResource(content, allowHdcp=allowHdcp)
+        # Which rendition was taken is the whole of what allow_hdcp decides,
+        # and nothing else in the log says.
+        self.note('%s : %d renditions offered, playing %s (allow_hdcp=%s)' % (
+            content.get('title'), len(content.get('video_resources') or []),
+            describeResource(chosen), allowHdcp))
         if manifest is None:
             # Either the title needs an account or it is not playable here
             message = 30018 if content.get('needs_login') else 30028

@@ -449,15 +449,30 @@ class TubiApi(object):
 def requiresHdcp(resource):
     """Whether a stream's licence will only release its keys over HDCP.
 
-    Tubi grades the same title twice: its 720p renditions come with
-    `hdcp_v1` and Widevine security level 2, its 576p ones with HDCP
-    disabled and level 1. A software CDM - which is all a desktop or a
-    Flatpak Kodi has - cannot satisfy the former, and Widevine answers by
-    handing back keys marked output-restricted, so the stream opens and
-    then fails to decode.
+    Tubi grades an encrypted title by resolution: 720p and above come with
+    `hdcp_v1`, 576p and below with `hdcp_disabled`. A software CDM - which
+    is all a desktop or a Flatpak Kodi has - cannot satisfy the former, and
+    Widevine answers by handing back keys marked output-restricted, so the
+    stream opens and then fails to decode.
     """
     hdcp = (resource.get('license_server') or {}).get('hdcp_version') or ''
     return hdcp not in ('', 'hdcp_disabled')
+
+
+def describeResource(resource):
+    """A one-line account of a rendition, for the log.
+
+    Which of a title's renditions was chosen is the whole of what the HDCP
+    preference does, and it is not visible from anywhere else.
+    """
+    if resource is None:
+        return 'none'
+    licence = resource.get('license_server') or {}
+    return '%s %s %s hdcp=%s' % (
+        resource.get('type') or '?',
+        (resource.get('resolution') or '?').replace('VIDEO_RESOLUTION_', ''),
+        (resource.get('codec') or '?').replace('VIDEO_CODEC_', ''),
+        licence.get('hdcp_version') or 'none')
 
 
 def resolutionOf(resource):
@@ -465,10 +480,8 @@ def resolutionOf(resource):
     return int(digits) if digits else 0
 
 
-def pickResource(content, allowHdcp=False):
-    """Choose the stream to play from a title's video resources.
-
-    Returns (manifest url, license url or None).
+def chooseResource(content, allowHdcp=False):
+    """The rendition to play, or None if the title offers nothing playable.
 
     Clear HLS always wins when Tubi offers it - some titles are encrypted
     and some are not, and a clear stream needs no CDM at all. Among the
@@ -489,6 +502,14 @@ def pickResource(content, allowHdcp=False):
         return (encrypted, 1 if requiresHdcp(resource) else 0) + quality
 
     for resource in sorted(resources, key=rank):
+        return resource
+    return None
+
+
+def pickResource(content, allowHdcp=False):
+    """(manifest url, license url or None) for the rendition chosen."""
+    resource = chooseResource(content, allowHdcp)
+    if resource is not None:
         return (resource['manifest']['url'],
                 (resource.get('license_server') or {}).get('url'))
 
