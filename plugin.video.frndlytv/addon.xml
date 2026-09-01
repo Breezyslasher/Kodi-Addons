@@ -81,6 +81,16 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   shows, channels and guide airings alike. Only the verb that applies is
   offered, because the cards carry whether they are already in. These are
   Friendly TV's My Stuff, so they appear there and in its own apps.
+- The guide marks what is already set to record, and offers only the
+  context-menu entry that applies rather than both. The flag is on no
+  schedule row anywhere, so it comes from a second endpoint that answers for
+  a whole batch of channels at once -- which is what makes it affordable.
+  It is a membership set and nothing more: every "info" object in every
+  captured response is empty, and the web player treats it the same way.
+- An "Active streams" entry showing what the account has playing anywhere,
+  from the concurrency counter's own view. Every capture caught that
+  endpoint empty, so the count is trustworthy and the shape of an entry is
+  not; entries are rendered from whatever fields they turn out to carry.
 - Searching by genre and by person, which turned out to need no new
   endpoint: the search the addon already had ranks over titles, people and
   genre together. "Raymond Burr" answers with Perry Mason and two of his

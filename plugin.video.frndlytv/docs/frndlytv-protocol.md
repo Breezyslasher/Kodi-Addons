@@ -199,9 +199,31 @@ the web player uses and the only one observed answering. A programme carries
 its times in `display.markers.startTime/endTime` (again as strings) and a
 `target.path` of `epg/play/<id>`.
 
-`GET /service/api/v1/tvguide/user/data?channel_ids=...&start_time=...&end_time=...`
-returns per-user overlay state (favourites, recordings). The addon does not
-use it.
+### Which airings are recorded
+
+```
+GET /service/api/v1/tvguide/user/data?channel_ids=31,44,...&start_time=<ms>&end_time=<ms>
+→ {"response": {"data": [{"channelId": 44,
+                          "programs": [{"id": 3478978, "info": {}}, ...]},
+                         {"channelId": 31, "programs": []}, ...]}}
+```
+
+Same channel batch and window as `static/tvguide`; the web player fetches the
+two in parallel. **It is a membership set and nothing more** — every `info`
+object in every captured response is empty (37 of them), and the player uses
+it exactly that way:
+
+```js
+hasRecordMarker = programIds.indexOf(program.id) > -1
+```
+
+So a listed id is an airing with a record marker. Whether that means recorded
+or merely scheduled is not distinguished by the response, and the player does
+not distinguish it either.
+
+This is worth a request because the flag is **nowhere else**: a schedule row
+from `static/tvguide` does not carry it, so the alternative is one lookup per
+airing.
 
 ### The schedule carries no metadata — the overlay does
 
@@ -673,6 +695,19 @@ The service calls this My Stuff in its confirmations and "Favorite" on its
 button, for the same feature.
 
 ## Other endpoints seen but not used
+
+### Active streams
+
+```
+GET /service/api/v1/stream/active/sessions
+→ {"response": [], "status": true}
+```
+
+The concurrency counter's own view of what this account has playing. **Every
+capture caught it empty**, so the list is ground truth and the shape of an
+entry is not — a client can count them honestly, and should render an entry
+from whatever fields it turns out to have rather than from field names nobody
+has seen.
 
 - `GET /service/api/v1/tivo/content?path=homeScreen&...` — also serves an
   alternative home screen shape the web player requests and, in one capture,

@@ -513,6 +513,49 @@ class Api(object):
         body = self.get("/service/api/v1/tvguide/channels")
         return (body.get("response") or {}).get("data") or []
 
+    def recorded_in_guide(self, channel_ids, start_ms, end_ms):
+        """Which airings in this guide window are recorded or scheduled.
+
+        One request covers a whole batch of channels, which is why this is
+        worth having: the alternative is a per-airing lookup.
+
+        The response is a list of programme ids per channel and nothing else
+        -- every ``info`` object in every captured response is empty. The web
+        player treats it purely as a membership set, and so does this:
+
+            hasRecordMarker = programIds.indexOf(program.id) > -1
+
+        So a member is an airing with a record marker on it. Whether that
+        marker means recorded or merely scheduled is not something the
+        response distinguishes, and neither does the web player.
+        """
+        ids = ",".join(str(c) for c in channel_ids)
+        if not ids:
+            return set()
+        body = self.get("/service/api/v1/tvguide/user/data",
+                        {"channel_ids": ids, "start_time": int(start_ms),
+                         "end_time": int(end_ms)})
+        marked = set()
+        for channel in (body.get("response") or {}).get("data") or []:
+            for program in (channel.get("programs") or []):
+                if program.get("id") is not None:
+                    marked.add(str(program["id"]))
+        return marked
+
+    def active_sessions(self):
+        """The streams this account currently has open.
+
+        Friendly TV counts concurrent streams and this is the count it is
+        counting. Every capture caught it empty (`{"response": [], "status":
+        true}`), so the list itself is ground truth and **the shape of an
+        entry is not** -- which is why the caller renders whatever fields an
+        entry turns out to have rather than reaching for names it has never
+        seen.
+        """
+        body = self.get("/service/api/v1/stream/active/sessions")
+        found = body.get("response")
+        return found if isinstance(found, list) else []
+
     def lineup(self):
         """The channels, joined so each one has both an id and a playable path.
 
@@ -640,10 +683,6 @@ class Api(object):
                         {"path": path,
                          "stream_provider_device_id": STREAM_PROVIDER_DEVICE_ID})
         return body.get("response") or {}
-
-    def active_sessions(self):
-        body = self.get("/service/api/v1/stream/active/sessions")
-        return body.get("response") or []
 
     def end_session(self, poll_key):
         """Give a stream slot back.

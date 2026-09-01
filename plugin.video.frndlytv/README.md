@@ -54,6 +54,11 @@ A guide airing that belongs to a series also has **Go to show**, which opens
 that show's page and its seasons — so you can go from "this is on at 8" to the
 whole run of it.
 
+An airing already set to record is marked **[REC]**, and its context menu
+offers only the entry that applies — stop, rather than both stop and record.
+That costs one request for a whole day of a channel, because the flag is not
+on a schedule row anywhere else.
+
 Guide rows carry the synopsis, cast, artwork, episode number and certificate —
 none of which is in the schedule itself; it comes from each airing's own
 overlay, under the same *Fetch full descriptions* setting as listings.
@@ -109,6 +114,13 @@ one request per title, which is a real cost, so it is a setting: *Listings →
 Fetch full descriptions and cast*, with a cap on how many titles per listing
 (40 by default). Turn it off and listings open faster with titles and artwork
 only.
+
+## Active streams
+
+Friendly TV limits how many streams an account runs at once, and **Active
+streams** in the menu shows what it currently counts. The symptom of a leaked
+slot — "too many devices" with nothing actually watching — is otherwise
+invisible from inside Kodi.
 
 ## IPTV Manager
 

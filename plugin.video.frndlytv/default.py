@@ -114,11 +114,59 @@ def route_root():
                 continue
             add_dir(entry["title"], url(action="page", path=entry["path"]))
 
+    if client:
+        add_dir("Active streams", url(action="sessions"),
+                plot="What this account has playing right now, anywhere. "
+                     "Friendly TV limits how many streams run at once.")
+
     if client and client.session.email:
         add_dir("Sign out (%s)" % client.session.email,
                 url(action="signout"))
     else:
         add_dir("Sign in", url(action="signin"))
+    finish()
+
+
+def route_sessions():
+    """What this account currently has playing, anywhere.
+
+    Friendly TV caps concurrent streams, and this is the count it caps. Worth
+    being able to see, because the symptom of a leaked slot -- "too many
+    devices" with nothing actually watching -- is otherwise invisible from
+    inside Kodi.
+
+    Every capture of this endpoint caught it empty, so the list is known and
+    the shape of an entry is not. Rather than reach for field names never
+    observed, an entry is rendered from whatever scalar fields it turns out
+    to carry.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        sessions = client.active_sessions()
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Active streams")
+        return finish()
+
+    kodiutils.log("active streams: %d" % len(sessions))
+    if not sessions:
+        add_dir("Nothing is playing on this account", url(action="sessions"),
+                plot="Friendly TV reports no active streams. Selecting this "
+                     "checks again.")
+        return finish()
+
+    for index, session in enumerate(sessions, 1):
+        if isinstance(session, dict):
+            pairs = [(k, v) for k, v in sorted(session.items())
+                     if isinstance(v, (str, int, float, bool)) and v != ""]
+            label = str(dict(pairs).get("title")
+                        or dict(pairs).get("name")
+                        or "Stream %d" % index)
+            plot = "\n".join("%s: %s" % (k, v) for k, v in pairs)
+        else:
+            label, plot = "Stream %d" % index, str(session)
+        add_dir(label, url(action="sessions"), plot=plot)
     finish()
 
 
@@ -232,6 +280,20 @@ def route_guide_channel(channel_id, name):
     kodiutils.log("guide %s: %d airing(s)" % (name, len(programmes)))
 
     upcoming = [p for p in programmes if p["end_ms"] and p["end_ms"] >= now]
+
+    # Which of these are already recording or scheduled. One request for the
+    # whole window, which is what makes it worth asking at all -- the flag is
+    # otherwise not on a schedule row anywhere.
+    recorded = set()
+    try:
+        recorded = client.recorded_in_guide(
+            [channel_id], now, now + GUIDE_HOURS * 3600 * 1000)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.log("could not read the guide's record markers: %s" % exc)
+    if recorded:
+        kodiutils.log("guide %s: %d airing(s) marked to record"
+                      % (name, sum(1 for p in upcoming
+                                   if _programme_id(p) in recorded)))
     on_air = next((p for p in upcoming
                    if p["start_ms"] <= now < p["end_ms"]), None)
     live_path = _live_path_for(client, channel_id, on_air)
@@ -253,10 +315,12 @@ def route_guide_channel(channel_id, name):
 
     for prog in upcoming:
         over = overlays.get(prog["path"]) or {}
-        label = "%s  %s" % (_clock(prog["start_ms"]), prog["title"])
+        taping = _programme_id(prog) in recorded
+        label = "%s  %s%s" % (_clock(prog["start_ms"]), prog["title"],
+                              "  [REC]" if taping else "")
         item = xbmcgui.ListItem(label=label)
         _set_guide_meta(item, prog, over, name)
-        item.addContextMenuItems(_guide_menu(prog, over))
+        item.addContextMenuItems(_guide_menu(prog, over, taping))
         if live_path and prog["start_ms"] <= now < prog["end_ms"]:
             # On the air: two ways to watch it, so the choice is offered
             # rather than assumed. Joining live is the channel's own path;
@@ -281,7 +345,12 @@ def route_guide_channel(channel_id, name):
     finish("videos")
 
 
-def _guide_menu(prog, over):
+def _programme_id(prog):
+    """The id the record-marker set is keyed by: the tail of epg/play/<id>."""
+    return str(prog.get("path", "")).rsplit("/", 1)[-1]
+
+
+def _guide_menu(prog, over, taping=None):
     """What a guide airing offers besides watching it.
 
     The show it belongs to is only knowable from the airing's overlay
@@ -289,7 +358,7 @@ def _guide_menu(prog, over):
     overlay was fetched and the airing is part of a series -- a film on a
     channel has no show to go to.
     """
-    menu = _recording_menu(prog["path"])
+    menu = _recording_menu(prog["path"], taping)
     menu.extend(_favourite_menu(prog["path"], prog["title"],
                                 prog.get("is_favourite")))
     series = over.get("series")
@@ -468,22 +537,24 @@ RECORD_FORM = "recording_form"
 STOP_FORM = "stop_recording_form"
 
 
-def _recording_menu(programme_path):
+def _recording_menu(programme_path, taping=None):
     """Context-menu entries for a guide airing, or none without a path.
 
-    Two entries rather than one, because which of them applies depends on
-    whether the programme is already being recorded, and asking the service
-    that costs a request the menu would have to make before it could be drawn.
-    Each entry fetches its own form when chosen.
+    ``taping`` is whether the airing already has a record marker, which the
+    guide now knows for a whole window in one request. Where it is known only
+    the applicable entry is offered; where it is not (``None``) both are, as
+    before, since guessing wrong here means offering to stop a recording that
+    was never started.
     """
     if not programme_path:
         return []
-    return [
-        ("Record...", "RunPlugin(%s)"
-         % url(action="record", path=programme_path, form=RECORD_FORM)),
-        ("Stop or delete recording...", "RunPlugin(%s)"
-         % url(action="record", path=programme_path, form=STOP_FORM)),
-    ]
+    record = ("Record...", "RunPlugin(%s)"
+              % url(action="record", path=programme_path, form=RECORD_FORM))
+    stop = ("Stop or delete recording...", "RunPlugin(%s)"
+            % url(action="record", path=programme_path, form=STOP_FORM))
+    if taping is None:
+        return [record, stop]
+    return [stop] if taping else [record]
 
 
 def route_record(programme_path, form_code):
@@ -1282,6 +1353,8 @@ def main():
                         params.get("on") == "1")
     elif action == "signin":
         route_signin()
+    elif action == "sessions":
+        route_sessions()
     elif action == "signout":
         route_signout()
     elif action in ("iptv_channels", "iptv_epg"):
