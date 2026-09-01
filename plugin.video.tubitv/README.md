@@ -119,6 +119,30 @@ stays open, and building the guide takes one request per batch of channels —
 comfortably more than ten seconds — so connecting first is what keeps the guide
 from arriving empty.
 
+## Adding to the Kodi library
+
+**Add Movie To Library** and **Add Show To Library** write `.strm` files — one
+per film, one per episode — that play back through this addon.
+
+They go under this addon's own profile directory:
+
+```
+userdata/addon_data/plugin.video.tubitv/movies/<Title>/<Title>.strm
+userdata/addon_data/plugin.video.tubitv/shows/<Series>/S01E01  <Title>.strm
+```
+
+The path is logged each time, so a log says where a title went.
+
+Kodi does not show them until that folder is added as a video source —
+Settings → Media → Library → Videos → Add videos, pointed at `movies` as
+Movies and `shows` as TV shows. Until then the export looks like it did
+nothing: the scan it kicks off finds no source covering the folder and
+finishes in a millisecond.
+
+t1mlib writes these under `script.module.t1mlib`'s profile instead — a folder
+belonging to a dependency, which nobody would think to add as a source. This
+addon overrides that so its own exports are somewhere that makes sense.
+
 ## Resume
 
 With **Tell Tubi where you stopped watching** on and an account signed in, the

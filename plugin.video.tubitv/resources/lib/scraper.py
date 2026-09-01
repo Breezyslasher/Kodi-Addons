@@ -161,6 +161,25 @@ class myAddon(t1mAddon):
         xbmcgui.Dialog().notification(self.addonName, self.localLang(30022),
                                       xbmcgui.NOTIFICATION_ERROR)
 
+    def makeLibraryPath(self, ftype, name=None):
+        """Where "Add to Library" writes its .strm files.
+
+        t1mlib puts them under script.module.t1mlib's profile - a folder
+        belonging to a dependency, which nobody would think to add as a
+        video source and which Kodi therefore never scans. The export
+        appears to do nothing at all. They go under this addon's own
+        profile instead, and the path is logged so it can be found.
+        """
+        if name is None:
+            name = self.cleanFilename(
+                xbmc.getInfoLabel('ListItem.Title').replace('(Series)', '', 1).strip())
+        profile = xbmcvfs.translatePath(self.addon.getAddonInfo('profile'))
+        target = os.path.join(profile, str(ftype), name)
+        if not os.path.isdir(target):
+            os.makedirs(target)
+        self.note('library export : %s' % target)
+        return target
+
     # ------------------------------------------------------------- listings
 
     @staticmethod
