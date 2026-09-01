@@ -117,7 +117,7 @@
 		</news>
 	</extension>
 </addon>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.12" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.31" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -151,6 +151,20 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.31 - Standard-definition playback is reliable, HD unlocks on L1
+- FIX: on a software Widevine (L3) device -- every desktop, and L3 Android --
+  the CDM refuses the output-protected HD tiers, which showed up as a frozen
+  picture (kNoKey) part-way into a title, especially after a seek. The addon
+  now reads Apple's per-variant HDCP-LEVEL tags and serves only the tiers the
+  device's Widevine level can actually decode: NONE (~540p) on L3, so playback
+  is steady end to end instead of freezing on a protected tier.
+- On a hardware Widevine (L1) Android device the same logic lifts the ceiling
+  to the TYPE-0 tiers, so HD (up to 1080p) licences and renders through the
+  secure decoder -- verified on an L1 device (Kodi 22 / ISA 22): the 1280x720+
+  video key comes back USABLE and plays, where L3 got OUTPUT_NOT_ALLOWED.
+- The cap fails safe: a variant is dropped only when its HDCP-LEVEL tag is
+  present and above what the level allows, so nothing is nuked on manifests
+  that do not carry the tag, and a height cap the user set is still honoured.
 2026.8.10 - iTunes library is back
 - The iTunes movie and TV library returns, on top of all the Apple TV+ and
   live-sports work: your purchased/rented films and shows list under "My iTunes
@@ -694,5 +708,236 @@ Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every 
       <icon>resources/icon.png</icon>
     </assets>
   </extension>
+</addon>
+<addon id="plugin.video.tubitv" name="TubiTV" version="2026.9.1" provider-name="Lunatixz, Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.t1mlib" version="4.0.9"/>
+		<import addon="script.module.requests" version="2.22.0"/>
+		<import addon="inputstream.adaptive" version="2.6.0"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Tubi TV</summary>
+		<description lang="en_GB">Tubi TV has the largest library of FREE videos of hit and cult TV shows and films.
+
+* Browse the Tubi categories, series and films
+* Home, My List and Continue Watching from your account
+* Live TV, with IPTV Manager integration for the Kodi TV guide
+* Search the Tubi catalogue
+* Add films and shows to the Kodi library as .strm files
+* Optional Tubi account sign-in
+* PseudoTV Live support</description>
+		<disclaimer lang="en_GB">Feel free to use this script. For information visit the wiki.</disclaimer>
+		<platform>all</platform>
+		<language>en</language>
+		<license>GPL-2.0-or-later</license>
+		<forum>http://forum.kodi.tv/showthread.php?tid=</forum>
+		<website>http://www.tubitv.com/</website>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<news>
+2026.9.1 - One fewer deprecation warning
+- CHANGED: inputstream.adaptive 21 works out for itself that Tubi serves
+  HLS and logs a deprecation warning on every playback for being told
+  anyway; 22 has dropped the property altogether. It is now set only on
+  the older builds that still need it.
+
+2026.8.11.16 - Sign out stays signed out
+- FIXED: Sign out cleared the credentials, but it is an action button
+  inside the settings dialog - and that dialog keeps its own copy of
+  every field and writes it back when it closes, so they reappeared and
+  the addon signed in again under a second later. The credentials signed
+  out of are now fingerprinted in the session cache, where the dialog
+  cannot reach, and the addon stays anonymous until either field is
+  actually changed.
+
+2026.8.11.15 - Sign out actually signs out
+- FIXED: Sign out forgot the tokens but left the email and password in
+  settings, and the addon signs in on every invocation - so the next
+  browse signed straight back in. The button appeared to do nothing and
+  session.json looked as though it never cleared. It now empties the
+  credentials too.
+- FIXED: "Add Movie To Library" named both the folder and the .strm file
+  from ListItem.Title, which a context menu action - running in a
+  process of its own - often reads back empty. The export became a
+  nameless ".strm" in the root of the movies folder. The title now comes
+  from Tubi, by content id.
+
+2026.8.11.14 - Library exports somewhere you can find them
+- FIXED: "Add Movie To Library" and "Add Show To Library" wrote their
+  .strm files under script.module.t1mlib's profile - a folder belonging
+  to a dependency, which nobody would add as a video source, so the
+  export looked like it did nothing at all. They now go under this
+  addon's own profile, and the path is logged.
+
+2026.8.11.13 - Two fewer deprecation warnings
+- FIXED: Every part-watched title logged a pair of deprecation warnings,
+  because the resume point was set through the ResumeTime and TotalTime
+  properties. Kodi 20 and later now get setResumePoint(); Kodi 19, which
+  has no such setter, keeps the properties.
+
+2026.8.11.12 - Ask Tubi for the stream its own player uses
+- FIXED: Some titles have no unencrypted hlsv6 at all - their only clear
+  rendition is an hlsv3 480p beside encrypted 720p ones, and the addon
+  never asked Tubi for hlsv3. On those titles the only thing left to
+  pick was a 720p rendition demanding HDCP, which a software CDM cannot
+  play. Tubi's own web player takes the hlsv3 on exactly these titles
+  and never requests a licence; the addon now asks for it too.
+- NEW: Playback logs what Tubi offered and which rendition was taken,
+  with its resolution, codec and HDCP grade. Which one is chosen is the
+  whole of what "Allow HDCP protected streams" decides, and whether an
+  hlsv3 came back is not visible anywhere else.
+
+2026.8.11.11 - Home was only its first seven rows
+- FIXED: Home listed seven rows where Tubi's own home screen has forty or
+  more. Tubi serves its home in two calls - the first seven rows, then
+  every row after them - and the addon only ever made the first, so the
+  personalised rows past Watch Next were never shown.
+
+2026.8.11.10 - Menu tidy, and a log worth reading
+- CHANGED: My List has gone the way of Continue Watching - Home carries a
+  row for it already. The menu is one call again.
+- CHANGED: The addon logged almost everything at debug level, so a normal
+  Kodi log said nothing even when a call had failed. Failures, sign-in and
+  sign-out, and anything that changes the account now log at a level an
+  ordinary log shows.
+
+2026.8.11.9 - No Continue Watching twice
+- CHANGED: Home is Tubi's own screen and already carries a Continue
+  Watching row, so the separate menu entry for it is gone. One fewer call
+  on opening the addon as well.
+
+2026.8.11.8 - No empty rows in the menu
+- CHANGED: Continue Watching and My List appear only when they have
+  something in them, and never when signed out, where neither can. Both
+  lists are read alongside the categories rather than after them, so the
+  menu is no slower for knowing.
+
+2026.8.11.7 - Sign out properly
+- CHANGED: "Clear saved session" is now "Sign out", and tells Tubi rather
+  than only forgetting the tokens locally, so the device stops being
+  signed in on Tubi's side too. It still clears locally if Tubi cannot be
+  reached.
+
+2026.8.11.6 - Continue Watching, both ways
+- NEW: "Remove from Continue Watching" on any title Tubi is tracking.
+- NEW: Films and episodes carry the position Tubi has for them, so Kodi
+  offers to resume where you stopped - on any device, not just this one.
+
+2026.8.11.5 - The service says what it did
+- CHANGED: Progress reporting logged only at debug level, so with normal
+  logging there was no way to tell whether it had run. It now reports at
+  info level, says when it skipped a title as barely watched, and logs
+  once at startup so the service can be seen running at all.
+
+2026.8.11.4 - My List shows the action that applies
+- FIXED: A title already on My List still offered "Add to My List"
+  everywhere except inside the list itself. The entry now reads Add or
+  Remove according to whether the title is actually on the list.
+
+2026.8.11.3 - Episodes report their progress too
+- NEW: Episodes now report where you stopped, not just films. An episode
+  goes across as itself with its series named alongside, which is what
+  Tubi's history wants and what was missing before.
+
+2026.8.11.2 - My List, ratings and language
+- NEW: Add to and remove from My List, from the context menu on any title.
+- NEW: Like and dislike, which toggle back off when pressed again.
+- NEW: Language - Tubi serves its categories and descriptions in English,
+  Spanish or French depending on what it is asked for.
+
+2026.8.11.1 - Home, My List, Continue Watching
+- NEW: Home lists Tubi's own personalised rows.
+- NEW: My List and Continue Watching, both taken from the account.
+- NEW: "Related titles" and "Play trailer" on every film and series.
+- NEW: Kids mode.
+- NEW: Films report where you stopped, so Tubi's own apps and Continue
+  Watching agree. Off-limits for episodes until Tubi's history is seen
+  accepting one; only a film has ever been captured.
+
+2026.8.11 - Modern list items
+- FIXED: Every list item logged two deprecation warnings, because t1mlib
+  still builds them with ListItem.setInfo() and addStreamInfo(). The addon
+  now fills the video info tag through its own setters on Kodi 20 and
+  later, falling back to the old calls on Kodi 19 which has nothing else.
+
+2026.8.10.8 - Guide text
+- FIXED: Some guide titles and descriptions arrived HTML-escaped and were
+  passed on as-is, so Kodi displayed "Amos &amp;amp; Andrew" and
+  "caf&amp;eacute;" literally. Entities are now resolved to the characters
+  they stand for.
+
+2026.8.10.7 - Faster live guide
+- CHANGED: The guide's batches are now fetched a few at a time instead of
+  one after another, cutting a refresh from tens of seconds to a few. The
+  tools that ask for it are waiting on a socket while it is built.
+- NEW: The addon logs how many channels and programmes it handed over and
+  how long it took, so an empty guide can be told apart from one that was
+  never asked for.
+
+2026.8.10.6 - Live guide fix
+- FIXED: The channels reached the Kodi TV guide but the programme
+  schedule never did. IPTV Manager allows ten seconds for the addon to
+  call back, and the addon was building the whole guide - one request per
+  batch of channels - before opening the connection. It now connects
+  first and builds afterwards, which is what IPTV Manager waits for.
+- FIXED: One failed batch no longer discards the entire guide.
+
+2026.8.10.5 - Live TV
+- NEW: Tubi's 177 linear channels, with a Live TV folder in the addon and
+  IPTV Manager integration so they appear in the Kodi TV guide with a
+  full programme schedule.
+
+2026.8.10.4 - Current DRM properties
+- CHANGED: On inputstream.adaptive 21 and later the DRM configuration is
+  passed through drm_legacy, which clears the deprecation warning about
+  the license_type and license_key properties. Older builds, which only
+  understand the old properties, keep using them.
+
+2026.8.10.3 - DRM playback fix
+- FIXED: Encrypted titles failed to decode with "Failed to initialize a
+  DRM session". Tubi grades the same film twice - its 720p renditions
+  demand HDCP and Widevine security level 2, its 576p ones demand
+  neither - and the addon was picking the protected one, which a software
+  CDM cannot satisfy. It now prefers the rendition that plays without
+  HDCP.
+- NEW: "Allow HDCP protected streams" for devices with hardware DRM that
+  can play the higher quality renditions.
+
+2026.8.10.2 - Search fix
+- FIXED: Opening Search crashed the addon. The menu entry carried an
+  empty url, Kodi trimmed the '=' off it, and t1mlib could not parse the
+  query back. The entry now carries a value, and default.py repairs a
+  trimmed query before handing it over.
+
+2026.8.10.1 - Moved to Tubi's current API
+- FIXED: Browsing, search and playback have moved off the retired /oz
+  endpoints and onto the API the Tubi site itself now uses. Nothing in
+  the addon reached a live endpoint before this.
+- NEW: Categories page properly, series list their seasons, and search
+  returns the full result set.
+- NEW: Widevine playback through inputstream.adaptive for the titles Tubi
+  encrypts. Titles served in the clear still play without it.
+
+2026.8.10 - Sign-in repaired
+- FIXED: Signing in no longer uses the retired /oz/auth/login endpoint. The
+  addon now performs the same handshake as the Tubi web client: a signed
+  anonymous device token, then the account login, then the web session
+  handover that yields the cookie the content calls need.
+- FIXED: The addon no longer dies on startup when the sign-in fails. Tubi is
+  free to browse, so it carries on anonymously and reports the problem.
+- FIXED: Tokens are cached in the addon profile instead of being fetched on
+  every single browse and playback.
+- FIXED: Translations are read again (moved to the Kodi 19+ language layout).
+- NEW: "Clear saved session" in settings for a clean sign-in.
+		</news>
+		<assets>
+			<icon>resources/images/icon.png</icon>
+			<fanart>resources/images/fanart.jpg</fanart>
+		</assets>
+	</extension>
 </addon>
 </addons>
