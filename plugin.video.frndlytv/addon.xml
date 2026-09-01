@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.frndlytv" name="Friendly TV" version="2026.9.1" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="20.3.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Friendly TV live channels, guide and on-demand for Kodi</summary>
+		<description lang="en_GB">Watch the live channel lineup, the programme guide and the on-demand catalogue from your own Friendly TV subscription, playing back through InputStream Adaptive with Widevine DRM.
+
+Friendly TV runs on Revlet, and this addon speaks the same private endpoints as the web player at watch.frndlytv.com. Sign in with the email address and password you already use.
+
+Features:
+* Live TV: every channel in your lineup, each showing what is on right now
+* Guide: a day of schedule per channel
+* The service's own Home, Movies, TV and My Stuff pages
+* Widevine playback through InputStream Adaptive, with no licence proxy -- Friendly TV's licence server speaks raw Widevine, so Kodi talks to it directly
+* Concurrent-stream slots are released when playback stops, so the account does not lock itself out
+* Optional IPTV Manager integration, putting the lineup and guide in Kodi's own TV section
+
+Your subscription, your account, your lineup. Nothing is proxied through a third party.</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Friendly Technologies or Frndly TV. This addon uses private, undocumented endpoints; use it with your own subscription.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.png</fanart>
+		</assets>
+		<news>
+2026.9.1 - First release
+- Live TV, the guide, and the service's own Home/Movies/TV/My Stuff pages.
+- Playback is Widevine DASH through InputStream Adaptive. Friendly TV's
+  licence server takes a raw Widevine challenge and answers with raw licence
+  bytes, which is exactly what ISA speaks, so there is no licence proxy in
+  this addon and nothing listening on localhost.
+- Stream slots are handed back when playback stops. Friendly TV counts
+  concurrent streams and only frees one when its poll key is posted back, so
+  a client that never does locks the account out of its own subscription.
+- Optional IPTV Manager integration for Kodi's TV section.
+		</news>
+	</extension>
+</addon>

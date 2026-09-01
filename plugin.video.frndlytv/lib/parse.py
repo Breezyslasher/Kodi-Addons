@@ -1,0 +1,143 @@
+"""Turning Friendly TV's cards into something Kodi can draw.
+
+The service describes everything -- a film, an episode, a live channel, a
+recording -- with the same card shape, and says what a card *is* only through
+``target.pageType`` and a bag of string-valued ``pageAttributes``. This module
+is the one place that reads that shape, so the routing code can deal in plain
+dictionaries.
+"""
+
+import time
+
+
+def _markers(display):
+    """A card's badges as {type: value}.
+
+    They arrive as a list of marker objects on a page card and as a dict
+    keyed by marker type in the guide, so both are flattened to the same
+    thing rather than being read differently at each call site.
+    """
+    raw = display.get("markers")
+    out = {}
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            if isinstance(value, dict):
+                out[key] = value.get("value", "")
+            else:
+                out[key] = value
+    elif isinstance(raw, list):
+        for marker in raw:
+            if isinstance(marker, dict) and marker.get("markerType"):
+                out[marker["markerType"]] = marker.get("value", "")
+    return out
+
+
+def _int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def card(raw, api):
+    """One card, normalised.
+
+    ``api`` is only used to resolve image references against the CDN profile
+    table, which lives with the config rather than here.
+    """
+    display = raw.get("display") or {}
+    target = raw.get("target") or {}
+    attrs = target.get("pageAttributes") or {}
+    markers = _markers(display)
+
+    start_ms = _int(attrs.get("startTime")) or _int(markers.get("startTime"))
+    end_ms = _int(attrs.get("endTime")) or _int(markers.get("endTime"))
+
+    item = {
+        "title": display.get("title") or "",
+        "subtitle": display.get("subtitle1") or "",
+        "description": display.get("subtitle2") or "",
+        "path": target.get("path") or "",
+        "page_type": target.get("pageType") or "",
+        "playable": (target.get("pageType") == "player"),
+        "is_live": str(attrs.get("isLive", "")).lower() == "true",
+        "content_type": attrs.get("contentType") or "",
+        "asset_type": attrs.get("assetType") or "",
+        "channel_name": attrs.get("channelName") or display.get("parentName")
+        or "",
+        "episode_title": attrs.get("episodeTitle") or "",
+        "genres": [g.strip() for g in
+                   (attrs.get("RokuGenreCode") or "").split(",") if g.strip()],
+        "duration_ms": _int(attrs.get("duration")),
+        "network_id": attrs.get("networkid") or "",
+        "start_ms": start_ms,
+        "end_ms": end_ms,
+        "badge": markers.get("badgeV2") or markers.get("badge") or "",
+        "poster": api.image(display.get("imageUrl")),
+        "channel_logo": api.image(display.get("parentIcon")),
+        "id": raw.get("id"),
+    }
+
+    # A card whose only marker says "non_playable" is a heading in the
+    # guide's channel strip, not something to open.
+    if markers.get("special") == "non_playable" and not item["path"]:
+        item["playable"] = False
+
+    if not item["duration_ms"] and start_ms and end_ms > start_ms:
+        item["duration_ms"] = end_ms - start_ms
+    return item
+
+
+def sections(response, api):
+    """Every section on a page, as {name, code, path, cards, deferred}.
+
+    ``deferred`` is true where the service described the section but sent no
+    cards with it; the caller fills those in with ``Api.section`` only if it
+    actually needs them, because a page can defer a dozen at once.
+    """
+    out = []
+    for pane in (response.get("data") or []):
+        section = pane.get("section")
+        if not section:
+            continue
+        info = section.get("sectionInfo") or {}
+        data = section.get("sectionData") or {}
+        cards = [card(c, api) for c in (data.get("data") or [])]
+        controls = section.get("sectionControls") or {}
+        out.append({
+            "name": info.get("name") or "",
+            "code": info.get("code") or "",
+            "data_type": info.get("dataType") or "",
+            "cards": cards,
+            "deferred": not cards,
+            "view_all": controls.get("viewAllTargetPath") or "",
+        })
+    return out
+
+
+def on_now(cards):
+    """The card that is on the air, out of a channel's schedule."""
+    now = time.time() * 1000
+    for item in cards:
+        if item["start_ms"] <= now < item["end_ms"]:
+            return item
+    return None
+
+
+def programme(raw):
+    """One airing from the guide endpoint.
+
+    The guide's own programme objects are thinner than a page card -- a title,
+    an id and the two markers holding the times -- and carry no channel of
+    their own, so the caller pairs them with the channel they came under.
+    """
+    display = raw.get("display") or {}
+    markers = _markers(display)
+    return {
+        "title": display.get("title") or "",
+        "id": raw.get("id"),
+        "path": (raw.get("target") or {}).get("path") or "",
+        "start_ms": _int(markers.get("startTime")),
+        "end_ms": _int(markers.get("endTime")),
+        "image": display.get("imageUrl") or "",
+    }

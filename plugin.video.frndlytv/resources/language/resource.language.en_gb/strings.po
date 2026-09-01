@@ -1,0 +1,78 @@
+# Kodi Media Center language file
+# Addon Name: Friendly TV
+# Addon id: plugin.video.frndlytv
+# Addon Provider: Breezyslasher
+msgid ""
+msgstr ""
+"Project-Id-Version: Kodi Addons\n"
+"Report-Msgid-Bugs-To: https://github.com/Breezyslasher/Kodi-Addons\n"
+"Language-Team: English (United Kingdom)\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+msgctxt "#30010"
+msgid "Account"
+msgstr ""
+
+msgctxt "#30011"
+msgid "Email address"
+msgstr ""
+
+msgctxt "#30012"
+msgid "The email address you sign in to Friendly TV with."
+msgstr ""
+
+msgctxt "#30013"
+msgid "Password"
+msgstr ""
+
+msgctxt "#30014"
+msgid "Stored in Kodi's settings on this device and sent only to Friendly TV."
+msgstr ""
+
+msgctxt "#30015"
+msgid "Sign in"
+msgstr ""
+
+msgctxt "#30016"
+msgid "Sign in with the email address and password above, or be prompted for them."
+msgstr ""
+
+msgctxt "#30017"
+msgid "Sign out"
+msgstr ""
+
+msgctxt "#30018"
+msgid "Forget this device's session. Your saved password is cleared too."
+msgstr ""
+
+msgctxt "#30020"
+msgid "Integration"
+msgstr ""
+
+msgctxt "#30021"
+msgid "Install IPTV Manager"
+msgstr ""
+
+msgctxt "#30022"
+msgid "Publish channels to IPTV Manager"
+msgstr ""
+
+msgctxt "#30023"
+msgid "Offer the Friendly TV lineup and guide to Kodi's TV section as a PVR source."
+msgstr ""
+
+msgctxt "#30024"
+msgid "IPTV Manager settings"
+msgstr ""
+
+msgctxt "#30025"
+msgid "Channels endpoint"
+msgstr ""
+
+msgctxt "#30026"
+msgid "Guide endpoint"
+msgstr ""
