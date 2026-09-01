@@ -117,7 +117,7 @@
 		</news>
 	</extension>
 </addon>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.12" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.31" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -151,6 +151,20 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.8.31 - Standard-definition playback is reliable, HD unlocks on L1
+- FIX: on a software Widevine (L3) device -- every desktop, and L3 Android --
+  the CDM refuses the output-protected HD tiers, which showed up as a frozen
+  picture (kNoKey) part-way into a title, especially after a seek. The addon
+  now reads Apple's per-variant HDCP-LEVEL tags and serves only the tiers the
+  device's Widevine level can actually decode: NONE (~540p) on L3, so playback
+  is steady end to end instead of freezing on a protected tier.
+- On a hardware Widevine (L1) Android device the same logic lifts the ceiling
+  to the TYPE-0 tiers, so HD (up to 1080p) licences and renders through the
+  secure decoder -- verified on an L1 device (Kodi 22 / ISA 22): the 1280x720+
+  video key comes back USABLE and plays, where L3 got OUTPUT_NOT_ALLOWED.
+- The cap fails safe: a variant is dropped only when its HDCP-LEVEL tag is
+  present and above what the level allows, so nothing is nuked on manifests
+  that do not carry the tag, and a height cap the user set is still honoured.
 2026.8.10 - iTunes library is back
 - The iTunes movie and TV library returns, on top of all the Apple TV+ and
   live-sports work: your purchased/rented films and shows list under "My iTunes
