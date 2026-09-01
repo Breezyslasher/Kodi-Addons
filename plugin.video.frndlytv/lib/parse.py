@@ -134,6 +134,15 @@ def card(raw, api):
                    (attrs.get("RokuGenreCode") or "").split(",") if g.strip()],
         "duration_ms": _int(attrs.get("duration")),
         "network_id": attrs.get("networkid") or "",
+        "is_favourite": str(attrs.get("isFavourite", "")).lower() == "true",
+        # Cards name their own recording form -- "player_recording_form",
+        # where a guide airing's overlay names "recording_form". Carried
+        # rather than assumed, so the right one is asked for.
+        "recording_form": attrs.get("recordingForm") or "",
+        "can_record": (str(attrs.get("isRecordingAllowed", "")).lower()
+                       == "true"
+                       and str(attrs.get("isRecordingDisabled", "")).lower()
+                       != "true"),
         "start_ms": start_ms,
         "end_ms": end_ms,
         "badge": markers.get("badgeV2") or markers.get("badge") or "",
@@ -354,10 +363,12 @@ def programme(raw):
     """
     display = raw.get("display") or {}
     markers = _markers(display)
+    attrs = (raw.get("target") or {}).get("pageAttributes") or {}
     return {
         "title": display.get("title") or "",
         "id": raw.get("id"),
         "path": (raw.get("target") or {}).get("path") or "",
+        "is_favourite": str(attrs.get("isFavourite", "")).lower() == "true",
         "start_ms": _int(markers.get("startTime")),
         "end_ms": _int(markers.get("endTime")),
         "image": display.get("imageUrl") or "",

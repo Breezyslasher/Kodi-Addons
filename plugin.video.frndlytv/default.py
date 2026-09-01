@@ -290,6 +290,8 @@ def _guide_menu(prog, over):
     channel has no show to go to.
     """
     menu = _recording_menu(prog["path"])
+    menu.extend(_favourite_menu(prog["path"], prog["title"],
+                                prog.get("is_favourite")))
     series = over.get("series")
     if series:
         title = over.get("title") or prog["title"]
@@ -600,7 +602,7 @@ def route_page(path, name=""):
     # in the page's content pane. Reading only sections left a film's page
     # completely empty, since a film has no seasons under it either.
     for act in detail["actions"]:
-        _add_detail_action(act, detail, media)
+        _add_detail_action(act, detail, media, page_path=path)
 
     # A page that is one section is that section: making the viewer open a
     # single folder to reach the only thing behind it is a wasted click. Not
@@ -693,8 +695,14 @@ def _set_detail_meta(item, detail, label, media):
         item.setInfo("video", info)
 
 
-def _add_detail_action(action, detail, media="video"):
-    """A play button from a details page, with the page's own art and blurb."""
+def _add_detail_action(action, detail, media="video", page_path=""):
+    """A play button from a details page, with the page's own art and blurb.
+
+    ``page_path`` is the title's own path rather than the button's target, so
+    the menu here favourites *the film* and not the airing it happens to be
+    playing from. Without it, a title opened from Information had no way to
+    be favourited at all.
+    """
     label = action["label"] or detail["title"] or "Play"
     if detail["title"] and detail["title"].lower() not in label.lower():
         label = "%s - %s" % (label, detail["title"])
@@ -702,6 +710,10 @@ def _add_detail_action(action, detail, media="video"):
     item.setArt(_detail_art(detail))
     _set_detail_meta(item, detail, label, media)
     item.setProperty("IsPlayable", "true")
+    if page_path:
+        item.addContextMenuItems(
+            _favourite_menu(page_path, detail["title"], None) +
+            _similar_menu({"path": page_path, "title": detail["title"]}))
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action="play", path=action["path"], label=label),
         item, isFolder=False)
@@ -822,12 +834,66 @@ def _add_card_folder(item):
     listitem = xbmcgui.ListItem(label=label)
     listitem.setArt(_art(item))
     _set_meta(listitem, item, label)
-    menu = _similar_menu(item)
+    menu = _card_menu(item)
     if menu:
         listitem.addContextMenuItems(menu)
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action="page", path=item["path"], name=item["title"]),
         listitem, isFolder=True)
+
+
+def _favourite_menu(path, name, is_favourite):
+    """The favourite entry that applies, given what is known about the item.
+
+    A card carries ``isFavourite``, so only the useful verb is offered --
+    showing both would leave the viewer guessing which state they are in.
+    Where that is genuinely unknown (``None``: a title's own page does not
+    say), both are offered rather than guessing a verb that may be the wrong
+    one.
+    """
+    if not path:
+        return []
+    add = ("Add to Favourites", "RunPlugin(%s)"
+           % url(action="favourite", path=path, name=name, on="1"))
+    remove = ("Remove from Favourites", "RunPlugin(%s)"
+              % url(action="favourite", path=path, name=name, on="0"))
+    if is_favourite is None:
+        return [add, remove]
+    return [remove] if is_favourite else [add]
+
+
+def route_favourite(path, name, on):
+    """Put this in My Stuff, or take it out."""
+    client = _client()
+    if client is None:
+        return
+    try:
+        said = client.favourite(path, on)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Favourites")
+        return
+    kodiutils.log("favourite %s %s -> %s"
+                  % ("on" if on else "off", path, said or "no message"))
+    # "Added to My Stuff" / "Removed from My Stuff", in the service's words.
+    kodiutils.notify(said or (name or path))
+    _refresh()
+
+
+def _card_menu(item):
+    """Everything a card offers besides opening or playing it.
+
+    Recording is not a guide-only thing: 2221 of the captured cards name a
+    recording form, films and channels among them. The card says which form
+    applies, so that is the one asked for -- the guide's airings say
+    "recording_form" and a card says "player_recording_form".
+    """
+    menu = _favourite_menu(item.get("path"), item.get("title", ""),
+                           item.get("is_favourite"))
+    form = item.get("recording_form")
+    if form and item.get("can_record") and item.get("path"):
+        menu.append(("Recording...", "RunPlugin(%s)"
+                     % url(action="record", path=item["path"], form=form)))
+    return menu + _similar_menu(item)
 
 
 def _similar_menu(item):
@@ -845,7 +911,7 @@ def _add_playable(item, label=None, action="play"):
     listitem.setArt(_art(item))
     listitem.setProperty("IsPlayable", "true")
     _set_meta(listitem, item, label)
-    menu = _similar_menu(item)
+    menu = _card_menu(item)
     if menu:
         listitem.addContextMenuItems(menu)
     xbmcplugin.addDirectoryItem(
@@ -1148,6 +1214,10 @@ def main():
                          params.get("label", ""))
     elif action == "similar":
         route_similar(params.get("path", ""), params.get("name", ""))
+    elif action == "favourite":
+        # RunPlugin: nothing to draw, and the listing stays where it is.
+        route_favourite(params.get("path", ""), params.get("name", ""),
+                        params.get("on") == "1")
     elif action == "signin":
         route_signin()
     elif action == "signout":

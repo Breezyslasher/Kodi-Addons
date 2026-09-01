@@ -435,6 +435,17 @@ class Api(object):
                       % (what, len(out), len(wanted), time.time() - started))
         return out
 
+    def favourite(self, path, on):
+        """Add this to My Stuff, or take it out again.
+
+        A GET rather than a POST, which is the service's choice, not a
+        mistake here. Returns its own wording for what happened ("Added to My
+        Stuff"), which is better than anything invented.
+        """
+        body = self.get("/service/api/auth/user/favourite/item",
+                        {"path": path, "action": 1 if on else 0})
+        return (body.get("response") or {}).get("message") or ""
+
     def more_like_this(self, content_id, count=56, offset=0):
         """Titles the service considers similar to this one.
 

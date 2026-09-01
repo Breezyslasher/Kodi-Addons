@@ -595,10 +595,31 @@ to `drm-global.videograph.ai`.
 `auth/v2/signin` request body, in clear text.** Anything shared publicly needs
 that request scrubbed first.
 
+## Favourites
+
+```
+GET /service/api/auth/user/favourite/item?path=<path>&action=1   (add)
+GET /service/api/auth/user/favourite/item?path=<path>&action=0   (remove)
+→ {"response": {"message": "Added to My Stuff"}, "status": true}
+```
+
+A GET that changes state, which is the service's choice. Whether something is
+already a favourite is on the card itself, as `pageAttributes.isFavourite`, a
+**string** `"true"`/`"false"` like every other attribute — so a client can show
+only the verb that applies rather than both.
+
+The service calls this My Stuff in its confirmations and "Favorite" on its
+button, for the same feature.
+
 ## Other endpoints seen but not used
 
-- **Favourites**: `GET /service/api/auth/user/favourite/item?path=...&action=1|0`.
-- `GET /service/api/v1/tivo/content?path=homeScreen&...` — an alternative home
-  screen the web player requests and, in the capture, abandons.
-- `GET /service/api/v1/foliotabs?tab=morelikethis/<id>&count=30&offset=0`.
-- `GET /service/api/v1/tvguide/user/data?...` — per-user guide overlay state.
+- `GET /service/api/v1/tivo/content?path=homeScreen&...` — also serves an
+  alternative home screen shape the web player requests and, in one capture,
+  abandons.
+- `GET /service/api/v1/tvguide/user/data?...` — per-user guide overlay state
+  (which airings are recorded or favourited), which would save the per-card
+  flag lookup for a whole guide page at once.
+- `GET /search/api/tivo/v1/search/screen` and `.../trendingSearches` — the
+  search landing screen, for an empty search box.
+- `POST /search/api/tivo/v1/send/user/recordings` — the web player posts the
+  user's recordings to the search service; purpose unestablished.

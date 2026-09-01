@@ -77,6 +77,17 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   start it over. Those turn out to be two different paths to the same
   endpoint rather than two kinds of request: the channel's gives the live
   edge, the programme's own is answered with the programme from its start.
+- Add to and remove from Favourites, on anything with a path -- films,
+  shows, channels and guide airings alike. Only the verb that applies is
+  offered, because the cards carry whether they are already in. These are
+  Friendly TV's My Stuff, so they appear there and in its own apps.
+- Recording reaches beyond the guide. 1803 of the captured cards say they
+  may be recorded -- films and channels among them -- and each names the
+  form to use, which is not the one a guide airing names. The card's own
+  form code is what gets asked for.
+- A title opened from Information can be favourited from there too; its play
+  button had no menu at all. Its page does not say whether it is already a
+  favourite, so both verbs are offered rather than guessing one.
 - "More like this" on any film or show's context menu, and "Go to show" on a
   guide airing that belongs to a series -- the airing's overlay is the only
   thing that names the show it came from.
