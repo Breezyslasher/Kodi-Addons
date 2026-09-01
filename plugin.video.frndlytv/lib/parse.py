@@ -16,6 +16,11 @@ import time
 _SXEY = re.compile(r"^\s*S(\d+)\s*-?\s*E[p]?(\d+)", re.IGNORECASE)
 
 
+def media_of(path):
+    """What a page path holds, for a caller that has only the path."""
+    return _media_kind(path or "", 0, 0)
+
+
 def _media_kind(path, season, episode):
     """What Kodi should treat a card as.
 
@@ -176,7 +181,9 @@ def detail(response, api):
     targets "settings". A target is taken as a path only when it looks like
     one, which is the same test that keeps those three out.
     """
-    found = {"title": "", "plot": "", "poster": "", "fanart": "", "actions": []}
+    found = {"title": "", "plot": "", "poster": "", "fanart": "", "actions": [],
+             "cast": [], "directors": [], "year": 0, "rating": "", "now": "",
+             "airing": "", "expires": ""}
     for pane in (response.get("data") or []):
         content = pane.get("content")
         if not content:
@@ -185,7 +192,18 @@ def detail(response, api):
         found["poster"] = found["poster"] or api.image(content.get("posterImage"))
         found["fanart"] = (found["fanart"] or
                            api.image(content.get("backgroundImage")))
-        blurb = []
+
+        # Films and series describe themselves differently, and it matters:
+        #
+        #   a series has a "description" element -- the show's own synopsis --
+        #     and its subtitle1/subtitle2 are the episode on the air right now
+        #   a film has no "description" element at all: its synopsis is in
+        #     subtitle2, and "subtitle" is when it airs
+        #
+        # So reading only "description" leaves every film with a blank plot,
+        # and folding subtitle2 in regardless gives a series the wrong one.
+        # The fields are gathered first and sorted out after.
+        got = {}
         for row in (content.get("dataRows") or []):
             for element in (row.get("elements") or []):
                 kind = element.get("elementType") or ""
@@ -197,18 +215,47 @@ def detail(response, api):
                         found["actions"].append(
                             {"label": str(data or sub or "Play"),
                              "path": target})
-                elif kind == "description" or sub == "description":
-                    if data:
-                        blurb.append(str(data))
-                elif kind == "text":
-                    if sub == "title" and not found["title"]:
-                        found["title"] = str(data or "")
-                    elif sub in ("subtitle1", "subtitle2") and data:
-                        blurb.append(str(data))
-        # dict.fromkeys keeps first-seen order while dropping repeats: an
-        # episode subtitle is often the description over again.
-        found["plot"] = "\n".join(dict.fromkeys(b for b in blurb if b))
+                elif kind == "marker" and sub == "tag":
+                    found["year"], found["rating"] = _year_and_rating(data)
+                elif data and kind in ("description", "text", "tag"):
+                    got[sub or kind] = str(data)
+
+        found["plot"] = got.get("description") or got.get("subtitle2") or ""
+        found["cast"] = _names(got.get("cast"))
+        found["directors"] = _names(got.get("Director"))
+        found["title"] = found["title"] or got.get("title") or ""
+        # What is on right now, which only a series has *beside* its own
+        # synopsis; on a film these same fields are the synopsis.
+        if got.get("description"):
+            found["now"] = " - ".join(p for p in (got.get("subtitle1"),
+                                                  got.get("subtitle2")) if p)
+        # "Sat, Aug 29 | 10:00 AM - 12:00 PM | 2h" and "Expires in 23 hours".
+        found["airing"] = got.get("subtitle") or ""
+        found["expires"] = got.get("expires") or ""
     return found
+
+
+def _names(value):
+    """A comma-separated credit list as names, or []."""
+    return [name.strip() for name in str(value or "").split(",") if name.strip()]
+
+
+def _year_and_rating(tag):
+    """"1975 | TVG " -> (1975, "TVG").
+
+    The one place a title's year and certificate appear is this marker, as a
+    single pipe-separated string.
+    """
+    year, rating = 0, ""
+    for part in str(tag or "").split("|"):
+        part = part.strip()
+        if not part:
+            continue
+        if part.isdigit() and len(part) == 4:
+            year = int(part)
+        elif not rating:
+            rating = part
+    return year, rating
 
 
 def form_options(response):

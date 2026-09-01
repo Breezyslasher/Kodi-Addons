@@ -53,6 +53,26 @@ msgctxt "#30020"
 msgid "Integration"
 msgstr ""
 
+msgctxt "#30030"
+msgid "Listings"
+msgstr ""
+
+msgctxt "#30031"
+msgid "Fetch full descriptions and cast"
+msgstr ""
+
+msgctxt "#30032"
+msgid "Friendly TV sends no synopsis or cast with a listing, only on each title's own page. Fetching them fills in Kodi's Information dialog, at one request per title."
+msgstr ""
+
+msgctxt "#30033"
+msgid "Titles to fetch per listing"
+msgstr ""
+
+msgctxt "#30034"
+msgid "A cap on how many titles in one listing are looked up. Higher is more complete and slower to open."
+msgstr ""
+
 msgctxt "#30021"
 msgid "Install IPTV Manager"
 msgstr ""

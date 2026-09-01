@@ -14,6 +14,7 @@ else means it opens another page at ``target.path``. That single rule is
 what lets one browse route serve Home, Movies, TV and My Stuff alike.
 """
 
+import threading
 import time
 
 import requests
@@ -83,8 +84,21 @@ NO_MATCHES = 404
 class Api(object):
     def __init__(self, session=None):
         self.session = session or auth.Session()
-        self._http = requests.Session()
+        self._local = threading.local()
         self._config = None
+
+    @property
+    def _http(self):
+        """One requests.Session per thread.
+
+        Details for a listing are fetched on a small pool of threads, and a
+        requests.Session is not documented as thread-safe -- sharing one is
+        the kind of thing that works until a connection is reused mid-flight.
+        """
+        http = getattr(self._local, "http", None)
+        if http is None:
+            http = self._local.http = requests.Session()
+        return http
 
     # -- transport ---------------------------------------------------------
 
@@ -340,6 +354,48 @@ class Api(object):
             offset += limit
         return {"cards": cards, "total": total, "complete": False,
                 "pages": pages}
+
+    def details(self, paths, workers=8, limit=40):
+        """Several titles' pages at once, as {path: response}.
+
+        A listing card carries no synopsis, cast or director -- across every
+        captured response those fields are empty on all 8191 cards but 160.
+        They exist only on the title's own page, so Kodi's own Information
+        dialog has nothing to show unless the pages are fetched.
+
+        That is one request per row, which is why it runs on a small pool and
+        is capped: a row of thirty costs thirty requests however it is done,
+        and the pool is what keeps that a few round trips rather than thirty.
+        Failures are dropped silently -- a missing synopsis is not worth
+        failing a listing over.
+        """
+        wanted = [p for p in dict.fromkeys(paths) if p][:limit]
+        if not wanted:
+            return {}
+        out = {}
+
+        def one(path):
+            try:
+                return path, self.page(path)
+            except Exception:
+                return path, None
+
+        started = time.time()
+        try:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for path, response in pool.map(one, wanted):
+                    if response:
+                        out[path] = response
+        except Exception as exc:
+            kodiutils.log("could not fetch details concurrently (%s)" % exc)
+            for path in wanted:
+                path, response = one(path)
+                if response:
+                    out[path] = response
+        kodiutils.log("details: %d of %d page(s) in %.1fs"
+                      % (len(out), len(wanted), time.time() - started))
+        return out
 
     def section(self, path, code, count=24, offset=-1):
         """One deferred section's cards.

@@ -359,6 +359,37 @@ lists films as playable and resolves the button behind the scenes rather than
 making a viewer open a folder to find a single item. A series page is a real
 folder and stays one.
 
+### A film's page and a series' page are not the same shape
+
+They differ in exactly the way that breaks a naive reader:
+
+| | series (`series/shows/<id>`) | film (`movies/<id>`) |
+|---|---|---|
+| synopsis | a `description` element | **no `description` at all** — it is in `subtitle2` |
+| `subtitle1`/`subtitle2` | the episode **on the air right now** | the film's own synopsis |
+| `subtitle` | — | when it airs, e.g. `Sat, Aug 29 \| 10:00 AM - 12:00 PM \| 2h` |
+| `Director` | absent | present |
+| below the pane | one section per season | nothing |
+
+So reading only `description` leaves every film blank, and folding `subtitle2`
+into the plot regardless gives a series the wrong synopsis — its current
+episode's, not its own. Both fields have to be gathered and then sorted out by
+which of them the page actually has.
+
+`marker`/`tag` carries the year and certificate together as one string:
+`"1975 | TVG "`.
+
+### Listings carry no synopsis at all
+
+Measured across every captured response: `display.description` and
+`display.Director` are empty on **all 8191** cards, and `display.cast` on all
+but 160. A row of films has titles and artwork and nothing else.
+
+That is a hard limit on what a listing can show without extra requests. Kodi's
+own Information dialog reads the list item, so filling it in means fetching
+each title's page — one request per row, which is why this addon does it on a
+small thread pool, behind a setting, and capped.
+
 ### Telling the kinds apart
 
 The service routes each kind of thing to its own page prefix, and that is the

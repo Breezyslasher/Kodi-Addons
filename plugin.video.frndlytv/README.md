@@ -66,6 +66,19 @@ films and episodes are each labelled as such for Kodi, so skins lay them out as
 shows and films rather than as anonymous directories, and an episode carries its
 own name with its season and episode numbers.
 
+### Descriptions and cast
+
+Friendly TV sends **no synopsis, cast or director with a listing** — across
+every captured response those fields are empty on all but a handful of cards.
+They exist only on each title's own page.
+
+So that Kodi's **Information** dialog has something to show, the addon fetches
+those pages for a listing's films and shows, on a small pool of threads. It is
+one request per title, which is a real cost, so it is a setting: *Listings →
+Fetch full descriptions and cast*, with a cap on how many titles per listing
+(40 by default). Turn it off and listings open faster with titles and artwork
+only.
+
 ## IPTV Manager
 
 With [IPTV Manager](https://github.com/add-ons/service.iptv.manager) installed,

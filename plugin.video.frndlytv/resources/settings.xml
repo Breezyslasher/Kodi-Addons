@@ -33,6 +33,24 @@
 				</setting>
 			</group>
 		</category>
+		<category id="listings" label="30030">
+			<group id="1">
+				<setting id="full_info" type="boolean" label="30031" help="30032">
+					<level>0</level>
+					<default>true</default>
+					<control type="toggle"/>
+				</setting>
+				<setting id="info_limit" type="integer" label="30033" help="30034">
+					<level>1</level>
+					<default>40</default>
+					<constraints><minimum>0</minimum><step>10</step><maximum>100</maximum></constraints>
+					<control type="slider" format="integer"/>
+					<dependencies>
+						<dependency type="enable" setting="full_info" operator="is">true</dependency>
+					</dependencies>
+				</setting>
+			</group>
+		</category>
 		<category id="integration" label="30020">
 			<group id="1">
 				<setting id="iptv.install" type="action" label="30021">

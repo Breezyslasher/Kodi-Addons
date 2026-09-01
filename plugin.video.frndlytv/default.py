@@ -5,6 +5,7 @@ import time
 
 from urllib.parse import parse_qsl, urlencode
 
+import xbmc
 import xbmcgui
 import xbmcplugin
 
@@ -152,7 +153,6 @@ def route_signout():
 
 
 def _refresh():
-    import xbmc
     xbmc.executebuiltin("Container.Refresh")
 
 
@@ -330,7 +330,7 @@ def route_search(query="", bucket=SEARCH_ALL):
                     url(action="search", query=query, bucket=code),
                     plot='%s matching "%s"' % (label, query))
 
-    content = _add_cards(cards)
+    content = _add_cards(cards, client)
 
     if not cards:
         kodiutils.notify('Nothing matching "%s"' % query)
@@ -452,7 +452,7 @@ def route_home_row(code, name):
     for row in rows:
         if row["code"] == code:
             kodiutils.log("home row %r: %d card(s)" % (code, len(row["cards"])))
-            return finish(_add_cards(row["cards"]))
+            return finish(_add_cards(row["cards"], client))
     kodiutils.notify("That row is no longer there")
     finish("videos")
 
@@ -473,46 +473,113 @@ def route_page(path, name=""):
     kodiutils.log("page %s: %d section(s), %d action(s)"
                   % (path, len(sections), len(detail["actions"])))
 
+    media = parse.media_of(path)
+
     # A film or series page is not made of sections: what plays it is a button
     # in the page's content pane. Reading only sections left a film's page
     # completely empty, since a film has no seasons under it either.
     for act in detail["actions"]:
-        _add_detail_action(act, detail)
+        _add_detail_action(act, detail, media)
 
     # A page that is one section is that section: making the viewer open a
     # single folder to reach the only thing behind it is a wasted click. Not
     # when there are actions above it, which the flattening would bury.
     if not detail["actions"] and len(sections) == 1 and sections[0]["cards"]:
-        return finish(_add_cards(sections[0]["cards"]))
+        return finish(_add_cards(sections[0]["cards"], client))
 
+    # On a title's page the synopsis and cast belong on every row, because
+    # Kodi shows the highlighted row's information -- a season folder with
+    # nothing on it is what makes a show look like it has no description.
+    describe = detail if detail["plot"] or detail["cast"] else None
     for section in sections:
         if section["cards"]:
-            add_dir(section["name"] or path,
-                    url(action="section_cached", path=path,
-                        code=section["code"], name=section["name"]))
+            _add_section_dir(section["name"] or path, path, section["code"],
+                             section["name"], "section_cached", describe)
         elif section["code"]:
-            add_dir(section["name"] or section["code"],
-                    url(action="section", path=path, code=section["code"],
-                        name=section["name"]))
+            _add_section_dir(section["name"] or section["code"], path,
+                             section["code"], section["name"], "section",
+                             describe)
     if not sections and not detail["actions"]:
         kodiutils.notify("Nothing here")
-    finish()
+    finish("seasons" if describe and media == "tvshow" else "")
 
 
-def _add_detail_action(action, detail):
-    """A play button from a details page, with the page's own art and blurb."""
-    label = action["label"] or detail["title"] or "Play"
-    if detail["title"] and detail["title"].lower() not in label.lower():
-        label = "%s - %s" % (label, detail["title"])
+def _add_section_dir(label, path, code, name, action, detail):
+    """A section folder, carrying the page's own description where there is one."""
     item = xbmcgui.ListItem(label=label)
+    if detail:
+        item.setArt(_detail_art(detail))
+        _set_detail_meta(item, detail, label, "video")
+    xbmcplugin.addDirectoryItem(
+        HANDLE, url(action=action, path=path, code=code, name=name),
+        item, isFolder=True)
+
+
+def _detail_art(detail):
     art = {}
     if detail["poster"]:
         art["thumb"] = art["poster"] = detail["poster"]
     if detail["fanart"]:
         art["fanart"] = detail["fanart"]
-    item.setArt(art)
-    if detail["plot"]:
-        _plot(item, detail["plot"])
+    return art
+
+
+def _detail_plot(detail):
+    """The page's synopsis, with what is on now and when, underneath it."""
+    parts = [detail["plot"]]
+    for extra in (detail["now"], detail["airing"], detail["expires"]):
+        if extra and extra not in parts:
+            parts.append(extra)
+    return "\n\n".join(p for p in parts if p)
+
+
+def _set_detail_meta(item, detail, label, media):
+    """The synopsis, cast, director, year and certificate onto one row.
+
+    None of this is on the card in a listing -- across every captured
+    response, `description` and `Director` are empty on all 8191 cards and
+    `cast` on all but 160. It exists only on the title's own page, so it is
+    read there and put on every row of that page, which is where Kodi looks
+    when a row is highlighted.
+    """
+    plot = _detail_plot(detail)
+    try:
+        tag = item.getVideoInfoTag()
+        tag.setMediaType(media)
+        tag.setTitle(label)
+        if plot:
+            tag.setPlot(plot)
+        if detail["cast"]:
+            tag.setCast([xbmc.Actor(name) for name in detail["cast"]])
+        if detail["directors"]:
+            tag.setDirectors(detail["directors"])
+        if detail["year"]:
+            tag.setYear(detail["year"])
+        if detail["rating"]:
+            tag.setMpaa(detail["rating"])
+    except (AttributeError, TypeError):
+        info = {"title": label, "mediatype": media}
+        if plot:
+            info["plot"] = plot
+        if detail["cast"]:
+            info["cast"] = detail["cast"]
+        if detail["directors"]:
+            info["director"] = ", ".join(detail["directors"])
+        if detail["year"]:
+            info["year"] = detail["year"]
+        if detail["rating"]:
+            info["mpaa"] = detail["rating"]
+        item.setInfo("video", info)
+
+
+def _add_detail_action(action, detail, media="video"):
+    """A play button from a details page, with the page's own art and blurb."""
+    label = action["label"] or detail["title"] or "Play"
+    if detail["title"] and detail["title"].lower() not in label.lower():
+        label = "%s - %s" % (label, detail["title"])
+    item = xbmcgui.ListItem(label=label)
+    item.setArt(_detail_art(detail))
+    _set_detail_meta(item, detail, label, media)
     item.setProperty("IsPlayable", "true")
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action="play", path=action["path"], label=label),
@@ -539,7 +606,7 @@ def route_section(path, code, name):
                  for c in (response.get("data") or [])
                  if isinstance(c, dict) and c.get("display")]
     kodiutils.log("section %s/%s: %d card(s)" % (path, code, len(cards)))
-    finish(_add_cards(cards))
+    finish(_add_cards(cards, client))
 
 
 def route_section_cached(path, code, name):
@@ -558,7 +625,7 @@ def route_section_cached(path, code, name):
         return finish()
     for section in parse.sections(response, client):
         if section["code"] == code:
-            return finish(_add_cards(section["cards"]))
+            return finish(_add_cards(section["cards"], client))
     kodiutils.notify("That row is no longer there")
     finish("videos")
 
@@ -577,12 +644,40 @@ def _plays_through_its_page(item):
     return item["path"].startswith("movies/")
 
 
-def _add_cards(cards):
+def _describe(cards, client):
+    """Fill in each card's synopsis and cast from its own page.
+
+    Kodi's Information dialog reads the list item, and a card carries no
+    synopsis, cast or director -- those are only on the title's page. So
+    without this, Information on a film is an empty box. It costs one request
+    per row, run on a pool, and is a setting because that cost is real.
+    """
+    if not kodiutils.get_setting_bool("full_info", True):
+        return
+    wanted = [c["path"] for c in cards
+              if c["path"] and parse.media_of(c["path"]) in ("movie", "tvshow")]
+    if not wanted:
+        return
+    try:
+        pages = client.details(wanted,
+                               limit=kodiutils.get_setting_int("info_limit", 40))
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.log("could not read details for this listing: %s" % exc)
+        return
+    for card in cards:
+        response = pages.get(card["path"])
+        if response:
+            card["detail"] = parse.detail(response, client)
+
+
+def _add_cards(cards, client=None):
     """List parsed cards, and say what kind of listing they made.
 
     Returned so the caller can hand it to finish(): a listing of shows has to
     declare itself as shows for a skin to lay it out as shows.
     """
+    if client is not None:
+        _describe(cards, client)
     for item in cards:
         if not item["path"]:
             continue
@@ -657,7 +752,12 @@ def _set_meta(listitem, item, label):
     as an anonymous video, so a show gets no poster shelf and an episode no
     season grouping, whatever artwork is attached.
     """
-    plot = _plot_text(item)
+    detail = item.get("detail") or {}
+    # The card's own subtitles are a fallback; the page's synopsis is the
+    # real one, and it is the only place cast and director exist at all.
+    plot = detail.get("plot") or _plot_text(item)
+    if detail.get("airing") and detail["airing"] not in plot:
+        plot = "%s\n\n%s" % (plot, detail["airing"]) if plot else detail["airing"]
     media = item.get("media") or "video"
     try:
         tag = listitem.getVideoInfoTag()
@@ -665,6 +765,14 @@ def _set_meta(listitem, item, label):
         tag.setTitle(item.get("title") or label)
         if plot:
             tag.setPlot(plot)
+        if detail.get("cast"):
+            tag.setCast([xbmc.Actor(name) for name in detail["cast"]])
+        if detail.get("directors"):
+            tag.setDirectors(detail["directors"])
+        if detail.get("year"):
+            tag.setYear(detail["year"])
+        if detail.get("rating"):
+            tag.setMpaa(detail["rating"])
         if item.get("genres"):
             tag.setGenres(item["genres"])
         if item.get("channel_name"):
@@ -687,6 +795,14 @@ def _set_meta(listitem, item, label):
         info = {"title": label, "mediatype": media}
         if plot:
             info["plot"] = plot
+        if detail.get("cast"):
+            info["cast"] = detail["cast"]
+        if detail.get("directors"):
+            info["director"] = ", ".join(detail["directors"])
+        if detail.get("year"):
+            info["year"] = detail["year"]
+        if detail.get("rating"):
+            info["mpaa"] = detail["rating"]
         if item.get("duration_ms"):
             info["duration"] = int(item["duration_ms"] / 1000)
         if media == "episode":
@@ -749,10 +865,13 @@ def route_play_page(path, label=""):
         chosen = actions[index]
     kodiutils.log("%s resolves through its page to %s"
                   % (path, chosen["path"]))
-    route_play(chosen["path"], label or detail["title"])
+    # The page was fetched anyway, so the synopsis and cast go with it into
+    # playback -- that is what the player's own info panel reads.
+    route_play(chosen["path"], label or detail["title"], detail=detail,
+               media=parse.media_of(path))
 
 
-def route_play(path, label=""):
+def route_play(path, label="", detail=None, media="video"):
     client = _client()
     if client is None:
         return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -767,6 +886,9 @@ def route_play(path, label=""):
     except (playback.PlaybackError, api.ApiError, auth.AuthError) as exc:
         kodiutils.ok_dialog(str(exc), "Cannot play this")
         return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+    if detail:
+        item.setArt(_detail_art(detail))
+        _set_detail_meta(item, detail, label or detail["title"], media)
     xbmcplugin.setResolvedUrl(HANDLE, True, item)
 
 
