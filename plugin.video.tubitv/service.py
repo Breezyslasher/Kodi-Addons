@@ -73,7 +73,7 @@ class TubiMonitor(xbmc.Player):
             return
         if position < MIN_POSITION:
             xbmc.log(msg='%s : only %ss watched, not reporting' % (ADDON_ID, position),
-                     level=xbmc.LOGINFO)
+                     level=xbmc.LOGDEBUG)
             return
         try:
             addon = xbmcaddon.Addon(ADDON_ID)
@@ -85,7 +85,7 @@ class TubiMonitor(xbmc.Player):
                                parentId=item.get('parent_id'))
             xbmc.log(msg='%s : reported %ss of %s %s' % (ADDON_ID, position,
                                                          item['content_type'], item['content_id']),
-                     level=xbmc.LOGINFO)
+                     level=xbmc.LOGDEBUG)
         except (TubiApiError, TubiAuthError, KeyError) as err:
             xbmc.log(msg='%s : could not report progress : %s' % (ADDON_ID, err),
                      level=xbmc.LOGWARNING)

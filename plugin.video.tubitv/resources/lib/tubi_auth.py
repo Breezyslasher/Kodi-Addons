@@ -359,8 +359,8 @@ class TubiAuth(object):
         # have put them back after sign out cleared them; this did not come
         # from the dialog, so it stands until they are actually changed.
         if self.cache.get('signed_out') == fingerprint:
-            self.log('signed out of these credentials, staying anonymous',
-                     level=xbmc.LOGINFO)
+            # Every invocation while in this state, so debug rather than info
+            self.log('signed out of these credentials, staying anonymous')
             return None
         session = self.cache.get('user') or {}
         if session.get('credentials') != fingerprint:

@@ -171,6 +171,14 @@ class myAddon(t1mAddon):
         xbmc.log(msg=''.join([self.addonName, ' : ', str(txt)]),
                  level=xbmc.LOGINFO if level is None else level)
 
+    def debug(self, txt):
+        """Log the routine chatter, which a normal Kodi log leaves out.
+
+        The counterpart to note(): useful when diagnosing something, noise
+        in everyone else's log.
+        """
+        xbmc.log(msg=''.join([self.addonName, ' : ', str(txt)]), level=xbmc.LOGDEBUG)
+
     def report(self, err):
         """Surface an API failure without taking the whole directory down."""
         self.note(''.join(['api call failed : ', str(err)]), level=xbmc.LOGWARNING)
@@ -193,7 +201,7 @@ class myAddon(t1mAddon):
         target = os.path.join(profile, str(ftype), name)
         if not os.path.isdir(target):
             os.makedirs(target)
-        self.note('library export : %s' % target)
+        self.debug('library export : %s' % target)
         return target
 
     def addMovieToLibrary(self, url):
@@ -218,7 +226,7 @@ class myAddon(t1mAddon):
         strm = os.path.join(target, ''.join([title, '.strm']))
         with open(strm, 'w') as out:
             out.write(''.join([sys.argv[0], '?mode=GV&url=', qp(contentId)]))
-        self.note('library export : wrote %s' % strm)
+        self.debug('library export : wrote %s' % strm)
         self.doScan(target)
 
     # ------------------------------------------------------------- listings
@@ -618,7 +626,7 @@ class myAddon(t1mAddon):
             self.report(err)
             return
         self._watching = None
-        self.note('forgot %s from continue watching' % historyId)
+        self.debug('forgot %s from continue watching' % historyId)
         xbmcgui.Dialog().notification(self.addonName, self.localLang(30055))
         xbmc.executebuiltin('Container.Refresh')
 
@@ -643,7 +651,7 @@ class myAddon(t1mAddon):
             self.report(err)
             return
         self._saved = None
-        self.note('%s my list : %s' % (action, contentId))
+        self.debug('%s my list : %s' % (action, contentId))
         xbmcgui.Dialog().notification(self.addonName, self.localLang(message))
         xbmc.executebuiltin('Container.Refresh')
 
@@ -659,7 +667,7 @@ class myAddon(t1mAddon):
         except TubiApiError as err:
             self.report(err)
             return
-        self.note('%s : %s' % (action, contentId))
+        self.debug('%s : %s' % (action, contentId))
         xbmcgui.Dialog().notification(self.addonName, self.localLang(message))
 
     def resolve(self, url):
@@ -722,7 +730,7 @@ class myAddon(t1mAddon):
         # and nothing else in the log says. What was on offer matters too:
         # some titles' only unencrypted stream is an hlsv3, and whether Tubi
         # returns one is not something the payload announces anywhere else.
-        self.note('%s : offered %s, playing %s (allow_hdcp=%s)' % (
+        self.debug('%s : offered %s, playing %s (allow_hdcp=%s)' % (
             content.get('title'), offeredTypes(content),
             describeResource(chosen), allowHdcp))
         if manifest is None:
