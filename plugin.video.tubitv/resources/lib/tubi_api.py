@@ -17,6 +17,7 @@
 #   content-cdn /api/v3/content                a title, its metadata and its
 #                                              playable video resources
 #
+import collections
 import concurrent.futures
 
 import requests
@@ -75,7 +76,14 @@ IMAGES = [('images[posterarts]', 'w408h583_poster'),
 
 # Only the resource types Kodi can actually play: clear HLS, and Widevine for
 # the titles Tubi encrypts. PlayReady and FairPlay are of no use here.
+#
+# hlsv3 is asked for because some titles have no clear hlsv6 at all - their
+# only unencrypted rendition is an hlsv3 480p sitting beside encrypted 720p
+# ones. Tubi's own web player takes exactly that stream on those titles and
+# never asks for a licence, and without hlsv3 in this list the only thing
+# left to pick would be a 720p rendition no software CDM can play.
 VIDEO_RESOURCES = [('video_resources[]', 'hlsv6'),
+                   ('video_resources[]', 'hlsv3'),
                    ('video_resources[]', 'hlsv6_widevine_nonclearlead')]
 LIMIT_RESOLUTIONS = [('limit_resolutions[]', 'h264_1080p'),
                      ('limit_resolutions[]', 'h265_1080p')]
@@ -457,6 +465,18 @@ def requiresHdcp(resource):
     """
     hdcp = (resource.get('license_server') or {}).get('hdcp_version') or ''
     return hdcp not in ('', 'hdcp_disabled')
+
+
+def offeredTypes(content):
+    """What Tubi returned for a title, as "type resolution xN" per kind."""
+    counts = collections.OrderedDict()
+    for resource in content.get('video_resources') or []:
+        key = '%s %s' % (resource.get('type') or '?',
+                         (resource.get('resolution') or '?').replace('VIDEO_RESOLUTION_', ''))
+        counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return 'nothing'
+    return ', '.join('%s x%d' % (k, n) for k, n in counts.items())
 
 
 def describeResource(resource):

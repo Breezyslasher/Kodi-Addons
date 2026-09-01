@@ -15,7 +15,7 @@ import xbmcvfs
 from t1mlib import t1mAddon
 
 from resources.lib.tubi_api import (TubiApi, TubiApiError, chooseResource,
-                                    describeResource, pickResource)
+                                    describeResource, offeredTypes, pickResource)
 from resources.lib.tubi_api import EPISODE as HISTORY_EPISODE
 from resources.lib.tubi_api import MOVIE as HISTORY_MOVIE
 from resources.lib.tubi_api import SERIES as QUEUE_SERIES
@@ -648,9 +648,11 @@ class myAddon(t1mAddon):
         chosen = chooseResource(content, allowHdcp=allowHdcp)
         manifest, licenseUrl = pickResource(content, allowHdcp=allowHdcp)
         # Which rendition was taken is the whole of what allow_hdcp decides,
-        # and nothing else in the log says.
-        self.note('%s : %d renditions offered, playing %s (allow_hdcp=%s)' % (
-            content.get('title'), len(content.get('video_resources') or []),
+        # and nothing else in the log says. What was on offer matters too:
+        # some titles' only unencrypted stream is an hlsv3, and whether Tubi
+        # returns one is not something the payload announces anywhere else.
+        self.note('%s : offered %s, playing %s (allow_hdcp=%s)' % (
+            content.get('title'), offeredTypes(content),
             describeResource(chosen), allowHdcp))
         if manifest is None:
             # Either the title needs an account or it is not playable here
