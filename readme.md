@@ -85,17 +85,20 @@ See the [addon README](service.watchparty/README.md) for setup and details.
 ---
 
 ### [TubiTV](plugin.video.tubitv/)
-Browse and watch Tubi — free, ad-supported films and TV shows — from inside Kodi. A fork of Lunatixz's addon, kept here so the sign-in stays maintained.
+Browse and watch Tubi — free, ad-supported films and TV shows — from inside Kodi. A fork of Lunatixz's addon, kept here so it can be maintained as Tubi changes its API.
 
-**Recent updates:**
-- Sign-in repaired — Tubi retired the old login endpoint, so the addon now performs the web client's handshake (signed anonymous device token → account login → web session handover)
-- A failed sign-in no longer kills the addon on startup; Tubi is free to browse, so it carries on anonymously
-- Tokens are cached in the addon profile instead of being re-fetched on every browse and playback
-- Live TV: Tubi's 177 linear channels, with IPTV Manager integration so they appear in the Kodi TV guide
+**What was wrong:** Tubi retired the `/oz` endpoints the addon was built on, so it was not one broken call — **nothing in the addon reached a live server**. Browsing, categories, search, series and episodes, and playback were all pointed at endpoints that no longer answered, and sign-in failing on startup killed the addon before any of that even got a chance to fail. Every call has been moved onto the API the Tubi website itself uses, reconstructed from packet captures and verified request by request against them.
 
-See the [addon README](plugin.video.tubitv/README.md) for details.
+**Rebuilt:**
+- **Sign-in** — the web client's handshake: a signed anonymous device token, the account login authorised by it, then the web session handover that yields the cookie the content calls need. Tokens are cached instead of re-fetched on every browse, and a failed sign-in is no longer fatal — Tubi is free to browse, so the addon carries on anonymously
+- **Sign out** that stays out, which took three goes: the addon signs in on every invocation, and the settings dialog writes the credentials back after the button clears them
+- **Browsing** — categories with paging, search, series by season with episode numbers and cast, Home, My List, Continue Watching with resume points that follow you across devices, related titles, trailers, ratings, kids mode, and Tubi's English/Spanish/French metadata
+- **Playback** — Widevine through InputStream Adaptive for the titles Tubi encrypts, plain HLS for the rest. Tubi stamps HDCP on every rendition above 576p, which a desktop's software CDM cannot use, so the addon picks the rendition that will actually decode; some titles' only unencrypted stream is an `hlsv3` and it now asks for those too
+- **Live TV** — around 150 linear channels, with IPTV Manager integration so they appear in the Kodi TV guide with a programme schedule
 
-**Requirements:** Kodi 19+. `script.module.t1mlib` comes from the official Kodi repository, and a Tubi account is optional.
+See the [addon README](plugin.video.tubitv/README.md) for the endpoint table, the DRM findings and how sign-in works.
+
+**Requirements:** Kodi 19+. `script.module.t1mlib` comes from the official Kodi repository, and a Tubi account is optional — the anonymous device token is accepted for browsing and playback alike.
 
 ---
 

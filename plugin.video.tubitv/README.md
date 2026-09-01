@@ -176,7 +176,7 @@ userdata/addon_data/plugin.video.tubitv/movies/<Title>/<Title>.strm
 userdata/addon_data/plugin.video.tubitv/shows/<Series>/S01E01  <Title>.strm
 ```
 
-The path is logged each time, so a log says where a title went.
+The path is logged each time, at debug level, so a debug log says where a title went.
 
 Kodi does not show them until that folder is added as a video source —
 Settings → Media → Library → Videos → Add videos, pointed at `movies` as
