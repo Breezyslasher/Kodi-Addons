@@ -72,26 +72,70 @@ short duplicate of the root rather than a different list.
 ## Playback and DRM
 
 Tubi encrypts some titles and not others, so the addon handles both. It asks
-for the clear `hlsv6` stream and the Widevine one, then prefers whichever clear
-stream is on offer, choosing H.264 over H.265 since more devices can decode it.
+for `hlsv6`, `hlsv3` and the Widevine stream, then prefers whichever clear
+stream is on offer, choosing the highest resolution and H.264 over H.265 since
+more devices can decode it.
+
+`hlsv3` is in that list because some titles have no clear `hlsv6` at all —
+their only unencrypted rendition is an `hlsv3` 480p sitting beside encrypted
+720p ones. Tubi's own web player takes exactly that stream on those titles and
+never requests a licence. Of the 404 non-live titles seen across the captures,
+59 carry DRM, and 26 of those are of this shape; without `hlsv3` the only thing
+left to pick for them was a 720p rendition no software CDM can play.
 
 When only an encrypted stream is available, playback goes through
 `inputstream.adaptive` with `com.widevine.alpha` and the title's own license
 server — which needs a working Widevine CDM on the device. Clear titles play
-without any of that. In testing, a licensed film came back Widevine-only while
-a series' episodes were entirely in the clear.
+without any of that. The anonymous device token is enough for encrypted
+playback too: a guest token with `is_guest: true` and no `user_id` was seen
+carrying a Widevine licence through to a decoded picture.
 
-Tubi grades the same encrypted title twice. Its 720p renditions carry a licence
-demanding HDCP v1 and Widevine security level 2; its 576p renditions demand
-neither. A software CDM — which is all a desktop, Flatpak or LibreELEC Kodi
-has — cannot satisfy the first kind: the licence is issued, but the keys come
-back marked output-restricted and the video fails to decode with *"Failed to
-initialize a DRM session"*. So the addon prefers the HDCP-free rendition by
-default.
+Across every capture taken, 70 titles carry DRM, and the HDCP grade tracks the
+resolution rather than the title — without a single exception in 810
+renditions:
+
+| height | `hdcp_version` | renditions |
+|---|---|---|
+| 576 | `hdcp_disabled` | 303 |
+| 720 | `hdcp_v1` | 726 |
+| 1080 | `hdcp_v1` | 84 |
+
+A software CDM — which is all a desktop, Flatpak or LibreELEC Kodi has —
+cannot play the protected kind. Measured on Rush Hour with Widevine CDM
+4.10.3050.0, which reports Widevine level 3, the 576p rendition plays and the
+720p one does not. Kodi 22 with inputstream.adaptive 22.3.20 names the reason:
+
+```
+CurlFile::Open - https://license.adrise.tv/challenge?…&drm_token=…"hdcp":"v1"…
+OnKeyStatusChangeNotify: KID b9a568f6…, status OUTPUT_NOT_ALLOWED
+License update successful
+KID b9a568f6… not found in DRM license
+InitializeSession: Failed to initialize a DRM session for the stream
+OpenStream - Unsupported stream 1001. Stream disabled.
+```
+
+The licence request succeeds. The key it returns is marked
+`OUTPUT_NOT_ALLOWED`, so no usable key reaches the decoder. Kodi 21 with ISA
+21.5.22 does the same in less obvious words — key status 3, `Single decrypt
+failed, secure path only`, then `kNoKey` on every frame until the stream ends.
+So the addon prefers the HDCP-free rendition by default.
+
+Tubi issues both renditions of a title against the same licence session — the
+same `external_id` — and the two tokens differ only in their output policy:
+`hdcp: v1` with `analog_out: cgms_required` for 720p, against `hdcp: disabled`
+with `analog_out: enabled` for 576p. `wv_security_level` and
+`pr_security_level` are identical on both, so the HDCP grade is the only thing
+separating the rendition that plays from the one that does not.
+
+inputstream.adaptive's own **Ignore HDCP status** makes no difference: it
+governs whether ISA filters renditions by HDCP itself, not whether the licence
+server will issue a usable key.
 
 Turn on **Allow HDCP protected streams** in the Playback settings if your device
 has hardware DRM (many Android TV boxes and Shields do) and you would rather
-have the higher quality rendition.
+have the higher quality rendition. It is a 720p-against-576p choice on the
+titles that have no clear rendition, and changes nothing anywhere else, since a
+clear stream is preferred before HDCP is considered at all.
 
 The licence request is handed to inputstream.adaptive through `drm_legacy` on
 version 21 and later, and through the older `license_type`/`license_key`
@@ -100,8 +144,9 @@ the only ones Kodi 19 and 20 understand.
 
 ## Live TV and IPTV Manager
 
-Tubi carries 177 linear channels. They show up under **Live TV** in the addon,
-and they are all unencrypted plain HLS, so they need no CDM.
+Tubi carries around 150 linear channels — 177 when first captured, 147 as
+delivered to IPTV Simple most recently. They show up under **Live TV** in the
+addon, and they are all unencrypted plain HLS, so they need no CDM.
 
 The addon also implements the
 [IPTV Manager](https://github.com/add-ons/service.iptv.manager/wiki/Integration)
@@ -190,14 +235,23 @@ sign-in.
 
 - **User Email** / **User Password**: your Tubi account credentials
 - **Sign out**: tells Tubi the device is signing out, the same three calls the
-  website makes, then forgets the tokens *and empties the two credential
-  settings*. If Tubi cannot be reached it still clears both, since a sign-out
-  has to leave the addon signed out either way.
+  website makes, then forgets the tokens. If Tubi cannot be reached it still
+  clears them, since a sign-out has to leave the addon signed out either way.
 
-  Clearing the tokens alone was not enough. `default.py` signs in on every
-  plugin invocation, so with the email and password still stored the next
-  browse signed straight back in and wrote a fresh session over the top -
-  which is why `session.json` looked as though it never cleared.
+  Getting this to stick took three goes, because the addon signs in on every
+  single plugin invocation. Clearing the cached tokens was not enough — with
+  the email and password still stored, the next browse signed straight back in
+  and wrote a fresh session over the top, which is why `session.json` looked
+  as though it never cleared. Emptying those two settings was not enough
+  either: Sign out is an action button *inside the settings dialog*, and that
+  dialog keeps its own copy of every field and writes it back when it closes,
+  so the credentials reappeared and the addon signed in again 760ms later.
+
+  What holds is a fingerprint of the credentials signed out of, recorded in
+  `session.json` where the settings dialog cannot reach it. While it matches
+  what is in settings, the addon stays anonymous. Changing either field
+  changes the fingerprint and lifts the block by itself, so signing back in is
+  just a matter of re-entering the password.
 
 ## How signing in works
 

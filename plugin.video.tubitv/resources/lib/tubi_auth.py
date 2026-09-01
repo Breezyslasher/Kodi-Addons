@@ -126,10 +126,22 @@ class TubiAuth(object):
                                   ''.join([WEB_API, '/oz/user/logout']),
                                   json.dumps({'intentional': True}, separators=(',', ':')),
                                   headers={'Cookie': cookies})
+        # Which credentials were signed out of, remembered before they go.
+        # Sign out is an action button inside the settings dialog, and that
+        # dialog keeps its own copy of every field and writes it back when it
+        # closes - so emptying the settings from in here is undone moments
+        # later and the addon signs straight back in. Recording the
+        # fingerprint in the session cache, which the dialog cannot touch, is
+        # what actually holds. Editing either field changes the fingerprint
+        # and lifts the block by itself.
+        username = self.addon.getSetting('login_name')
+        password = self.addon.getSetting('login_pass')
+        fingerprint = self._fingerprint(username, password) if username and password else None
+
         self.clear()
-        # Forgetting the tokens is not signing out while the credentials are
-        # still in settings - the very next call signs straight back in with
-        # them, so from the outside the button does nothing.
+        if fingerprint is not None:
+            self.cache['signed_out'] = fingerprint
+            self._writeCache()
         forgotten = self.forgetCredentials()
         self.log('signed out, %d of 3 told to Tubi, credentials %s' % (
             told, 'cleared' if forgotten else 'were not set'), level=xbmc.LOGINFO)
@@ -343,6 +355,13 @@ class TubiAuth(object):
             return None
 
         fingerprint = self._fingerprint(username, password)
+        # Signed out of exactly these credentials. The settings dialog may
+        # have put them back after sign out cleared them; this did not come
+        # from the dialog, so it stands until they are actually changed.
+        if self.cache.get('signed_out') == fingerprint:
+            self.log('signed out of these credentials, staying anonymous',
+                     level=xbmc.LOGINFO)
+            return None
         session = self.cache.get('user') or {}
         if session.get('credentials') != fingerprint:
             session = {}
