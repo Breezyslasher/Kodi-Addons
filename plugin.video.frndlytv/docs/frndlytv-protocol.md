@@ -61,6 +61,35 @@ miss: the value is not called a session id anywhere in the response.
 A refusal comes back as HTTP 200 with `status: false` and the reason in
 `response.message`, so the HTTP status line is not enough to detect failure.
 
+## Home is assembled from two endpoints
+
+This is the single easiest thing to get wrong, and the first build did.
+
+```
+GET /service/api/v1/page/content?path=home&count=25
+```
+
+carries the banners and **one** row — Live Now — and nothing else. Listing it
+the way every other page is listed produces a Home showing only live channels.
+Every row a viewer expects comes from a different endpoint:
+
+```
+GET /service/api/v1/tivo/content?path=homeScreen&carouselCount=10&assetsCount=30
+→ {"response": {"data": [ ...10 panes... ],
+                "pageCursor": "MTBgd2F0Y2hBZ2Fpbk...", "pageType": "content"}}
+```
+
+and then, for each further page, `carouselCount=4` plus the `pageCursor` the
+previous response returned, until no cursor comes back. The captured session
+settled after five requests: Continue Watching, Recommended for You, New
+Episodes, Just Added Movies, A Recipe for Romance, Legendary Entertainment,
+Blockbuster Boulevard, Because You Watched "…", Frndly Featured, Watch Again,
+and more behind the cursor.
+
+The panes are the ordinary section/card shape described below, so the same
+parser reads them. Only Home works this way — Movies, TV and My Stuff are
+ordinary `page/content` pages.
+
 ## Pages, sections and cards
 
 Almost everything is a *page*:
@@ -212,6 +241,34 @@ a challenge, mints a token, or listens on localhost. The Apple TV+ style proxy
 exists because those services wrap the challenge in a JSON envelope; this one
 does not.
 
+### Which ISA property carries the DRM — verified the hard way
+
+ISA has two spellings for this and **the boundary is ISA 22.1.5**, not 21:
+
+| ISA | Property |
+|-----|----------|
+| ≥ 22.1.5 | `inputstream.adaptive.drm` — a JSON object |
+| < 22.1.5 | `inputstream.adaptive.license_type` + `license_key` |
+
+This addon first shipped with the threshold at 21, and on Kodi 21.3 (ISA
+21.5.22) every protected stream died like this:
+
+```
+inputstream.adaptive: Manifest successfully parsed (Periods: 1, Streams in first period: 2, Type: live)
+inputstream.adaptive: InitializePeriod: Unhandled encrypted stream.
+CVideoPlayer::OpenInputStream - error opening [plugin://plugin.video.frndlytv/...]
+```
+
+ISA 21 does not warn about the JSON property, it simply does not read it, and
+then meets an encrypted stream with no key system configured. The same build
+played correctly on Kodi 22. Two logs, one changed variable — that is the whole
+evidence, and it is why `kodiutils.isa_has_json_drm()` compares against
+`(22, 1, 5)` and fails closed to the legacy pair.
+
+The legacy `license_key` field is `server|headers|challenge|response`, where
+`R{SSM}` is the raw challenge and an empty response field takes raw licence
+bytes back — which is exactly what this licence server speaks.
+
 ### One risk worth knowing
 
 The DASH manifest carries `ContentProtection` elements for Widevine and
@@ -291,27 +348,34 @@ echoed back exactly as it arrived rather than constructed. Six distinct
 instruction strings were captured, and the addon can only ever send one of the
 values a form handed it.
 
-## Search — and why this addon's is different
+## Search
 
-Friendly TV's own catalogue search runs on a **separate API surface**, named in
-the bundle's endpoint table:
+Search runs on a **different API surface** from everything else — the same
+host, but `/search/api/tivo/v1` rather than `/service/api/v1` — with the same
+session headers.
 
 ```
-searchApi:     "/search/api/v3/"
-tivoSearchApi: "/search/api/tivo/v1/"
+GET /search/api/tivo/v1/get/search/query?query=gun&limit=16&offset=0&bucket=All
+→ {"response": {"hasMore": true, "totalCount": 37, "queryId": "...",
+                "searchResults": {"count": 16, "displayName": ..., "sourceType": ...,
+                                  "data": [ ...ordinary cards... ]}}}
 ```
 
-That is the whole of what is known. The search UI is a **lazily-loaded Angular
-chunk that was never downloaded in any capture**, so no code that builds a
-search request exists in the captured bundle: there is no path beyond the
-prefix, no parameter names, and no response shape.
+Paged with `offset`, sixteen at a time, while `hasMore` is true.
 
-So this addon does not implement catalogue search. What it offers instead is a
-search across what the captured endpoints already return — every channel name,
-and every programme title in the next twelve hours, from `Api.lineup` and the
-guide. For a live TV service that answers most of what is actually asked, and
-every result is real. It is deliberately labelled as searching the lineup and
-guide rather than dressed up as the real thing.
+Results are the ordinary card shape and carry a **mix** of `pageType`s: mostly
+`details` pages (`series/shows/<id>`, `movies/<id>`) but also directly playable
+on-demand episodes (`pageType: "player"`, `path: "video/play/<id>"`). Routing
+them by `pageType` like any other card is all that is needed.
+
+Two related endpoints exist and the addon does not use them: the landing screen
+`GET /search/api/tivo/v1/search/screen` (which returns `searchResults` as a
+*list* of buckets rather than one object) and
+`.../search/screen/trendingSearches`.
+
+The bundle's endpoint table also names a `searchApi: "/search/api/v3/"`, which
+nothing in any capture calls; the TiVo path above is what the web player
+actually uses.
 
 ## What still needs captures
 
@@ -320,15 +384,14 @@ player with devtools open on the Network tab and "Preserve log" ticked.
 
 | # | Missing | How to capture it |
 |---|---------|-------------------|
-| 1 | **Catalogue search** (`/search/api/v3/`) — the whole request and response shape | Sign in, click the magnifying glass, type a query, **wait for results to render**, then click one result. The lazy chunk loads on the first click, so the search UI must actually be opened. |
-| 2 | **`section/live_now_home`** — how many channels it returns for a given `count` | On Home, click **View All** on the "Live Now" row. Currently only the 25 that the home page itself embeds have been seen. |
-| 3 | **Stream keepalive** — whether anything polls with `streamPollKey` | Play a channel and **leave it running for 6+ minutes** with devtools open. `pollIntervalInMillis` is 180000, implying a call every 3 minutes that has never been seen. |
-| 4 | **A lapsed session** — what the API answers with once a session expires | Sign in, leave the tab idle for hours, then click around. This is the one behaviour the addon's re-authentication is written against without evidence. |
-| 5 | **A series / episode browse** — the page shape from a show down to a playable episode | From TV, open a series, open a season, play an episode. Only `page/content?path=series/shows/<id>` has been seen, not the chain through to playback. |
-| 6 | **A channel the subscription excludes** | Open any add-on-package channel and let it refuse. Would confirm the `hasAccess` / `errorCode` path the addon shows verbatim. |
+| 1 | **A series / episode browse** — the page shape from a show down to a playable episode | From TV, open a series, open a season, play an episode. Only `page/content?path=series/shows/<id>` has been seen, not the chain through to playback. |
+| 2 | **Stream keepalive** — whether anything polls with `streamPollKey` | Play a channel and **leave it running for 6+ minutes** with devtools open. `pollIntervalInMillis` is 180000, implying a call every 3 minutes that has never been seen. |
+| 3 | **A lapsed session** — what the API answers with once a session expires | Sign in, leave the tab idle for hours, then click around. This is the one behaviour the addon's re-authentication is written against without evidence. |
+| 4 | **A channel the subscription excludes** | Open any add-on-package channel and let it refuse. Would confirm the `hasAccess` / `errorCode` path the addon shows verbatim. |
+| 5 | **`section/live_now_home`** — how many channels it returns for a given `count` | On Home, click **View All** on the "Live Now" row. Only the 25 the home page embeds have been seen. Lower priority now that Home no longer depends on it. |
 
-Not needed: recordings, favourites, the guide, live and VOD playback, and the
-DRM exchange are all fully captured.
+Not needed: search, Home's carousels, recordings, favourites, the guide, live
+and VOD playback, and the DRM exchange are all fully captured.
 
 ## Capturing more
 

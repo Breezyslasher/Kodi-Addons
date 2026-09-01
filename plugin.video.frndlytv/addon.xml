@@ -38,11 +38,18 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
-- Search across the channel lineup and the next twelve hours of guide. This
-  is not Friendly TV's own catalogue search: that runs on a separate API
-  whose request shape no capture contains, because the web player loads that
-  screen as a lazy chunk and no capture has opened it. Rather than guess an
-  endpoint, this searches data the addon already has, and every result works.
+- Playback on Kodi 21 is fixed. The DRM configuration was being written in
+  the form only InputStream Adaptive 22.1.5 and newer reads, and ISA 21 does
+  not warn about that -- it ignores the property and then refuses the stream
+  with "InitializePeriod: Unhandled encrypted stream". The form is now chosen
+  by the installed ISA version, and the log says which one went out.
+- Home shows its real rows. Friendly TV assembles that one screen from two
+  endpoints, and the obvious one carries only the Live Now row, so Home was
+  a single row of live channels. The rest come from the carousel endpoint,
+  paged behind a cursor.
+- Search is Friendly TV's own catalogue search, paged, now that a capture
+  reached the endpoint. Results mix pages to open with episodes that play,
+  and each is routed by what it is.
 - Record an episode or a series, and stop or delete a recording, from the
   context menu on any guide airing. The service describes the choices and
   the addon echoes the chosen one back untouched, so it never has to know

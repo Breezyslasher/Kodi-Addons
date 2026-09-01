@@ -112,18 +112,22 @@ def _is_live(response, path):
 def _configure_isa(item, manifest_type, licence_url):
     """Point ISA at the manifest and, when there is one, the licence server.
 
-    Two spellings, because they are read by different ISA generations. ISA 21
-    introduced the ``inputstream.adaptive.drm`` JSON property and deprecated
-    the ``license_type``/``license_key`` pair; builds before it only
-    understand the pair. Only one is written, chosen by the installed
-    version, since setting both leaves ISA reading whichever it prefers and
-    makes a log ambiguous about which one was in force.
-    """
-    major = kodiutils.isa_major()
+    Two spellings, because they are read by different ISA generations, and the
+    boundary between them is **ISA 22.1.5** -- not 21, which is what this
+    addon first shipped and why every protected stream died on Kodi 21 with
+    "InitializePeriod: Unhandled encrypted stream". ISA 21 does not read the
+    JSON property at all; it does not complain about it either, it simply
+    reaches the encrypted stream with no key system configured.
 
-    # ISA 22 dropped manifest_type in favour of sniffing the mime type, which
-    # is set on the item either way; on 21 and below it is still required.
-    if major and major < 22:
+    Only one spelling is written, so a log is never ambiguous about which was
+    in force.
+    """
+    json_drm = kodiutils.isa_has_json_drm()
+
+    # ISA 22 sniffs the container from the mime type, which is set on the item
+    # either way, and warns that this property is deprecated. Below that it is
+    # still what tells ISA which parser to use.
+    if not json_drm:
         item.setProperty("inputstream.adaptive.manifest_type", manifest_type)
 
     headers = urlencode(STREAM_HEADERS)
@@ -131,9 +135,10 @@ def _configure_isa(item, manifest_type, licence_url):
     item.setProperty("inputstream.adaptive.stream_headers", headers)
 
     if not licence_url:
+        kodiutils.log("no licence url on this stream; playing unencrypted")
         return
 
-    if major >= 21:
+    if json_drm:
         item.setProperty("inputstream.adaptive.drm", json.dumps({
             WIDEVINE: {
                 "license": {
@@ -149,6 +154,9 @@ def _configure_isa(item, manifest_type, licence_url):
         # licence bytes, which is what this server does.
         item.setProperty("inputstream.adaptive.license_key",
                          "%s|%s|R{SSM}|" % (licence_url, headers))
+    kodiutils.log("DRM configured for %s (%s)"
+                  % (kodiutils.isa_version() or "unknown ISA",
+                     "json drm" if json_drm else "legacy properties"))
 
 
 def _remember(response, path):

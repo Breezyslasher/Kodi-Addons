@@ -166,17 +166,35 @@ def isa_version():
 
 
 def isa_major():
-    """The major version of inputstream.adaptive, or 0 when unknown.
-
-    Decides which DRM configuration this addon writes: ISA 21 introduced the
-    ``inputstream.adaptive.drm`` JSON property, and the older
-    ``license_type``/``license_key`` pair is what every build before it reads.
-    """
+    """The major version of inputstream.adaptive, or 0 when unknown."""
     version = isa_version()
     try:
         return int(version.split(".")[0])
     except (AttributeError, IndexError, ValueError):
         return 0
+
+
+def isa_has_json_drm():
+    """Whether this InputStream Adaptive understands the JSON `drm` property.
+
+    That property is **ISA v22.1.5+**, not 21. Getting this wrong is not a
+    warning, it is a dead stream: ISA 21.5.22 ignores the property entirely and
+    then refuses the manifest with "InitializePeriod: Unhandled encrypted
+    stream", which reads like a DRM fault rather than a configuration one.
+    This addon shipped with the threshold at 21 and every protected stream
+    failed that way on Kodi 21.
+
+    Keyed off the installed ISA version rather than the Kodi version, so a
+    build shipping a different ISA is judged on what it really has, and fails
+    closed to the legacy properties when the version cannot be read.
+    """
+    parts = []
+    for token in str(isa_version()).split("."):
+        digits = "".join(ch for ch in token if ch.isdigit())
+        parts.append(int(digits) if digits else 0)
+    while len(parts) < 3:
+        parts.append(0)
+    return tuple(parts[:3]) >= (22, 1, 5)
 
 
 def profile_dir():

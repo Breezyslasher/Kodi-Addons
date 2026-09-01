@@ -195,6 +195,96 @@ class Api(object):
                         {"path": path, "count": count})
         return body.get("response") or {}
 
+    def tivo_content(self, path="homeScreen", carousels=10, assets=30,
+                     cursor=""):
+        """A page of the TiVo-backed carousel screen.
+
+        Home is the one screen that does *not* live behind page/content.
+        ``page/content?path=home`` carries the banners and the Live Now row
+        and nothing else -- every other row on Home ("Continue Watching",
+        "Recommended for You", "Just Added Movies" ...) comes from here.
+
+        The rows are paged: the first request asks for ten and every later one
+        for four, each carrying the ``pageCursor`` the previous response
+        returned. The panes themselves are the ordinary section/card shape, so
+        parse.sections reads them unchanged.
+        """
+        params = {"path": path, "carouselCount": carousels,
+                  "assetsCount": assets}
+        if cursor:
+            params["pageCursor"] = cursor
+        body = self.get("/service/api/v1/tivo/content", params)
+        return body.get("response") or {}
+
+    def home_rows(self, max_pages=6):
+        """Every row on Home, in the order Friendly TV puts them in.
+
+        The Live Now row comes from page/content and the rest from
+        tivo/content, which is an implementation detail of the service rather
+        than anything a viewer should see, so they are merged here and the
+        callers just get rows.
+
+        ``max_pages`` bounds the cursor walk. The captured session settled
+        after five requests; the cap only decides how far down Home this
+        reaches, never whether it works.
+        """
+        from . import parse
+
+        rows = []
+        try:
+            live = self.page("home", count=200)
+            for section in parse.sections(live, self):
+                if section["cards"]:
+                    rows.append(section)
+        except ApiError as exc:
+            # Home is still worth drawing without its live row.
+            kodiutils.log("home: the live row did not load: %s" % exc)
+
+        cursor, seen = "", set()
+        for page in range(max_pages):
+            try:
+                body = self.tivo_content(carousels=10 if not cursor else 4,
+                                         cursor=cursor)
+            except ApiError as exc:
+                kodiutils.log("home: carousel page %d failed: %s"
+                              % (page + 1, exc))
+                break
+            for section in parse.sections(body, self):
+                if section["cards"] and section["code"] not in seen:
+                    seen.add(section["code"])
+                    rows.append(section)
+            cursor = body.get("pageCursor") or ""
+            if not cursor:
+                break
+        kodiutils.log("home: %d row(s)" % len(rows))
+        return rows
+
+    def search(self, query, limit=16, offset=0, bucket="All"):
+        """The service's own catalogue search.
+
+        A different API surface from everything else -- ``/search/api/tivo/v1``
+        rather than ``/service/api/v1`` -- but the same host and the same
+        session headers, and the results are ordinary cards.
+        """
+        body = self.get("/search/api/tivo/v1/get/search/query",
+                        {"query": query, "limit": limit, "offset": offset,
+                         "bucket": bucket})
+        response = body.get("response") or {}
+        results = response.get("searchResults") or {}
+        # The landing screen returns a list of buckets here; a query returns
+        # one bucket as an object. Only the query form is used.
+        if isinstance(results, list):
+            cards = []
+            for bucket_ in results:
+                cards.extend((bucket_ or {}).get("data") or [])
+        else:
+            cards = results.get("data") or []
+        return {
+            "cards": cards,
+            "has_more": bool(response.get("hasMore")),
+            "total": response.get("totalCount") or len(cards),
+        }
+
     def section(self, path, code, count=24, offset=-1):
         """One deferred section's cards.
 

@@ -20,10 +20,9 @@ GUIDE_HOURS = 24
 # the web player uses; a request naming the whole lineup at once is a shape
 # nothing has been observed answering.
 GUIDE_BATCH = 12
-# How far ahead a search looks. Long enough to answer "when is it on" for
-# tonight and tomorrow morning, short enough that the guide fetch it costs
-# stays a handful of requests.
-SEARCH_HOURS = 12
+# Results per search request. Sixteen is what the web player asks for, and
+# the response's hasMore/totalCount drive the "Next page" entry from there.
+SEARCH_PAGE = 16
 
 
 def url(**kwargs):
@@ -94,16 +93,17 @@ def route_root():
     add_dir("TV Guide", url(action="guide"),
             plot="Channels and their schedule for the next day.")
     add_dir("Search", url(action="search"),
-            plot="Search channel names and what is on in the next %d hours. "
-                 "Friendly TV's own catalogue search runs on an API this "
-                 "addon has no capture of, so it is not the same search the "
-                 "web player does." % SEARCH_HOURS)
+            plot="Search Friendly TV's catalogue of shows and films.")
 
     if client:
         for entry in client.menus():
             # Guide has a richer listing of its own above; the service's own
             # "guide" page is a duplicate of it.
             if entry["path"] == "guide":
+                continue
+            # Home is assembled from two endpoints and has its own route.
+            if entry["path"] == "home":
+                add_dir(entry["title"], url(action="home"))
                 continue
             add_dir(entry["title"], url(action="page", path=entry["path"]))
 
@@ -288,118 +288,41 @@ def _clock(milliseconds):
     return time.strftime("%H:%M", time.localtime(milliseconds / 1000.0))
 
 
-def route_search(query=""):
-    """Search the channel lineup and the guide.
+def route_search(query="", offset=0):
+    """Friendly TV's own catalogue search.
 
-    This is **not** the service's own catalogue search. Friendly TV runs that
-    on a separate API surface (``/search/api/v3/``) which no capture has
-    exercised -- the web player loads it as a lazy chunk, and the chunk was
-    never downloaded in any capture taken so far, so there is no request shape
-    to copy and a guessed one would be worse than none.
-
-    What this does instead is search what the captured endpoints already
-    return: every channel's name, and every programme title in the next
-    ``SEARCH_HOURS``. For a live TV service that answers most of what a viewer
-    actually asks -- "is Hallmark on", "when is Perry Mason" -- and every
-    result is real rather than hopeful.
+    This runs on a different API surface from the rest of the addon
+    (``/search/api/tivo/v1`` rather than ``/service/api/v1``) but on the same
+    host, with the same session headers, and it answers with ordinary cards --
+    so results list exactly like any other row and lead to the same pages.
     """
     client = _client()
     if client is None:
         return finish()
     if not query:
-        query = kodiutils.input_text("Search channels and the guide") or ""
+        query = kodiutils.input_text("Search Friendly TV") or ""
     query = query.strip()
     if not query:
         return finish()
-    needle = query.lower()
 
     try:
-        channels = client.lineup()
+        found = client.search(query, limit=SEARCH_PAGE, offset=int(offset))
     except (api.ApiError, auth.AuthError) as exc:
         kodiutils.ok_dialog(str(exc), "Could not search")
         return finish()
 
-    hits = 0
-    for channel in channels:
-        if needle in (channel["name"] or "").lower() and channel["path"]:
-            item = {"title": channel["name"], "path": channel["path"],
-                    "channel_name": channel["name"], "poster": channel["logo"],
-                    "channel_logo": channel["logo"], "subtitle": channel["now"],
-                    "description": "", "episode_title": "", "genres": [],
-                    "duration_ms": 0}
-            _add_playable(item, label="%s (channel)" % channel["name"])
-            hits += 1
+    cards = [parse.card(c, client) for c in found["cards"]]
+    kodiutils.log("search %r: %d of %s result(s) from offset %s"
+                  % (query, len(cards), found["total"], offset))
+    _add_cards(cards)
 
-    for match in _search_guide(client, channels, needle):
-        _add_guide_hit(match)
-        hits += 1
-
-    kodiutils.log("search %r: %d result(s)" % (query, hits))
-    if not hits:
-        kodiutils.notify("Nothing matching \"%s\"" % query)
+    if found["has_more"]:
+        add_dir("Next page", url(action="search", query=query,
+                                 offset=int(offset) + SEARCH_PAGE),
+                plot="%s result(s) in total" % found["total"])
+    if not cards and not int(offset):
+        kodiutils.notify('Nothing matching "%s"' % query)
     finish("videos")
-
-
-def _search_guide(client, channels, needle):
-    """Programme titles matching ``needle`` in the next SEARCH_HOURS.
-
-    Returns matches in time order, soonest first, so "what is on" reads the
-    way a viewer expects rather than in whatever order the batches came back.
-    """
-    playable = [c for c in channels if c["path"]]
-    names = {c["id"]: c for c in playable}
-    now = int(time.time() * 1000)
-    end = now + SEARCH_HOURS * 3600 * 1000
-    ids = [c["id"] for c in playable]
-    found = []
-    for index in range(0, len(ids), GUIDE_BATCH):
-        batch = ids[index:index + GUIDE_BATCH]
-        try:
-            rows = client.guide(batch, now, end, page=index // GUIDE_BATCH)
-        except (api.ApiError, auth.AuthError) as exc:
-            kodiutils.log("search: guide batch %d failed: %s"
-                          % (index // GUIDE_BATCH, exc))
-            continue
-        for row in rows:
-            channel = names.get(str(row.get("channelId") or ""))
-            if not channel:
-                continue
-            for raw in (row.get("programs") or []):
-                prog = parse.programme(raw)
-                if not prog["end_ms"] or prog["end_ms"] < now:
-                    continue
-                if needle not in (prog["title"] or "").lower():
-                    continue
-                found.append((prog, channel))
-    found.sort(key=lambda pair: pair[0]["start_ms"])
-    return found
-
-
-def _add_guide_hit(match):
-    """One guide result: playable only while it is actually on the air."""
-    prog, channel = match
-    now = time.time() * 1000
-    on_air = prog["start_ms"] <= now < prog["end_ms"]
-    when = "%s %s" % (_day(prog["start_ms"]), _clock(prog["start_ms"]))
-    label = "%s - %s (%s)" % (prog["title"], channel["name"],
-                              "on now" if on_air else when)
-    item = xbmcgui.ListItem(label=label)
-    art = {"icon": channel["logo"], "thumb": channel["logo"]}
-    item.setArt(art)
-    _plot(item, "%s on %s\n%s - %s" % (prog["title"], channel["name"],
-                                       _clock(prog["start_ms"]),
-                                       _clock(prog["end_ms"])))
-    item.addContextMenuItems(_recording_menu(prog["path"]))
-    if on_air:
-        item.setProperty("IsPlayable", "true")
-        xbmcplugin.addDirectoryItem(
-            HANDLE, url(action="play", path=channel["path"], label=label),
-            item, isFolder=False)
-    else:
-        # Nothing to play yet, and Friendly TV offers no catch-up route from
-        # a guide entry, so this is an entry that says when rather than a
-        # link that would fail.
-        xbmcplugin.addDirectoryItem(HANDLE, "", item, isFolder=False)
 
 
 RECORD_FORM = "recording_form"
@@ -468,14 +391,59 @@ def route_record(programme_path, form_code):
     _refresh()
 
 
-def _day(milliseconds):
-    if not milliseconds:
-        return ""
-    return time.strftime("%a", time.localtime(milliseconds / 1000.0))
+def route_home():
+    """Home, which is the one screen assembled from two endpoints.
+
+    ``page/content?path=home`` carries the banners and the Live Now row and
+    nothing else -- listing it the way every other page is listed gives a Home
+    with a single row of live channels on it, which is exactly what the first
+    build did. The rows a viewer expects ("Continue Watching", "Recommended
+    for You", "Just Added Movies" ...) come from the TiVo carousel endpoint
+    instead, paged behind a cursor.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        rows = client.home_rows()
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open Home")
+        return finish()
+    if not rows:
+        kodiutils.notify("Home came back empty")
+        return finish()
+    for row in rows:
+        add_dir(row["name"] or row["code"],
+                url(action="home_row", code=row["code"], name=row["name"]),
+                plot="%d item(s)" % len(row["cards"]))
+    finish()
+
+
+def route_home_row(code, name):
+    """One row of Home, in full.
+
+    Home is fetched again rather than carried through the url: a row of thirty
+    cards does not fit in a plugin path.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        rows = client.home_rows()
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or code))
+        return finish()
+    for row in rows:
+        if row["code"] == code:
+            kodiutils.log("home row %r: %d card(s)" % (code, len(row["cards"])))
+            _add_cards(row["cards"])
+            return finish("videos")
+    kodiutils.notify("That row is no longer there")
+    finish("videos")
 
 
 def route_page(path, name=""):
-    """A page of the service's own hierarchy: Home, Movies, TV, My Stuff."""
+    """A page of the service's own hierarchy: Movies, TV, My Stuff."""
     client = _client()
     if client is None:
         return finish()
@@ -671,6 +639,10 @@ def main():
     elif action == "guide_channel":
         route_guide_channel(params.get("channel_id", ""),
                             params.get("name", ""))
+    elif action == "home":
+        route_home()
+    elif action == "home_row":
+        route_home_row(params.get("code", ""), params.get("name", ""))
     elif action == "page":
         route_page(params.get("path", ""), params.get("name", ""))
     elif action == "section":
@@ -680,7 +652,7 @@ def main():
         route_section_cached(params.get("path", ""), params.get("code", ""),
                              params.get("name", ""))
     elif action == "search":
-        route_search(params.get("query", ""))
+        route_search(params.get("query", ""), params.get("offset", 0))
     elif action == "record":
         # RunPlugin, not a directory: nothing to draw, and the listing the
         # menu was opened from stays where it is.

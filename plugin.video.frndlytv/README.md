@@ -29,8 +29,9 @@ subscription.
 |-------|---------------|
 | **Live TV** | every channel, labelled `Channel - what is on now` |
 | **TV Guide** | channels as folders, each with a day of schedule |
-| **Search** | channel names and what is on in the next 12 hours |
-| **Home**, **Movies**, **TV**, **My Stuff** | the service's own pages, as it arranges them |
+| **Search** | Friendly TV's catalogue of shows and films |
+| **Home** | the rows Friendly TV puts on its own home screen |
+| **Movies**, **TV**, **My Stuff** | the service's own pages, as it arranges them |
 
 In the guide, only the programme currently on the air can be selected, and
 selecting it joins that channel live. The rest of the schedule is information:
@@ -45,17 +46,11 @@ itself offers — record this episode, record the whole series, stop, or delete
 a series recording — and the confirmation shown is the service's own wording.
 Recordings appear under **My Stuff**.
 
-### About Search
+### Search
 
-This searches **the channel lineup and the guide**, not Friendly TV's full
-on-demand catalogue. The service runs catalogue search on a separate API
-(`/search/api/v3/`) whose request shape has never been captured — the web
-player loads that screen as a lazy chunk, and no capture has opened it — so
-implementing it would mean guessing, and a guessed endpoint is worse than an
-honest smaller one. What is here searches real data and every result works.
-
-See `docs/frndlytv-protocol.md` for what a capture would need to contain to
-turn this into the real thing.
+Friendly TV's own catalogue search, paged sixteen results at a time. Results
+are a mix of series and film pages to open and on-demand episodes that play
+directly, and each is routed by what it actually is.
 
 ## IPTV Manager
 
@@ -78,6 +73,13 @@ simplest thing that works is the right amount of code.
 
 Streams are AVC up to 720p with AAC audio, and they play on a software (L3)
 Widevine CDM — there is no HDCP tier gating to work around.
+
+Which ISA property carries the DRM depends on the ISA version, and the boundary
+is **22.1.5**: newer builds take a JSON `drm` object, older ones the
+`license_type`/`license_key` pair. Getting that wrong is not a warning but a
+dead stream — ISA 21 ignores the JSON property silently and then refuses the
+manifest with `InitializePeriod: Unhandled encrypted stream`. The addon picks by
+the installed ISA version and logs which form it wrote.
 
 ## Concurrent streams
 
@@ -107,8 +109,6 @@ as HTTP 200 with the reason in the body; whatever it said is shown verbatim.
 
 ## What is not implemented
 
-- **Catalogue search**, for the reason above. The lineup-and-guide search
-  stands in for it.
 - **Series browse down to a specific episode** — the service's own TV pages are
   listed as it arranges them, but the chain from a season to a playable episode
   has not been captured end to end.
