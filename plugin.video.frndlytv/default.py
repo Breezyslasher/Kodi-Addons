@@ -23,6 +23,12 @@ GUIDE_BATCH = 12
 # Results per search request. Sixteen is what the web player asks for, and
 # the response's hasMore/totalCount drive the "Next page" entry from there.
 SEARCH_PAGE = 16
+# The buckets the search endpoint takes. "All" is the unfiltered search; the
+# other three are the type filters the web player offers, named as it names
+# them in the request rather than as it labels them on screen.
+SEARCH_ALL = "All"
+SEARCH_BUCKETS = (("Shows", "Series"), ("Movies", "Movie"),
+                  ("Channels", "Station"))
 
 
 def url(**kwargs):
@@ -288,7 +294,7 @@ def _clock(milliseconds):
     return time.strftime("%H:%M", time.localtime(milliseconds / 1000.0))
 
 
-def route_search(query="", offset=0):
+def route_search(query="", offset=0, bucket=SEARCH_ALL):
     """Friendly TV's own catalogue search.
 
     This runs on a different API surface from the rest of the addon
@@ -306,18 +312,29 @@ def route_search(query="", offset=0):
         return finish()
 
     try:
-        found = client.search(query, limit=SEARCH_PAGE, offset=int(offset))
+        found = client.search(query, limit=SEARCH_PAGE, offset=int(offset),
+                              bucket=bucket)
     except (api.ApiError, auth.AuthError) as exc:
         kodiutils.ok_dialog(str(exc), "Could not search")
         return finish()
 
     cards = [parse.card(c, client) for c in found["cards"]]
-    kodiutils.log("search %r: %d of %s result(s) from offset %s"
-                  % (query, len(cards), found["total"], offset))
+    kodiutils.log("search %r [%s]: %d of %s result(s) from offset %s"
+                  % (query, bucket, len(cards), found["total"], offset))
+
+    # The type filters go at the top of the unfiltered first page, where they
+    # are a way to narrow what is already on screen rather than a question
+    # asked before the search has shown anything.
+    if bucket == SEARCH_ALL and not int(offset):
+        for label, code in SEARCH_BUCKETS:
+            add_dir("%s only" % label,
+                    url(action="search", query=query, bucket=code),
+                    plot='%s matching "%s"' % (label, query))
+
     _add_cards(cards)
 
     if found["has_more"]:
-        add_dir("Next page", url(action="search", query=query,
+        add_dir("Next page", url(action="search", query=query, bucket=bucket,
                                  offset=int(offset) + SEARCH_PAGE),
                 plot="%s result(s) in total" % found["total"])
     if not cards and not int(offset):
@@ -454,11 +471,20 @@ def route_page(path, name=""):
         return finish()
 
     sections = parse.sections(response, client)
-    kodiutils.log("page %s: %d section(s)" % (path, len(sections)))
+    detail = parse.detail(response, client)
+    kodiutils.log("page %s: %d section(s), %d action(s)"
+                  % (path, len(sections), len(detail["actions"])))
+
+    # A film or series page is not made of sections: what plays it is a button
+    # in the page's content pane. Reading only sections left a film's page
+    # completely empty, since a film has no seasons under it either.
+    for act in detail["actions"]:
+        _add_detail_action(act, detail)
 
     # A page that is one section is that section: making the viewer open a
-    # single folder to reach the only thing behind it is a wasted click.
-    if len(sections) == 1 and sections[0]["cards"]:
+    # single folder to reach the only thing behind it is a wasted click. Not
+    # when there are actions above it, which the flattening would bury.
+    if not detail["actions"] and len(sections) == 1 and sections[0]["cards"]:
         _add_cards(sections[0]["cards"])
         return finish("videos")
 
@@ -471,9 +497,29 @@ def route_page(path, name=""):
             add_dir(section["name"] or section["code"],
                     url(action="section", path=path, code=section["code"],
                         name=section["name"]))
-    if not sections:
+    if not sections and not detail["actions"]:
         kodiutils.notify("Nothing here")
     finish()
+
+
+def _add_detail_action(action, detail):
+    """A play button from a details page, with the page's own art and blurb."""
+    label = action["label"] or detail["title"] or "Play"
+    if detail["title"] and detail["title"].lower() not in label.lower():
+        label = "%s - %s" % (label, detail["title"])
+    item = xbmcgui.ListItem(label=label)
+    art = {}
+    if detail["poster"]:
+        art["thumb"] = art["poster"] = detail["poster"]
+    if detail["fanart"]:
+        art["fanart"] = detail["fanart"]
+    item.setArt(art)
+    if detail["plot"]:
+        _plot(item, detail["plot"])
+    item.setProperty("IsPlayable", "true")
+    xbmcplugin.addDirectoryItem(
+        HANDLE, url(action="play", path=action["path"], label=label),
+        item, isFolder=False)
 
 
 def route_section(path, code, name):
@@ -652,7 +698,8 @@ def main():
         route_section_cached(params.get("path", ""), params.get("code", ""),
                              params.get("name", ""))
     elif action == "search":
-        route_search(params.get("query", ""), params.get("offset", 0))
+        route_search(params.get("query", ""), params.get("offset", 0),
+                     params.get("bucket", SEARCH_ALL))
     elif action == "record":
         # RunPlugin, not a directory: nothing to draw, and the listing the
         # menu was opened from stays where it is.

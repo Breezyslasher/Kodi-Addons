@@ -232,14 +232,32 @@ def _json(reply):
 def _message(body, reply):
     """The service's own words for a failure, or the HTTP status.
 
-    Revlet reports a refusal in ``response.message`` with ``status`` false and
-    HTTP 200, so the status line alone is usually not the reason.
+    Revlet reports a refusal with ``status`` false and HTTP 200, so the status
+    line alone is usually not the reason. It puts the reason in one of two
+    places depending on which surface answered: ``response.message`` for the
+    main API, and an ``error`` object for the search API -- a search with no
+    matches comes back as ``{"error": {"code": 404, "message": "We didn't find
+    any matches..."}, "status": false}``.
     """
     response = body.get("response")
     if isinstance(response, dict):
         said = response.get("message") or response.get("displayMessage")
         if said:
             return said
+    error = body.get("error")
+    if isinstance(error, dict) and error.get("message"):
+        return error["message"]
     if body.get("message"):
         return body["message"]
     return "HTTP %s" % reply.status_code
+
+
+def _code(body):
+    """The service's own error code, or 0 when it gave none."""
+    for holder in (body.get("error"), body.get("response")):
+        if isinstance(holder, dict):
+            try:
+                return int(holder.get("code") or 0)
+            except (TypeError, ValueError):
+                pass
+    return 0

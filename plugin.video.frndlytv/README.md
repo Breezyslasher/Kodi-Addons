@@ -8,6 +8,8 @@ Not affiliated with or endorsed by Frndly TV. It speaks the same private
 endpoints as the web player at `watch.frndlytv.com`; use it with your own
 subscription.
 
+Verified playing on **Kodi 21.3** (ISA 21.5.22) and **Kodi 22**.
+
 ## Requirements
 
 - Kodi 20 (Nexus) or newer, with **InputStream Adaptive 20.3.0+**
@@ -48,9 +50,10 @@ Recordings appear under **My Stuff**.
 
 ### Search
 
-Friendly TV's own catalogue search, paged sixteen results at a time. Results
-are a mix of series and film pages to open and on-demand episodes that play
-directly, and each is routed by what it actually is.
+Friendly TV's own catalogue search, paged sixteen results at a time, with
+**Shows only / Movies only / Channels only** filters offered at the top of the
+first page. Results are a mix of series and film pages to open and on-demand
+episodes that play directly, and each is routed by what it actually is.
 
 ## IPTV Manager
 
@@ -95,10 +98,12 @@ Turn on Kodi's debug logging (*Settings → System → Logging*) and look for li
 tagged `[plugin.video.frndlytv]`. The addon logs its platform and ISA version
 once per run, which is the first thing worth knowing.
 
-**A stream loads but never decrypts.** The DASH manifests carry no `cenc:pssh`
-and no `default_KID`, so ISA has to recover the key id from the init segment's
-`tenc` box. That path works, but it is the least-travelled part of this addon.
-See `docs/frndlytv-protocol.md` for what a fix would look like.
+**`Initializing stream with unknown KID!` in the log is normal here**, as is the
+`ConvertKidStrToBytes: Cannot convert KID ""` beside it. Friendly TV's manifests
+carry no `cenc:pssh` and no `default_KID`, so ISA opens the session without one;
+the licence server returns the keys anyway, because the entitlement rides in the
+licence url's token rather than in the challenge. Verified playing on Kodi 21
+and Kodi 22. Not a fault to chase.
 
 **"Your subscription does not include this channel."** That is the service's own
 answer (`streamStatus.hasAccess`), not a guess by the addon — some channels are

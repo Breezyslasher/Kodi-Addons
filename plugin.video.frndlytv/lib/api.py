@@ -62,7 +62,22 @@ CONFIG_MAX_AGE = 24 * 60 * 60
 
 
 class ApiError(Exception):
-    """The service answered, and the answer was not usable."""
+    """The service answered, and the answer was not usable.
+
+    ``code`` is the service's own error code where it sent one, so a caller
+    can tell apart a refusal it should report from one it should treat as an
+    ordinary empty result.
+    """
+
+    def __init__(self, message, code=0):
+        Exception.__init__(self, message)
+        self.code = code
+
+
+# What the search API answers with when a query simply matches nothing. It is
+# a refusal in the protocol's terms -- status false, HTTP 200 -- but it is an
+# ordinary empty result in the user's terms.
+NO_MATCHES = 404
 
 
 class Api(object):
@@ -104,12 +119,13 @@ class Api(object):
 
         if body.get("status") is False:
             said = auth._message(body, reply)
-            if retry and _looks_like_a_lapsed_session(said):
+            code = auth._code(body)
+            if retry and not code and _looks_like_a_lapsed_session(said):
                 kodiutils.log("session looks stale (%s), signing in again"
                               % said)
                 self.session.refresh()
                 return self._call(method, url, retry=False, **kwargs)
-            raise ApiError(said)
+            raise ApiError(said, code)
         return body
 
     def get(self, path, params=None, base=None, retry=True):
@@ -266,9 +282,20 @@ class Api(object):
         rather than ``/service/api/v1`` -- but the same host and the same
         session headers, and the results are ordinary cards.
         """
-        body = self.get("/search/api/tivo/v1/get/search/query",
-                        {"query": query, "limit": limit, "offset": offset,
-                         "bucket": bucket})
+        try:
+            body = self.get("/search/api/tivo/v1/get/search/query",
+                            {"query": query, "limit": limit, "offset": offset,
+                             "bucket": bucket})
+        except ApiError as exc:
+            # "We didn't find any matches" is how this API says zero results:
+            # status false with a 404 in an error object, which is a refusal
+            # in the protocol's terms and an empty list in the viewer's. It
+            # happens routinely -- the Channels filter matches nothing for
+            # most queries -- and must not surface as a failure.
+            if exc.code == NO_MATCHES:
+                kodiutils.log("search %r [%s]: no matches" % (query, bucket))
+                return {"cards": [], "has_more": False, "total": 0}
+            raise
         response = body.get("response") or {}
         results = response.get("searchResults") or {}
         # The landing screen returns a list of buckets here; a query returns

@@ -269,7 +269,7 @@ The legacy `license_key` field is `server|headers|challenge|response`, where
 `R{SSM}` is the raw challenge and an empty response field takes raw licence
 bytes back — which is exactly what this licence server speaks.
 
-### One risk worth knowing
+### The missing KID — flagged as a risk, now measured
 
 The DASH manifest carries `ContentProtection` elements for Widevine and
 PlayReady but **no `cenc:pssh` and no `cenc:default_KID`**:
@@ -279,11 +279,26 @@ PlayReady but **no `cenc:pssh` and no `cenc:default_KID`**:
 <ContentProtection schemeIdUri="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"/>
 ```
 
-So ISA must recover the key id from the init segment's `tenc` box rather than
-from the manifest. ISA does do this, but it is the least-travelled path in this
-addon and the first thing to suspect if a stream loads and never decrypts. The
-fix, if it is ever needed, is a manifest proxy that injects a PSSH built from
-the `tenc` KID — deliberately not written in advance of evidence it is needed.
+so ISA has to recover the key id from the init segment rather than from the
+manifest. This was carried as the addon's main unverified risk. It is not a
+risk any more: on Kodi 21.3 / ISA 21.5.22, desktop L3, the stream plays, and
+ISA says so on the way past:
+
+```
+ConvertKidStrToBytes: Cannot convert KID "" as bytes due to wrong size
+Initializing stream with unknown KID!
+... Creating Demuxer / CDVDVideoCodecFFmpeg H.264 / audio decoder aac
+```
+
+Those two lines are **normal for this service** and not a fault to chase. ISA
+opens the session with no KID, the licence server returns the keys anyway
+because the entitlement rides in the licence url's token rather than in the
+challenge's key id, and decryption proceeds. Verified playing on both Kodi 21
+and Kodi 22.
+
+If a stream ever does load and never decrypt, the fix would be a manifest proxy
+injecting a PSSH built from the init segment's `tenc` KID — still not written,
+and now with less reason to be.
 
 Streams observed: AVC up to **720p**, AAC audio, five video renditions. No
 `HDCP-LEVEL` gating of the kind Apple TV+ uses, and the web player plays these
@@ -311,6 +326,33 @@ in the JavaScript that was captured** — the only uses of `streamPollKey` in th
 bundle are the teardown above and the active-sessions list. The player chunk
 that would do the polling was not in the capture. The addon therefore does not
 poll, and a long unattended stream may be reaped server-side.
+
+## Details pages are not made of sections
+
+A film or series page (`movies/<id>`, `series/shows/<id>`) does **not** use the
+section shape. It has one pane of `paneType: "content"`:
+
+```
+response.data[0].content
+  .title, .posterImage, .backgroundImage
+  .dataRows[].elements[]   {elementType, elementSubtype, data, target}
+```
+
+and the thing that plays it is a **button element whose `target` is the path**:
+
+```json
+{"elementType": "button", "elementSubtype": "start_watching",
+ "data": "Start Watching", "target": "channel/live/metv_toons"}
+```
+
+A series then has section panes after that content pane, one per season. **A
+film has none at all** — which is why reading only sections rendered a film's
+page as completely empty, with `0 section(s)` in the log and nothing on screen.
+
+Buttons that act locally rather than open a path — "Record", "Favorite" — carry
+a blank or whitespace `target`, and the add-on info button targets the literal
+string `settings`. Requiring the target to look like a path (to contain a `/`)
+is what keeps all three out.
 
 ## Recordings
 
@@ -362,6 +404,25 @@ GET /search/api/tivo/v1/get/search/query?query=gun&limit=16&offset=0&bucket=All
 ```
 
 Paged with `offset`, sixteen at a time, while `hasMore` is true.
+
+`bucket` filters by type. Four values are captured: **`All`**, **`Series`**,
+**`Movie`** and **`Station`**, which the web player labels Shows, Movies and
+Channels.
+
+**A search with no matches is reported as a failure, and is not one.** It comes
+back HTTP 200 with:
+
+```json
+{"error": {"code": 404, "message": "We didn't find any matches for “gun”..."},
+ "status": false}
+```
+
+Two things follow. The reason lives in an `error` object, not in
+`response.message` where the rest of the API puts it, so a reader that only
+knows the main API's shape reports "HTTP 200" instead of the actual message.
+And a `404` here means *zero results*, not a fault — it happens routinely,
+since the Channels bucket matches nothing for most queries — so it has to reach
+the viewer as an empty list rather than an error dialog.
 
 Results are the ordinary card shape and carry a **mix** of `pageType`s: mostly
 `details` pages (`series/shows/<id>`, `movies/<id>`) but also directly playable

@@ -49,7 +49,14 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   paged behind a cursor.
 - Search is Friendly TV's own catalogue search, paged, now that a capture
   reached the endpoint. Results mix pages to open with episodes that play,
-  and each is routed by what it is.
+  and each is routed by what it is. Shows, Movies and Channels filters sit
+  at the top of the first page.
+- A film's page is no longer empty. Films and series are not built from the
+  section shape the rest of the service uses: what plays them is a button in
+  the page's content pane, and a film has nothing else on it at all.
+- A search that matches nothing says so instead of reporting an error. The
+  search API answers no-matches with status false and a 404, which is a
+  refusal in the protocol's terms and an empty list in anyone else's.
 - Record an episode or a series, and stop or delete a recording, from the
   context menu on any guide airing. The service describes the choices and
   the addon echoes the chosen one back untouched, so it never has to know

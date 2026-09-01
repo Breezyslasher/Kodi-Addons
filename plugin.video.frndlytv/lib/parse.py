@@ -124,6 +124,56 @@ def on_now(cards):
     return None
 
 
+def detail(response, api):
+    """The ``content`` pane of a details page: its buttons and its blurb.
+
+    A film or series page is not built from sections. It has one pane of
+    ``paneType: "content"`` holding ``dataRows`` of elements -- an image, a
+    title, a cast list, a description, and **buttons whose ``target`` is the
+    playable path**. A series then has section panes after it, one per season;
+    a film has none at all, which is why reading only sections left a film's
+    page empty.
+
+    Buttons that do something local rather than open a path ("Record",
+    "Favorite") carry a blank or whitespace target, and the add-on info button
+    targets "settings". A target is taken as a path only when it looks like
+    one, which is the same test that keeps those three out.
+    """
+    found = {"title": "", "plot": "", "poster": "", "fanart": "", "actions": []}
+    for pane in (response.get("data") or []):
+        content = pane.get("content")
+        if not content:
+            continue
+        found["title"] = found["title"] or content.get("title") or ""
+        found["poster"] = found["poster"] or api.image(content.get("posterImage"))
+        found["fanart"] = (found["fanart"] or
+                           api.image(content.get("backgroundImage")))
+        blurb = []
+        for row in (content.get("dataRows") or []):
+            for element in (row.get("elements") or []):
+                kind = element.get("elementType") or ""
+                sub = element.get("elementSubtype") or ""
+                data = element.get("data")
+                target = str(element.get("target") or "").strip()
+                if kind == "button":
+                    if "/" in target:
+                        found["actions"].append(
+                            {"label": str(data or sub or "Play"),
+                             "path": target})
+                elif kind == "description" or sub == "description":
+                    if data:
+                        blurb.append(str(data))
+                elif kind == "text":
+                    if sub == "title" and not found["title"]:
+                        found["title"] = str(data or "")
+                    elif sub in ("subtitle1", "subtitle2") and data:
+                        blurb.append(str(data))
+        # dict.fromkeys keeps first-seen order while dropping repeats: an
+        # episode subtitle is often the description over again.
+        found["plot"] = "\n".join(dict.fromkeys(b for b in blurb if b))
+    return found
+
+
 def form_options(response):
     """The choices a form offers, as [{label, value, code}].
 
