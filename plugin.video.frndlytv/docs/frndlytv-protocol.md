@@ -530,6 +530,20 @@ POST /service/api/v1/form/submit
 → {"response": {"message": {"message": "Added to My Stuff"}}, "status": true}
 ```
 
+**`player_recording_form` is the one gap left in this document.** 2221 captured
+cards name it in `pageAttributes.recordingForm` — films, shows and channels,
+as opposed to the guide's `recording_form` — but no capture contains a request
+for it, and the reason is mechanical rather than interesting: clicking Record
+in the web player reloads the page, which clears the network log unless
+"Preserve log" is ticked, so the request is discarded before the HAR is
+exported. Seven separate captures aimed at it came back without it.
+
+It does not block anything. The form self-describes: a client asks for the
+code the card names, lists whatever radio buttons come back, and echoes the
+chosen value verbatim — so there is nothing here to guess wrong, and the worst
+case is a form that offers nothing. The addon logs the element codes it did
+receive in that case, so one run settles what this section cannot.
+
 `stop_recording_form` has the same shape with three options —
 `stop_recording_episode`, `stop_recording_series`, `stop_delete_recoding_series`
 (the service's own spelling) — carrying `action:0` and `action:4`.

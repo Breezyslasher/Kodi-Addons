@@ -506,7 +506,17 @@ def route_record(programme_path, form_code):
 
     options = parse.form_options(form)
     if not options:
-        kodiutils.notify("No recording options for this programme")
+        # No capture ever exercised "player_recording_form" -- the one a film
+        # or show names, as opposed to the guide's "recording_form" -- because
+        # clicking Record in the web player reloads the page and drops the
+        # request from the log. So if it ever answers with nothing usable, say
+        # what it did answer with: one line here settles it without a capture.
+        kodiutils.log("recording form %r on %s offered no options; it "
+                      "returned element(s): %s"
+                      % (form_code, programme_path,
+                         [(el.get("elementCode"), el.get("fieldType"))
+                          for el in (form.get("elements") or [])] or "none"))
+        kodiutils.notify("No recording options for this")
         return
 
     if len(options) == 1:
