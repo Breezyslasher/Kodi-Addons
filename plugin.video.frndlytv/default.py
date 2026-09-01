@@ -819,6 +819,14 @@ def _add_cards(cards, client=None):
             continue
         if item["playable"]:
             _add_playable(item)
+        elif parse.is_genre(item):
+            # A genre is a word, not a page: there is nothing at "Westerns"
+            # to open. Search matches on genre, so the word goes there.
+            add_dir(item["title"] or item["path"],
+                    url(action="search", query=item["path"]),
+                    art=_art(item),
+                    plot="%s from Friendly TV's catalogue."
+                         % (item["title"] or item["path"]))
         elif _plays_through_its_page(item):
             _add_playable(item, action="play_page")
         else:
@@ -896,7 +904,46 @@ def _card_menu(item):
     if form and item.get("can_record") and item.get("path"):
         menu.append(("Recording...", "RunPlugin(%s)"
                      % url(action="record", path=item["path"], form=form)))
-    return menu + _similar_menu(item)
+    return menu + _similar_menu(item) + _cast_menu(item)
+
+
+def _cast_menu(item):
+    """A way into "what else is this person in".
+
+    Search matches on people as well as titles -- "Raymond Burr" answers with
+    Perry Mason and two of his films -- so the cast is worth being able to
+    search. The names are not on the card, only on the title's page, so this
+    entry opens a chooser that fetches them rather than putting them in the
+    url.
+    """
+    if not parse.content_id(item.get("path")):
+        return []
+    return [("Search the cast...", "RunPlugin(%s)"
+             % url(action="cast", path=item["path"],
+                   name=item.get("title", "")))]
+
+
+def route_cast(path, name=""):
+    """Pick someone from this title's cast, and search for them."""
+    client = _client()
+    if client is None:
+        return
+    try:
+        detail = parse.detail(client.page(path), client)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Cast")
+        return
+    people = detail["cast"] + [d for d in detail["directors"]
+                               if d not in detail["cast"]]
+    if not people:
+        kodiutils.notify("No cast listed for %s" % (name or "this"))
+        return
+    index = xbmcgui.Dialog().select(name or detail["title"] or "Cast", people)
+    if index < 0:
+        return
+    kodiutils.log("searching for cast member %r" % people[index])
+    xbmc.executebuiltin("Container.Update(%s)"
+                        % url(action="search", query=people[index]))
 
 
 def _similar_menu(item):
@@ -1217,6 +1264,8 @@ def main():
                          params.get("label", ""))
     elif action == "similar":
         route_similar(params.get("path", ""), params.get("name", ""))
+    elif action == "cast":
+        route_cast(params.get("path", ""), params.get("name", ""))
     elif action == "favourite":
         # RunPlugin: nothing to draw, and the listing stays where it is.
         route_favourite(params.get("path", ""), params.get("name", ""),

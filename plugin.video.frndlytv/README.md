@@ -69,9 +69,18 @@ Recordings appear under **My Stuff**.
 ### Search
 
 Friendly TV's own catalogue search, with **Shows only / Movies only / Channels
-only** filters at the top. All results are listed at once rather than behind
-"Next page" folders — the addon walks the service's pages itself, which for the
-totals this service returns is a handful of requests.
+only** filters at the top.
+
+It searches more than titles. A person's name finds what they are in —
+"Raymond Burr" returns *Perry Mason* and two of his films, none of which have
+his name in the title. A genre word finds that genre — "action" returns
+Gunsmoke, NCIS and Bonanza rather than titles containing the word. So the
+**Browse by Genre** row on Home works, and any film or show has **Search the
+cast...** on its context menu to find what else someone is in.
+
+All results are listed at once rather than behind "Next page" folders. The
+addon fetches the first page, learns the total, and pulls the rest together —
+which matters, since a genre word can match several hundred titles.
 
 ### Films, shows and episodes
 

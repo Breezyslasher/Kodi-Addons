@@ -81,6 +81,17 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   shows, channels and guide airings alike. Only the verb that applies is
   offered, because the cards carry whether they are already in. These are
   Friendly TV's My Stuff, so they appear there and in its own apps.
+- Searching by genre and by person, which turned out to need no new
+  endpoint: the search the addon already had matches on both. "Raymond Burr"
+  answers with Perry Mason and two of his films, none carrying his name;
+  "action" answers with 447 titles of that genre rather than titles
+  containing the word. So Home's Browse by Genre row now works -- those
+  fifteen cards are bare words with no page behind them, and were opening
+  nothing -- and any film or show has "Search the cast..." on its menu.
+- A search of hundreds of results no longer arrives one page at a time. The
+  first page says how many there are, so the rest are fetched at once: a
+  genre word matching 447 titles was 28 round trips in sequence before
+  anything was drawn.
 - A cast written as prose is read as names. Most pages send a plain list,
   but some send "Starring Marlon Brand, Karl Malden and Katy Jurado", which
   split on commas alone gave a cast whose first member was "Starring Marlon

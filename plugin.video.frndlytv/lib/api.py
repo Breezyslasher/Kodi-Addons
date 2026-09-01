@@ -358,21 +358,33 @@ class Api(object):
         matches thousands. Reaching it is reported so the caller can say the
         list was cut rather than quietly showing part of it.
         """
-        cards, offset, pages, total = [], 0, 0, 0
-        while pages < max_pages:
-            found = self.search(query, limit=limit, offset=offset,
-                                bucket=bucket)
-            cards.extend(found["cards"])
-            total = found["total"] or len(cards)
-            pages += 1
-            # An empty page with has_more still set would loop forever;
-            # nothing observed does that, and nothing needs to.
-            if not found["has_more"] or not found["cards"]:
-                return {"cards": cards, "total": total, "complete": True,
-                        "pages": pages}
-            offset += limit
-        return {"cards": cards, "total": total, "complete": False,
-                "pages": pages}
+        first = self.search(query, limit=limit, offset=0, bucket=bucket)
+        cards = list(first["cards"])
+        total = first["total"] or len(cards)
+        if not first["has_more"] or not cards:
+            return {"cards": cards, "total": total, "complete": True,
+                    "pages": 1}
+
+        # The first page says how many there are, so the rest are fetched at
+        # once rather than one after another. This matters: a genre word like
+        # "action" matches 447 titles, which walked in sequence is 28 round
+        # trips before anything is drawn.
+        wanted = min(total, max_pages * limit)
+        offsets = list(range(limit, wanted, limit))
+        pages = {}
+
+        def one(offset):
+            return self.search(query, limit=limit, offset=offset,
+                               bucket=bucket)
+
+        got = self._fan_out(one, offsets, 8, len(offsets), "search pages")
+        pages.update(got)
+        for offset in offsets:
+            page = pages.get(offset)
+            if page:
+                cards.extend(page["cards"])
+        return {"cards": cards, "total": total,
+                "complete": len(cards) >= total, "pages": 1 + len(got)}
 
     def details(self, paths, workers=8, limit=40):
         """Several titles' pages at once, as {path: response}.
@@ -407,7 +419,7 @@ class Api(object):
 
     def _fan_out(self, fetch, paths, workers, limit, what):
         """Run ``fetch`` over ``paths`` on a small pool, dropping failures."""
-        wanted = [p for p in dict.fromkeys(paths) if p][:limit]
+        wanted = [p for p in dict.fromkeys(paths) if p or p == 0][:limit]
         if not wanted:
             return {}
         out = {}

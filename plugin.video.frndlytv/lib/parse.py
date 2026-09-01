@@ -26,6 +26,23 @@ def content_id(path):
     return tail if tail.isdigit() else ""
 
 
+def is_genre(item):
+    """True for a "Browse by Genre" card, which is a search term, not a page.
+
+    Home carries a ``browse_by_genre`` section of fifteen of these. They are
+    marked ``isThirdPartySection`` and each card has an empty ``pageType``,
+    empty ``pageAttributes`` and a bare word for a path -- "Westerns",
+    "Crime", "nostalgia". There is no page at that path; the web player hands
+    the word to its own genre screen.
+
+    Handing it to search instead is not a substitute made up here: the search
+    endpoint matches on genre, so "action" answers with Gunsmoke, NCIS and
+    Bonanza rather than with titles containing the word.
+    """
+    path = item.get("path") or ""
+    return bool(path) and "/" not in path and not item.get("page_type")
+
+
 def media_of(path):
     """What a page path holds, for a caller that has only the path."""
     return _media_kind(path or "", 0, 0)

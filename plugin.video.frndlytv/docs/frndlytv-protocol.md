@@ -399,6 +399,26 @@ bundle are the teardown above and the active-sessions list. The player chunk
 that would do the polling was not in the capture. The addon therefore does not
 poll, and a long unattended stream may be reaped server-side.
 
+## Browse by Genre is a row of words, not pages
+
+Home carries a `browse_by_genre` section of fifteen cards, marked
+`isThirdPartySection: true`. Each has an **empty `pageType`, empty
+`pageAttributes`, and a bare word for a path**:
+
+```
+Romance  DIY  Comedy  Reality  Crime  Drama  Westerns  Gameshow
+Suspense  nostalgia  Mystery  Action  Cooking  Documentary  Faith
+```
+
+(The display name and the path differ where the service felt like it —
+`Crime` shows as "True Crime", `DIY` as "Home & DIY", and `nostalgia` is the
+one lowercase token.)
+
+There is no page at `Westerns`, so routing these like any other card opens
+nothing. The web player hands the word to its own genre screen, which no
+capture has exercised. Handing it to **search** instead is not a fudge: the
+search endpoint matches on genre, as the `action` row above shows.
+
 ## Details pages are not made of sections
 
 A film or series page (`movies/<id>`, `series/shows/<id>`) does **not** use the
@@ -535,6 +555,19 @@ GET /search/api/tivo/v1/get/search/query?query=gun&limit=16&offset=0&bucket=All
 ```
 
 Paged with `offset`, sixteen at a time, while `hasMore` is true.
+
+**Search matches on more than titles.** This is the single most useful thing
+about the endpoint and it is not obvious from its shape:
+
+| query | answers with |
+|-------|--------------|
+| `perry mason` | the series, and a Perry Mason film — 2 results |
+| `Raymond Burr` | Perry Mason, *Count Three and Pray*, *Please Murder Me!* — the **actor's** titles, none with his name in them |
+| `action` | 447 titles — Gunsmoke, NCIS, Bonanza, Monk, Walker Texas Ranger — i.e. the **genre**, not titles containing the word |
+
+So searching by person and by genre needs no separate endpoint or parameter;
+it is the same query. That is what makes the fifteen "Browse by Genre" cards
+usable (see below) and what makes a cast list worth being able to search.
 
 `bucket` filters by type. Four values are captured: **`All`**, **`Series`**,
 **`Movie`** and **`Station`**, which the web player labels Shows, Movies and
