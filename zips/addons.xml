@@ -695,7 +695,7 @@ Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every 
     </assets>
   </extension>
 </addon>
-<addon id="plugin.video.tubitv" name="TubiTV" version="2026.8.31" provider-name="Lunatixz, Breezyslasher">
+<addon id="plugin.video.tubitv" name="TubiTV" version="2026.9.1" provider-name="Lunatixz, Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.t1mlib" version="4.0.9"/>
@@ -725,6 +725,12 @@ Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every 
 		<website>http://www.tubitv.com/</website>
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
 		<news>
+2026.9.1 - One fewer deprecation warning
+- CHANGED: inputstream.adaptive 21 works out for itself that Tubi serves
+  HLS and logs a deprecation warning on every playback for being told
+  anyway; 22 has dropped the property altogether. It is now set only on
+  the older builds that still need it.
+
 2026.8.11.16 - Sign out stays signed out
 - FIXED: Sign out cleared the credentials, but it is an action button
   inside the settings dialog - and that dialog keeps its own copy of
