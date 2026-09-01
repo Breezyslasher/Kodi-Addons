@@ -645,10 +645,10 @@ GET /service/api/auth/user/favourite/item?path=<path>&action=0   (remove)
 → {"response": {"message": "Added to My Stuff"}, "status": true}
 ```
 
-A GET that changes state, which is the service's choice. Captured against both
-kinds of path a client would send — a guide airing's `epg/play/<id>` and a
-show's own `series/shows/<id>` — and both answer identically, so the path is
-simply whatever the item is.
+A GET that changes state, which is the service's choice. Captured against all
+three kinds of path a client would send — a guide airing's `epg/play/<id>`, a
+show's `series/shows/<id>` and a film's `movies/<id>` — and all three answer
+identically, so the path is simply whatever the item is.
 
 Whether something is already a favourite is on the card itself, as
 `pageAttributes.isFavourite`, a **string** `"true"`/`"false"` like every other
