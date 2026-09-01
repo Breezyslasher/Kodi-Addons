@@ -93,36 +93,13 @@ class IPTVManager(object):
     # -- the lineup --------------------------------------------------------
 
     def _lineup(self, client):
-        """The channels, keyed the way both endpoints must agree on.
+        """The joined lineup, with anything Live Now missed filled in.
 
-        Two listings describe the same lineup and neither is enough alone.
-        tvguide/channels has the ids the schedule is keyed by but an empty
-        playable path; the Live Now cards have the playable slug but are keyed
-        by network id. They are joined on the network id the guide's own rows
-        carry, and the guide's channel id wins as the key, because that is
-        what the schedule comes back under.
+        The join itself lives in Api.lineup; this adds the per-channel
+        fallback, which is worth its extra requests here because IPTV Manager
+        writes a playlist that is meant to be complete.
         """
-        by_network = {}
-        for raw in client.live_channels():
-            attrs = (raw.get("target") or {}).get("pageAttributes") or {}
-            network = str(attrs.get("networkid") or "")
-            item = parse.card(raw, client)
-            if network and item["path"] and network not in by_network:
-                by_network[network] = item
-
-        channels = []
-        for raw in client.guide_channels():
-            if raw.get("id") is None:
-                continue
-            display = raw.get("display") or {}
-            attrs = (raw.get("target") or {}).get("pageAttributes") or {}
-            live = by_network.get(str(attrs.get("networkid") or ""))
-            channels.append({
-                "id": str(raw["id"]),
-                "name": display.get("title") or display.get("subtitle1") or "",
-                "logo": client.image(display.get("imageUrl")),
-                "path": live["path"] if live else "",
-            })
+        channels = client.lineup()
         matched = sum(1 for c in channels if c["path"])
         kodiutils.log("iptv manager: %d channel(s), %d with a playable path"
                       % (len(channels), matched))

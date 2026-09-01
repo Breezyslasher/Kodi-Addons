@@ -229,6 +229,49 @@ class Api(object):
         body = self.get("/service/api/v1/tvguide/channels")
         return (body.get("response") or {}).get("data") or []
 
+    def lineup(self):
+        """The channels, joined so each one has both an id and a playable path.
+
+        Two listings describe the same lineup and neither is enough alone.
+        tvguide/channels has the ids the schedule is keyed by but an empty
+        playable path (every row says ``channel//``); the Live Now cards have
+        the playable slug and are keyed by network id, which is a *different*
+        number from the channel id. They are joined on the network id, which
+        the guide's own rows also carry.
+
+        The guide's channel id wins as the key, because that is what the
+        schedule comes back under. ``path`` is "" for a channel Live Now did
+        not carry; callers decide whether to spend a request resolving it
+        through the guide overlay.
+        """
+        from . import parse
+
+        by_network = {}
+        for raw in self.live_channels():
+            attrs = (raw.get("target") or {}).get("pageAttributes") or {}
+            network = str(attrs.get("networkid") or "")
+            item = parse.card(raw, self)
+            if network and item["path"] and network not in by_network:
+                by_network[network] = item
+
+        channels = []
+        for raw in self.guide_channels():
+            if raw.get("id") is None:
+                continue
+            display = raw.get("display") or {}
+            attrs = (raw.get("target") or {}).get("pageAttributes") or {}
+            network = str(attrs.get("networkid") or "")
+            live = by_network.get(network)
+            channels.append({
+                "id": str(raw["id"]),
+                "network_id": network,
+                "name": display.get("title") or display.get("subtitle1") or "",
+                "logo": self.image(display.get("imageUrl")),
+                "path": live["path"] if live else "",
+                "now": live["title"] if live else "",
+            })
+        return channels
+
     def guide(self, channel_ids, start_ms, end_ms, page=0):
         """A slice of schedule for a set of channels.
 
@@ -264,6 +307,35 @@ class Api(object):
                          "path": programme_path})
         data = (body.get("response") or {}).get("data") or {}
         return data.get("target_watchlive") or ""
+
+    def form(self, code, path):
+        """A form the service defines, with the choices it offers.
+
+        Recording is done through a generic form mechanism rather than a
+        dedicated endpoint: the service describes the options (record this
+        episode, record the series) as radio buttons whose ``value`` is an
+        opaque instruction string, and the client sends back the one that was
+        chosen. Nothing about that string is constructed here -- it is echoed
+        exactly as it arrived, which is why this works without knowing what
+        its fields mean.
+        """
+        body = self.get("/service/api/v1/form", {"code": code, "path": path})
+        return body.get("response") or {}
+
+    def submit_form(self, code, path, value, field="record_program"):
+        """Send one form choice back, and return what the service said.
+
+        Every captured submission -- recording an episode, recording a series,
+        stopping either, deleting a series -- posts under the single field
+        name ``record_program``, whichever radio button it came from.
+        """
+        body = self._call("POST", API_BASE + "/service/api/v1/form/submit",
+                          json={"code": code, "path": path,
+                                "fields": {field: value}})
+        message = (body.get("response") or {}).get("message")
+        if isinstance(message, dict):
+            return message.get("message") or ""
+        return message or ""
 
     def next_programs(self, path, count=5):
         """What is on this channel next, for the info a live card shows."""

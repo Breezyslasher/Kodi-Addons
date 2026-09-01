@@ -19,6 +19,8 @@ Friendly TV runs on Revlet, and this addon speaks the same private endpoints as 
 Features:
 * Live TV: every channel in your lineup, each showing what is on right now
 * Guide: a day of schedule per channel
+* Search across the channel lineup and the next twelve hours of guide
+* Record an episode or a whole series, and stop or delete a recording
 * The service's own Home, Movies, TV and My Stuff pages
 * Widevine playback through InputStream Adaptive, with no licence proxy -- Friendly TV's licence server speaks raw Widevine, so Kodi talks to it directly
 * Concurrent-stream slots are released when playback stops, so the account does not lock itself out
@@ -36,6 +38,16 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- Search across the channel lineup and the next twelve hours of guide. This
+  is not Friendly TV's own catalogue search: that runs on a separate API
+  whose request shape no capture contains, because the web player loads that
+  screen as a lazy chunk and no capture has opened it. Rather than guess an
+  endpoint, this searches data the addon already has, and every result works.
+- Record an episode or a series, and stop or delete a recording, from the
+  context menu on any guide airing. The service describes the choices and
+  the addon echoes the chosen one back untouched, so it never has to know
+  what the instruction strings mean.
+- The icon and fanart are Friendly TV's own logo, taken from the capture.
 - Live TV, the guide, and the service's own Home/Movies/TV/My Stuff pages.
 - Playback is Widevine DASH through InputStream Adaptive. Friendly TV's
   licence server takes a raw Widevine challenge and answers with raw licence

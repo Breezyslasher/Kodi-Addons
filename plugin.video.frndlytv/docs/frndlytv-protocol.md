@@ -255,25 +255,95 @@ bundle are the teardown above and the active-sessions list. The player chunk
 that would do the polling was not in the capture. The addon therefore does not
 poll, and a long unattended stream may be reaped server-side.
 
-## Not mapped
+## Recordings
 
-- **Search** runs on a different API surface (`/search/api/v3/`, with a TiVo
-  variant at `/search/api/tivo/v1/`) that no capture exercised. Left out
-  rather than guessed at.
-- **Recordings** are created and cancelled through a generic form mechanism
-  (`GET /service/api/v1/form?code=recording_form&path=epg/play/<id>` then
-  `POST /service/api/v1/form/submit`). Browsing `my_recordings` works through
-  the ordinary page route; scheduling one is not implemented.
-- **Favourites**: `GET /service/api/auth/user/favourite/item?path=...&action=1|0`.
-- `GET /service/api/v1/tivo/content?path=homeScreen&...` is an alternative home
-  screen the web player requests and, in the capture, abandons.
+Recording is not a dedicated endpoint. It is a generic **form** mechanism: the
+service describes the choices, and the client sends back the one that was
+picked.
+
+```
+GET /service/api/v1/form?code=recording_form&path=epg/play/<program id>
+→ response.elements[] = [
+    {elementCode: "record_series",  fieldType: "radio-button",
+     data: "Record All New and Repeat Episodes",
+     value: "action:1;contentId:127_521500;contentType:series;programId:3477311"},
+    {elementCode: "record_episode", fieldType: "radio-button",
+     data: "Record This Episode",
+     value: "action:1;contentId:3477311;contentType:program"},
+    ... plus a hidden heading, a submit and a cancel ]
+```
+
+```
+POST /service/api/v1/form/submit
+{"code": "recording_form", "path": "epg/play/<id>",
+ "fields": {"record_program": "<the chosen element's value, verbatim>"}}
+→ {"response": {"message": {"message": "Added to My Stuff"}}, "status": true}
+```
+
+`stop_recording_form` has the same shape with three options —
+`stop_recording_episode`, `stop_recording_series`, `stop_delete_recoding_series`
+(the service's own spelling) — carrying `action:0` and `action:4`.
+
+Two things make this safe to implement without knowing what the instruction
+string means: **every submission uses the single field name
+`record_program`**, whichever radio button it came from, and the `value` is
+echoed back exactly as it arrived rather than constructed. Six distinct
+instruction strings were captured, and the addon can only ever send one of the
+values a form handed it.
+
+## Search — and why this addon's is different
+
+Friendly TV's own catalogue search runs on a **separate API surface**, named in
+the bundle's endpoint table:
+
+```
+searchApi:     "/search/api/v3/"
+tivoSearchApi: "/search/api/tivo/v1/"
+```
+
+That is the whole of what is known. The search UI is a **lazily-loaded Angular
+chunk that was never downloaded in any capture**, so no code that builds a
+search request exists in the captured bundle: there is no path beyond the
+prefix, no parameter names, and no response shape.
+
+So this addon does not implement catalogue search. What it offers instead is a
+search across what the captured endpoints already return — every channel name,
+and every programme title in the next twelve hours, from `Api.lineup` and the
+guide. For a live TV service that answers most of what is actually asked, and
+every result is real. It is deliberately labelled as searching the lineup and
+guide rather than dressed up as the real thing.
+
+## What still needs captures
+
+Ordered by how much each would add. Each is a short click path in the web
+player with devtools open on the Network tab and "Preserve log" ticked.
+
+| # | Missing | How to capture it |
+|---|---------|-------------------|
+| 1 | **Catalogue search** (`/search/api/v3/`) — the whole request and response shape | Sign in, click the magnifying glass, type a query, **wait for results to render**, then click one result. The lazy chunk loads on the first click, so the search UI must actually be opened. |
+| 2 | **`section/live_now_home`** — how many channels it returns for a given `count` | On Home, click **View All** on the "Live Now" row. Currently only the 25 that the home page itself embeds have been seen. |
+| 3 | **Stream keepalive** — whether anything polls with `streamPollKey` | Play a channel and **leave it running for 6+ minutes** with devtools open. `pollIntervalInMillis` is 180000, implying a call every 3 minutes that has never been seen. |
+| 4 | **A lapsed session** — what the API answers with once a session expires | Sign in, leave the tab idle for hours, then click around. This is the one behaviour the addon's re-authentication is written against without evidence. |
+| 5 | **A series / episode browse** — the page shape from a show down to a playable episode | From TV, open a series, open a season, play an episode. Only `page/content?path=series/shows/<id>` has been seen, not the chain through to playback. |
+| 6 | **A channel the subscription excludes** | Open any add-on-package channel and let it refuse. Would confirm the `hasAccess` / `errorCode` path the addon shows verbatim. |
+
+Not needed: recordings, favourites, the guide, live and VOD playback, and the
+DRM exchange are all fully captured.
 
 ## Capturing more
 
-Chrome or Firefox devtools → Network → "Preserve log" → sign in and play →
-Save all as HAR. The interesting entries are `revlet.net`, the `.mpd`, and the
-POST to `drm-global.videograph.ai`.
+Chrome or Firefox devtools → Network → "Preserve log" → do the thing → Save
+all as HAR. The interesting entries are `revlet.net`, the `.mpd`, and the POST
+to `drm-global.videograph.ai`.
 
 **A HAR of a signed-in session contains the account password in the
 `auth/v2/signin` request body, in clear text.** Anything shared publicly needs
 that request scrubbed first.
+
+## Other endpoints seen but not used
+
+- **Favourites**: `GET /service/api/auth/user/favourite/item?path=...&action=1|0`.
+- `GET /service/api/v1/tivo/content?path=homeScreen&...` — an alternative home
+  screen the web player requests and, in the capture, abandons.
+- `GET /service/api/v1/foliotabs?tab=morelikethis/<id>&count=30&offset=0`.
+- `GET /service/api/v1/tvguide/user/data?...` — per-user guide overlay state.

@@ -124,6 +124,27 @@ def on_now(cards):
     return None
 
 
+def form_options(response):
+    """The choices a form offers, as [{label, value, code}].
+
+    Only the radio buttons are choices; the rest of a form's elements are a
+    hidden heading, a submit and a cancel. The ``value`` is an opaque
+    instruction string that is sent back exactly as it arrived.
+    """
+    out = []
+    for element in (response.get("elements") or []):
+        if element.get("fieldType") != "radio-button":
+            continue
+        if not element.get("value"):
+            continue
+        out.append({
+            "label": element.get("data") or element.get("elementCode") or "",
+            "value": element["value"],
+            "code": element.get("elementCode") or "",
+        })
+    return out
+
+
 def programme(raw):
     """One airing from the guide endpoint.
 

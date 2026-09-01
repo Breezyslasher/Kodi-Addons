@@ -20,6 +20,10 @@ GUIDE_HOURS = 24
 # the web player uses; a request naming the whole lineup at once is a shape
 # nothing has been observed answering.
 GUIDE_BATCH = 12
+# How far ahead a search looks. Long enough to answer "when is it on" for
+# tonight and tomorrow morning, short enough that the guide fetch it costs
+# stays a handful of requests.
+SEARCH_HOURS = 12
 
 
 def url(**kwargs):
@@ -89,6 +93,11 @@ def route_root():
             plot="Every channel in your lineup, with what is on right now.")
     add_dir("TV Guide", url(action="guide"),
             plot="Channels and their schedule for the next day.")
+    add_dir("Search", url(action="search"),
+            plot="Search channel names and what is on in the next %d hours. "
+                 "Friendly TV's own catalogue search runs on an API this "
+                 "addon has no capture of, so it is not the same search the "
+                 "web player does." % SEARCH_HOURS)
 
     if client:
         for entry in client.menus():
@@ -226,6 +235,7 @@ def route_guide_channel(channel_id, name):
         item = xbmcgui.ListItem(label=label)
         _plot(item, "%s - %s on %s" % (_clock(prog["start_ms"]),
                                        _clock(prog["end_ms"]), name))
+        item.addContextMenuItems(_recording_menu(prog["path"]))
         if live_path and prog["start_ms"] <= now < prog["end_ms"]:
             # Only the airing on the air can be played, and playing it means
             # joining the channel live. The rest of the schedule is
@@ -252,10 +262,9 @@ def _live_path_for(client, channel_id, on_air=None):
        reached for a channel Live Now did not carry.
     """
     try:
-        for raw in client.live_channels():
-            attrs = (raw.get("target") or {}).get("pageAttributes") or {}
-            if str(attrs.get("networkid") or "") == str(channel_id):
-                return parse.card(raw, client)["path"]
+        for channel in client.lineup():
+            if channel["id"] == str(channel_id) and channel["path"]:
+                return channel["path"]
     except (api.ApiError, auth.AuthError) as exc:
         kodiutils.log("Live Now did not resolve channel %s: %s"
                       % (channel_id, exc))
@@ -277,6 +286,192 @@ def _clock(milliseconds):
     if not milliseconds:
         return ""
     return time.strftime("%H:%M", time.localtime(milliseconds / 1000.0))
+
+
+def route_search(query=""):
+    """Search the channel lineup and the guide.
+
+    This is **not** the service's own catalogue search. Friendly TV runs that
+    on a separate API surface (``/search/api/v3/``) which no capture has
+    exercised -- the web player loads it as a lazy chunk, and the chunk was
+    never downloaded in any capture taken so far, so there is no request shape
+    to copy and a guessed one would be worse than none.
+
+    What this does instead is search what the captured endpoints already
+    return: every channel's name, and every programme title in the next
+    ``SEARCH_HOURS``. For a live TV service that answers most of what a viewer
+    actually asks -- "is Hallmark on", "when is Perry Mason" -- and every
+    result is real rather than hopeful.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    if not query:
+        query = kodiutils.input_text("Search channels and the guide") or ""
+    query = query.strip()
+    if not query:
+        return finish()
+    needle = query.lower()
+
+    try:
+        channels = client.lineup()
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not search")
+        return finish()
+
+    hits = 0
+    for channel in channels:
+        if needle in (channel["name"] or "").lower() and channel["path"]:
+            item = {"title": channel["name"], "path": channel["path"],
+                    "channel_name": channel["name"], "poster": channel["logo"],
+                    "channel_logo": channel["logo"], "subtitle": channel["now"],
+                    "description": "", "episode_title": "", "genres": [],
+                    "duration_ms": 0}
+            _add_playable(item, label="%s (channel)" % channel["name"])
+            hits += 1
+
+    for match in _search_guide(client, channels, needle):
+        _add_guide_hit(match)
+        hits += 1
+
+    kodiutils.log("search %r: %d result(s)" % (query, hits))
+    if not hits:
+        kodiutils.notify("Nothing matching \"%s\"" % query)
+    finish("videos")
+
+
+def _search_guide(client, channels, needle):
+    """Programme titles matching ``needle`` in the next SEARCH_HOURS.
+
+    Returns matches in time order, soonest first, so "what is on" reads the
+    way a viewer expects rather than in whatever order the batches came back.
+    """
+    playable = [c for c in channels if c["path"]]
+    names = {c["id"]: c for c in playable}
+    now = int(time.time() * 1000)
+    end = now + SEARCH_HOURS * 3600 * 1000
+    ids = [c["id"] for c in playable]
+    found = []
+    for index in range(0, len(ids), GUIDE_BATCH):
+        batch = ids[index:index + GUIDE_BATCH]
+        try:
+            rows = client.guide(batch, now, end, page=index // GUIDE_BATCH)
+        except (api.ApiError, auth.AuthError) as exc:
+            kodiutils.log("search: guide batch %d failed: %s"
+                          % (index // GUIDE_BATCH, exc))
+            continue
+        for row in rows:
+            channel = names.get(str(row.get("channelId") or ""))
+            if not channel:
+                continue
+            for raw in (row.get("programs") or []):
+                prog = parse.programme(raw)
+                if not prog["end_ms"] or prog["end_ms"] < now:
+                    continue
+                if needle not in (prog["title"] or "").lower():
+                    continue
+                found.append((prog, channel))
+    found.sort(key=lambda pair: pair[0]["start_ms"])
+    return found
+
+
+def _add_guide_hit(match):
+    """One guide result: playable only while it is actually on the air."""
+    prog, channel = match
+    now = time.time() * 1000
+    on_air = prog["start_ms"] <= now < prog["end_ms"]
+    when = "%s %s" % (_day(prog["start_ms"]), _clock(prog["start_ms"]))
+    label = "%s - %s (%s)" % (prog["title"], channel["name"],
+                              "on now" if on_air else when)
+    item = xbmcgui.ListItem(label=label)
+    art = {"icon": channel["logo"], "thumb": channel["logo"]}
+    item.setArt(art)
+    _plot(item, "%s on %s\n%s - %s" % (prog["title"], channel["name"],
+                                       _clock(prog["start_ms"]),
+                                       _clock(prog["end_ms"])))
+    item.addContextMenuItems(_recording_menu(prog["path"]))
+    if on_air:
+        item.setProperty("IsPlayable", "true")
+        xbmcplugin.addDirectoryItem(
+            HANDLE, url(action="play", path=channel["path"], label=label),
+            item, isFolder=False)
+    else:
+        # Nothing to play yet, and Friendly TV offers no catch-up route from
+        # a guide entry, so this is an entry that says when rather than a
+        # link that would fail.
+        xbmcplugin.addDirectoryItem(HANDLE, "", item, isFolder=False)
+
+
+RECORD_FORM = "recording_form"
+STOP_FORM = "stop_recording_form"
+
+
+def _recording_menu(programme_path):
+    """Context-menu entries for a guide airing, or none without a path.
+
+    Two entries rather than one, because which of them applies depends on
+    whether the programme is already being recorded, and asking the service
+    that costs a request the menu would have to make before it could be drawn.
+    Each entry fetches its own form when chosen.
+    """
+    if not programme_path:
+        return []
+    return [
+        ("Record...", "RunPlugin(%s)"
+         % url(action="record", path=programme_path, form=RECORD_FORM)),
+        ("Stop or delete recording...", "RunPlugin(%s)"
+         % url(action="record", path=programme_path, form=STOP_FORM)),
+    ]
+
+
+def route_record(programme_path, form_code):
+    """Ask the service what it can do with this airing, then do the chosen one.
+
+    Nothing about the instruction string is built here: the form's options
+    arrive with an opaque ``value`` each and the chosen one is echoed back
+    verbatim. That is why this works for recording an episode, recording a
+    series, stopping either and deleting a series without the addon knowing
+    what distinguishes them.
+    """
+    client = _client()
+    if client is None:
+        return
+    try:
+        form = client.form(form_code, programme_path)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Recording")
+        return
+
+    options = parse.form_options(form)
+    if not options:
+        kodiutils.notify("No recording options for this programme")
+        return
+
+    if len(options) == 1:
+        chosen = options[0]
+    else:
+        index = xbmcgui.Dialog().select(
+            "Recording", [o["label"] for o in options])
+        if index < 0:
+            return
+        chosen = options[index]
+
+    try:
+        said = client.submit_form(form_code, programme_path, chosen["value"])
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Recording")
+        return
+    kodiutils.log("recording: %s -> %s" % (chosen["code"], said or "no message"))
+    # The service phrases its own confirmation ("Added to My Stuff"), which is
+    # better than anything invented here.
+    kodiutils.notify(said or chosen["label"])
+    _refresh()
+
+
+def _day(milliseconds):
+    if not milliseconds:
+        return ""
+    return time.strftime("%a", time.localtime(milliseconds / 1000.0))
 
 
 def route_page(path, name=""):
@@ -484,6 +679,12 @@ def main():
     elif action == "section_cached":
         route_section_cached(params.get("path", ""), params.get("code", ""),
                              params.get("name", ""))
+    elif action == "search":
+        route_search(params.get("query", ""))
+    elif action == "record":
+        # RunPlugin, not a directory: nothing to draw, and the listing the
+        # menu was opened from stays where it is.
+        route_record(params.get("path", ""), params.get("form", RECORD_FORM))
     elif action == "play":
         route_play(params.get("path", ""), params.get("label", ""))
     elif action == "signin":
