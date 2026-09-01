@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.tubitv" name="TubiTV" version="2026.9.1.1" provider-name="Lunatixz, Breezyslasher">
+<addon id="plugin.video.tubitv" name="TubiTV" version="2026.9.1" provider-name="Lunatixz, Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.t1mlib" version="4.0.9"/>
@@ -29,6 +29,10 @@
 		<website>http://www.tubitv.com/</website>
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
 		<news>
+2026.9.1.2 - Tubi's own artwork
+- CHANGED: The icon and fanart are now Tubi's current branding, resized
+  to what Kodi asks for - a 512x512 icon and a 1280x720 fanart.
+
 2026.9.1.1 - A quieter log
 - CHANGED: The lines added while diagnosing this summer's fixes - which
   rendition playback took, where a library export went, each My List and
