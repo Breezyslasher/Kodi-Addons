@@ -85,6 +85,11 @@ class Api(object):
     def __init__(self, session=None):
         self.session = session or auth.Session()
         self._local = threading.local()
+        # Details for a listing are fetched on a pool, so a lapsed session
+        # would have every one of those threads sign in at once -- a dozen
+        # concurrent sign-ins for one expiry, each invalidating the last. One
+        # thread refreshes; the rest wait and then find a fresh session.
+        self._signing_in = threading.Lock()
         self._config = None
 
     @property
@@ -122,7 +127,7 @@ class Api(object):
         if reply.status_code in (401, 403) and retry:
             kodiutils.log("session was refused (HTTP %s), signing in again"
                           % reply.status_code)
-            self.session.refresh()
+            self._refresh_once(headers.get("session-id"))
             return self._call(method, url, retry=False, **kwargs)
 
         try:
@@ -137,10 +142,22 @@ class Api(object):
             if retry and not code and _looks_like_a_lapsed_session(said):
                 kodiutils.log("session looks stale (%s), signing in again"
                               % said)
-                self.session.refresh()
+                self._refresh_once(headers.get("session-id"))
                 return self._call(method, url, retry=False, **kwargs)
             raise ApiError(said, code)
         return body
+
+    def _refresh_once(self, stale_id):
+        """Sign in again, once, however many threads noticed at the same time.
+
+        The caller passes the session id its own request went out with. If it
+        has already changed by the time the lock is taken, another thread has
+        rebuilt the session and this one has nothing to do.
+        """
+        with self._signing_in:
+            if stale_id and self.session.session_id != stale_id:
+                return
+            self.session.refresh()
 
     def get(self, path, params=None, base=None, retry=True):
         return self._call("GET", (base or API_BASE) + path, params=params,
@@ -369,6 +386,25 @@ class Api(object):
         Failures are dropped silently -- a missing synopsis is not worth
         failing a listing over.
         """
+        return self._fan_out(self.page, paths, workers, limit, "details")
+
+    def overlays(self, paths, workers=8, limit=40):
+        """Guide overlays for several airings at once, as {path: data}.
+
+        The schedule endpoint sends a title, an id and two times per airing
+        and nothing else -- no synopsis, no cast, no artwork. All of that is
+        in the overlay the web player opens when an airing is selected, one
+        request per airing.
+        """
+        def one(path):
+            body = self.get("/service/api/v1/template/data",
+                            {"template_code": "tvguide_overlay", "path": path})
+            return (body.get("response") or {}).get("data") or {}
+
+        return self._fan_out(one, paths, workers, limit, "guide overlays")
+
+    def _fan_out(self, fetch, paths, workers, limit, what):
+        """Run ``fetch`` over ``paths`` on a small pool, dropping failures."""
         wanted = [p for p in dict.fromkeys(paths) if p][:limit]
         if not wanted:
             return {}
@@ -376,7 +412,7 @@ class Api(object):
 
         def one(path):
             try:
-                return path, self.page(path)
+                return path, fetch(path)
             except Exception:
                 return path, None
 
@@ -388,13 +424,13 @@ class Api(object):
                     if response:
                         out[path] = response
         except Exception as exc:
-            kodiutils.log("could not fetch details concurrently (%s)" % exc)
+            kodiutils.log("could not fetch %s concurrently (%s)" % (what, exc))
             for path in wanted:
                 path, response = one(path)
                 if response:
                     out[path] = response
-        kodiutils.log("details: %d of %d page(s) in %.1fs"
-                      % (len(out), len(wanted), time.time() - started))
+        kodiutils.log("%s: %d of %d in %.1fs"
+                      % (what, len(out), len(wanted), time.time() - started))
         return out
 
     def section(self, path, code, count=24, offset=-1):

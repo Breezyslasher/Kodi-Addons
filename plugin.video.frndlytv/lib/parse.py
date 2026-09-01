@@ -73,6 +73,21 @@ def _int(value):
         return 0
 
 
+def _fraction(value):
+    """A 0..1 progress fraction, or 0.0 for anything else.
+
+    Clamped rather than trusted: a value at or past the end would have Kodi
+    resume at the credits, and one below zero is meaningless.
+    """
+    try:
+        got = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    if not 0.0 < got < 1.0:
+        return 0.0
+    return got
+
+
 def card(raw, api):
     """One card, normalised.
 
@@ -117,6 +132,11 @@ def card(raw, api):
         "id": raw.get("id"),
         "season": season,
         "episode": episode,
+        # Continue Watching carries how far in the viewer got, as a fraction
+        # of the running time ("0.01795995379283789"). It is the only
+        # progress the service sends, and without it that row restarts
+        # everything from the beginning.
+        "resume": _fraction(markers.get("seek")),
     }
     item["media"] = _media_kind(item["path"], season, episode)
 
@@ -256,6 +276,42 @@ def _year_and_rating(tag):
         elif not rating:
             rating = part
     return year, rating
+
+
+def overlay(data, api):
+    """A guide airing's own metadata, from the tvguide overlay.
+
+    The schedule endpoint sends a title, an id and two times per airing and
+    nothing else. Everything a viewer would want to read -- the synopsis, the
+    cast, the artwork, which episode it is and its certificate -- is only in
+    this overlay, which the web player opens when an airing is selected.
+    """
+    if not data:
+        return {}
+    season, episode, episode_title = 0, 0, ""
+    # "S9 Ep2 | Dregg Of The Earth"
+    numbered = str(data.get("subtitle3") or "")
+    match = _SXEY.match(numbered)
+    if match:
+        season, episode = int(match.group(1)), int(match.group(2))
+    if "|" in numbered:
+        episode_title = numbered.split("|", 1)[1].strip()
+    return {
+        "title": data.get("name") or "",
+        "plot": data.get("description") or "",
+        "cast": _names(data.get("cast")),
+        "image": api.image(data.get("image")),
+        "channel_logo": api.image(data.get("channel_icon_url")),
+        "channel": data.get("subtitle") or "",
+        "when": data.get("subtitle1") or "",
+        "repeat": (data.get("subtitle2") or "").strip(),
+        "rating": (data.get("subtitle4") or "").strip(),
+        "season": season,
+        "episode": episode,
+        "episode_title": episode_title,
+        "watch_live": data.get("target_watchlive") or "",
+        "series": data.get("target_browse_episodes") or "",
+    }
 
 
 def form_options(response):

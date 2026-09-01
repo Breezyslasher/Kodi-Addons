@@ -35,10 +35,14 @@ Verified playing on **Kodi 21.3** (ISA 21.5.22) and **Kodi 22**.
 | **Home** | the rows Friendly TV puts on its own home screen |
 | **Movies**, **TV**, **My Stuff** | the service's own pages, as it arranges them |
 
-In the guide, only the programme currently on the air can be selected, and
-selecting it joins that channel live. The rest of the schedule is information:
-Friendly TV offers no catch-up route from a guide entry, so the addon does not
-pretend to have one.
+In the guide, only the programme currently on the air plays, and playing it
+joins that channel live. Friendly TV offers no catch-up from a guide entry, so
+selecting a later programme tells you what it is and when it is on rather than
+pretending to play it.
+
+Guide rows carry the synopsis, cast, artwork, episode number and certificate —
+none of which is in the schedule itself; it comes from each airing's own
+overlay, under the same *Fetch full descriptions* setting as listings.
 
 ### Recording
 

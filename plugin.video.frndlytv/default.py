@@ -231,16 +231,30 @@ def route_guide_channel(channel_id, name):
     programmes.sort(key=lambda p: p["start_ms"])
     kodiutils.log("guide %s: %d airing(s)" % (name, len(programmes)))
 
-    on_air = next((p for p in programmes
+    upcoming = [p for p in programmes if p["end_ms"] and p["end_ms"] >= now]
+    on_air = next((p for p in upcoming
                    if p["start_ms"] <= now < p["end_ms"]), None)
     live_path = _live_path_for(client, channel_id, on_air)
-    for prog in programmes:
-        if not prog["end_ms"] or prog["end_ms"] < now:
-            continue
+
+    # The schedule endpoint sends a title and two times per airing and
+    # nothing else, so the synopsis, cast and artwork are fetched from each
+    # airing's overlay. Same setting and same cap as a listing, because it is
+    # the same trade: one request per row for something worth reading.
+    overlays = {}
+    if kodiutils.get_setting_bool("full_info", True):
+        try:
+            raw = client.overlays(
+                [p["path"] for p in upcoming],
+                limit=kodiutils.get_setting_int("info_limit", 40))
+            overlays = {path: parse.overlay(data, client)
+                        for path, data in raw.items()}
+        except (api.ApiError, auth.AuthError) as exc:
+            kodiutils.log("could not read the guide's overlays: %s" % exc)
+
+    for prog in upcoming:
         label = "%s  %s" % (_clock(prog["start_ms"]), prog["title"])
         item = xbmcgui.ListItem(label=label)
-        _plot(item, "%s - %s on %s" % (_clock(prog["start_ms"]),
-                                       _clock(prog["end_ms"]), name))
+        _set_guide_meta(item, prog, overlays.get(prog["path"]) or {}, name)
         item.addContextMenuItems(_recording_menu(prog["path"]))
         if live_path and prog["start_ms"] <= now < prog["end_ms"]:
             # Only the airing on the air can be played, and playing it means
@@ -251,8 +265,87 @@ def route_guide_channel(channel_id, name):
                 HANDLE, url(action="play", path=live_path, label=label),
                 item, isFolder=False)
         else:
-            xbmcplugin.addDirectoryItem(HANDLE, "", item, isFolder=False)
+            # Not on the air, so nothing to play -- but an item with an empty
+            # url is not "inert", it is one Kodi tries to open, once per row,
+            # which is where a guide full of "InputStream: Error opening,"
+            # came from. A folder pointing at the info route is inert.
+            xbmcplugin.addDirectoryItem(
+                HANDLE,
+                url(action="programme", name=prog["title"], channel=name,
+                    start=prog["start_ms"], end=prog["end_ms"]),
+                item, isFolder=True)
     finish("videos")
+
+
+def _set_guide_meta(item, prog, over, channel):
+    """One guide row: when it is on, and whatever its overlay knows."""
+    when = "%s - %s on %s" % (_clock(prog["start_ms"]),
+                              _clock(prog["end_ms"]), channel)
+    bits = [when]
+    for extra in (over.get("episode_title"), over.get("repeat")):
+        if extra and extra not in bits:
+            bits.append(extra)
+    if over.get("plot"):
+        bits.append(over["plot"])
+    plot = "\n".join(bits)
+
+    art = {}
+    if over.get("image"):
+        art["thumb"] = art["poster"] = art["fanart"] = over["image"]
+    if over.get("channel_logo"):
+        art.setdefault("icon", over["channel_logo"])
+    if art:
+        item.setArt(art)
+
+    media = "episode" if over.get("season") or over.get("episode") else "video"
+    try:
+        tag = item.getVideoInfoTag()
+        tag.setMediaType(media)
+        tag.setTitle(over.get("episode_title") or prog["title"])
+        tag.setPlot(plot)
+        if over.get("cast"):
+            tag.setCast([xbmc.Actor(person) for person in over["cast"]])
+        if over.get("rating"):
+            tag.setMpaa(over["rating"])
+        if media == "episode":
+            tag.setTvShowTitle(prog["title"])
+            if over.get("season"):
+                tag.setSeason(over["season"])
+            if over.get("episode"):
+                tag.setEpisode(over["episode"])
+        if prog["end_ms"] > prog["start_ms"]:
+            tag.setDuration(int((prog["end_ms"] - prog["start_ms"]) / 1000))
+    except (AttributeError, TypeError):
+        info = {"title": over.get("episode_title") or prog["title"],
+                "plot": plot, "mediatype": media}
+        if over.get("cast"):
+            info["cast"] = over["cast"]
+        if over.get("rating"):
+            info["mpaa"] = over["rating"]
+        item.setInfo("video", info)
+
+
+def route_programme(name, channel, start, end):
+    """Show what a not-yet-airing programme is, and stay where we are.
+
+    Friendly TV offers no catch-up from a guide entry, so there is nothing to
+    play here. Ending the directory unsuccessfully leaves the viewer in the
+    schedule they were reading rather than navigating them into an empty
+    folder.
+    """
+    when = " - ".join(p for p in (_clock(_ms(start)), _clock(_ms(end))) if p)
+    day = _day(_ms(start))
+    kodiutils.ok_dialog(
+        "%s\n\n%s%s on %s" % (name, (day + " ") if day else "", when, channel),
+        name)
+    xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+
+
+def _ms(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _live_path_for(client, channel_id, on_air=None):
@@ -292,6 +385,12 @@ def _clock(milliseconds):
     if not milliseconds:
         return ""
     return time.strftime("%H:%M", time.localtime(milliseconds / 1000.0))
+
+
+def _day(milliseconds):
+    if not milliseconds:
+        return ""
+    return time.strftime("%a", time.localtime(milliseconds / 1000.0))
 
 
 def route_search(query="", bucket=SEARCH_ALL):
@@ -779,6 +878,7 @@ def _set_meta(listitem, item, label):
             tag.setStudios([item["channel_name"]])
         if item.get("duration_ms"):
             tag.setDuration(int(item["duration_ms"] / 1000))
+        _set_resume(listitem, tag, item)
         if media == "episode":
             if item.get("season"):
                 tag.setSeason(item["season"])
@@ -811,6 +911,26 @@ def _set_meta(listitem, item, label):
             if item.get("episode"):
                 info["episode"] = item["episode"]
         listitem.setInfo("video", info)
+
+
+def _set_resume(listitem, tag, item):
+    """Where the viewer got to, for a Continue Watching row.
+
+    The service sends progress as a fraction of the running time, so both are
+    needed: without the duration there is nothing to multiply. Set through
+    setResumePoint where Kodi has it (20+), and through the ResumeTime and
+    TotalTime properties on anything older, which is the only way there.
+    """
+    fraction = item.get("resume") or 0.0
+    seconds = item.get("duration_ms", 0) / 1000.0
+    if not fraction or seconds <= 0:
+        return
+    position = fraction * seconds
+    try:
+        tag.setResumePoint(position, seconds)
+    except (AttributeError, TypeError):
+        listitem.setProperty("ResumeTime", "%.0f" % position)
+        listitem.setProperty("TotalTime", "%.0f" % seconds)
 
 
 def _content_of(cards):
@@ -912,6 +1032,9 @@ def main():
         route_live()
     elif action == "guide":
         route_guide()
+    elif action == "programme":
+        route_programme(params.get("name", ""), params.get("channel", ""),
+                        params.get("start", 0), params.get("end", 0))
     elif action == "guide_channel":
         route_guide_channel(params.get("channel_id", ""),
                             params.get("name", ""))

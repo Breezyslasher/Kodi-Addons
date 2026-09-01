@@ -203,6 +203,36 @@ its times in `display.markers.startTime/endTime` (again as strings) and a
 returns per-user overlay state (favourites, recordings). The addon does not
 use it.
 
+### The schedule carries no metadata — the overlay does
+
+An airing in `static/tvguide` is a title, an id and two times. Everything worth
+reading is in the overlay the web player opens when one is selected:
+
+```
+GET /service/api/v1/template/data?template_code=tvguide_overlay&path=epg/play/<id>
+→ response.data = {
+    name, description, cast, image, channel_icon_url,
+    subtitle:  "MeTV Toons",                       (the channel)
+    subtitle1: "Tue, Sep 1 | 12:00 AM - 12:30 AM", (when)
+    subtitle2: "Repeat",
+    subtitle3: "S9 Ep2 | Dregg Of The Earth",      (S/E and episode title)
+    subtitle4: "TVY7",                             (certificate)
+    target_watchlive:       "channel/live/metv_toons",
+    target_browse_episodes: "series/shows/521500",
+    target_record:          "recording_form" }
+```
+
+That is one request per airing, which is why it is pooled, capped and behind a
+setting — the same trade as a listing's descriptions.
+
+### Resume
+
+Continue Watching cards carry a `seek` marker whose value is progress **as a
+fraction of the running time** (`"0.01795995379283789"`), alongside a
+`lastUpdatedTime`. It is the only progress the service sends, and it needs the
+card's `duration` to become a position. Values outside 0..1 are worth
+rejecting rather than trusting.
+
 ## Playback
 
 ```

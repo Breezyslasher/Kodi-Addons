@@ -73,6 +73,20 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   each title's page -- so those pages are fetched for a listing's films and
   shows on a small pool of threads. One request per title is a real cost, so
   it is a setting with a cap, under Listings.
+- The guide carries descriptions, cast, artwork, episode numbers and
+  certificates. The schedule endpoint sends a title and two times per airing
+  and nothing else; everything readable is in each airing's overlay, fetched
+  the same way and under the same setting as a listing's.
+- Continue Watching resumes. The service sends how far in you got as a
+  fraction of the running time, and it was being read and thrown away, so
+  that row restarted everything from the beginning.
+- A guide row for something not yet airing no longer fills the log with
+  "InputStream: Error opening,". Those rows had an empty url, which Kodi
+  treats as something to open rather than as inert; selecting one now says
+  what it is and when it is on.
+- A lapsed session signs in once, not once per thread. Listings are fetched
+  on a pool, so an expiry mid-listing would have had a dozen threads sign in
+  at the same time, each invalidating the one before.
 - A film and a series describe themselves differently and both are now read
   correctly: a series has a description element and its subtitles are the
   episode on the air, while a film has no description element at all and its
