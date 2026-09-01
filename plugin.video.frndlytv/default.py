@@ -294,7 +294,7 @@ def _clock(milliseconds):
     return time.strftime("%H:%M", time.localtime(milliseconds / 1000.0))
 
 
-def route_search(query="", offset=0, bucket=SEARCH_ALL):
+def route_search(query="", bucket=SEARCH_ALL):
     """Friendly TV's own catalogue search.
 
     This runs on a different API surface from the rest of the addon
@@ -312,34 +312,33 @@ def route_search(query="", offset=0, bucket=SEARCH_ALL):
         return finish()
 
     try:
-        found = client.search(query, limit=SEARCH_PAGE, offset=int(offset),
-                              bucket=bucket)
+        found = client.search_all(query, bucket=bucket, limit=SEARCH_PAGE)
     except (api.ApiError, auth.AuthError) as exc:
         kodiutils.ok_dialog(str(exc), "Could not search")
         return finish()
 
     cards = [parse.card(c, client) for c in found["cards"]]
-    kodiutils.log("search %r [%s]: %d of %s result(s) from offset %s"
-                  % (query, bucket, len(cards), found["total"], offset))
+    kodiutils.log("search %r [%s]: %d of %s result(s) in %d request(s)%s"
+                  % (query, bucket, len(cards), found["total"], found["pages"],
+                     "" if found["complete"] else " (stopped at the cap)"))
 
-    # The type filters go at the top of the unfiltered first page, where they
-    # are a way to narrow what is already on screen rather than a question
-    # asked before the search has shown anything.
-    if bucket == SEARCH_ALL and not int(offset):
+    # The type filters go at the top, where they narrow what is already on
+    # screen rather than being a question asked before anything is shown.
+    if bucket == SEARCH_ALL:
         for label, code in SEARCH_BUCKETS:
             add_dir("%s only" % label,
                     url(action="search", query=query, bucket=code),
                     plot='%s matching "%s"' % (label, query))
 
-    _add_cards(cards)
+    content = _add_cards(cards)
 
-    if found["has_more"]:
-        add_dir("Next page", url(action="search", query=query, bucket=bucket,
-                                 offset=int(offset) + SEARCH_PAGE),
-                plot="%s result(s) in total" % found["total"])
-    if not cards and not int(offset):
+    if not cards:
         kodiutils.notify('Nothing matching "%s"' % query)
-    finish("videos")
+    elif not found["complete"]:
+        # Say it rather than let a truncated list look complete.
+        kodiutils.notify("Showing the first %d of %s" % (len(cards),
+                                                         found["total"]))
+    finish(content)
 
 
 RECORD_FORM = "recording_form"
@@ -453,8 +452,7 @@ def route_home_row(code, name):
     for row in rows:
         if row["code"] == code:
             kodiutils.log("home row %r: %d card(s)" % (code, len(row["cards"])))
-            _add_cards(row["cards"])
-            return finish("videos")
+            return finish(_add_cards(row["cards"]))
     kodiutils.notify("That row is no longer there")
     finish("videos")
 
@@ -485,8 +483,7 @@ def route_page(path, name=""):
     # single folder to reach the only thing behind it is a wasted click. Not
     # when there are actions above it, which the flattening would bury.
     if not detail["actions"] and len(sections) == 1 and sections[0]["cards"]:
-        _add_cards(sections[0]["cards"])
-        return finish("videos")
+        return finish(_add_cards(sections[0]["cards"]))
 
     for section in sections:
         if section["cards"]:
@@ -542,8 +539,7 @@ def route_section(path, code, name):
                  for c in (response.get("data") or [])
                  if isinstance(c, dict) and c.get("display")]
     kodiutils.log("section %s/%s: %d card(s)" % (path, code, len(cards)))
-    _add_cards(cards)
-    finish("videos")
+    finish(_add_cards(cards))
 
 
 def route_section_cached(path, code, name):
@@ -562,33 +558,67 @@ def route_section_cached(path, code, name):
         return finish()
     for section in parse.sections(response, client):
         if section["code"] == code:
-            _add_cards(section["cards"])
-            return finish("videos")
+            return finish(_add_cards(section["cards"]))
     kodiutils.notify("That row is no longer there")
     finish("videos")
 
 
+def _plays_through_its_page(item):
+    """True for a card whose page exists only to hold one play button.
+
+    A film's details page has a play button and nothing else -- no seasons, no
+    episodes -- so listing it as a folder makes the viewer open a directory to
+    find a single item. It is a playable thing wearing a page's clothes.
+
+    A series page is a real folder: it has a season under it per pane, and its
+    play button joins the channel currently airing the show, which is not what
+    picking the series off a row means.
+    """
+    return item["path"].startswith("movies/")
+
+
 def _add_cards(cards):
+    """List parsed cards, and say what kind of listing they made.
+
+    Returned so the caller can hand it to finish(): a listing of shows has to
+    declare itself as shows for a skin to lay it out as shows.
+    """
     for item in cards:
         if not item["path"]:
             continue
         if item["playable"]:
             _add_playable(item)
+        elif _plays_through_its_page(item):
+            _add_playable(item, action="play_page")
         else:
-            add_dir(item["title"] or item["path"],
-                    url(action="page", path=item["path"],
-                        name=item["title"]),
-                    art=_art(item), plot=_plot_text(item))
+            _add_card_folder(item)
+    return _content_of(cards)
 
 
-def _add_playable(item, label=None):
+def _add_card_folder(item):
+    """A card that opens a page -- a show, mostly -- with its own metadata.
+
+    A show is a folder because it has seasons under it, but it is still a
+    show: without the mediatype it lists as an unnamed directory and a skin
+    has nothing to draw a poster shelf from.
+    """
+    label = item["title"] or item["path"]
+    listitem = xbmcgui.ListItem(label=label)
+    listitem.setArt(_art(item))
+    _set_meta(listitem, item, label)
+    xbmcplugin.addDirectoryItem(
+        HANDLE, url(action="page", path=item["path"], name=item["title"]),
+        listitem, isFolder=True)
+
+
+def _add_playable(item, label=None, action="play"):
     label = label or item["title"] or item["path"]
     listitem = xbmcgui.ListItem(label=label)
     listitem.setArt(_art(item))
     listitem.setProperty("IsPlayable", "true")
     _set_meta(listitem, item, label)
     xbmcplugin.addDirectoryItem(
-        HANDLE, url(action="play", path=item["path"], label=label),
+        HANDLE, url(action=action, path=item["path"], label=label),
         listitem, isFolder=False)
 
 
@@ -621,10 +651,18 @@ def _plot_text(item):
 
 
 def _set_meta(listitem, item, label):
+    """Everything the card says about itself, onto the info tag.
+
+    ``mediatype`` matters more than it looks: without it Kodi treats every row
+    as an anonymous video, so a show gets no poster shelf and an episode no
+    season grouping, whatever artwork is attached.
+    """
     plot = _plot_text(item)
+    media = item.get("media") or "video"
     try:
         tag = listitem.getVideoInfoTag()
-        tag.setTitle(label)
+        tag.setMediaType(media)
+        tag.setTitle(item.get("title") or label)
         if plot:
             tag.setPlot(plot)
         if item.get("genres"):
@@ -633,15 +671,85 @@ def _set_meta(listitem, item, label):
             tag.setStudios([item["channel_name"]])
         if item.get("duration_ms"):
             tag.setDuration(int(item["duration_ms"] / 1000))
-        if item.get("episode_title"):
+        if media == "episode":
+            if item.get("season"):
+                tag.setSeason(item["season"])
+            if item.get("episode"):
+                tag.setEpisode(item["episode"])
+            # The episode's own name, where the card carries one; the row's
+            # title is the show on a season listing.
+            if item.get("episode_title"):
+                tag.setTitle(item["episode_title"])
+                tag.setTvShowTitle(item.get("title") or "")
+        elif item.get("episode_title"):
             tag.setTagLine(item["episode_title"])
     except (AttributeError, TypeError):
-        info = {"title": label}
+        info = {"title": label, "mediatype": media}
         if plot:
             info["plot"] = plot
         if item.get("duration_ms"):
             info["duration"] = int(item["duration_ms"] / 1000)
+        if media == "episode":
+            if item.get("season"):
+                info["season"] = item["season"]
+            if item.get("episode"):
+                info["episode"] = item["episode"]
         listitem.setInfo("video", info)
+
+
+def _content_of(cards):
+    """The Kodi container type for a listing, from what is actually in it.
+
+    A mixed listing stays "videos": claiming "tvshows" for a row that is half
+    films makes a skin lay out the films wrongly.
+    """
+    kinds = {c.get("media") or "video" for c in cards if c.get("path")}
+    if kinds == {"movie"}:
+        return "movies"
+    if kinds == {"tvshow"}:
+        return "tvshows"
+    if kinds == {"episode"}:
+        return "episodes"
+    return "videos"
+
+
+def route_play_page(path, label=""):
+    """Play a details page: fetch it, take its play button, resolve that.
+
+    A film is listed as playable even though its card points at a page,
+    because the page holds one play button and nothing else. The button's
+    target is the real path, so this is the extra request that turns two
+    clicks into one -- it is not guessed at, the page names it.
+    """
+    client = _client()
+    if client is None:
+        return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+    try:
+        detail = parse.detail(client.page(path), client)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Cannot play this")
+        return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+
+    actions = detail["actions"]
+    if not actions:
+        kodiutils.ok_dialog(
+            "Friendly TV's page for this offers nothing to play.",
+            "Cannot play this")
+        return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+    if len(actions) == 1:
+        chosen = actions[0]
+    else:
+        # More than one way in -- "Start Watching" beside "Start Over" on
+        # something airing live. Which one is the viewer's to pick.
+        index = xbmcgui.Dialog().select(
+            detail["title"] or label or "Play",
+            [a["label"] for a in actions])
+        if index < 0:
+            return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        chosen = actions[index]
+    kodiutils.log("%s resolves through its page to %s"
+                  % (path, chosen["path"]))
+    route_play(chosen["path"], label or detail["title"])
 
 
 def route_play(path, label=""):
@@ -698,7 +806,7 @@ def main():
         route_section_cached(params.get("path", ""), params.get("code", ""),
                              params.get("name", ""))
     elif action == "search":
-        route_search(params.get("query", ""), params.get("offset", 0),
+        route_search(params.get("query", ""),
                      params.get("bucket", SEARCH_ALL))
     elif action == "record":
         # RunPlugin, not a directory: nothing to draw, and the listing the
@@ -706,6 +814,8 @@ def main():
         route_record(params.get("path", ""), params.get("form", RECORD_FORM))
     elif action == "play":
         route_play(params.get("path", ""), params.get("label", ""))
+    elif action == "play_page":
+        route_play_page(params.get("path", ""), params.get("label", ""))
     elif action == "signin":
         route_signin()
     elif action == "signout":

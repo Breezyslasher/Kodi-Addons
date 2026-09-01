@@ -7,7 +7,36 @@ is the one place that reads that shape, so the routing code can deal in plain
 dictionaries.
 """
 
+import re
 import time
+
+# "S3 E33 | 30m", "S7 - Ep8 | Mon, Aug 31 | ...", "S1 E1 - Fallen Timbers".
+# The service writes the season and episode three ways and always at the front
+# of subtitle1, which is the only place it puts them as numbers at all.
+_SXEY = re.compile(r"^\s*S(\d+)\s*-?\s*E[p]?(\d+)", re.IGNORECASE)
+
+
+def _media_kind(path, season, episode):
+    """What Kodi should treat a card as.
+
+    Kodi renders a listing by its content type and each row by its mediatype,
+    and without them a show is an anonymous folder: no poster shelf, no season
+    grouping, no episode ordering. The path says which kind a card is, because
+    the service routes each kind to its own page prefix.
+    """
+    if path.startswith("channel/live/"):
+        # A live channel's card is titled with whatever is on it and carries
+        # that programme's S/E numbers, but what is being chosen is the
+        # channel. Calling it an episode would retitle the row to the
+        # programme and file it under a show.
+        return "video"
+    if path.startswith("movies/"):
+        return "movie"
+    if path.startswith("series/shows/"):
+        return "tvshow"
+    if season or episode:
+        return "episode"
+    return "video"
 
 
 def _markers(display):
@@ -53,6 +82,11 @@ def card(raw, api):
     start_ms = _int(attrs.get("startTime")) or _int(markers.get("startTime"))
     end_ms = _int(attrs.get("endTime")) or _int(markers.get("endTime"))
 
+    season = episode = 0
+    numbered = _SXEY.match(display.get("subtitle1") or "")
+    if numbered:
+        season, episode = int(numbered.group(1)), int(numbered.group(2))
+
     item = {
         "title": display.get("title") or "",
         "subtitle": display.get("subtitle1") or "",
@@ -76,7 +110,10 @@ def card(raw, api):
         "poster": api.image(display.get("imageUrl")),
         "channel_logo": api.image(display.get("parentIcon")),
         "id": raw.get("id"),
+        "season": season,
+        "episode": episode,
     }
+    item["media"] = _media_kind(item["path"], season, episode)
 
     # A card whose only marker says "non_playable" is a heading in the
     # guide's channel strip, not something to open.

@@ -312,6 +312,35 @@ class Api(object):
             "total": response.get("totalCount") or len(cards),
         }
 
+    def search_all(self, query, bucket="All", limit=16, max_pages=20):
+        """Every result for a query, not just the first page.
+
+        The endpoint pages sixteen at a time and that is the only page size
+        any capture uses, so the pages are walked rather than asked for in one
+        larger request. It costs a handful of requests -- the observed totals
+        are 37 and 77, so three and five -- and it means a search lands as one
+        scrollable list instead of a chain of "Next page" folders.
+
+        ``max_pages`` is a stop, not a page size: it bounds a query that
+        matches thousands. Reaching it is reported so the caller can say the
+        list was cut rather than quietly showing part of it.
+        """
+        cards, offset, pages, total = [], 0, 0, 0
+        while pages < max_pages:
+            found = self.search(query, limit=limit, offset=offset,
+                                bucket=bucket)
+            cards.extend(found["cards"])
+            total = found["total"] or len(cards)
+            pages += 1
+            # An empty page with has_more still set would loop forever;
+            # nothing observed does that, and nothing needs to.
+            if not found["has_more"] or not found["cards"]:
+                return {"cards": cards, "total": total, "complete": True,
+                        "pages": pages}
+            offset += limit
+        return {"cards": cards, "total": total, "complete": False,
+                "pages": pages}
+
     def section(self, path, code, count=24, offset=-1):
         """One deferred section's cards.
 

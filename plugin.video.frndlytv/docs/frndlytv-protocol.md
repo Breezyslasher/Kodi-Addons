@@ -354,6 +354,34 @@ a blank or whitespace `target`, and the add-on info button targets the literal
 string `settings`. Requiring the target to look like a path (to contain a `/`)
 is what keeps all three out.
 
+**A film's page therefore holds exactly one thing**, which is why this addon
+lists films as playable and resolves the button behind the scenes rather than
+making a viewer open a folder to find a single item. A series page is a real
+folder and stays one.
+
+### Telling the kinds apart
+
+The service routes each kind of thing to its own page prefix, and that is the
+only reliable signal for what a card *is* — `contentType` in `pageAttributes`
+takes at least five values across the same kind (`movie`, `epg`,
+`epgseriesdetails`, `tvshowepisode`, `unifiedshows`).
+
+| Path prefix | What it is |
+|-------------|-----------|
+| `channel/live/<slug>` | a live channel |
+| `movies/<id>` | a film's page — one play button |
+| `series/shows/<id>` | a series' page — seasons under it |
+| `video/play/<id>`, `epg/play/<id>` | plays directly |
+
+Season and episode numbers are only ever in `display.subtitle1`, at the front,
+in one of three spellings: `S3 E33 | 30m`, `S7 - Ep8 | Mon, Aug 31 | ...`, and
+`S1 E1 - Fallen Timbers`.
+
+One trap: a **live channel's card carries the season and episode numbers of
+whatever is on it**, and is titled with that programme. Treating a card as an
+episode purely because it has S/E numbers turns the Live TV list into a list of
+programmes retitled away from their channels.
+
 ## Recordings
 
 Recording is not a dedicated endpoint. It is a generic **form** mechanism: the

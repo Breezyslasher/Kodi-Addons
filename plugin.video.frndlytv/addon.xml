@@ -57,6 +57,16 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 - A search that matches nothing says so instead of reporting an error. The
   search API answers no-matches with status false and a 404, which is a
   refusal in the protocol's terms and an empty list in anyone else's.
+- Search shows every result at once rather than a chain of "Next page"
+  folders. It walks the pages itself, which for the totals this service
+  returns is three to five requests.
+- A film plays in one click. Its card points at a page, but that page holds
+  a single play button and nothing else, so the page is fetched and the
+  button followed rather than listed as a folder to open. A series stays a
+  folder, because it really does have seasons under it.
+- Shows, films and episodes are labelled as such for Kodi, so skins lay them
+  out as shows and films instead of anonymous folders, and an episode
+  carries its own name and its season and episode numbers.
 - Record an episode or a series, and stop or delete a recording, from the
   context menu on any guide airing. The service describes the choices and
   the addon echoes the chosen one back untouched, so it never has to know

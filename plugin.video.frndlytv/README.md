@@ -50,10 +50,21 @@ Recordings appear under **My Stuff**.
 
 ### Search
 
-Friendly TV's own catalogue search, paged sixteen results at a time, with
-**Shows only / Movies only / Channels only** filters offered at the top of the
-first page. Results are a mix of series and film pages to open and on-demand
-episodes that play directly, and each is routed by what it actually is.
+Friendly TV's own catalogue search, with **Shows only / Movies only / Channels
+only** filters at the top. All results are listed at once rather than behind
+"Next page" folders — the addon walks the service's pages itself, which for the
+totals this service returns is a handful of requests.
+
+### Films, shows and episodes
+
+A **film** plays in one click. Its card points at a page rather than a stream,
+but that page holds a single play button and nothing else, so the addon fetches
+it and follows the button instead of making you open a folder to find one item.
+
+A **show** stays a folder, because it genuinely has seasons under it. Shows,
+films and episodes are each labelled as such for Kodi, so skins lay them out as
+shows and films rather than as anonymous directories, and an episode carries its
+own name with its season and episode numbers.
 
 ## IPTV Manager
 
