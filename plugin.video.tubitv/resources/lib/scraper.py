@@ -264,11 +264,21 @@ class myAddon(t1mAddon):
         return watching
 
     def applyResume(self, ilist, contentId):
-        """Let Kodi offer to resume where Tubi says the viewer stopped."""
+        """Let Kodi offer to resume where Tubi says the viewer stopped.
+
+        The ResumeTime and TotalTime properties are deprecated - they log a
+        warning apiece on every list item that carries a resume point - so
+        Kodi 20 and later get setResumePoint() instead. Kodi 19 has no such
+        setter and keeps the properties.
+        """
         entry = self.watching.get(str(contentId)) or {}
         position, length = entry.get('position'), entry.get('length')
-        if ilist and position and length:
-            liz = ilist[-1][1]
+        if not (ilist and position and length):
+            return ilist
+        liz = ilist[-1][1]
+        if INFOTAG_SETTERS:
+            liz.getVideoInfoTag().setResumePoint(float(position), float(length))
+        else:
             liz.setProperty('ResumeTime', str(position))
             liz.setProperty('TotalTime', str(length))
         return ilist
