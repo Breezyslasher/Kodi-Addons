@@ -3575,6 +3575,9 @@ class AppleTVApi(object):
                 max_h = kodiutils.get_setting_int("max_height", 360)
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
             avc_only = kodiutils.get_setting_bool("avc_only", True)
+            # Keep the same HDCP-LEVEL ceiling the manifest proxy applies, so a
+            # key is only collected from a tier that will actually be served.
+            allowed_hdcp = None if live else license_proxy.hdcp_allowed()
 
             lines = master.splitlines()
             video, skipped = [], 0
@@ -3586,7 +3589,8 @@ class AppleTVApi(object):
                 if not uri:
                     continue
                 if license_proxy.variant_unwanted(line.strip(), max_h,
-                                                  sdr_only, avc_only):
+                                                  sdr_only, avc_only,
+                                                  allowed_hdcp):
                     skipped += 1
                     continue
                 video.append(absolute(uri))

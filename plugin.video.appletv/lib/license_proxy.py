@@ -93,6 +93,31 @@ def widevine_level():
     return _WV_LEVEL
 
 
+def hdcp_allowed():
+    """Which HDCP-LEVEL tiers the current Widevine level can actually play.
+
+    Apple tags every master-playlist variant with HDCP-LEVEL -- NONE (no output
+    protection), TYPE-0 (HDCP 1.x) or TYPE-1 (HDCP 2.2) -- and flags the tier's
+    content key output-restricted to match. A CDM that cannot attest the
+    required protected path gets kNoKey on that key, so the playable ceiling is
+    the highest tier whose HDCP-LEVEL the CDM can satisfy:
+
+        L3 software CDM   -> NONE            (~540p, the desktop/mobile ceiling)
+        L1 hardware CDM   -> NONE + TYPE-0   (up to 1080p SDR)
+
+    TYPE-1 (4K and HDR/Dolby Vision) needs HDCP 2.2 on the display and is left
+    out even on L1 -- those tiers are HEVC/DV, already gated by avc_only/sdr_only.
+
+    Measured against a captured master playlist (2026-08-30, tvs.vds.4105):
+    HDCP=NONE topped out at 862x466, TYPE-0 carried 564/704/1038, TYPE-1 carried
+    2076 -- and both desktop L3 and Firefox-on-Android played the 466 tier, the
+    top of NONE.
+    """
+    if widevine_level() == "L1":
+        return {"NONE", "TYPE-0"}
+    return {"NONE"}
+
+
 # Widevine keys discovered while serving variant playlists, keyed by key id.
 # A title has a separate key per variant/rendition and the master playlist can
 # list hundreds of them, so the set collected up front is not complete: record
@@ -182,7 +207,7 @@ def release_leases(timeout=15):
             kodiutils.log_error("Lease release failed: %s" % exc)
 
 
-def variant_unwanted(tag, max_h, sdr_only, avc_only):
+def variant_unwanted(tag, max_h, sdr_only, avc_only, allowed_hdcp=None):
     """Drop variants the CDM will refuse or the player cannot show.
 
     Apple keys each quality tier separately and the higher tiers demand output
@@ -195,6 +220,16 @@ def variant_unwanted(tag, max_h, sdr_only, avc_only):
     variants that survive here -- a key belonging to a tier that is never
     played is of no use.
     """
+    # HDCP-driven ceiling. Apple tags each variant with the output protection
+    # its key demands (HDCP-LEVEL); a tier the CDM cannot satisfy comes back
+    # kNoKey and stalls the DRM session, so drop it here rather than let ISA
+    # pick it. Only when the attribute is actually present -- a manifest without
+    # HDCP-LEVEL falls back to the height cap below, so this never nukes a
+    # manifest that does not carry the tag. See hdcp_allowed().
+    if allowed_hdcp is not None:
+        hdcp = re.search(r'HDCP-LEVEL=([A-Z0-9-]+)', tag)
+        if hdcp and hdcp.group(1) not in allowed_hdcp:
+            return True
     res = re.search(r'RESOLUTION=\d+x(\d+)', tag)
     if max_h and res and int(res.group(1)) > max_h:
         return True
@@ -517,6 +552,11 @@ class _Handler(BaseHTTPRequestHandler):
         # Vision Profile 5 as plain HEVC and renders it with badly shifted
         # colours -- a trailer came out magenta -- and that happens whether or
         # not the stream was encrypted, so it stays in force here.
+        # HDCP-LEVEL cap, computed below for the encrypted on-demand path only.
+        # None means "do not filter by HDCP": the clear path never reaches the
+        # CDM, and live is a single licensed band left on its numeric cap until
+        # verified.
+        allowed_hdcp = None
         if clear:
             max_h, avc_only = 0, False
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
@@ -547,6 +587,11 @@ class _Handler(BaseHTTPRequestHandler):
             if max_h and max_h <= 540 and widevine_level() == "L1":
                 max_h = 1080
                 kodiutils.log("Widevine L1: auto HD, height cap -> 1080")
+            # Cap by the manifest's own HDCP-LEVEL tags too, so the ceiling is
+            # what the CDM can decode rather than a fixed number: L3 keeps NONE
+            # (~540p), L1 keeps NONE+TYPE-0 (up to 1080p). On-demand only.
+            if not _is_live(_context()):
+                allowed_hdcp = hdcp_allowed()
         # On-demand WebVTT subtitles are fetched to external files, because ISA
         # lists but never renders Apple's. Drop the renditions here so only the
         # working external copy is offered, not a broken duplicate beside it. A
@@ -556,7 +601,7 @@ class _Handler(BaseHTTPRequestHandler):
         lines = text.splitlines()
 
         def unwanted(tag):
-            return variant_unwanted(tag, max_h, sdr_only, avc_only)
+            return variant_unwanted(tag, max_h, sdr_only, avc_only, allowed_hdcp)
 
         too_tall = unwanted
 
