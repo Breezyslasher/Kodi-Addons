@@ -1,0 +1,183 @@
+# Kodi Media Center language file
+# Addon Name: TubiTV
+# Addon id: plugin.video.tubitv
+# Addon Provider: Lunatixz, Breezyslasher
+msgid ""
+msgstr ""
+"Project-Id-Version: plugin.video.tubitv\n"
+"Report-Msgid-Bugs-To: https://github.com/Breezyslasher/Kodi-Addons\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+
+# --- Navigation ---
+msgctxt "#30010"
+msgid "Search"
+msgstr ""
+
+msgctxt "#30019"
+msgid " (Series)"
+msgstr ""
+
+msgctxt "#30024"
+msgid "Add Show To Library"
+msgstr ""
+
+msgctxt "#30025"
+msgid "Add Movie To Library"
+msgstr ""
+
+msgctxt "#30026"
+msgid "Next page"
+msgstr ""
+
+msgctxt "#30027"
+msgid "Season"
+msgstr ""
+
+msgctxt "#30031"
+msgid "Live TV"
+msgstr ""
+
+msgctxt "#30034"
+msgid "Related titles"
+msgstr ""
+
+msgctxt "#30035"
+msgid "Play trailer"
+msgstr ""
+
+msgctxt "#30041"
+msgid "Add to My List"
+msgstr ""
+
+msgctxt "#30042"
+msgid "Remove from My List"
+msgstr ""
+
+msgctxt "#30043"
+msgid "Added to My List"
+msgstr ""
+
+msgctxt "#30044"
+msgid "Removed from My List"
+msgstr ""
+
+msgctxt "#30045"
+msgid "Like"
+msgstr ""
+
+msgctxt "#30046"
+msgid "Dislike"
+msgstr ""
+
+msgctxt "#30047"
+msgid "Liked"
+msgstr ""
+
+msgctxt "#30048"
+msgid "Disliked"
+msgstr ""
+
+msgctxt "#30049"
+msgid "Rating cleared"
+msgstr ""
+
+msgctxt "#30054"
+msgid "Remove from Continue Watching"
+msgstr ""
+
+msgctxt "#30055"
+msgid "Removed from Continue Watching"
+msgstr ""
+
+msgctxt "#30050"
+msgid "Language"
+msgstr ""
+
+msgctxt "#30051"
+msgid "English"
+msgstr ""
+
+msgctxt "#30052"
+msgid "Espanol"
+msgstr ""
+
+msgctxt "#30053"
+msgid "Francais"
+msgstr ""
+
+msgctxt "#30036"
+msgid "Home"
+msgstr ""
+
+msgctxt "#30037"
+msgid "Continue Watching"
+msgstr ""
+
+msgctxt "#30038"
+msgid "My List"
+msgstr ""
+
+# --- Settings ---
+msgctxt "#30015"
+msgid "Tubi Login"
+msgstr ""
+
+msgctxt "#30016"
+msgid "User Email"
+msgstr ""
+
+msgctxt "#30017"
+msgid "User Password"
+msgstr ""
+
+msgctxt "#30023"
+msgid "Sign out"
+msgstr ""
+
+msgctxt "#30029"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#30030"
+msgid "Allow HDCP protected streams (higher quality, needs a hardware DRM device)"
+msgstr ""
+
+msgctxt "#30032"
+msgid "IPTV Manager"
+msgstr ""
+
+msgctxt "#30033"
+msgid "Integrate the Tubi live channels into the Kodi TV guide"
+msgstr ""
+
+msgctxt "#30039"
+msgid "Kids mode"
+msgstr ""
+
+msgctxt "#30040"
+msgid "Tell Tubi where you stopped watching (needs sign-in)"
+msgstr ""
+
+# --- Messages ---
+msgctxt "#30018"
+msgid "This video requires you to sign in - please see the addon settings"
+msgstr ""
+
+msgctxt "#30020"
+msgid "Initializing ..... Please Wait"
+msgstr ""
+
+msgctxt "#30021"
+msgid "Sign-in failed: %s"
+msgstr ""
+
+msgctxt "#30022"
+msgid "Could not reach Tubi"
+msgstr ""
+
+msgctxt "#30028"
+msgid "Tubi is not offering a playable stream for this title"
+msgstr ""

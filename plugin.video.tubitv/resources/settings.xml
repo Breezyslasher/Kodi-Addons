@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="30015">
+        <setting id="login_name" type="text" label="30016" default="" />
+        <setting id="login_pass" type="text" label="30017" option="hidden" default="" enable="!eq(-1,)" />
+        <setting type="sep" />
+        <setting id="reset_session" type="action" label="30023" action="RunPlugin(plugin://plugin.video.tubitv/?mode=DF&amp;url=logout)" />
+    </category>
+    <category label="30029">
+        <setting id="allow_hdcp" type="bool" label="30030" default="false" />
+        <setting id="kids_mode" type="bool" label="30039" default="false" />
+        <setting id="language" type="select" label="30050" default="0" lvalues="30051|30052|30053" />
+        <setting id="report_progress" type="bool" label="30040" default="true" />
+    </category>
+    <category label="30032">
+        <setting id="iptv.enabled" type="bool" label="30033" default="true" />
+        <setting id="iptv.channels_uri" type="text" default="plugin://plugin.video.tubitv/iptv/channels" visible="false" />
+        <setting id="iptv.epg_uri" type="text" default="plugin://plugin.video.tubitv/iptv/epg" visible="false" />
+    </category>
+</settings>
