@@ -81,9 +81,18 @@ def resolve(client, path, label=""):
     licence = (stream.get("keys") or {}).get("licenseKey") or ""
     manifest_type = _manifest_type(url)
 
-    kodiutils.log("playing %s: %s manifest, %s licence"
-                  % (path, manifest_type,
-                     "widevine" if licence else "no"))
+    # What the service says this stream is and where it wants playback to
+    # begin. Worth logging every time: it is the only way to tell from a log
+    # whether a "start over" really started over, since the answer to
+    # epg/play/<id> is a VOD asset for a finished programme but a live
+    # manifest for one still on the air.
+    seek_ms = _int(status.get("seekPositionInMillis"))
+    total_ms = _int(status.get("totalDurationInMillis"))
+    kodiutils.log("playing %s: %s manifest, %s licence, %s, starts at %s of %s"
+                  % (path, manifest_type, "widevine" if licence else "no",
+                     (response.get("analyticsInfo") or {}).get("contentType")
+                     or "unknown type",
+                     _hms(seek_ms), _hms(total_ms) if total_ms else "unknown"))
 
     item = xbmcgui.ListItem(label=label or path, path=url)
     item.setContentLookup(False)
@@ -98,8 +107,32 @@ def resolve(client, path, label=""):
         # bar that runs out while the channel keeps playing.
         item.setProperty("IsLive", "true")
 
+    if seek_ms > 0 and total_ms > seek_ms:
+        # The service asked for playback to begin partway in. Nothing
+        # observed has done this yet, so it is honoured rather than assumed
+        # impossible -- and it is the mechanism a resumed title would use.
+        try:
+            item.getVideoInfoTag().setResumePoint(seek_ms / 1000.0,
+                                                  total_ms / 1000.0)
+        except (AttributeError, TypeError):
+            item.setProperty("ResumeTime", "%.0f" % (seek_ms / 1000.0))
+            item.setProperty("TotalTime", "%.0f" % (total_ms / 1000.0))
+        kodiutils.log("the service asked to start at %s" % _hms(seek_ms))
+
     _remember(response, path)
     return item
+
+
+def _int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _hms(milliseconds):
+    seconds = int((milliseconds or 0) / 1000)
+    return "%d:%02d:%02d" % (seconds // 3600, seconds // 60 % 60, seconds % 60)
 
 
 def _is_live(response, path):
