@@ -1,0 +1,2169 @@
+"""Friendly TV for Kodi: menus, listings and playback."""
+
+import sys
+import time
+
+from urllib.parse import parse_qsl, urlencode
+
+import xbmc
+import xbmcgui
+import xbmcplugin
+
+from lib import api, auth, kodiutils, parse, playback
+
+HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 else -1
+BASE_URL = sys.argv[0] if sys.argv else "plugin://plugin.video.frndlytv/"
+
+# How much schedule a channel's own listing shows. The guide endpoint takes a
+# window in milliseconds and the web player asks a day at a time.
+GUIDE_HOURS = 24
+# The guide is asked for in pages of twelve channels, which is the batch size
+# the web player uses; a request naming the whole lineup at once is a shape
+# nothing has been observed answering.
+GUIDE_BATCH = 12
+# Results per search request. Sixteen is what the web player asks for, and
+# the response's hasMore/totalCount drive the "Next page" entry from there.
+SEARCH_PAGE = 16
+# The buckets the search endpoint takes. "All" is the unfiltered search; the
+# other three are the type filters the web player offers, named as it names
+# them in the request rather than as it labels them on screen.
+# How much of a section to ask for when following its own "view all" path.
+# The web player asks for 36 there; this is a listing the viewer chose to
+# open in full, so it asks for more and takes whatever comes back.
+SECTION_ALL = 200
+SEARCH_ALL = "All"
+SEARCH_BUCKETS = (("Shows", "Series"), ("Movies", "Movie"),
+                  ("Channels", "Station"))
+
+
+def url(**kwargs):
+    return BASE_URL + "?" + urlencode({k: v for k, v in kwargs.items()
+                                       if v not in (None, "")})
+
+
+def add_dir(label, target, art=None, plot=""):
+    item = xbmcgui.ListItem(label=label)
+    item.setArt(art or {})
+    if plot:
+        _plot(item, plot)
+    xbmcplugin.addDirectoryItem(HANDLE, target, item, isFolder=True)
+
+
+def _plot(item, text):
+    """Set the plot, across the two metadata APIs.
+
+    Kodi 20 deprecated ListItem.setInfo in favour of the InfoTagVideo
+    getters; the old call still works but logs a warning on every item, which
+    on a 200-row listing is 200 lines of log per screen.
+    """
+    try:
+        item.getVideoInfoTag().setPlot(text)
+    except (AttributeError, TypeError):
+        item.setInfo("video", {"plot": text})
+
+
+def finish(content="", update=False):
+    """End the listing.
+
+    ``update`` replaces the listing the viewer is looking at instead of
+    opening a new one under it. That is what an entry which *does* something
+    -- signing in, signing out -- wants: it has no listing of its own, and
+    ending one unsuccessfully is precisely what makes Kodi say
+    "Error getting plugin://...".
+    """
+    if content:
+        xbmcplugin.setContent(HANDLE, content)
+    # The service orders its own rows deliberately -- "On Now" first, a
+    # channel's schedule in time order -- so nothing is re-sorted here.
+    xbmcplugin.addSortMethod(HANDLE, xbmcplugin.SORT_METHOD_NONE)
+    xbmcplugin.endOfDirectory(HANDLE, updateListing=update)
+
+
+def _client(quiet=False):
+    """An Api bound to the stored session, or None once the user is told why."""
+    session = auth.Session()
+    if not session.signed_in:
+        email = kodiutils.get_setting("username")
+        password = kodiutils.get_setting("password")
+        if not email or not password:
+            if not quiet:
+                kodiutils.ok_dialog(
+                    "Add your Friendly TV email address and password in this "
+                    "addon's settings, then come back.", "Not signed in")
+            return None
+        try:
+            session.sign_in(email, password)
+        except auth.AuthError as exc:
+            if not quiet:
+                kodiutils.ok_dialog(str(exc), "Could not sign in")
+            return None
+    return api.Api(session)
+
+
+# -- routes ---------------------------------------------------------------
+
+
+# Kodi's own icons, so the root menu reads as a menu rather than a column of
+# identical folders. A skin that does not carry one simply draws none.
+ROOT_ICONS = {
+    "home": "DefaultFolder.png",
+    "live": "DefaultAddonPVRClient.png",
+    "guide": "DefaultAddonPVRClient.png",
+    "movies": "DefaultMovies.png",
+    "tv_series": "DefaultTVShows.png",
+    "trending": "DefaultInProgressShows.png",
+    "search": "DefaultAddonsSearch.png",
+    "my_recordings": "DefaultVideoPlaylists.png",
+    "add-ons": "DefaultAddonVideo.png",
+    "sessions": "DefaultNetwork.png",
+    "account": "DefaultUser.png",
+}
+
+# The order the root menu is drawn in, by the key above. The service's own
+# menu is not in a useful order for this -- it is the web player's navigation
+# bar, where Home comes after Search -- so the pages are placed here and
+# anything the service adds later falls in after them rather than being lost.
+ROOT_ORDER = ("home", "live", "guide", "movies", "tv_series", "trending",
+              "search", "my_recordings", "add-ons")
+
+
+def _root_entry(key, title, target, plot=""):
+    # A page the service adds later has no icon named here, and a row with no
+    # icon beside rows that have one looks like a mistake rather than a
+    # difference. The plain folder is the honest default.
+    icon = ROOT_ICONS.get(key) or "DefaultFolder.png"
+    add_dir(title, target, plot=plot,
+            art={"icon": icon, "thumb": icon,
+                 "fanart": kodiutils.addon().getAddonInfo("fanart")})
+
+
+def route_root(update=False):
+    kodiutils.log("root menu; %s" % kodiutils.platform())
+    client = _client(quiet=True)
+
+    # Everything here needs an account. Listing them signed out offers folders
+    # that can only fail, and a first-run viewer is better told what to do.
+    if not client:
+        _root_entry("account", "Sign in to Friendly TV", url(action="signin"),
+                    plot="Enter your Friendly TV email address and password. "
+                         "They can also be saved in this addon's settings.")
+        kodiutils.log("root menu: not signed in")
+        return finish(update=update)
+
+    # What this addon has its own route for, keyed the same way as the
+    # service's pages so the two can be ordered together.
+    entries = {
+        "live": ("Live TV", url(action="live"),
+                 "Every channel in your lineup, with what is on right now."),
+        "guide": ("TV Guide", url(action="guide"),
+                  "Channels and their schedule for the next day."),
+        "search": ("Search", url(action="search"),
+                   "Search Friendly TV's catalogue of shows and films."),
+        "trending": ("Trending", url(action="trending"),
+                     "What Friendly TV is putting in front of everyone right "
+                     "now: trending films, trending shows, and the titles "
+                     "people are searching for."),
+    }
+    for entry in client.menus():
+        path = entry["path"]
+        if path == "guide":
+            # The addon's own guide above is a richer listing of the same
+            # thing; the service's "guide" page duplicates it.
+            continue
+        if path == "home":
+            entries["home"] = (entry["title"], url(action="home"), "")
+            continue
+        entries[path] = (entry["title"],
+                         url(action="page", path=path), "")
+
+    drawn = set()
+    for key in ROOT_ORDER:
+        if key in entries:
+            _root_entry(key, *entries[key])
+            drawn.add(key)
+    # Anything the service offers that this order does not name -- a page
+    # added after this was written -- still gets listed, after the rest.
+    for key, value in entries.items():
+        if key not in drawn:
+            _root_entry(key, *value)
+
+    _root_entry("sessions", "Active streams", url(action="sessions"),
+                plot="What this account has playing right now, anywhere. "
+                     "Friendly TV limits how many streams run at once.")
+
+    if client.session.email:
+        _root_entry("account", "Sign out (%s)" % client.session.email,
+                    url(action="signout"))
+    finish(update=update)
+
+
+
+
+
+def route_next(path, name=""):
+    """What Friendly TV says comes after a title."""
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        raw = client.next_videos(path)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Up next")
+        return finish()
+    cards = [parse.card(c, client) for c in raw]
+    kodiutils.log("up next after %s: %d card(s)" % (path, len(cards)))
+    if not cards:
+        kodiutils.notify("Nothing after %s" % (name or "this"))
+    finish(_add_cards(cards, client))
+
+def route_trending():
+    """The carousels the service's own search screen opens with.
+
+    Three of them, and they are the service's, not this addon's: two come
+    from the search screen and one from its trending-searches endpoint, each
+    naming and describing itself.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    rows = client.trending()
+    if not rows:
+        kodiutils.notify("Friendly TV sent no trending rows")
+        return finish()
+    kodiutils.log("trending: %s"
+                  % ", ".join("%s (%d)" % (r["name"], len(r["cards"]))
+                              for r in rows))
+    for row in rows:
+        add_dir(row["name"] or row["path"],
+                url(action="trending_row", code=row["path"],
+                    name=row["name"]),
+                plot=row["description"])
+    finish()
+
+
+def route_trending_row(code, name=""):
+    """One trending carousel, in full.
+
+    Fetched again rather than carried through the url, for the same reason a
+    Home row is: twenty-five cards do not fit in a plugin path.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    for row in client.trending():
+        if row["path"] == code or (name and row["name"] == name):
+            cards = [parse.card(c, client) for c in row["cards"]]
+            kodiutils.log("trending %s: %d card(s)"
+                          % (row["name"] or code, len(cards)))
+            return finish(_add_cards(cards, client))
+    kodiutils.notify("That row is no longer there")
+    finish("videos")
+
+def route_sessions():
+    """What this account currently has playing, anywhere.
+
+    Friendly TV caps concurrent streams, and this is the count it caps. Worth
+    being able to see, because the symptom of a leaked slot -- "too many
+    devices" with nothing actually watching -- is otherwise invisible from
+    inside Kodi.
+
+    Every capture of this endpoint caught it empty, so the list is known and
+    the shape of an entry is not. Rather than reach for field names never
+    observed, an entry is rendered from whatever scalar fields it turns out
+    to carry.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        sessions = client.active_sessions()
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Active streams")
+        return finish()
+
+    kodiutils.log("active streams: %d" % len(sessions))
+    if not sessions:
+        add_dir("Nothing is playing on this account", url(action="sessions"),
+                plot="Friendly TV reports no active streams. Selecting this "
+                     "checks again.")
+        return finish()
+
+    for index, session in enumerate(sessions, 1):
+        if isinstance(session, dict):
+            pairs = [(k, v) for k, v in sorted(session.items())
+                     if isinstance(v, (str, int, float, bool)) and v != ""]
+            label = str(dict(pairs).get("title")
+                        or dict(pairs).get("name")
+                        or "Stream %d" % index)
+            plot = "\n".join("%s: %s" % (k, v) for k, v in pairs)
+        else:
+            label, plot = "Stream %d" % index, str(session)
+        add_dir(label, url(action="sessions"), plot=plot)
+    finish()
+
+
+def route_signin():
+    """Ask for the credentials and sign in.
+
+    Listed as a folder, so Kodi calls this expecting a listing. Every way out
+    draws the root menu over the one the viewer is looking at: ending the
+    directory unsuccessfully is what produced "Error getting
+    plugin://...?action=signin", and after signing in the root menu is what
+    they want to see anyway.
+    """
+    email = kodiutils.get_setting("username") or ""
+    email = kodiutils.input_text("Friendly TV email address", default=email)
+    if not email:
+        return route_root(update=True)
+    password = kodiutils.input_text("Password", hidden=True)
+    if not password:
+        return route_root(update=True)
+    session = auth.Session()
+    try:
+        session.sign_in(email, password)
+    except auth.AuthError as exc:
+        kodiutils.ok_dialog(str(exc), "Could not sign in")
+        return route_root(update=True)
+    kodiutils.set_setting("username", email)
+    kodiutils.set_setting("password", password)
+    kodiutils.notify("Signed in as %s" % session.email)
+    route_root(update=True)
+
+
+def route_signout():
+    """Forget this device's session. A folder, so it ends a directory too."""
+    if not kodiutils.yesno("Sign out of Friendly TV on this device?"):
+        return route_root(update=True)
+    auth.Session().clear()
+    kodiutils.set_setting("password", "")
+    kodiutils.delete_file(api.CONFIG_FILE)
+    # The cached packages belong to the account that just left.
+    kodiutils.delete_file(api.PACKAGES_FILE)
+    kodiutils.notify("Signed out")
+    route_root(update=True)
+
+
+def _refresh():
+    xbmc.executebuiltin("Container.Refresh")
+
+
+def route_live():
+    """Every live channel, each showing what is on it now."""
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        cards = [parse.card(c, client) for c in client.live_channels()]
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not read the channel list")
+        return finish()
+
+    kodiutils.log("live: %d channel(s)" % len(cards))
+    for item in cards:
+        if not item["path"]:
+            continue
+        _add_playable(item, label=_live_label(item))
+    finish("videos")
+
+
+def _live_label(item):
+    """The channel's name in front, because that is what is being chosen.
+
+    These cards are titled with the *programme* on the air, which makes an
+    alphabetical channel list read as a random one: "Perry Mason" where the
+    viewer is looking for MeTV.
+    """
+    channel = item["channel_name"]
+    if channel and item["title"] and channel != item["title"]:
+        return "%s - %s" % (channel, item["title"])
+    return channel or item["title"]
+
+
+def route_guide():
+    """Channels as folders, each listing its own schedule."""
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        channels = client.guide_channels()
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not read the guide")
+        return finish()
+
+    kodiutils.log("guide: %d channel(s)" % len(channels))
+    # The web guide is a grid, and its columns are half hours. A folder list
+    # of channels cannot be a grid, but the other axis is worth having: what
+    # every channel is showing at one moment.
+    add_dir("What's on at...", url(action="guide_times"),
+            plot="Every channel at one time, half hour by half hour.")
+    for channel in channels:
+        display = channel.get("display") or {}
+        name = display.get("title") or display.get("subtitle1") or ""
+        if not name or channel.get("id") is None:
+            continue
+        logo = client.image(display.get("imageUrl"))
+        add_dir(name, url(action="guide_channel", channel_id=channel["id"],
+                          name=name),
+                art={"icon": logo, "thumb": logo})
+    finish()
+
+
+# The guide's columns, in the web player and here: half hours, on the hour
+# and on the half hour. Twelve hours of them is a day's evening viewing
+# without being a list nobody scrolls to the end of.
+SLOT_MS = 30 * 60 * 1000
+SLOTS = 24
+
+
+def route_guide_times():
+    """The half hours, so a time can be picked before a channel."""
+    now = int(time.time() * 1000)
+    # The half hour currently in progress, not the next one: "what is on now"
+    # is the first thing anyone wants from a guide.
+    first = now - (now % SLOT_MS)
+    for index in range(SLOTS):
+        when = first + index * SLOT_MS
+        label = _clock(when)
+        if index == 0:
+            label = "Now  (%s)" % label
+        elif _day(when) != _day(now):
+            label = "%s %s" % (_day(when), label)
+        add_dir(label, url(action="guide_at", at=when))
+    finish()
+
+
+def route_guide_at(at_ms):
+    """Every channel, and what it is showing at one moment."""
+    client = _client()
+    if client is None:
+        return finish()
+    now = int(time.time() * 1000)
+    when = int(at_ms or 0) or now
+    try:
+        channels = client.lineup()
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not read the guide")
+        return finish()
+
+    try:
+        rows = client.guide_window([c["id"] for c in channels],
+                                   when, when + SLOT_MS)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not read the guide")
+        return finish()
+
+    showing = {}
+    for row in rows:
+        programmes = [parse.programme(raw) for raw in (row.get("programs") or [])]
+        # The one covering the moment asked about; failing that the first to
+        # start inside the half hour, which is what a grid column shows when
+        # a programme begins part-way through it.
+        programmes.sort(key=lambda p: p["start_ms"])
+        covering = next((p for p in programmes
+                         if p["start_ms"] <= when < (p["end_ms"] or 0)), None)
+        if not covering:
+            covering = next((p for p in programmes
+                             if when <= p["start_ms"] < when + SLOT_MS), None)
+        if covering:
+            showing[str(row.get("channelId"))] = covering
+
+    live_now = when <= now < when + SLOT_MS
+    kodiutils.log("guide at %s: %d of %d channel(s) answered"
+                  % (_clock(when), len(showing), len(channels)))
+    for channel in channels:
+        prog = showing.get(channel["id"])
+        if not prog:
+            continue
+        on_now = prog["start_ms"] <= now < (prog["end_ms"] or 0)
+        plain = "%s  %s  (%s)" % (channel["name"], prog["title"],
+                                  _clock(prog["start_ms"]))
+        label = _badged(plain, "On Now" if on_now else "")
+        item = xbmcgui.ListItem(label=label)
+        _set_guide_meta(item, prog, {}, channel["name"], on_now)
+        if channel["logo"]:
+            item.setArt({"icon": channel["logo"], "thumb": channel["logo"]})
+        item.addContextMenuItems(_guide_menu(prog, {}))
+        if live_now and on_now and channel["path"]:
+            item.setProperty("IsPlayable", "true")
+            xbmcplugin.addDirectoryItem(
+                HANDLE,
+                url(action="guide_play", path=channel["path"],
+                    programme=prog["path"], label=plain),
+                item, isFolder=False)
+        else:
+            # Nothing to play at a time that has not come: an item with no
+            # url is one Kodi tries to open anyway, so it points at the info
+            # route instead.
+            xbmcplugin.addDirectoryItem(
+                HANDLE,
+                url(action="programme", name=prog["title"],
+                    channel=channel["name"], start=prog["start_ms"],
+                    end=prog["end_ms"]),
+                item, isFolder=False)
+    finish("videos")
+
+
+def route_guide_channel(channel_id, name):
+    """One channel's schedule for the next day."""
+    client = _client()
+    if client is None:
+        return finish()
+    now = int(time.time() * 1000)
+    try:
+        data = client.guide([channel_id], now, now + GUIDE_HOURS * 3600 * 1000)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not read the schedule")
+        return finish()
+
+    programmes = []
+    for row in data:
+        for raw in (row.get("programs") or []):
+            programmes.append(parse.programme(raw))
+    programmes.sort(key=lambda p: p["start_ms"])
+    kodiutils.log("guide %s: %d airing(s)" % (name, len(programmes)))
+
+    upcoming = [p for p in programmes if p["end_ms"] and p["end_ms"] >= now]
+
+    # Which of these are already recording or scheduled. One request for the
+    # whole window, which is what makes it worth asking at all -- the flag is
+    # otherwise not on a schedule row anywhere.
+    recorded = set()
+    try:
+        recorded = client.recorded_in_guide(
+            [channel_id], now, now + GUIDE_HOURS * 3600 * 1000)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.log("could not read the guide's record markers: %s" % exc)
+    if recorded:
+        kodiutils.log("guide %s: %d airing(s) marked to record"
+                      % (name, sum(1 for p in upcoming
+                                   if _programme_id(p) in recorded)))
+    on_air = next((p for p in upcoming
+                   if p["start_ms"] <= now < p["end_ms"]), None)
+    live_path = _live_path_for(client, channel_id, on_air)
+
+    # The schedule endpoint sends a title and two times per airing and
+    # nothing else, so the synopsis, cast and artwork are fetched from each
+    # airing's overlay. Same setting and same cap as a listing, because it is
+    # the same trade: one request per row for something worth reading.
+    overlays = {}
+    if kodiutils.get_setting_bool("full_info", True):
+        try:
+            raw = client.overlays(
+                [p["path"] for p in upcoming],
+                limit=kodiutils.get_setting_int("info_limit", 100))
+            overlays = {path: parse.overlay(data, client)
+                        for path, data in raw.items()}
+        except (api.ApiError, auth.AuthError) as exc:
+            kodiutils.log("could not read the guide's overlays: %s" % exc)
+
+    for prog in upcoming:
+        over = overlays.get(prog["path"]) or {}
+        taping = _programme_id(prog) in recorded
+        # The one the channel is showing. A listing card gets "On Now" from
+        # the service; a schedule row carries no badge at all, but the times
+        # say it, so the row is marked the same way and in the same words.
+        on_now = prog["start_ms"] <= now < prog["end_ms"]
+        # The badge is markup, and markup belongs in what is drawn, not in
+        # what is passed on: a label carried into the play url reaches the
+        # player as "[COLOR lime]" in the title.
+        plain = "%s  %s%s" % (_clock(prog["start_ms"]), prog["title"],
+                              "  [REC]" if taping else "")
+        label = _badged(plain, "On Now" if on_now else "")
+        item = xbmcgui.ListItem(label=label)
+        _set_guide_meta(item, prog, over, name, on_now)
+        item.addContextMenuItems(_guide_menu(prog, over, taping))
+        if live_path and prog["start_ms"] <= now < prog["end_ms"]:
+            # On the air: two ways to watch it, so the choice is offered
+            # rather than assumed. Joining live is the channel's own path;
+            # starting over is the programme's, which the stream endpoint
+            # answers with a VOD from the beginning.
+            item.setProperty("IsPlayable", "true")
+            xbmcplugin.addDirectoryItem(
+                HANDLE,
+                url(action="guide_play", path=live_path,
+                    programme=prog["path"], label=plain),
+                item, isFolder=False)
+        else:
+            # Not on the air, so nothing to play -- but an item with an empty
+            # url is not "inert", it is one Kodi tries to open, once per row,
+            # which is where a guide full of "InputStream: Error opening,"
+            # came from. Pointing it at the info route instead makes it inert.
+            #
+            # Not a folder, though: a folder that then declines to produce a
+            # listing is reported as "Error getting plugin://...", which is
+            # the whole reason sign-in looked broken.
+            xbmcplugin.addDirectoryItem(
+                HANDLE,
+                url(action="programme", name=prog["title"], channel=name,
+                    start=prog["start_ms"], end=prog["end_ms"]),
+                item, isFolder=False)
+    finish("videos")
+
+
+def _programme_id(prog):
+    """The id the record-marker set is keyed by: the tail of epg/play/<id>."""
+    return str(prog.get("path", "")).rsplit("/", 1)[-1]
+
+
+def _guide_menu(prog, over, taping=None):
+    """What a guide airing offers besides watching it.
+
+    The show it belongs to is only knowable from the airing's overlay
+    (``target_browse_episodes``), so these two entries appear when the
+    overlay was fetched and the airing is part of a series -- a film on a
+    channel has no show to go to.
+    """
+    menu = _recording_menu(prog["path"], taping)
+    menu.extend(_favourite_menu(prog["path"], prog["title"],
+                                prog.get("is_favourite")))
+    series = over.get("series")
+    if series:
+        title = over.get("title") or prog["title"]
+        menu.append(("Go to show", "Container.Update(%s)"
+                     % url(action="page", path=series, name=title)))
+        menu.extend(_similar_menu({"path": series, "title": title}))
+    return menu
+
+
+def _set_guide_meta(item, prog, over, channel, on_now=False):
+    """One guide row: when it is on, and whatever its overlay knows.
+
+    ``on_now`` decorates the title as well as the row's label, because in a
+    video container Kodi draws the info tag's title over the label it was
+    given -- a badge written only into the label is never seen.
+    """
+    when = "%s - %s on %s" % (_clock(prog["start_ms"]),
+                              _clock(prog["end_ms"]), channel)
+    bits = [when]
+    for extra in (over.get("episode_title"), over.get("repeat")):
+        if extra and extra not in bits:
+            bits.append(extra)
+    if over.get("plot"):
+        bits.append(over["plot"])
+    plot = "\n".join(bits)
+
+    art = {}
+    if over.get("image"):
+        art["thumb"] = art["poster"] = art["fanart"] = over["image"]
+    if over.get("channel_logo"):
+        art.setdefault("icon", over["channel_logo"])
+    if art:
+        item.setArt(art)
+
+    media = "episode" if over.get("season") or over.get("episode") else "video"
+    try:
+        tag = item.getVideoInfoTag()
+        tag.setMediaType(media)
+        tag.setTitle(_badged(over.get("episode_title") or prog["title"],
+                             "On Now" if on_now else ""))
+        tag.setPlot(plot)
+        if over.get("cast"):
+            tag.setCast([xbmc.Actor(person) for person in over["cast"]])
+        if over.get("rating"):
+            tag.setMpaa(over["rating"])
+        if media == "episode":
+            tag.setTvShowTitle(prog["title"])
+            if over.get("season"):
+                tag.setSeason(over["season"])
+            if over.get("episode"):
+                tag.setEpisode(over["episode"])
+        if prog["end_ms"] > prog["start_ms"]:
+            tag.setDuration(int((prog["end_ms"] - prog["start_ms"]) / 1000))
+    except (AttributeError, TypeError):
+        info = {"title": over.get("episode_title") or prog["title"],
+                "plot": plot, "mediatype": media}
+        if over.get("cast"):
+            info["cast"] = over["cast"]
+        if over.get("rating"):
+            info["mpaa"] = over["rating"]
+        item.setInfo("video", info)
+
+
+def route_programme(name, channel, start, end):
+    """Show what a not-yet-airing programme is, and stay where we are.
+
+    Friendly TV offers no catch-up from a guide entry, so there is nothing to
+    play here. Ending the directory unsuccessfully leaves the viewer in the
+    schedule they were reading rather than navigating them into an empty
+    folder.
+    """
+    when = " - ".join(p for p in (_clock(_ms(start)), _clock(_ms(end))) if p)
+    day = _day(_ms(start))
+    kodiutils.ok_dialog(
+        "%s\n\n%s%s on %s" % (name, (day + " ") if day else "", when, channel),
+        name)
+    xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+
+
+def _ms(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _live_path_for(client, channel_id, on_air=None):
+    """The ``channel/live/<slug>`` path for a guide channel id.
+
+    The guide's own channel rows carry ``channel//`` -- an empty path -- so
+    the slug has to come from somewhere else. Two routes, cheapest first:
+
+    1. The Live Now listing, which names both the slug and the network id the
+       guide keys on. One request covers the whole lineup.
+    2. Failing that, the guide overlay for the programme on the air, which
+       names the channel it is on. One request per channel, so it is only
+       reached for a channel Live Now did not carry.
+    """
+    try:
+        for channel in client.lineup():
+            if channel["id"] == str(channel_id) and channel["path"]:
+                return channel["path"]
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.log("Live Now did not resolve channel %s: %s"
+                      % (channel_id, exc))
+
+    if on_air and on_air.get("path"):
+        try:
+            found = client.watch_live_path(on_air["path"])
+            if found:
+                kodiutils.log("resolved channel %s through the guide overlay"
+                              % channel_id)
+                return found
+        except (api.ApiError, auth.AuthError) as exc:
+            kodiutils.log("the overlay did not resolve channel %s: %s"
+                          % (channel_id, exc))
+    return ""
+
+
+def _clock(milliseconds):
+    if not milliseconds:
+        return ""
+    return time.strftime("%H:%M", time.localtime(milliseconds / 1000.0))
+
+
+def _day(milliseconds):
+    if not milliseconds:
+        return ""
+    return time.strftime("%a", time.localtime(milliseconds / 1000.0))
+
+
+def route_search(query="", bucket=SEARCH_ALL):
+    """Friendly TV's own catalogue search.
+
+    This runs on a different API surface from the rest of the addon
+    (``/search/api/tivo/v1`` rather than ``/service/api/v1``) but on the same
+    host, with the same session headers, and it answers with ordinary cards --
+    so results list exactly like any other row and lead to the same pages.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    if not query:
+        query = kodiutils.input_text("Search Friendly TV") or ""
+    query = query.strip()
+    if not query:
+        return finish()
+
+    try:
+        found = client.search_all(query, bucket=bucket, limit=SEARCH_PAGE)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not search")
+        return finish()
+
+    cards = [parse.card(c, client) for c in found["cards"]]
+    kodiutils.log("search %r [%s]: %d of %s result(s) in %d request(s)%s"
+                  % (query, bucket, len(cards), found["total"], found["pages"],
+                     "" if found["complete"] else " (stopped at the cap)"))
+
+    # The type filters go at the top, where they narrow what is already on
+    # screen rather than being a question asked before anything is shown.
+    if bucket == SEARCH_ALL:
+        for label, code in SEARCH_BUCKETS:
+            add_dir("%s only" % label,
+                    url(action="search", query=query, bucket=code),
+                    plot='%s matching "%s"' % (label, query))
+
+    content = _add_cards(cards, client)
+
+    if not cards:
+        kodiutils.notify('Nothing matching "%s"' % query)
+    elif not found["complete"]:
+        # Say it rather than let a truncated list look complete.
+        kodiutils.notify("Showing the first %d of %s" % (len(cards),
+                                                         found["total"]))
+    finish(content)
+
+
+RECORD_FORM = "recording_form"
+STOP_FORM = "stop_recording_form"
+
+
+def _recording_menu(programme_path, taping=None):
+    """Context-menu entries for a guide airing, or none without a path.
+
+    ``taping`` is whether the airing already has a record marker, which the
+    guide now knows for a whole window in one request. Where it is known only
+    the applicable entry is offered; where it is not (``None``) both are, as
+    before, since guessing wrong here means offering to stop a recording that
+    was never started.
+    """
+    if not programme_path:
+        return []
+    record = ("Record...", "RunPlugin(%s)"
+              % url(action="record", path=programme_path, form=RECORD_FORM))
+    stop = ("Stop or delete recording...", "RunPlugin(%s)"
+            % url(action="record", path=programme_path, form=STOP_FORM))
+    if taping is None:
+        return [record, stop]
+    return [stop] if taping else [record]
+
+
+# The paths a title's own page is at, and so the ones that record the way its
+# page does. Everything else on a card -- a guide airing, a channel -- keeps
+# the form, which is where "this episode or the series" is asked.
+TITLE_PATHS = ("movies/", "series/")
+
+
+def _records_from_its_page(item):
+    """Whether this card records the way its own page does.
+
+    A title is not recorded through the form mechanism at all. Its page has
+    Record and Stop Recording buttons, and pressing either posts the title's
+    own path -- four captures, two titles, both actions:
+
+        POST /service/api/auth/unify/series/record
+        path=movies/11883820150&action=1        -> "Scheduled to Record"
+        path=movies/434993&action=0             -> "Stop Recording"
+        path=series/shows/1897528247&action=1   -> "Scheduled to Record"
+        path=series/shows/1897528247&action=0   -> "Stop Recording"
+
+    Which is what the endpoint's name says: it is not film-specific, and a
+    series' page uses the same call. Asking a *film's* own form instead
+    answers with a title and a cancel button and nothing to choose, which is
+    what the addon used to report.
+    """
+    return (item.get("path") or "").startswith(TITLE_PATHS)
+
+
+def _title_recording_menu(item):
+    """Record or stop, by what is known about the title's state.
+
+    Three states, and they are not the same question:
+
+    * the card says ``isRecorded`` -- 582 of the captured title cards do, the
+      ones tied to an airing -- so the applicable verb is the only one shown;
+    * the card says nothing, which is the other 4804: every captured title
+      page carries a ``record_off`` button, so a plain catalogue title is
+      offered Record. Stopping it is reachable where the service says it is
+      recording, which is where that is known;
+    * a title's own page said, in which case that is used, since the page is
+      the thing with a Record button on it.
+
+    A guide airing and a channel keep the form the card names. That is not
+    the same question either: the form asks whether to record this episode or
+    the whole series, and this call has no way to say.
+    """
+    path, name = item["path"], item.get("title", "")
+    if not _records_from_its_page(item):
+        return [("Recording...", "RunPlugin(%s)"
+                 % url(action="record", path=path,
+                       form=item.get("recording_form")))]
+
+    record = ("Record", "RunPlugin(%s)"
+              % url(action="record_title", path=path, name=name))
+    stop = ("Stop recording", "RunPlugin(%s)"
+            % url(action="record_title", path=path, name=name, stop=1))
+    state = item.get("record")
+    if not state and item.get("is_recorded") is None \
+            and path in _recorded_here():
+        # Nothing on the card or the page says, but this box recorded it.
+        return [stop]
+    if state:
+        # A page's own button. "record_off" is the only half ever captured;
+        # anything else is the service saying something this addon has not
+        # seen, so both verbs are offered rather than one being guessed.
+        if state != "record_off":
+            kodiutils.log("%s draws a %r button; offering both verbs"
+                          % (path, state))
+            return [record, stop]
+        return [record]
+    return [stop] if item.get("is_recorded") else [record]
+
+
+# What this installation has recorded by path, so a title can be stopped
+# again afterwards. A plain catalogue card carries no isRecorded to read and
+# does not grow one after recording -- the service answers "Scheduled to
+# Record" and the listing comes back exactly as it was -- so without this the
+# only offer on a title just recorded is to record it again, which is what
+# happened: two "Scheduled to Record" five seconds apart.
+#
+# It is a note of what this box did, not a claim about the account: a
+# recording made in another app is not in it, and the card's own flag still
+# wins wherever the service does say.
+RECORDED_FILE = "recorded.json"
+# Long enough to cover a scheduled airing, short enough that the file does not
+# grow forever. Nothing captured says when a booking stops existing.
+RECORDED_DAYS = 60
+_RECORDED = [None]
+
+
+def _recorded_here():
+    """The paths this box has recorded, read once per plugin call."""
+    if _RECORDED[0] is None:
+        stored = kodiutils.read_json(RECORDED_FILE, default={}) or {}
+        _RECORDED[0] = stored if isinstance(stored, dict) else {}
+    return _RECORDED[0]
+
+
+def _remember_recording(path, recording):
+    stored = dict(_recorded_here())
+    if recording:
+        stored[path] = int(time.time())
+    else:
+        stored.pop(path, None)
+    cutoff = int(time.time()) - RECORDED_DAYS * 24 * 3600
+    stored = {p: t for p, t in stored.items() if int(t or 0) >= cutoff}
+    _RECORDED[0] = stored
+    kodiutils.write_json(RECORDED_FILE, stored)
+
+
+def route_record_title(path, name="", stop=False):
+    """Record a title from its own path, or stop it, and report the answer."""
+    client = _client()
+    if client is None:
+        return
+    action = api.Api.STOP if stop else api.Api.RECORD
+    try:
+        said = client.record_title(path, action)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Recording")
+        return
+    _remember_recording(path, not stop)
+    kodiutils.log("%s %s: %s" % ("stopped recording" if stop else "recorded",
+                                 path, said or "no message"))
+    kodiutils.notify(said or (("Stopped recording %s" if stop
+                               else "Recording %s") % (name or "it")))
+    _refresh()
+
+
+def route_record(programme_path, form_code):
+    """Ask the service what it can do with this airing, then do the chosen one.
+
+    Nothing about the instruction string is built here: the form's options
+    arrive with an opaque ``value`` each and the chosen one is echoed back
+    verbatim. That is why this works for recording an episode, recording a
+    series, stopping either and deleting a series without the addon knowing
+    what distinguishes them.
+    """
+    client = _client()
+    if client is None:
+        return
+    try:
+        form = client.form(form_code, programme_path)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Recording")
+        return
+
+    options = parse.form_options(form)
+    if not options:
+        kodiutils.log("recording form %r on %s offered no options; it "
+                      "returned element(s): %s"
+                      % (form_code, programme_path,
+                         [(el.get("elementCode"), el.get("fieldType"))
+                          for el in (form.get("elements") or [])] or "none"))
+        kodiutils.notify("Nothing to record for this")
+        return
+
+    if len(options) == 1:
+        chosen = options[0]
+    else:
+        index = xbmcgui.Dialog().select(
+            "Recording", [o["label"] for o in options])
+        if index < 0:
+            return
+        chosen = options[index]
+
+    try:
+        said = client.submit_form(form_code, programme_path, chosen["value"])
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Recording")
+        return
+    kodiutils.log("recording: %s -> %s" % (chosen["code"], said or "no message"))
+    # The service phrases its own confirmation ("Added to My Stuff"), which is
+    # better than anything invented here.
+    kodiutils.notify(said or chosen["label"])
+    _refresh()
+
+
+def route_home():
+    """Home, which is the one screen assembled from two endpoints.
+
+    ``page/content?path=home`` carries the banners and the Live Now row and
+    nothing else -- listing it the way every other page is listed gives a Home
+    with a single row of live channels on it, which is exactly what the first
+    build did. The rows a viewer expects ("Continue Watching", "Recommended
+    for You", "Just Added Movies" ...) come from the TiVo carousel endpoint
+    instead, paged behind a cursor.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        rows = client.home_rows()
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open Home")
+        return finish()
+    if not rows:
+        kodiutils.notify("Home came back empty")
+        return finish()
+    for row in rows:
+        add_dir(row["name"] or row["code"],
+                url(action="home_row", code=row["code"], name=row["name"]),
+                plot="%d item(s)" % len(row["cards"]))
+    finish()
+
+
+def route_home_row(code, name):
+    """One row of Home, in full.
+
+    Home is fetched again rather than carried through the url: a row of thirty
+    cards does not fit in a plugin path.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        rows = client.home_rows()
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or code))
+        return finish()
+    for row in rows:
+        if row["code"] == code:
+            kodiutils.log("home row %r: %d card(s)" % (code, len(row["cards"])))
+            return finish(_add_cards(row["cards"], client))
+    kodiutils.notify("That row is no longer there")
+    finish("videos")
+
+
+def route_page(path, name=""):
+    """A page of the service's own hierarchy: Movies, TV, My Stuff."""
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        response = client.page(path)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or path))
+        return finish()
+
+    sections = parse.sections(response, client)
+    detail = parse.detail(response, client)
+    kodiutils.log("page %s: %d section(s), %d action(s)"
+                  % (path, len(sections), len(detail["actions"])))
+
+    media = parse.media_of(path)
+
+    # A film or series page is not made of sections: what plays it is a button
+    # in the page's content pane. Reading only sections left a film's page
+    # completely empty, since a film has no seasons under it either.
+    for act in detail["actions"]:
+        _add_detail_action(act, detail, media, page_path=path)
+
+    # A page that is one section is that section: making the viewer open a
+    # single folder to reach the only thing behind it is a wasted click. Not
+    # when there are actions above it, which the flattening would bury.
+    if not detail["actions"] and len(sections) == 1 and sections[0]["cards"]:
+        return finish(_add_cards(sections[0]["cards"], client))
+
+    # On a title's page the synopsis and cast belong on every row, because
+    # Kodi shows the highlighted row's information -- a season folder with
+    # nothing on it is what makes a show look like it has no description.
+    describe = detail if detail["plot"] or detail["cast"] else None
+    for section in sections:
+        full = _view_all_of(section)
+        if full:
+            # The section says where its whole list lives, so the folder goes
+            # there rather than to the two or three dozen cards the page
+            # happened to embed.
+            _add_section_dir(section["name"] or full, full, section["code"],
+                             section["name"], "section_all", describe)
+        elif section["cards"]:
+            _add_section_dir(section["name"] or path, path, section["code"],
+                             section["name"], "section_cached", describe)
+        elif section["code"]:
+            _add_section_dir(section["name"] or section["code"], path,
+                             section["code"], section["name"], "section",
+                             describe)
+    if not sections and not detail["actions"]:
+        if detail.get("subscribe"):
+            _say_needs_subscription(detail, path)
+        else:
+            kodiutils.notify("Nothing here")
+    finish("seasons" if describe and media == "tvshow" else "")
+
+
+def _add_section_dir(label, path, code, name, action, detail):
+    """A section folder, carrying the page's own description where there is one."""
+    item = xbmcgui.ListItem(label=label)
+    if detail:
+        item.setArt(_detail_art(detail))
+        _set_detail_meta(item, detail, label, "video")
+    xbmcplugin.addDirectoryItem(
+        HANDLE, url(action=action, path=path, code=code, name=name),
+        item, isFolder=True)
+
+
+def _detail_art(detail):
+    art = {}
+    if detail["poster"]:
+        art["thumb"] = art["poster"] = detail["poster"]
+    if detail["fanart"]:
+        art["fanart"] = detail["fanart"]
+    return art
+
+
+def _detail_plot(detail):
+    """The page's synopsis, with what is on now and when, underneath it."""
+    parts = [detail["plot"]]
+    for extra in (detail["now"], detail["airing"], detail["expires"]):
+        if extra and extra not in parts:
+            parts.append(extra)
+    return "\n\n".join(p for p in parts if p)
+
+
+def _set_detail_meta(item, detail, label, media):
+    """The synopsis, cast, director, year and certificate onto one row.
+
+    None of this is on the card in a listing -- across every captured
+    response, `description` and `Director` are empty on all 8191 cards and
+    `cast` on all but 160. It exists only on the title's own page, so it is
+    read there and put on every row of that page, which is where Kodi looks
+    when a row is highlighted.
+    """
+    plot = _detail_plot(detail)
+    try:
+        tag = item.getVideoInfoTag()
+        tag.setMediaType(media)
+        tag.setTitle(label)
+        if plot:
+            tag.setPlot(plot)
+        if detail["cast"]:
+            tag.setCast([xbmc.Actor(name) for name in detail["cast"]])
+        if detail["directors"]:
+            tag.setDirectors(detail["directors"])
+        if detail["year"]:
+            tag.setYear(detail["year"])
+        if detail["rating"]:
+            tag.setMpaa(detail["rating"])
+    except (AttributeError, TypeError):
+        info = {"title": label, "mediatype": media}
+        if plot:
+            info["plot"] = plot
+        if detail["cast"]:
+            info["cast"] = detail["cast"]
+        if detail["directors"]:
+            info["director"] = ", ".join(detail["directors"])
+        if detail["year"]:
+            info["year"] = detail["year"]
+        if detail["rating"]:
+            info["mpaa"] = detail["rating"]
+        item.setInfo("video", info)
+
+
+def _add_detail_action(action, detail, media="video", page_path=""):
+    """A play button from a details page, with the page's own art and blurb.
+
+    ``page_path`` is the title's own path rather than the button's target, so
+    the menu here favourites *the film* and not the airing it happens to be
+    playing from. Without it, a title opened from Information had no way to
+    be favourited at all.
+    """
+    label = action["label"] or detail["title"] or "Play"
+    if detail["title"] and detail["title"].lower() not in label.lower():
+        label = "%s - %s" % (label, detail["title"])
+    item = xbmcgui.ListItem(label=label)
+    item.setArt(_detail_art(detail))
+    _set_detail_meta(item, detail, label, media)
+    item.setProperty("IsPlayable", "true")
+    if page_path:
+        # The page states whether it is already a favourite, so the right
+        # verb is shown here rather than both. The rest is what a card of the
+        # same title offers in a listing: reaching a film through its own page
+        # should not lose the menu that reaching it through a row gives.
+        stand_in = {"path": page_path, "title": detail["title"],
+                    "record": detail.get("record")}
+        menu = _favourite_menu(page_path, detail["title"],
+                               detail.get("is_favourite"))
+        if detail.get("record") and _records_from_its_page(stand_in):
+            # The page drew a Record button, so this title can be recorded
+            # whatever its card in a listing did or did not say.
+            menu.extend(_title_recording_menu(stand_in))
+        menu += _similar_menu(stand_in) + _cast_menu(stand_in)
+        if action.get("path"):
+            menu.append(("Up next", "Container.Update(%s)"
+                         % url(action="next", path=action["path"],
+                               name=detail["title"] or label)))
+        item.addContextMenuItems(menu)
+    xbmcplugin.addDirectoryItem(
+        HANDLE, url(action="play", path=action["path"], label=label),
+        item, isFolder=False)
+
+
+def route_section(path, code, name):
+    """A section the page described but did not fill in."""
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        response = client.section(path, code)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or code))
+        return finish()
+    rows = parse.section_data(response, client)
+    cards = []
+    for row in rows:
+        cards.extend(row["cards"])
+
+    # Two different nothings, and a blank folder cannot tell them apart: the
+    # service answering with the row and no items in it, or not answering with
+    # the row at all. The first is an empty row and correct; the second means
+    # the request was wrong. Naming the rows that came back puts that in the
+    # log instead of leaving it to be guessed at.
+    kodiutils.log("section %s/%s: %d card(s) from %d row(s) [%s]"
+                  % (path, code, len(cards), len(rows),
+                     ", ".join("%s:%d%s" % (r["code"] or "?", len(r["cards"]),
+                                            "+" if r["has_more"] else "")
+                               for r in rows) or "none"))
+
+    if not cards:
+        kodiutils.notify("Nothing in %s" % (name or code) if rows
+                         else "Friendly TV sent no rows for %s" % (name or code))
+    finish(_add_cards(cards, client))
+
+
+
+def _view_all_of(section):
+    """A section's own "see everything" path, where the addon can follow it.
+
+    Sections name one in ``sectionControls.viewAllTargetPath``, in two shapes:
+
+        section/live_now_home          a page path -- page/content opens it
+        /carousels/nostalgia           never fetched in any capture
+
+    Only the first is followed. The second is the shape the search screen's
+    trending rows also use, and nothing captured shows how a single carousel
+    is asked for on its own, so guessing an endpoint would be guessing.
+    """
+    target = (section.get("view_all") or "").strip()
+    return target if target.startswith("section/") else ""
+
+
+def route_section_all(path, code, name):
+    """A section in full, from the path the section itself named.
+
+    A page embeds two or three dozen cards of a row and the row says where the
+    rest are; without this a long row is silently cut off at whatever the page
+    chose to include.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        response = client.page(path, count=SECTION_ALL)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or path))
+        return finish()
+    cards = []
+    for section in parse.sections(response, client):
+        cards.extend(section["cards"])
+    kodiutils.log("section %s in full: %d card(s)" % (path, len(cards)))
+    if not cards:
+        kodiutils.notify("Nothing in %s" % (name or path))
+    finish(_add_cards(cards, client))
+
+def route_section_cached(path, code, name):
+    """A section the page already sent the cards for.
+
+    Fetched again rather than carried through the url: a listing's worth of
+    cards does not fit in a plugin path, and the page is cheap.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        response = client.page(path)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or code))
+        return finish()
+    for section in parse.sections(response, client):
+        if section["code"] == code:
+            return finish(_add_cards(section["cards"], client))
+    kodiutils.notify("That row is no longer there")
+    finish("videos")
+
+
+def _plays_through_its_page(item):
+    """True for a card whose page exists only to hold one play button.
+
+    A film's details page has a play button and nothing else -- no seasons, no
+    episodes -- so listing it as a folder makes the viewer open a directory to
+    find a single item. It is a playable thing wearing a page's clothes.
+
+    A series page is a real folder: it has a season under it per pane, and its
+    play button joins the channel currently airing the show, which is not what
+    picking the series off a row means.
+    """
+    return item["path"].startswith("movies/")
+
+
+def _describe(cards, client):
+    """Fill in each card's synopsis and cast from its own page.
+
+    Kodi's Information dialog reads the list item, and a card carries no
+    synopsis, cast or director -- those are only on the title's page. So
+    without this, Information on a film is an empty box. It costs one request
+    per row, run on a pool, and is a setting because that cost is real.
+    """
+    if not kodiutils.get_setting_bool("full_info", True):
+        return
+    wanted = [c["path"] for c in cards
+              if c["path"] and parse.media_of(c["path"]) in ("movie", "tvshow")]
+    if not wanted:
+        return
+    try:
+        pages = client.details(wanted,
+                               limit=kodiutils.get_setting_int("info_limit", 100))
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.log("could not read details for this listing: %s" % exc)
+        return
+    for card in cards:
+        response = pages.get(card["path"])
+        if not response:
+            continue
+        detail = parse.detail(response, client)
+        card["detail"] = detail
+        # The title's own page states whether it is a favourite, and a
+        # listing card does not keep up: favouriting a film and coming back
+        # left the card still saying it was not one, so the menu kept
+        # offering "Add" and a second press added it again. The page is
+        # already fetched here, so the authoritative answer is free.
+        if detail.get("is_favourite") is not None:
+            card["is_favourite"] = detail["is_favourite"]
+
+
+def _add_cards(cards, client=None):
+    """List parsed cards, and say what kind of listing they made.
+
+    Returned so the caller can hand it to finish(): a listing of shows has to
+    declare itself as shows for a skin to lay it out as shows.
+    """
+    if client is not None:
+        _describe(cards, client)
+    cards = _without_addon_titles(cards, client)
+    for item in cards:
+        if not item["path"]:
+            continue
+        try:
+            _add_card(item)
+        except Exception as exc:
+            # One row that Kodi will not accept used to take the whole
+            # listing with it: the directory failed, and the log said only
+            # "Error getting plugin://..." with nothing about which row or
+            # why. A listing missing one entry is better than no listing, and
+            # naming the entry is what makes the next one fixable.
+            kodiutils.log_error("could not list %r (%s): %s"
+                                % (item.get("title"), item.get("path"), exc))
+    return _content_of(cards)
+
+
+
+def _without_addon_titles(cards, client=None):
+    """Drop what the account cannot watch, unless asked to keep it.
+
+    Two things are hidden, and both are now settled rather than inferred.
+
+    **A title flagged ``isRedirectToPayment``** -- the "+ Add-On" badge. The
+    flag is **account-relative**: it means "you cannot watch this", not "this
+    is add-on content". One search proves it, taken while the account held a
+    HISTORY Vault trial and nothing else. `query=good witch` answered with
+    eleven titles in one response:
+
+        6 unflagged   "The Good Witch..."  -- Hallmark Channel, in the plan
+        5 flagged     "Good Witch..."      -- Hallmark+, an add-on NOT held
+
+    So flags were live in that very response, while searches in the same
+    session returned the held add-on's own films -- "Perspectives: Babe Ruth"
+    among them, the film that had refused to play before -- with no markers at
+    all. Held is unflagged, unheld is flagged, base plan is unflagged.
+
+    (An earlier reading of this was wrong twice over, which is why it is
+    spelled out: the partner and Add-ons pages flag *nothing*, held or not, so
+    evidence drawn from them showed only which page it came from.)
+
+    **An add-on channel itself** -- a card marked
+    ``pageAttributes.contentType: "network"``. That marking does not mean
+    add-on: MeTV, MeTV+ and MeTV Toons carry it too, with partner pages of
+    their own, and they are in the base plan. Only a channel the service names
+    as an add-on counts, and then only if the account does not hold it --
+    which ``activepackages`` states outright.
+    """
+    if kodiutils.get_setting_bool("show_addon_content", False):
+        return cards
+
+    held = client.held_addons() if client is not None else None
+    channels = client.addon_channel_names() if client is not None else None
+
+    # A listing that quietly does not filter is indistinguishable from one
+    # with nothing to filter, and a log showed the same row filtered once and
+    # not the next time with no way to tell which had happened. Say it.
+    if client is None or channels is None:
+        kodiutils.log("not filtering this listing: %s"
+                      % ("no client" if client is None
+                         else "the account's packages could not be read"))
+    drop = set()
+
+    for item in cards:
+        if item.get("needs_addon") or (item.get("detail") or {}).get("subscribe"):
+            drop.add(id(item))
+            continue
+        if item.get("content_type") != "network" or not channels:
+            continue
+        name = api._addon_key(item.get("title"))
+        if name in channels and name not in (held or set()):
+            drop.add(id(item))
+
+    if not drop:
+        return cards
+    gone = [c for c in cards if id(c) in drop]
+    kodiutils.log("hiding %d title(s) this account cannot watch: %s"
+                  % (len(gone), ", ".join(c.get("title") or c.get("path") or "?"
+                                          for c in gone[:6])))
+    return [c for c in cards if id(c) not in drop]
+
+
+def _add_card(item):
+    """List one card, as whatever kind of thing it is."""
+    if item.get("coming_soon") and item["playable"]:
+        # The service lists these and then refuses them -- "The content
+        # provider has restricted this program from being available On
+        # Demand." Offering them as playable means Kodi tries, fails, and
+        # logs "skipping unplayable item"; a season of them takes several
+        # tries to find one that plays. Selecting one now says what it is.
+        _add_coming_soon(item)
+    elif item["playable"]:
+        _add_playable(item)
+    elif parse.is_genre(item):
+        # A genre is a word, not a page: there is nothing at "Westerns"
+        # to open. Search matches on genre, so the word goes there.
+        add_dir(item["title"] or item["path"],
+                url(action="search", query=item["path"]),
+                art=_art(item),
+                plot="%s from Friendly TV's catalogue."
+                     % (item["title"] or item["path"]))
+    elif _plays_through_its_page(item):
+        _add_playable(item, action="play_page")
+    else:
+        _add_card_folder(item)
+
+
+def _add_card_folder(item):
+    """A card that opens a page -- a show, mostly -- with its own metadata.
+
+    A show is a folder because it has seasons under it, but it is still a
+    show: without the mediatype it lists as an unnamed directory and a skin
+    has nothing to draw a poster shelf from.
+    """
+    plain = item["title"] or item["path"]
+    label = _labelled(item, plain)
+    listitem = xbmcgui.ListItem(label=label)
+    listitem.setArt(_art(item))
+    _set_meta(listitem, item, label)
+    menu = _card_menu(item)
+    if menu:
+        listitem.addContextMenuItems(menu)
+    xbmcplugin.addDirectoryItem(
+        HANDLE, url(action="page", path=item["path"], name=item["title"]),
+        listitem, isFolder=True)
+
+
+def _favourite_menu(path, name, is_favourite):
+    """The favourite entry that applies, given what is known about the item.
+
+    A card carries ``isFavourite``, so only the useful verb is offered --
+    showing both would leave the viewer guessing which state they are in.
+    Where that is genuinely unknown (``None``: a title's own page does not
+    say), both are offered rather than guessing a verb that may be the wrong
+    one.
+    """
+    if not path:
+        return []
+    add = ("Add to Favourites", "RunPlugin(%s)"
+           % url(action="favourite", path=path, name=name, on="1"))
+    remove = ("Remove from Favourites", "RunPlugin(%s)"
+              % url(action="favourite", path=path, name=name, on="0"))
+    if is_favourite is None:
+        return [add, remove]
+    return [remove] if is_favourite else [add]
+
+
+def route_favourite(path, name, on):
+    """Put this in My Stuff, or take it out."""
+    client = _client()
+    if client is None:
+        return
+    try:
+        said = client.favourite(path, on)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Favourites")
+        return
+    kodiutils.log("favourite %s %s -> %s"
+                  % ("on" if on else "off", path, said or "no message"))
+    # "Added to My Stuff" / "Removed from My Stuff", in the service's words.
+    kodiutils.notify(said or (name or path))
+    _refresh()
+
+
+def route_forget(content_id, content_type, name=""):
+    """Take a title out of the Continue Watching row."""
+    client = _client()
+    if client is None:
+        return
+    try:
+        said = client.forget_continue_watching(content_id, content_type)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Continue Watching")
+        return
+    kodiutils.log("forgot %s (%s) -> %s"
+                  % (content_id, content_type, said or "no message"))
+    kodiutils.notify(said or ("Removed %s" % (name or "it")))
+    _refresh()
+
+
+def _card_menu(item):
+    """Everything a card offers besides opening or playing it.
+
+    Recording is not a guide-only thing: 2221 of the captured cards name a
+    recording form, films and channels among them. The card says which form
+    applies, so that is the one asked for -- the guide's airings say
+    "recording_form" and a card says "player_recording_form".
+    """
+    menu = _favourite_menu(item.get("path"), item.get("title", ""),
+                           item.get("is_favourite"))
+    if item.get("resume") and item.get("content_id"):
+        # A part-watched card, which is what Continue Watching is made of --
+        # the "seek" marker is only ever on those. Taking it out of that row
+        # is keyed by the card's own id and content type.
+        menu.append(("Remove from Continue Watching", "RunPlugin(%s)"
+                     % url(action="forget", content_id=item["content_id"],
+                           content_type=item.get("content_type", ""),
+                           name=item.get("title", ""))))
+    path = item.get("path")
+    if path and (_records_from_its_page(item)
+                 or (item.get("recording_form") and item.get("can_record"))):
+        # A title is offered recording whatever its card says: 4804 of the
+        # 5386 captured title cards carry no recording attributes at all --
+        # every plain catalogue film and show -- and their pages all carry a
+        # Record button regardless. Everything else is offered it only when
+        # its own card says recording is allowed.
+        menu.extend(_title_recording_menu(item))
+    if item.get("playable") and item.get("path") and not item.get("coming_soon"):
+        # What the service says comes after this. It asks the same thing
+        # during playback, naming what is playing.
+        menu.append(("Up next", "Container.Update(%s)"
+                     % url(action="next", path=item["path"],
+                           name=item.get("episode_title")
+                           or item.get("title", ""))))
+    return menu + _similar_menu(item) + _cast_menu(item)
+
+
+def _cast_menu(item):
+    """A way into "what else is this person in".
+
+    Search matches on people as well as titles -- "Raymond Burr" answers with
+    Perry Mason and two of his films -- so the cast is worth being able to
+    search. The names are not on the card, only on the title's page, so this
+    entry opens a chooser that fetches them rather than putting them in the
+    url.
+    """
+    if not parse.content_id(item.get("path")):
+        return []
+    return [("Search the cast...", "RunPlugin(%s)"
+             % url(action="cast", path=item["path"],
+                   name=item.get("title", "")))]
+
+
+def route_cast(path, name=""):
+    """Pick someone from this title's cast, and search for them."""
+    client = _client()
+    if client is None:
+        return
+    try:
+        detail = parse.detail(client.page(path), client)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Cast")
+        return
+    people = detail["cast"] + [d for d in detail["directors"]
+                               if d not in detail["cast"]]
+    if not people:
+        kodiutils.notify("No cast listed for %s" % (name or "this"))
+        return
+    index = xbmcgui.Dialog().select(name or detail["title"] or "Cast", people)
+    if index < 0:
+        return
+    kodiutils.log("searching for cast member %r" % people[index])
+    xbmc.executebuiltin("Container.Update(%s)"
+                        % url(action="search", query=people[index]))
+
+
+def _similar_menu(item):
+    """A "More like this" entry, for a card the service can key on."""
+    if not parse.content_id(item.get("path")):
+        return []
+    return [("More like this", "Container.Update(%s)"
+             % url(action="similar", path=item["path"],
+                   name=item.get("title", "")))]
+
+
+
+def _add_coming_soon(item):
+    """A title the service has listed but will not serve yet.
+
+    Listed rather than hidden: it is part of the season and its place in the
+    order is worth seeing. Not playable, because it is not.
+    """
+    label = _labelled(item, item["episode_title"] or item["title"]
+                      or item["path"])
+    listitem = xbmcgui.ListItem(label=label)
+    listitem.setArt(_art(item))
+    _set_meta(listitem, item, label)
+    menu = _card_menu(item)
+    if menu:
+        listitem.addContextMenuItems(menu)
+    xbmcplugin.addDirectoryItem(
+        HANDLE, url(action="coming_soon",
+                    label=item["episode_title"] or item["title"],
+                    name=_when(item), path=item["path"]),
+        listitem, isFolder=False)
+
+
+def route_coming_soon(label, name=""):
+    """Say that a title is not out yet, when it airs, and stay where we are.
+
+    Friendly TV's own words for it, when it is asked for anyway, are "The
+    content provider has restricted this program from being available On
+    Demand." -- which reads like a fault rather than a schedule. ``name`` is
+    the airing window the card carried, already worded.
+    """
+    lines = ["%s is not available to watch yet." % (label or "This")]
+    if name:
+        lines.append(name)
+    lines.append("Friendly TV lists it as Coming Soon. It plays once the "
+                 "service releases it on demand.")
+    kodiutils.log("coming soon: %s%s" % (label or "?",
+                                         (" -- %s" % name) if name else ""))
+    kodiutils.ok_dialog("\n\n".join(lines), label or "Coming Soon")
+    xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+
+def _add_playable(item, label=None, action="play"):
+    # The badge is decoration for the row only. It must not reach the url:
+    # that label is what the player is told it is playing, and it came out as
+    # "A New Beginning [COLOR gold](+ Add-On)[/COLOR]" in a plugin path.
+    plain = label or item["title"] or item["path"]
+    shown = _labelled(item, plain)
+    listitem = xbmcgui.ListItem(label=shown)
+    listitem.setArt(_art(item))
+    listitem.setProperty("IsPlayable", "true")
+    _set_meta(listitem, item, shown)
+    menu = _card_menu(item)
+    if menu:
+        listitem.addContextMenuItems(menu)
+    xbmcplugin.addDirectoryItem(
+        HANDLE, url(action=action, path=item["path"], label=plain),
+        listitem, isFolder=False)
+
+
+# The badges the service puts on a card, and what to colour them. Every value
+# captured, over 2112 badges, is one of these or an "Expires in ..." -- which
+# is why the fallback is a colour rather than a rule.
+#
+#   On Now 1476 | Coming Soon 384 | New Episodes 91 | Expires in ... 102
+#   New Episode 33 | + Add-On 22 | New Movie 4
+BADGE_COLOURS = {
+    "on now": "lime",
+    "coming soon": "grey",
+    "+ add-on": "gold",
+}
+BADGE_DEFAULT = "orange"
+
+
+def _badged(label, badge):
+    """A label with one of the service's badges on it, coloured."""
+    badge = (badge or "").strip()
+    if not badge or badge.lower() in label.lower():
+        return label
+    return "%s [COLOR %s](%s)[/COLOR]" % (
+        label, BADGE_COLOURS.get(badge.lower(), BADGE_DEFAULT), badge)
+
+
+def _labelled(item, label):
+    """The label a card shows, with the service's own badge on it.
+
+    Friendly TV badges a card and Kodi has nowhere to draw one, so it goes in
+    the label -- which is what a viewer reads before choosing. It matters
+    most for "Coming Soon": those episodes are listed but not served, and
+    selecting one is refused with the service's own words, "The content
+    provider has restricted this program from being available On Demand.",
+    which reads like a fault. A season of them takes several tries to find
+    one that plays.
+
+    The badge's own wording is used rather than one invented here, so
+    "On Now", "New Episodes", "Expires in 24 hours" and "+ Add-On" all come
+    through as the service wrote them.
+    """
+    return _badged(label, item.get("badge"))
+
+
+def _art(item):
+    art = {}
+    if item.get("poster"):
+        art["thumb"] = art["poster"] = art["fanart"] = item["poster"]
+    if item.get("channel_logo"):
+        art["icon"] = item["channel_logo"]
+        art.setdefault("thumb", item["channel_logo"])
+    return art
+
+
+def _plot_text(item):
+    """What a card says about itself, as one block of text.
+
+    The service spreads this across subtitles that hold different things on
+    different pages -- an episode number and airtime on a live card, a
+    synopsis on a film -- so they are joined rather than assigned to fields
+    that would be wrong half the time.
+    """
+    parts = []
+    for key in ("subtitle", "description"):
+        value = item.get(key)
+        if value and value not in parts:
+            parts.append(value)
+    if item.get("episode_title") and item["episode_title"] not in parts:
+        parts.insert(0, item["episode_title"])
+    # When a not-yet-released episode airs. It is the answer to the obvious
+    # question a "Coming Soon" badge raises, and the card carries it.
+    when = _when(item)
+    if when and when not in parts:
+        parts.append(when)
+    return "\n".join(parts)
+
+
+def _when(item):
+    """"Airs Sat, Sep 5 | 12:25 AM - 12:50 AM on MeTV+", where the card says so."""
+    window = item.get("airing") or ""
+    if not window:
+        return ""
+    channel = item.get("channel_name") or ""
+    return "Airs %s%s" % (window, (" on " + channel) if channel else "")
+
+
+def _set_meta(listitem, item, label):
+    """Everything the card says about itself, onto the info tag.
+
+    ``mediatype`` matters more than it looks: without it Kodi treats every row
+    as an anonymous video, so a show gets no poster shelf and an episode no
+    season grouping, whatever artwork is attached.
+
+    ``label`` is what the row should read, badge and all, and it is set as the
+    **title** as well as being the list item's label. In a video container
+    Kodi draws the info tag's title over the label it was given, so a badge
+    that only reached the label was computed, written, and never seen.
+    """
+    detail = item.get("detail") or {}
+    # The card's own subtitles are a fallback; the page's synopsis is the
+    # real one, and it is the only place cast and director exist at all.
+    plot = detail.get("plot") or _plot_text(item)
+    if detail.get("airing") and detail["airing"] not in plot:
+        plot = "%s\n\n%s" % (plot, detail["airing"]) if plot else detail["airing"]
+    media = item.get("media") or "video"
+    try:
+        tag = listitem.getVideoInfoTag()
+        tag.setMediaType(media)
+        tag.setTitle(label or item.get("title") or "")
+        if plot:
+            tag.setPlot(plot)
+        if detail.get("cast"):
+            tag.setCast([xbmc.Actor(name) for name in detail["cast"]])
+        if detail.get("directors"):
+            tag.setDirectors(detail["directors"])
+        if detail.get("year"):
+            tag.setYear(detail["year"])
+        if detail.get("rating"):
+            tag.setMpaa(detail["rating"])
+        if item.get("genres"):
+            tag.setGenres(item["genres"])
+        if item.get("channel_name"):
+            tag.setStudios([item["channel_name"]])
+        live = item.get("is_live") or (item.get("path") or "").startswith(
+            "channel/live/")
+        if item.get("duration_ms") and not live:
+            tag.setDuration(int(item["duration_ms"] / 1000))
+        if live:
+            # A live channel's card carries the running time of whatever is on
+            # it, and giving Kodi that duration makes a channel look like a
+            # finite video: stop watching and it gets marked watched, because
+            # Kodi computed a percentage from a length the channel does not
+            # have. A channel is never "finished".
+            tag.setPlaycount(0)
+        _set_resume(listitem, tag, item)
+        if media == "episode":
+            if item.get("season"):
+                tag.setSeason(item["season"])
+            if item.get("episode"):
+                tag.setEpisode(item["episode"])
+            # The episode's own name, where the card carries one; the row's
+            # title is the show on a season listing. It takes the badge as
+            # well, or this would undo it: a season of Coming Soon episodes
+            # all carry an episode title, so this line was quietly replacing
+            # every badged title with a plain one.
+            if item.get("episode_title"):
+                tag.setTitle(_labelled(item, item["episode_title"]))
+                tag.setTvShowTitle(item.get("title") or "")
+        elif item.get("episode_title"):
+            tag.setTagLine(item["episode_title"])
+    except (AttributeError, TypeError):
+        info = {"title": label, "mediatype": media}
+        if plot:
+            info["plot"] = plot
+        if detail.get("cast"):
+            info["cast"] = detail["cast"]
+        if detail.get("directors"):
+            info["director"] = ", ".join(detail["directors"])
+        if detail.get("year"):
+            info["year"] = detail["year"]
+        if detail.get("rating"):
+            info["mpaa"] = detail["rating"]
+        if item.get("duration_ms") and not (
+                item.get("is_live")
+                or (item.get("path") or "").startswith("channel/live/")):
+            info["duration"] = int(item["duration_ms"] / 1000)
+        if item.get("is_live"):
+            info["playcount"] = 0
+        if media == "episode":
+            if item.get("season"):
+                info["season"] = item["season"]
+            if item.get("episode"):
+                info["episode"] = item["episode"]
+        listitem.setInfo("video", info)
+
+
+def _set_resume(listitem, tag, item):
+    """Where the viewer got to, for a Continue Watching row.
+
+    The service sends progress as a fraction of the running time, so both are
+    needed: without the duration there is nothing to multiply. Set through
+    setResumePoint where Kodi has it (20+), and through the ResumeTime and
+    TotalTime properties on anything older, which is the only way there.
+    """
+    fraction = item.get("resume") or 0.0
+    seconds = item.get("duration_ms", 0) / 1000.0
+    if not fraction or seconds <= 0:
+        return
+    position = fraction * seconds
+    try:
+        tag.setResumePoint(position, seconds)
+    except (AttributeError, TypeError):
+        listitem.setProperty("ResumeTime", "%.0f" % position)
+        listitem.setProperty("TotalTime", "%.0f" % seconds)
+
+
+def _content_of(cards):
+    """The Kodi container type for a listing, from what is actually in it.
+
+    A mixed listing stays "videos": claiming "tvshows" for a row that is half
+    films makes a skin lay out the films wrongly.
+    """
+    kinds = {c.get("media") or "video" for c in cards if c.get("path")}
+    if kinds == {"movie"}:
+        return "movies"
+    if kinds == {"tvshow"}:
+        return "tvshows"
+    if kinds == {"episode"}:
+        return "episodes"
+    return "videos"
+
+
+def route_guide_play(live_path, programme_path, label=""):
+    """Join the channel live, or start the programme from the beginning.
+
+    Both are the same endpoint with a different path. ``channel/live/<slug>``
+    gives the live edge; the programme's own ``epg/play/<id>`` is answered
+    with a VOD asset whose seek position is zero, which is what starting over
+    means.
+
+    The service decides whether that second one exists for a programme still
+    airing -- if it does not, its own refusal is what gets shown.
+    """
+    if not programme_path:
+        return route_play(live_path, label)
+    choice = xbmcgui.Dialog().select(label or "Watch",
+                                     ["Play live", "Start over"])
+    if choice < 0:
+        return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+    if choice == 0:
+        return route_play(live_path, label)
+    kodiutils.log("starting %s over from %s" % (label, programme_path))
+    route_play(programme_path, label, from_start=True)
+
+
+def route_similar(path, name=""):
+    """Titles the service considers similar to this one."""
+    client = _client()
+    if client is None:
+        return finish()
+    identifier = parse.content_id(path)
+    if not identifier:
+        kodiutils.notify("Nothing to look up for this")
+        return finish()
+    try:
+        raw = client.more_like_this(identifier)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "More like this")
+        return finish()
+    cards = [parse.card(c, client) for c in raw]
+    kodiutils.log("more like %s (%s): %d card(s)"
+                  % (name or path, identifier, len(cards)))
+    if not cards:
+        kodiutils.notify("Nothing similar to %s" % (name or "this"))
+    finish(_add_cards(cards, client))
+
+
+
+def _say_needs_subscription(detail, label):
+    """Say that a title is on a channel the account does not have.
+
+    Every word shown is the service's own. Friendly TV sells add-on channels
+    on top of the base plan, and a title on one still has a full page --
+    synopsis, cast, artwork -- with an "addonsubscribe" button in place of the
+    play button. Nothing here can subscribe: that is a payment flow, and it
+    belongs in Friendly TV's own apps.
+    """
+    offer = detail["subscribe"]
+    said = offer.get("message") or offer.get("description") or ""
+    # The offer names the package by id, and the add-on catalogue names the
+    # package, so the viewer can be told which one rather than just "an
+    # add-on": masterPackageId 27 is HISTORY Vault.
+    named = ""
+    try:
+        client = _client()
+        if client is not None:
+            named = client.addon_name(offer.get("package_id"))
+    except Exception as exc:
+        kodiutils.log("could not name the add-on package: %s" % exc)
+    lines = ["%s is on %s, which your subscription does not include."
+             % (detail["title"] or label, named or "an add-on channel")]
+    if said:
+        lines.append(said)
+    if offer.get("text"):
+        lines.append('Friendly TV offers: "%s"' % offer["text"])
+    lines.append("Add the channel in the Friendly TV app or at "
+                 "watch.frndlytv.com, and it will play here.")
+    kodiutils.log("%s needs an add-on subscription (%s, package %s): %s"
+                  % (detail["title"] or label, named or "unnamed",
+                     offer.get("package_id") or "?",
+                     offer.get("text") or "no wording given"))
+    kodiutils.ok_dialog("\n".join(lines), "Not in your subscription")
+
+def route_play_page(path, label=""):
+    """Play a details page: fetch it, take its play button, resolve that.
+
+    A film is listed as playable even though its card points at a page,
+    because the page holds one play button and nothing else. The button's
+    target is the real path, so this is the extra request that turns two
+    clicks into one -- it is not guessed at, the page names it.
+    """
+    client = _client()
+    if client is None:
+        return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+    try:
+        detail = parse.detail(client.page(path), client)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Cannot play this")
+        return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+
+    actions = detail["actions"]
+    if not actions:
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        if detail.get("subscribe"):
+            # Not a broken page: a title on one of the add-on channels the
+            # account is not subscribed to. The service draws its own offer
+            # where the play button would be, and its wording is the only
+            # thing that knows what the offer is.
+            return _say_needs_subscription(detail, label or path)
+        # A page that genuinely has nothing to play on it. Rather than
+        # dead-ending on the "anything under movies/ is a film" heuristic,
+        # show the page: whatever is on it is what the viewer wanted.
+        kodiutils.log("%s has no play button on its page; opening the page "
+                      "instead of refusing" % path)
+        return xbmc.executebuiltin(
+            "Container.Update(%s,replace)"
+            % url(action="page", path=path, label=label or detail["title"]))
+    if len(actions) == 1:
+        chosen = actions[0]
+    else:
+        # More than one way in -- "Start Watching" beside "Start Over" on
+        # something airing live. Which one is the viewer's to pick.
+        index = xbmcgui.Dialog().select(
+            detail["title"] or label or "Play",
+            [a["label"] for a in actions])
+        if index < 0:
+            return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        chosen = actions[index]
+    kodiutils.log("%s resolves through its page to %s"
+                  % (path, chosen["path"]))
+    # The page was fetched anyway, so the synopsis and cast go with it into
+    # playback -- that is what the player's own info panel reads.
+    route_play(chosen["path"], label or detail["title"], detail=detail,
+               media=parse.media_of(path))
+
+
+def route_play(path, label="", detail=None, media="video",
+               from_start=False):
+    client = _client()
+    if client is None:
+        return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+    if not playback.ensure_widevine():
+        kodiutils.ok_dialog(
+            "Kodi could not set up Widevine, which every Friendly TV stream "
+            "needs. inputstreamhelper will have said why in the log.",
+            "No Widevine")
+        return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+    try:
+        item = playback.resolve(client, path, label,
+                                from_start=from_start)
+    except (playback.PlaybackError, api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Cannot play this")
+        return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+    if detail:
+        item.setArt(_detail_art(detail))
+        _set_detail_meta(item, detail, label or detail["title"], media)
+    xbmcplugin.setResolvedUrl(HANDLE, True, item)
+
+
+def route_iptv(kind, port):
+    if not port:
+        kodiutils.log_error("iptv manager called without a port")
+        return
+    from lib import iptv
+    manager = iptv.IPTVManager(int(port))
+    if kind == "channels":
+        manager.send_channels()
+    else:
+        manager.send_epg()
+
+
+def main():
+    """Dispatch, and never leave Kodi with an unexplained directory failure.
+
+    An unhandled exception inside a route makes Kodi report "Error getting
+    plugin://..." and nothing else -- not which row, not which call, not the
+    traceback. Catching it here costs nothing and turns that into a logged
+    traceback plus a message, with an empty listing rather than a failed one.
+    """
+    try:
+        _dispatch()
+    except Exception as exc:
+        import traceback
+        kodiutils.log_error("unhandled error in %s: %s\n%s"
+                            % (sys.argv[2:3] or "?", exc,
+                               traceback.format_exc()))
+        kodiutils.notify("Something went wrong; see the log")
+        if HANDLE >= 0:
+            # Ended as a success so Kodi shows an empty folder and the
+            # message, rather than its own error dialog on top of ours.
+            xbmcplugin.endOfDirectory(HANDLE)
+
+
+def _dispatch():
+    params = dict(parse_qsl(sys.argv[2][1:])) if len(sys.argv) > 2 else {}
+    action = params.get("action", "")
+
+    if action == "live":
+        route_live()
+    elif action == "guide":
+        route_guide()
+    elif action == "programme":
+        route_programme(params.get("name", ""), params.get("channel", ""),
+                        params.get("start", 0), params.get("end", 0))
+    elif action == "guide_channel":
+        route_guide_channel(params.get("channel_id", ""),
+                            params.get("name", ""))
+    elif action == "home":
+        route_home()
+    elif action == "home_row":
+        route_home_row(params.get("code", ""), params.get("name", ""))
+    elif action == "page":
+        route_page(params.get("path", ""), params.get("name", ""))
+    elif action == "section":
+        route_section(params.get("path", ""), params.get("code", ""),
+                      params.get("name", ""))
+    elif action == "section_all":
+        route_section_all(params.get("path", ""), params.get("code", ""),
+                          params.get("name", ""))
+    elif action == "coming_soon":
+        route_coming_soon(params.get("label", ""), params.get("name", ""))
+    elif action == "next":
+        route_next(params.get("path", ""), params.get("name", ""))
+    elif action == "trending":
+        route_trending()
+    elif action == "trending_row":
+        route_trending_row(params.get("code", ""), params.get("name", ""))
+    elif action == "section_cached":
+        route_section_cached(params.get("path", ""), params.get("code", ""),
+                             params.get("name", ""))
+    elif action == "search":
+        route_search(params.get("query", ""),
+                     params.get("bucket", SEARCH_ALL))
+    elif action == "record":
+        # RunPlugin, not a directory: nothing to draw, and the listing the
+        # menu was opened from stays where it is.
+        route_record(params.get("path", ""), params.get("form", RECORD_FORM))
+    elif action == "guide_times":
+        route_guide_times()
+    elif action == "guide_at":
+        route_guide_at(params.get("at", ""))
+    elif action == "record_title":
+        route_record_title(params.get("path", ""), params.get("name", ""),
+                           bool(params.get("stop")))
+    elif action == "play":
+        route_play(params.get("path", ""), params.get("label", ""))
+    elif action == "play_page":
+        route_play_page(params.get("path", ""), params.get("label", ""))
+    elif action == "guide_play":
+        route_guide_play(params.get("path", ""), params.get("programme", ""),
+                         params.get("label", ""))
+    elif action == "similar":
+        route_similar(params.get("path", ""), params.get("name", ""))
+    elif action == "cast":
+        route_cast(params.get("path", ""), params.get("name", ""))
+    elif action == "forget":
+        route_forget(params.get("content_id", ""),
+                     params.get("content_type", ""), params.get("name", ""))
+    elif action == "favourite":
+        # RunPlugin: nothing to draw, and the listing stays where it is.
+        route_favourite(params.get("path", ""), params.get("name", ""),
+                        params.get("on") == "1")
+    elif action == "signin":
+        route_signin()
+    elif action == "sessions":
+        route_sessions()
+    elif action == "signout":
+        route_signout()
+    elif action in ("iptv_channels", "iptv_epg"):
+        # RunPlugin, not a directory: there is no handle to finish and
+        # nothing to draw. The answer goes back over IPTV Manager's socket.
+        route_iptv(action.split("_", 1)[1], params.get("port", ""))
+    else:
+        route_root()
+
+
+if __name__ == "__main__":
+    main()
