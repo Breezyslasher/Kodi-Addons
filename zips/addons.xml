@@ -709,7 +709,7 @@ Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every 
     </assets>
   </extension>
 </addon>
-<addon id="plugin.video.tubitv" name="TubiTV" version="2026.9.1" provider-name="Lunatixz, Breezyslasher">
+<addon id="plugin.video.tubitv" name="TubiTV" version="2026.9.2" provider-name="Lunatixz, Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.t1mlib" version="4.0.9"/>
