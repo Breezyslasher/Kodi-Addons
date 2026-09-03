@@ -968,14 +968,20 @@ def _without_addon_titles(cards, client=None):
         return cards
 
     held = client.held_addons() if client is not None else None
+    channels = client.addon_channel_names() if client is not None else None
     drop = set()
 
     for item in cards:
-        if item.get("content_type") == "network":
-            # An add-on channel. held is None only when the account's packages
-            # could not be read, and then nothing is dropped.
-            if held is not None and api._addon_key(item.get("title")) not in held:
-                drop.add(id(item))
+        # "network" alone does not mean add-on: MeTV, MeTV+ and MeTV Toons are
+        # base-plan channels carrying the same marking and their own
+        # partner/... pages, and hiding on the marking would take them out of
+        # a search. Only a channel the service actually sells as an add-on
+        # counts, and only then if the account does not hold it.
+        if item.get("content_type") != "network" or not channels:
+            continue
+        name = api._addon_key(item.get("title"))
+        if name in channels and name not in (held or set()):
+            drop.add(id(item))
 
     flagged = [c for c in cards
                if c.get("needs_addon")

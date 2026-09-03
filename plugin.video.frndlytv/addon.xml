@@ -38,6 +38,11 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- Searching for a channel no longer risks losing MeTV. Friendly TV marks a
+  card as a network whether the channel is an add-on or part of the plan, and
+  MeTV, MeTV+ and MeTV Toons all carry that marking with pages of their own,
+  so hiding on it alone would have taken them out of a search for "metv". A
+  channel counts as an add-on only where the service names it as one.
 - The Add-ons folder lists only the channels the account actually has, unless
   the setting says otherwise. Friendly TV sells six of them -- Hallmark+, UP
   Faith &amp; Family, Great American Pure Flix, Lifetime Movie Club, A&amp;E

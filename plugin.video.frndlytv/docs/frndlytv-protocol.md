@@ -1115,10 +1115,22 @@ somewhere else: 21 from **search**, one from a series page.
 So the before and after differ in where they came from as well as in what was
 subscribed, and the variable was never isolated.
 
-**The capture that would settle it:** a **search**, made while an add-on is
-held, for something in the held add-on and something in an unheld one. If the
-held add-on's results come back unflagged and the unheld one's flagged, the
-flag is account-relative.
+**Searches made while the add-on was held** close most of that gap. Search
+is where flags appear -- 21 of the 22 came from there -- and:
+
+* `query=babe` returns **"Perspectives: Babe Ruth"** (`movies/107679378926`),
+  the very film that had refused to play, with `"markers": []`;
+* `query=history vault` returns another HISTORY Vault film, also unflagged.
+
+So the same title that the service gated before the subscription comes back
+ungated in the flagging context after it. What is still missing is the other
+half: no post-subscription search has returned a title from an add-on that is
+**not** held, so nothing shows the flag still operates at all in that session.
+
+**The capture that would finish it:** a search, while HISTORY Vault is held,
+for a title on an add-on that is not -- `Granite Flats`, `Like Dandelion
+Dust` or `Legal Action`, all of which came back flagged before. If they are
+still flagged, the flag is account-relative and the condition below can go.
 
 Until then the addon hides on the flag only when the account holds no add-on,
 where both readings agree the title is unwatchable.
@@ -1150,6 +1162,15 @@ is the complete list, where the `addon/packages` catalogue is not. Each
 The cards carry nothing to say which are held, so that comes from
 `activepackages`. The same add-on is named identically in all three places
 ("HISTORY Vault"), which is what the match is made on.
+
+**`contentType: "network"` does not mean "add-on".** A search for `metv`
+returns `MeTV`, `MeTV+` and `MeTV Toons` as network cards with
+`partner/me_tv`, `partner/me_tv_plus` and `partner/metv_toons` pages — and
+those are ordinary channels in the base plan. Hiding on the marking alone
+would take them out of a search. A channel is only treated as an add-on when
+the service names it as one, which is the catalogue's `pkgName`s (the ones
+not held) together with the account's own add-on packages (the ones that
+are).
 
 **This filtering is not an inference.** Which add-ons the account holds is
 stated outright, so hiding the channels it does not hold is exact — unlike

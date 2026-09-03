@@ -310,6 +310,26 @@ class Api(object):
         return {_addon_key(p.get("name")) for p in packs.get("active") or []
                 if p.get("is_addon")}
 
+    def addon_channel_names(self):
+        """Every add-on channel's name, held or not, as comparable names.
+
+        A card marked ``contentType: "network"`` is **not** necessarily an
+        add-on: MeTV, MeTV+ and MeTV Toons are ordinary channels in the base
+        plan and carry the same marking, with ``partner/...`` pages of their
+        own. Hiding on the marking alone would take them out of a search.
+
+        So the add-ons are named explicitly, from the two halves that between
+        them cover all six: the catalogue lists the ones **not** held, and
+        activepackages the ones that are.
+        """
+        packs = self.packages()
+        if not packs.get("known"):
+            return None
+        names = {_addon_key(n) for n in (packs.get("addons") or {}).values()}
+        names |= {_addon_key(p.get("name")) for p in packs.get("active") or []
+                  if p.get("is_addon")}
+        return names
+
     def addon_name(self, master_id):
         """"HISTORY Vault" for 27, and "" for an id the catalogue does not name."""
         if not master_id:
