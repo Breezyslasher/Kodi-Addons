@@ -1316,10 +1316,16 @@ def route_play_page(path, label=""):
 
     actions = detail["actions"]
     if not actions:
-        kodiutils.ok_dialog(
-            "Friendly TV's page for this offers nothing to play.",
-            "Cannot play this")
-        return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        # The card was listed as playable because its path is under movies/,
+        # and every captured movies/ page holds one play button and nothing
+        # else. This one does not. Rather than dead-ending on a heuristic,
+        # show the page: whatever is actually on it is what the viewer wanted.
+        kodiutils.log("%s has no play button on its page; opening the page "
+                      "instead of refusing" % path)
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return xbmc.executebuiltin(
+            "Container.Update(%s,replace)"
+            % url(action="page", path=path, label=label or detail["title"]))
     if len(actions) == 1:
         chosen = actions[0]
     else:

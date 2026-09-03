@@ -117,6 +117,7 @@ class Reporter(object):
         self.play_key = int(time.time() * 1000)
         self.session_key = str(uuid.uuid4())
         self.count = 0
+        self._explained = False
 
     @property
     def usable(self):
@@ -198,7 +199,28 @@ class Reporter(object):
                          else "unknown",
                          "" if ok else "  (refused: HTTP %s)"
                          % response.status_code))
+        if not ok:
+            # A refusal with nothing said about it is not diagnosable, and the
+            # three fields this addon does not copy verbatim -- ip omitted,
+            # dos/dosv taken from Kodi -- are the obvious suspects. Say what
+            # came back and what went out, once per play rather than per event.
+            self._explain(response, body)
         return ok
+
+    def _explain(self, response, body):
+        if self._explained:
+            return
+        self._explained = True
+        try:
+            said = (response.text or "").strip()[:300]
+        except Exception:
+            said = "<no body>"
+        kodiutils.log_error(
+            "Friendly TV refused a playback report: HTTP %s %s\n"
+            "sent %d fields; the ones this addon does not copy verbatim are "
+            "dos=%r dosv=%r sk=%r, and ip is omitted"
+            % (response.status_code, said or "<empty body>", len(body),
+               body.get("dos"), body.get("dosv"), body.get("sk")))
 
 
 _NAMES = {EV_START: "start", EV_BUFFERING: "buffering", EV_PLAYING: "playing",
