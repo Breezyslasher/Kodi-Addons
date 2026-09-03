@@ -38,6 +38,18 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- Signing in works again. Friendly TV asks which device is asking, the addon
+  answered with the number an early capture used, and the service has since
+  started refusing that one outright -- an empty HTTP 403, which surfaced as
+  "issued no session id" and left no way in. A capture of a browser signing in
+  from scratch names the number it uses now, which is the same one the addon
+  already sends when it asks for a stream.
+- Signed out, the menu offers signing in and nothing else. Live TV, the guide,
+  search and the rest need an account, and listing them was offering folders
+  that could only fail.
+- Sign in and sign out no longer end in "Error getting plugin://". They are
+  listed as folders, so Kodi calls them expecting a listing, and cancelling
+  either one returned without giving it anything.
 - A row opens in full rather than at whatever the page embedded. Every row
   names where the rest of it lives, in one of two shapes, and the addon
   follows the one the service's own page endpoint opens. The other is a

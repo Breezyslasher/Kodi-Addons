@@ -99,40 +99,44 @@ def route_root():
     kodiutils.log("root menu; %s" % kodiutils.platform())
     client = _client(quiet=True)
 
+    # Everything here needs an account. Listing them signed out offers folders
+    # that can only fail, and a first-run viewer is better told what to do.
+    if not client:
+        add_dir("Sign in to Friendly TV", url(action="signin"),
+                plot="Enter your Friendly TV email address and password. "
+                     "They can also be saved in this addon's settings.")
+        kodiutils.log("root menu: not signed in")
+        return finish()
+
     add_dir("Live TV", url(action="live"),
             plot="Every channel in your lineup, with what is on right now.")
     add_dir("TV Guide", url(action="guide"),
             plot="Channels and their schedule for the next day.")
     add_dir("Search", url(action="search"),
             plot="Search Friendly TV's catalogue of shows and films.")
-    if client:
-        add_dir("Trending", url(action="trending"),
-                plot="What Friendly TV is putting in front of everyone right "
-                     "now: trending films, trending shows, and the titles "
-                     "people are searching for.")
+    add_dir("Trending", url(action="trending"),
+            plot="What Friendly TV is putting in front of everyone right "
+                 "now: trending films, trending shows, and the titles "
+                 "people are searching for.")
 
-    if client:
-        for entry in client.menus():
-            # Guide has a richer listing of its own above; the service's own
-            # "guide" page is a duplicate of it.
-            if entry["path"] == "guide":
-                continue
-            # Home is assembled from two endpoints and has its own route.
-            if entry["path"] == "home":
-                add_dir(entry["title"], url(action="home"))
-                continue
-            add_dir(entry["title"], url(action="page", path=entry["path"]))
+    for entry in client.menus():
+        # Guide has a richer listing of its own above; the service's own
+        # "guide" page is a duplicate of it.
+        if entry["path"] == "guide":
+            continue
+        # Home is assembled from two endpoints and has its own route.
+        if entry["path"] == "home":
+            add_dir(entry["title"], url(action="home"))
+            continue
+        add_dir(entry["title"], url(action="page", path=entry["path"]))
 
-    if client:
-        add_dir("Active streams", url(action="sessions"),
-                plot="What this account has playing right now, anywhere. "
-                     "Friendly TV limits how many streams run at once.")
+    add_dir("Active streams", url(action="sessions"),
+            plot="What this account has playing right now, anywhere. "
+                 "Friendly TV limits how many streams run at once.")
 
-    if client and client.session.email:
+    if client.session.email:
         add_dir("Sign out (%s)" % client.session.email,
                 url(action="signout"))
-    else:
-        add_dir("Sign in", url(action="signin"))
     finish()
 
 
@@ -224,32 +228,47 @@ def route_sessions():
 
 
 def route_signin():
+    """Ask for the credentials and sign in.
+
+    Listed as a folder, so Kodi calls this expecting a directory: every way
+    out has to end one, or it reports "Error getting plugin://...?action=
+    signin" and the viewer is told nothing.
+    """
+    def done(refresh=False):
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+        if refresh:
+            _refresh()
+
     email = kodiutils.get_setting("username") or ""
     email = kodiutils.input_text("Friendly TV email address", default=email)
     if not email:
-        return
+        return done()
     password = kodiutils.input_text("Password", hidden=True)
     if not password:
-        return
+        return done()
     session = auth.Session()
     try:
         session.sign_in(email, password)
     except auth.AuthError as exc:
         kodiutils.ok_dialog(str(exc), "Could not sign in")
-        return
+        return done()
     kodiutils.set_setting("username", email)
     kodiutils.set_setting("password", password)
     kodiutils.notify("Signed in as %s" % session.email)
-    _refresh()
+    done(refresh=True)
 
 
 def route_signout():
+    """Forget this device's session. A folder, so it ends a directory too."""
     if not kodiutils.yesno("Sign out of Friendly TV on this device?"):
-        return
+        return xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
     auth.Session().clear()
     kodiutils.set_setting("password", "")
     kodiutils.delete_file(api.CONFIG_FILE)
+    # The cached packages belong to the account that just left.
+    kodiutils.delete_file(api.PACKAGES_FILE)
     kodiutils.notify("Signed out")
+    xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
     _refresh()
 
 

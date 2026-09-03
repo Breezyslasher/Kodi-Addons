@@ -30,7 +30,12 @@ PRODUCT = "frndlytv"
 # the backend keys stream limits and the "Mobile Browser stream has been
 # closed" wording off this device class, and an unrecognised one has not been
 # observed being accepted.
-DEVICE_ID = "61"
+# The device the web player calls itself when asking for a session. It sends
+# **5**, which is the same value it uses for stream_provider_device_id and for
+# "di" on its playback reports. An older capture used 61 and the addon copied
+# that; the service now answers 61 with HTTP 403 and an empty body, which
+# reads as "Friendly TV issued no session id" and locks out sign-in entirely.
+DEVICE_ID = "5"
 DEVICE_SUB_TYPE = "Firefox,5,UNIX"
 DISPLAY_LANG = "ENG"
 
@@ -65,6 +70,16 @@ def _box_id():
         kodiutils.write_json(SESSION_FILE, stored)
         kodiutils.log("minted a device id for this installation")
     return box_id
+
+
+# Sent when asking for a session, copied from the capture of a sign-in made
+# from a signed-out browser.
+TOKEN_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Origin": ORIGIN,
+}
 
 
 def _timezone():
@@ -158,16 +173,28 @@ class Session(object):
             "timezone": _timezone(),
         }
         try:
+            # The headers the capture sends on this one call, which are fewer
+            # than on every other: no box-id, no tenant-code, no Referer.
+            # There is no session yet for a session-id to carry.
             reply = requests.get(API_BASE + "/service/api/v1/get/token",
-                                 params=params,
-                                 headers={"User-Agent": USER_AGENT,
-                                          "Origin": ORIGIN},
+                                 params=params, headers=TOKEN_HEADERS,
                                  timeout=TIMEOUT)
         except requests.RequestException as exc:
             raise AuthError("Could not reach Friendly TV: %s" % exc)
         body = _json(reply)
         session_id = ((body.get("response") or {}).get("sessionId") or "")
         if not session_id:
+            # A refusal here is usually HTTP 403 with nothing in the body that
+            # _message can read, and "HTTP 403" on its own is not diagnosable.
+            # Whatever did come back goes to the log.
+            said = ""
+            try:
+                said = (reply.text or "").strip()[:300]
+            except Exception:
+                pass
+            kodiutils.log_error(
+                "no session id from get/token: HTTP %s, body %s"
+                % (reply.status_code, said or "<empty>"))
             raise AuthError("Friendly TV issued no session id: %s"
                             % _message(body, reply))
         self.session_id = session_id

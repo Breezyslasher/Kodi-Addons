@@ -61,6 +61,28 @@ miss: the value is not called a session id anywhere in the response.
 A refusal comes back as HTTP 200 with `status: false` and the reason in
 `response.message`, so the HTTP status line is not enough to detect failure.
 
+### `device_id` is **5**, and 61 no longer works
+
+A capture of signing in from a signed-out browser sends:
+
+```
+GET /service/api/v1/get/token?tenant_code=frndlytv&box_id=<uuid>
+    &product=frndlytv&device_id=5&display_lang_code=ENG
+    &device_sub_type=Firefox,5,UNIX&timezone=America/New_York
+```
+
+An older capture used `device_id=61`, and the addon copied it. The service
+now answers 61 with **HTTP 403 and an empty body**, which surfaces as
+"Friendly TV issued no session id" and locks out sign-in completely. 5 is
+also the value already sent as `stream_provider_device_id` and as `di` on a
+playback report.
+
+This one call carries **fewer headers than any other**: User-Agent, Accept,
+Accept-Language and Origin, and no `box-id`, `session-id`, `tenant-code` or
+`Referer` — there is no session yet. The `auth/v2/signin` that follows does
+carry all three.
+
+
 ## Home is assembled from two endpoints
 
 This is the single easiest thing to get wrong, and the first build did.
