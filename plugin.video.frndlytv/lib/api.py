@@ -73,6 +73,7 @@ IMAGE_PROFILES = {
 # one. Left alone deliberately.
 
 CONFIG_FILE = "config.json"
+PACKAGES_FILE = "packages.json"
 CONFIG_MAX_AGE = 24 * 60 * 60
 
 
@@ -107,6 +108,7 @@ class Api(object):
         # thread refreshes; the rest wait and then find a fresh session.
         self._signing_in = threading.Lock()
         self._config = None
+        self._packages = None
 
     @property
     def _http(self):
@@ -205,6 +207,85 @@ class Api(object):
             kodiutils.log("could not refresh the config (%s)" % exc)
             self._config = (cached or {}).get("body") or {}
         return self._config
+
+    def packages(self):
+        """What the account holds, and what add-ons exist, cached for a day.
+
+        Two calls, because neither answers the other's half:
+
+            GET /service/api/auth/user/activepackages?version=2
+              -> {"userAcivePackages": [{"id": 4, "code": "classic",
+                                         "name": "Classic", ...}]}
+            GET /service/api/auth/v2/addon/packages?package=<base id>
+              -> [{"pkgMasterId": 27, "pkgName": "HISTORY Vault",
+                   "ClientAddOnPackInfo": [{"id": 71, "buttonMessage": "Add",
+                                            ...}]}, ...]
+
+        (Note ``userAcivePackages`` -- the service's own spelling.)
+
+        The six add-ons captured are Hallmark+, UP Faith & Family, Lifetime
+        Movie Club, Great American Pure Flix, HISTORY Vault and A&E Crime
+        Central. Their master ids are what a title's ``addOnInfo`` names, so
+        this is also how a subscribe prompt can say *which* add-on is wanted.
+        """
+        if self._packages is not None:
+            return self._packages
+        cached = kodiutils.read_json(PACKAGES_FILE, default=None)
+        if cached and time.time() - cached.get("fetched_at", 0) < CONFIG_MAX_AGE:
+            self._packages = cached.get("body") or {}
+            return self._packages
+
+        found = {"active": [], "addons": {}, "addon_ids": [], "known": False}
+        try:
+            body = self.get("/service/api/auth/user/activepackages",
+                            {"version": "2"})
+            active = (body.get("response") or {}).get("userAcivePackages") or []
+            found["active"] = [{"id": p.get("id"), "name": p.get("name") or "",
+                                "code": p.get("code") or ""}
+                               for p in active if isinstance(p, dict)]
+            base = found["active"][0]["id"] if found["active"] else 4
+            body = self.get("/service/api/auth/v2/addon/packages",
+                            {"package": base})
+            catalogue = body.get("response")
+            ids = []
+            for pack in catalogue if isinstance(catalogue, list) else []:
+                master = pack.get("pkgMasterId")
+                if master is not None:
+                    found["addons"][str(master)] = pack.get("pkgName") or ""
+                    ids.append(master)
+                for info in pack.get("ClientAddOnPackInfo") or []:
+                    if info.get("id") is not None:
+                        ids.append(info["id"])
+            found["addon_ids"] = ids
+            found["known"] = True
+            kodiutils.write_json(PACKAGES_FILE, {"fetched_at": time.time(),
+                                                 "body": found})
+        except (ApiError, auth.AuthError) as exc:
+            # Not knowing is a state of its own, and the caller treats it as
+            # such rather than as "no add-ons".
+            kodiutils.log("could not read the account's packages: %s" % exc)
+            found = (cached or {}).get("body") or found
+        self._packages = found
+        return self._packages
+
+    def holds_an_addon(self):
+        """Whether the account subscribes to any add-on package.
+
+        Returns None when that could not be established, which is not the same
+        as False and must not be collapsed into it: the caller uses this to
+        decide whether hiding add-on titles is safe.
+        """
+        packs = self.packages()
+        if not packs.get("known"):
+            return None
+        ids = set(packs.get("addon_ids") or [])
+        return any(p.get("id") in ids for p in packs.get("active") or [])
+
+    def addon_name(self, master_id):
+        """"HISTORY Vault" for 27, and "" for an id the catalogue does not name."""
+        if not master_id:
+            return ""
+        return (self.packages().get("addons") or {}).get(str(master_id), "")
 
     def image_profiles(self):
         profiles = dict(IMAGE_PROFILES)

@@ -916,7 +916,7 @@ def _add_cards(cards, client=None):
     """
     if client is not None:
         _describe(cards, client)
-    cards = _without_addon_titles(cards)
+    cards = _without_addon_titles(cards, client)
     for item in cards:
         if not item["path"]:
             continue
@@ -934,31 +934,55 @@ def _add_cards(cards, client=None):
 
 
 
-def _without_addon_titles(cards):
+def _without_addon_titles(cards, client=None):
     """Drop titles that need an add-on subscription, unless asked to keep them.
 
-    The card says so itself, so this costs nothing and does not depend on the
-    pages being fetched: a title on an add-on channel carries a badge whose
-    ``isRedirectToPayment`` is set. Across 2112 captured badges that flag
+    The card says which those are, so this costs nothing and does not depend
+    on any page being fetched: a title on an add-on channel carries a badge
+    whose ``isRedirectToPayment`` is set. Across 2112 captured badges that flag
     appears on exactly one wording, "+ Add-On", and on all 22 of its cards.
 
-    The title's own page is consulted as well where it happens to have been
-    fetched for the synopsis, since that is the statement the card is a
-    summary of -- but the card alone is enough.
+    **What no capture establishes is whether that flag is account-relative.**
+    The captured account holds only the base "Classic" package and none of the
+    six add-ons, so every add-on title in every capture is one it cannot
+    watch, and "this is add-on content" and "you cannot watch this" cannot be
+    told apart. The name argues for the second -- a title you own would not
+    redirect you to payment -- and the page's own offer is a free trial, which
+    only makes sense unowned. But the web player never reads the field in any
+    captured bundle, so nothing confirms it.
+
+    So the question is sidestepped rather than answered. If the account holds
+    **no** add-on, both readings agree that every flagged title is unwatchable
+    and hiding them is right. If it holds one, they disagree, and hiding could
+    take away something paid for -- so nothing is hidden, and the badge on the
+    label is left to say it. Where that cannot be established at all, nothing
+    is hidden either: an unwatchable title left in a listing costs a dialog,
+    a watchable one taken out costs the subscription.
     """
     if kodiutils.get_setting_bool("show_addon_content", False):
         return cards
-    kept, dropped = [], []
-    for item in cards:
-        needs = (item.get("needs_addon")
-                 or bool((item.get("detail") or {}).get("subscribe")))
-        (dropped if needs else kept).append(item)
-    if dropped:
-        kodiutils.log("hiding %d title(s) that need an add-on subscription: %s"
-                      % (len(dropped),
-                         ", ".join(d.get("title") or d.get("path") or "?"
-                                   for d in dropped[:5])))
-    return kept
+    flagged = [c for c in cards
+               if c.get("needs_addon")
+               or (c.get("detail") or {}).get("subscribe")]
+    if not flagged:
+        return cards
+
+    holds = client.holds_an_addon() if client is not None else None
+    if holds is not False:
+        kodiutils.log("keeping %d add-on title(s): the account %s"
+                      % (len(flagged),
+                         "holds an add-on, so the badge may not mean "
+                         "unwatchable" if holds
+                         else "package could not be read"))
+        return cards
+
+    kodiutils.log("hiding %d title(s) on add-ons this account does not have: "
+                  "%s" % (len(flagged),
+                          ", ".join(c.get("title") or c.get("path") or "?"
+                                    for c in flagged[:5])))
+    keep = {id(c) for c in cards} - {id(c) for c in flagged}
+    return [c for c in cards if id(c) in keep]
+
 
 def _add_card(item):
     """List one card, as whatever kind of thing it is."""
@@ -1376,16 +1400,27 @@ def _say_needs_subscription(detail, label):
     """
     offer = detail["subscribe"]
     said = offer.get("message") or offer.get("description") or ""
-    lines = ["%s is on a channel your subscription does not include."
-             % (detail["title"] or label)]
+    # The offer names the package by id, and the add-on catalogue names the
+    # package, so the viewer can be told which one rather than just "an
+    # add-on": masterPackageId 27 is HISTORY Vault.
+    named = ""
+    try:
+        client = _client()
+        if client is not None:
+            named = client.addon_name(offer.get("package_id"))
+    except Exception as exc:
+        kodiutils.log("could not name the add-on package: %s" % exc)
+    lines = ["%s is on %s, which your subscription does not include."
+             % (detail["title"] or label, named or "an add-on channel")]
     if said:
         lines.append(said)
     if offer.get("text"):
         lines.append('Friendly TV offers: "%s"' % offer["text"])
     lines.append("Add the channel in the Friendly TV app or at "
                  "watch.frndlytv.com, and it will play here.")
-    kodiutils.log("%s needs an add-on subscription (package %s): %s"
-                  % (detail["title"] or label, offer.get("package_id") or "?",
+    kodiutils.log("%s needs an add-on subscription (%s, package %s): %s"
+                  % (detail["title"] or label, named or "unnamed",
+                     offer.get("package_id") or "?",
                      offer.get("text") or "no wording given"))
     kodiutils.ok_dialog("\n".join(lines), "Not in your subscription")
 

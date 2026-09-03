@@ -38,6 +38,16 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- Hiding add-on titles now checks what the account actually holds first, and
+  a prompt names the add-on rather than calling it one. Friendly TV sells six
+  -- Hallmark+, UP Faith &amp; Family, Lifetime Movie Club, Great American Pure
+  Flix, HISTORY Vault and A&amp;E Crime Central -- and whether the badge means
+  "this is add-on content" or "you cannot watch this" is not established by
+  anything captured, because the captured account holds none of them. So the
+  question is sidestepped: with no add-on held both readings agree and the
+  titles go, and with one held they disagree and nothing is hidden, since an
+  unwatchable title left in a listing costs a dialog and a watchable one taken
+  out costs the subscription.
 - Cards wear the badge the service gave them -- "On Now", "Coming Soon",
   "New Episodes", "Expires in 24 hours", "+ Add-On" -- on films and shows
   alike. Kodi has nowhere to draw a badge, so it goes in the label, in the

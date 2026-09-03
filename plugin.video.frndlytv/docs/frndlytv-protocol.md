@@ -1057,6 +1057,64 @@ on all 22 of its cards; no other badge carries it. The addon reads the **flag**
 rather than the wording, so a renamed badge still works. This means a listing
 can be filtered without fetching a single page.
 
+## Packages: the base plan and the six add-ons
+
+```
+GET /service/api/auth/user/activepackages?version=2
+→ {"userAcivePackages": [{"id": 4, "code": "classic", "name": "Classic",
+                          "packageType": "Annual", ...}]}
+```
+
+Note `userAcivePackages` — the service's own spelling.
+
+```
+GET /service/api/auth/v2/addon/packages?package=4
+→ [{"pkgMasterId": 27, "pkgName": "HISTORY Vault", "priority": 5,
+    "svodNetworkRedirection": "partner/history_vault",
+    "ClientAddOnPackInfo": [{"id": ..., "buttonMessage": "Add",
+                             "salePrice": ..., "durationCode": "Y"}]}, ...]
+```
+
+A bare list of six, all captured with `buttonMessage: "Add"`:
+
+| `pkgMasterId` | add-on |
+|---|---|
+| 10 | Hallmark+ |
+| 58 | UP Faith & Family |
+| 24 | Lifetime Movie Club |
+| 35 | Great American Pure Flix |
+| 27 | HISTORY Vault |
+| 31 | A&E Crime Central |
+
+`pkgMasterId` is what a blocked title's `addOnInfo.masterPackageId` names —
+the captured film names 27, and 27 is HISTORY Vault — so a subscribe prompt
+can say which add-on is wanted rather than just "an add-on".
+
+### Whether `isRedirectToPayment` is account-relative — NOT KNOWN
+
+The captured account holds only `Classic` and none of the six add-ons. So
+every add-on title in every capture is one it cannot watch, and two different
+meanings of the flag fit the evidence equally:
+
+* **"this is add-on content"** — a static label on the title;
+* **"you cannot watch this"** — computed against the account.
+
+The name argues for the second: a title you own would not redirect you to
+payment, and the page's offer is a *free trial*, which only makes sense
+unowned. But no captured JS bundle ever reads the field, and no capture shows
+an account that holds an add-on, so nothing confirms it.
+
+The addon does not guess. It hides flagged titles only when
+`activepackages` shows the account holds **no** add-on — where both readings
+agree the titles are unwatchable. If an add-on is held, or the packages
+cannot be read, nothing is hidden and the "+ Add-On" badge on the label is
+left to say it. An unwatchable title left in a listing costs a dialog; a
+watchable one taken out costs the subscription.
+
+**The capture that would settle it:** a listing from an account holding one
+add-on but not another. If titles from the held add-on come back unflagged,
+the flag is account-relative and the condition above can go.
+
 ## A title the subscription does not include
 
 Friendly TV sells add-on channels on top of the base plan. A title on one has
