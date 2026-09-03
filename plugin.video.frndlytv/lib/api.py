@@ -526,7 +526,10 @@ class Api(object):
         body = self.get("/service/api/v1/section/data",
                         {"path": path, "count": count, "code": code,
                          "offset": offset})
-        return body.get("response") or {}
+        # A **list**, one element per code asked for -- not the dict a page
+        # answers with. Returned as it comes; parse.section_data reads it.
+        response = body.get("response")
+        return response if isinstance(response, list) else []
 
     # -- live and guide ----------------------------------------------------
 

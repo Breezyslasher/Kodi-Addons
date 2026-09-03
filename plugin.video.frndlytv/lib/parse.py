@@ -190,6 +190,36 @@ def card(raw, api):
     return item
 
 
+def section_data(response, api):
+    """The rows ``section/data`` answers with.
+
+    A different shape from a page's, and not a variation on it. That endpoint
+    takes a comma-separated list of codes and answers with a **bare list**,
+    one element per code, in which ``section`` is the code as a *string*
+    rather than the nested object a page pane carries:
+
+        [{"section": "epg_series", "data": [ <cards> ], "hasMoreData": false,
+          "lastIndex": 5, "dataRequestDelay": 0, "showViewAll": false}, ...]
+
+    Reading it with the page reader raised "'list' object has no attribute
+    'get'" and took the whole listing with it, which is what opening a
+    deferred section did.
+    """
+    out = []
+    for row in response if isinstance(response, list) else []:
+        if not isinstance(row, dict):
+            continue
+        out.append({
+            "code": row.get("section") if isinstance(row.get("section"), str)
+                    else "",
+            "cards": [card(c, api) for c in (row.get("data") or [])
+                      if isinstance(c, dict)],
+            "has_more": bool(row.get("hasMoreData")),
+            "last_index": row.get("lastIndex") or 0,
+        })
+    return out
+
+
 def sections(response, api):
     """Every section on a page, as {name, code, path, cards, deferred}.
 
@@ -198,9 +228,13 @@ def sections(response, api):
     actually needs them, because a page can defer a dozen at once.
     """
     out = []
+    if not isinstance(response, dict):
+        # section/data answers with a bare list; that is section_data's shape,
+        # not this one.
+        return out
     for pane in (response.get("data") or []):
         section = pane.get("section")
-        if not section:
+        if not isinstance(section, dict):
             continue
         info = section.get("sectionInfo") or {}
         data = section.get("sectionData") or {}

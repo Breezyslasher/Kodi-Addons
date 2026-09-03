@@ -814,14 +814,8 @@ def route_section(path, code, name):
         kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or code))
         return finish()
     cards = []
-    for section in parse.sections(response, client):
-        cards.extend(section["cards"])
-    if not cards:
-        # section/data answers in the page shape when it has rows to group
-        # and in a bare {data: [...]} when it does not.
-        cards = [parse.card(c, client)
-                 for c in (response.get("data") or [])
-                 if isinstance(c, dict) and c.get("display")]
+    for row in parse.section_data(response, client):
+        cards.extend(row["cards"])
     kodiutils.log("section %s/%s: %d card(s)" % (path, code, len(cards)))
     finish(_add_cards(cards, client))
 

@@ -15,6 +15,12 @@ import xbmc
 
 from lib import api, auth, kodiutils, playback
 
+# How long to let the player settle before believing its clock,
+# and how many times to look. Kept short: this is a log line, and
+# nothing else waits on it.
+WHERE_TRIES = 5
+WHERE_WAIT = 1
+
 
 class Service(xbmc.Monitor):
     def __init__(self):
@@ -62,15 +68,27 @@ class Service(xbmc.Monitor):
         start-over that worked reads near zero and one that did not reads
         near the window's length.
         """
-        try:
-            where, total = player.getTime(), player.getTotalTime()
-        except Exception as exc:
-            kodiutils.log("could not read the play position: %s" % exc)
-            return
-        kodiutils.log("playback began at %s of %s%s"
-                      % (_hms(where), _hms(total),
-                         "  (start over)" if context.get("from_start")
-                         else ""))
+        # The slot is claimed the moment Kodi says it is playing video, which
+        # is before the demuxer has settled: asked then, a multi-period DASH
+        # answered getTime() with 384109 seconds, and the log read "playback
+        # began at 106:41:49 of 0:50:03". So the answer is used only once it
+        # is one the running time can contain.
+        for attempt in range(WHERE_TRIES):
+            if attempt and self.waitForAbort(WHERE_WAIT):
+                return
+            try:
+                where, total = player.getTime(), player.getTotalTime()
+            except Exception as exc:
+                kodiutils.log("could not read the play position: %s" % exc)
+                return
+            if total > 0 and 0 <= where <= total:
+                kodiutils.log("playback began at %s of %s%s"
+                              % (_hms(where), _hms(total),
+                                 "  (start over)" if context.get("from_start")
+                                 else ""))
+                return
+        kodiutils.log("the player did not report a usable position "
+                      "(%s of %s); not reporting one" % (where, total))
 
     def _release(self):
         key, self._playing_key = self._playing_key, ""

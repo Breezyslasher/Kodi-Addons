@@ -148,6 +148,45 @@ upgrade for artwork Kodi draws full-screen. **The web player never requested
 it in any capture**, so there is no evidence these asset paths exist under it,
 and the addon does not rewrite urls to use it.
 
+## A deferred section answers with a list, not a page
+
+A page can name a section without filling it in — `sectionData` comes back
+empty with a `dataRequestDelay` — and this is the call that populates it:
+
+```
+GET /service/api/v1/section/data?path=my_recordings&count=24&offset=-1
+    &code=epg_series,reality_myrecording,your_sitcoms
+```
+
+`code` is **comma-separated**, and `response` is a **bare list**, one element
+per code asked for, in the order asked:
+
+```json
+[{"section": "epg_series", "data": [ <cards> ],
+  "hasMoreData": false, "lastIndex": 5,
+  "dataRequestDelay": 0, "showViewAll": false}, ...]
+```
+
+The trap is `section`: here it is the **code as a plain string**, where in a
+page pane it is an object holding `sectionInfo` / `sectionData` /
+`sectionControls`. Nothing else about the two shapes lines up either — the
+cards are a sibling `data` list rather than nested under `sectionData`.
+
+Reading it with the page reader raised, on a real box:
+
+```
+unhandled error in ['?action=section&code=continue_watching_movies&path=movies']:
+  'list' object has no attribute 'get'
+  File "lib/parse.py", line 201, in sections
+    for pane in (response.get("data") or []):
+```
+
+**Not known:** `hasMoreData` and `lastIndex` clearly describe pagination
+against the `offset` parameter, but every captured response has
+`hasMoreData: false`, so no capture shows a follow-up request and the meaning
+of `offset` is unverified. The addon asks once, with the `offset=-1` the
+capture uses, and does not page.
+
 ## The menu
 
 `GET /service/api/v1/system/config?version=4` carries `menus` (search, home,

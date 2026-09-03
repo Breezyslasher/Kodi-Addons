@@ -38,6 +38,17 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- Opening a section the page had not filled in no longer fails with an error
+  and an empty folder. Those come from a different endpoint, and it answers
+  with a bare list -- one element per section code asked for, in which
+  "section" is the code as a plain string -- where a page answers with an
+  object whose "section" holds the info, the data and the controls under it.
+  Read as a page it raised before it read anything.
+- The log no longer claims playback began 106 hours into a fifty minute film.
+  The stream slot is claimed the moment Kodi says it is playing, which is
+  before the demuxer has settled, and a multi-period manifest answered for its
+  position with a number the running time could not contain. The player is now
+  asked again until its answer fits, and told so in the log if it never does.
 - A film played the wrong stream entirely. The service answers with one entry
   per DRM system -- Widevine and PlayReady as DASH, FairPlay as HLS -- and the
   addon took whichever came first. With FairPlay first that gave Kodi an HLS
