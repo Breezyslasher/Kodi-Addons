@@ -907,21 +907,35 @@ def _add_cards(cards, client=None):
     for item in cards:
         if not item["path"]:
             continue
-        if item["playable"]:
-            _add_playable(item)
-        elif parse.is_genre(item):
-            # A genre is a word, not a page: there is nothing at "Westerns"
-            # to open. Search matches on genre, so the word goes there.
-            add_dir(item["title"] or item["path"],
-                    url(action="search", query=item["path"]),
-                    art=_art(item),
-                    plot="%s from Friendly TV's catalogue."
-                         % (item["title"] or item["path"]))
-        elif _plays_through_its_page(item):
-            _add_playable(item, action="play_page")
-        else:
-            _add_card_folder(item)
+        try:
+            _add_card(item)
+        except Exception as exc:
+            # One row that Kodi will not accept used to take the whole
+            # listing with it: the directory failed, and the log said only
+            # "Error getting plugin://..." with nothing about which row or
+            # why. A listing missing one entry is better than no listing, and
+            # naming the entry is what makes the next one fixable.
+            kodiutils.log_error("could not list %r (%s): %s"
+                                % (item.get("title"), item.get("path"), exc))
     return _content_of(cards)
+
+
+def _add_card(item):
+    """List one card, as whatever kind of thing it is."""
+    if item["playable"]:
+        _add_playable(item)
+    elif parse.is_genre(item):
+        # A genre is a word, not a page: there is nothing at "Westerns"
+        # to open. Search matches on genre, so the word goes there.
+        add_dir(item["title"] or item["path"],
+                url(action="search", query=item["path"]),
+                art=_art(item),
+                plot="%s from Friendly TV's catalogue."
+                     % (item["title"] or item["path"]))
+    elif _plays_through_its_page(item):
+        _add_playable(item, action="play_page")
+    else:
+        _add_card_folder(item)
 
 
 def _add_card_folder(item):
@@ -1328,6 +1342,28 @@ def route_iptv(kind, port):
 
 
 def main():
+    """Dispatch, and never leave Kodi with an unexplained directory failure.
+
+    An unhandled exception inside a route makes Kodi report "Error getting
+    plugin://..." and nothing else -- not which row, not which call, not the
+    traceback. Catching it here costs nothing and turns that into a logged
+    traceback plus a message, with an empty listing rather than a failed one.
+    """
+    try:
+        _dispatch()
+    except Exception as exc:
+        import traceback
+        kodiutils.log_error("unhandled error in %s: %s\n%s"
+                            % (sys.argv[2:3] or "?", exc,
+                               traceback.format_exc()))
+        kodiutils.notify("Something went wrong; see the log")
+        if HANDLE >= 0:
+            # Ended as a success so Kodi shows an empty folder and the
+            # message, rather than its own error dialog on top of ours.
+            xbmcplugin.endOfDirectory(HANDLE)
+
+
+def _dispatch():
     params = dict(parse_qsl(sys.argv[2][1:])) if len(sys.argv) > 2 else {}
     action = params.get("action", "")
 

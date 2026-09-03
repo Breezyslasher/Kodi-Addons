@@ -81,6 +81,10 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   shows, channels and guide airings alike. Only the verb that applies is
   offered, because the cards carry whether they are already in. These are
   Friendly TV's My Stuff, so they appear there and in its own apps.
+- A listing no longer fails whole because of one row Kodi would not accept,
+  and an unexpected error no longer surfaces as Kodi's bare "Error getting
+  plugin://..." with nothing about the cause. The row is skipped and named,
+  or the traceback is logged and the folder opens empty with a message.
 - Favouriting a film from a listing and coming back no longer offers to add
   it again. A listing card's isFavourite does not keep up with a change --
   a live channel's and a guide airing's do -- but the title's own page states
