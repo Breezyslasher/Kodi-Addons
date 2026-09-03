@@ -797,10 +797,37 @@ kinds of card say recording is allowed, and 488 movie cards do:
 so the flags do not predict it either, and the addon is right to offer the
 entry and report what came back.
 
-**Not known:** whether a film can be recorded by some other path. Every
-captured *successful* form request uses `epg/play/<id>`, and a movie card
-carries an `id` of its own, but nothing captured shows that combination being
-asked for.
+**A film is recorded from its airing.** A capture of recording a film in the
+web player settles it, and it is neither the card's form nor the card's path:
+
+```
+GET /service/api/v1/form?code=recording_form&path=epg/play/3498954
+→ elements[] = [ {elementCode: "record_series", fieldType: "radio-button",
+                  data: "Record Movie",
+                  value: "action:1;contentId:982759543;
+                          contentType:movie;programId:3498954"},
+                 ... plus the hidden heading, submit and cancel ]
+
+POST /service/api/v1/form/submit
+{"code": "recording_form", "path": "epg/play/3498954",
+ "fields": {"record_program": "action:1;contentId:982759543;
+                               contentType:movie;programId:3498954"}}
+→ {"message": {"message": "Added to My Stuff"}}
+```
+
+So a film records under the **guide's** `recording_form`, against the
+`epg/play/<id>` that airs it, and the single option is titled "Record Movie" —
+carried, oddly, under `record_series`, the same element code a series uses.
+
+The airing is on the film's own page: its play button's `target` is that
+`epg/play/<id>`, as on `movies/1058109` → `epg/play/3470223`. A film with no
+scheduled airing plays from `movie/play/<...>` instead (`movies/444981` →
+`movie/play/titl0000000000002575`), and nothing captured records one of those.
+
+The addon therefore asks the card's own form first, and only when that comes
+back with nothing to choose *and* the path is not already an `epg/play/<id>`
+does it read the page, take the airing, and ask once more. A film with no
+airing gets "Nothing to record for this" rather than a guessed request.
 
 ## Recordings
 
@@ -827,19 +854,19 @@ POST /service/api/v1/form/submit
 → {"response": {"message": {"message": "Added to My Stuff"}}, "status": true}
 ```
 
-**`player_recording_form` is the one gap left in this document.** 2221 captured
-cards name it in `pageAttributes.recordingForm` — films, shows and channels,
-as opposed to the guide's `recording_form` — but no capture contains a request
-for it, and the reason is mechanical rather than interesting: clicking Record
-in the web player reloads the page, which clears the network log unless
-"Preserve log" is ticked, so the request is discarded before the HAR is
-exported. Seven separate captures aimed at it came back without it.
+**`player_recording_form`** is what 2221 captured cards name in
+`pageAttributes.recordingForm` — films, shows and channels — as opposed to the
+guide's `recording_form`. No capture contains a request for it, for a
+mechanical reason: clicking Record in the web player reloads the page, which
+clears the network log unless "Preserve log" is ticked, so the request is
+discarded before the HAR is exported. Running it from the addon settled it
+instead, as the section above records: it works from a series card and
+returns nothing to choose from a `movies/...` one.
 
-It does not block anything. The form self-describes: a client asks for the
-code the card names, lists whatever radio buttons come back, and echoes the
-chosen value verbatim — so there is nothing here to guess wrong, and the worst
-case is a form that offers nothing. The addon logs the element codes it did
-receive in that case, so one run settles what this section cannot.
+The form self-describes either way: a client asks for the code the card names,
+lists whatever radio buttons come back, and echoes the chosen value verbatim —
+so there is nothing here to guess wrong, and the worst case is a form that
+offers nothing, which is the case the film retry handles.
 
 `stop_recording_form` has the same shape with three options —
 `stop_recording_episode`, `stop_recording_series`, `stop_delete_recoding_series`

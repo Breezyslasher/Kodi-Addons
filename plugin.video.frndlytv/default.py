@@ -715,6 +715,37 @@ def _recording_menu(programme_path, taping=None):
     return [stop] if taping else [record]
 
 
+# The form code the capture uses to record a film, asked with the airing that
+# plays it rather than with the film's own path.
+AIRING_FORM = "recording_form"
+
+
+def _airing_path(client, path):
+    """The ``epg/play/<id>`` a title plays from, where it has one.
+
+    A film's page holds the button that plays it, and for a film tied to a
+    scheduled airing that button's target is an ``epg/play/<id>`` -- which is
+    what the web player records against:
+
+        form?code=recording_form&path=epg/play/3498954
+        -> "Record Movie", value action:1;contentId:982759543;
+           contentType:movie;programId:3498954
+
+    Films not tied to an airing play from ``movie/play/<...>`` instead, and
+    nothing captured records one of those, so those get nothing rather than a
+    guess.
+    """
+    try:
+        detail = parse.detail(client.page(path), client)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.log("could not read %s to find its airing: %s" % (path, exc))
+        return "", ""
+    for action in detail["actions"]:
+        if str(action.get("path", "")).startswith("epg/play/"):
+            return action["path"], AIRING_FORM
+    return "", ""
+
+
 def route_record(programme_path, form_code):
     """Ask the service what it can do with this airing, then do the chosen one.
 
@@ -734,18 +765,31 @@ def route_record(programme_path, form_code):
         return
 
     options = parse.form_options(form)
+    if not options and not programme_path.startswith("epg/play/"):
+        # A film's card asks with its own path and gets a form with a title
+        # and a cancel button and nothing to choose. The web player records a
+        # film from the *airing*: "recording_form" with epg/play/<id>, which
+        # is what the film's page plays. So the page is followed and asked
+        # again, once.
+        airing, form_code2 = _airing_path(client, programme_path)
+        if airing:
+            kodiutils.log("%s offered nothing to record; asking %r for %s"
+                          % (programme_path, form_code2, airing))
+            try:
+                form = client.form(form_code2, airing)
+            except (api.ApiError, auth.AuthError) as exc:
+                kodiutils.ok_dialog(str(exc), "Recording")
+                return
+            options = parse.form_options(form)
+            if options:
+                programme_path, form_code = airing, form_code2
     if not options:
-        # No capture ever exercised "player_recording_form" -- the one a film
-        # or show names, as opposed to the guide's "recording_form" -- because
-        # clicking Record in the web player reloads the page and drops the
-        # request from the log. So if it ever answers with nothing usable, say
-        # what it did answer with: one line here settles it without a capture.
         kodiutils.log("recording form %r on %s offered no options; it "
                       "returned element(s): %s"
                       % (form_code, programme_path,
                          [(el.get("elementCode"), el.get("fieldType"))
                           for el in (form.get("elements") or [])] or "none"))
-        kodiutils.notify("No recording options for this")
+        kodiutils.notify("Nothing to record for this")
         return
 
     if len(options) == 1:
