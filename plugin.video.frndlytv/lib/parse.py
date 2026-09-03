@@ -202,6 +202,11 @@ def card(raw, api):
         # where a guide airing's overlay names "recording_form". Carried
         # rather than assumed, so the right one is asked for.
         "recording_form": attrs.get("recordingForm") or "",
+        # Whether the service already has this one down to record. Films are
+        # recorded by a call that only ever says "record"; a film that is
+        # already taping keeps the form route instead, which is where
+        # stopping lives.
+        "is_recorded": str(attrs.get("isRecorded", "")).lower() == "true",
         "can_record": (str(attrs.get("isRecordingAllowed", "")).lower()
                        == "true"
                        and str(attrs.get("isRecordingDisabled", "")).lower()

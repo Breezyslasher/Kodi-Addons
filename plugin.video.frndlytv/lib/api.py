@@ -906,6 +906,71 @@ class Api(object):
             return message.get("message") or ""
         return message or ""
 
+    # What the capture's action field held. Only the one that was captured is
+    # named: a film's Record button sends 1, and nothing shows what this
+    # endpoint does with any other value.
+    RECORD = 1
+
+    # How many channels the web player asks about in one guide request.
+    # Copied rather than chosen: every captured guide request names twelve.
+    GUIDE_CHANNELS_PER_CALL = 12
+
+    def guide_window(self, channel_ids, start_ms, end_ms, workers=6):
+        """Every channel's schedule for one window, in the player's own pages.
+
+        ``guide`` answers for the channels it is given, and the web player
+        never gives it more than twelve at a time. A "what is on at 9pm"
+        listing wants the whole lineup, so the ids are chunked the same way
+        and the chunks are fetched together.
+        """
+        ids = [c for c in channel_ids if c is not None]
+        chunks = [",".join(str(c) for c in ids[i:i + self.GUIDE_CHANNELS_PER_CALL])
+                  for i in range(0, len(ids), self.GUIDE_CHANNELS_PER_CALL)]
+
+        def one(group):
+            body = self.get("/service/api/v1/static/tvguide",
+                            {"channel_ids": group,
+                             "start_time": int(start_ms),
+                             "end_time": int(end_ms), "page": 0},
+                            base=GUIDE_BASE())
+            return (body.get("response") or {}).get("data") or []
+
+        got = self._fan_out(one, chunks, workers, len(chunks), "guide pages")
+        rows = []
+        for group in chunks:
+            rows.extend(got.get(group) or [])
+        return rows
+
+    def record_title(self, path, action=RECORD):
+        """Record a title from its own page, the way the web player does.
+
+        A film is not recorded through the form mechanism. Its page has a
+        Record button, and pressing it posts the film's own path to an
+        endpoint of its own:
+
+            POST /service/api/auth/unify/series/record
+            Content-Type: application/x-www-form-urlencoded
+            path=movies/11883820150&action=1
+            -> {"response": {"message": "Scheduled to Record"},
+                "status": true}
+
+        No form, no airing, no programme id -- which is why this works for a
+        Coming Soon film, whose page has nothing to play yet and whose own
+        form comes back with nothing on it.
+
+        The endpoint is named for series and was captured with a film, so it
+        is not film-specific; the addon still records a series through its
+        form, which offers all-episodes and this-episode as a choice that this
+        call has no way to express.
+        """
+        body = self._call("POST",
+                          API_BASE() + "/service/api/auth/unify/series/record",
+                          data={"path": path, "action": str(action)})
+        message = (body.get("response") or {}).get("message")
+        if isinstance(message, dict):
+            return message.get("message") or ""
+        return message or ""
+
     def next_programs(self, path, count=5):
         """What is on this channel next, for the info a live card shows."""
         body = self.get("/service/api/v1/get/live/channel/next/programs",

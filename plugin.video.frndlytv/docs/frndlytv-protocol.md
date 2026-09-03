@@ -284,6 +284,13 @@ the web player uses and the only one observed answering. A programme carries
 its times in `display.markers.startTime/endTime` (again as strings) and a
 `target.path` of `epg/play/<id>`.
 
+The web guide is a grid, and its columns are half hours. A Kodi listing cannot
+be a grid, so the addon offers both axes: a channel opens its own schedule,
+and "What's on at..." opens the half hours, each listing every channel and
+what it is showing at that moment. The second one asks for the whole lineup,
+which is the same request in twelves — the batch size is the player's, not a
+choice — issued together rather than one after another.
+
 ### Which airings are recorded
 
 ```
@@ -797,62 +804,47 @@ kinds of card say recording is allowed, and 488 movie cards do:
 so the flags do not predict it either, and the addon is right to offer the
 entry and report what came back.
 
-**A film is recorded from its airing.** A capture of recording a film in the
-web player settles it, and it is neither the card's form nor the card's path:
+**A film is recorded from its own page, by a call of its own.** Pressing
+Record on `watch.frndlytv.com/movies/11883820150` sends no form at all:
+
+```
+POST /service/api/auth/unify/series/record
+Content-Type: application/x-www-form-urlencoded
+
+path=movies/11883820150&action=1
+→ {"response": {"message": "Scheduled to Record"}, "status": true}
+```
+
+That is the film's own path, the same one its card carries, and `action=1`.
+Nothing shows what other values of `action` do, so only 1 is sent. The
+endpoint is named for series and was captured with a film, so it is not
+film-specific; the addon still records a series through its form, which
+offers all-episodes and this-episode as a choice this call cannot express.
+
+This is what makes a Coming Soon film recordable: it has not aired, so there
+is no airing to record against and its page has nothing to play.
+
+The **other** route is real too, and it is the one the guide overlay uses --
+recording a film from the player, rather than from its page:
 
 ```
 GET /service/api/v1/form?code=recording_form&path=epg/play/3498954
-→ elements[] = [ {elementCode: "record_series", fieldType: "radio-button",
-                  data: "Record Movie",
-                  value: "action:1;contentId:982759543;
-                          contentType:movie;programId:3498954"},
-                 ... plus the hidden heading, submit and cancel ]
+→ record_series / "Record Movie",
+  value = "action:1;contentId:982759543;contentType:movie;programId:3498954"
 
 POST /service/api/v1/form/submit
 {"code": "recording_form", "path": "epg/play/3498954",
- "fields": {"record_program": "action:1;contentId:982759543;
-                               contentType:movie;programId:3498954"}}
+ "fields": {"record_program": "<that value>"}}
 → {"message": {"message": "Added to My Stuff"}}
 ```
 
-So a film records under the **guide's** `recording_form`, against the
-`epg/play/<id>` that airs it, and the single option is titled "Record Movie" —
-carried, oddly, under `record_series`, the same element code a series uses.
+so a film's airing records like any other airing. The addon uses the page
+call, because that is what a film's card is: a page, not an airing.
 
-**The card already names that airing**, so no page read is needed in the
-common case. A film's card carries it in its own `target.pageAttributes`:
-
-```json
-"path": "movies/1059029",
-"pageAttributes": { "contentType": "epg", "id": "3478252",
-                    "assetType": "MO", "channelName": "Grit",
-                    "startTime": "1788307200000",
-                    "recordingForm": "player_recording_form" }
-```
-
-`id` there is the *programme*, not the film: on all 548 captured cards whose
-path **is** an `epg/play/<id>`, that path's id and this field are the same
-value, and 546 film cards carry one. So a film's card records at
-`epg/play/<pageAttributes.id>` under `recording_form`. This matters for
-Coming Soon, where the film has not aired yet and its page has no play button
-to follow.
-
-Series cards are left alone: their own path under `player_recording_form`
-answers with options, and it offers the whole series as well as the single
-episode, which one airing would not.
-
-The airing is also on the film's own page, for a film that has one: its play
-button's `target` is that `epg/play/<id>`, as on `movies/1058109` →
-`epg/play/3470223`. That is the fallback for the 23 film cards carrying no id.
-A film with no scheduled airing at all plays from `movie/play/<...>`
-(`movies/444981` → `movie/play/titl0000000000002575`), and nothing captured
-records one of those.
-
-The addon therefore records a film against the airing its card names, and
-where a card names none it asks the card's own form first and falls back to
-reading the page -- only when that form came back with nothing to choose, and
-only when the path is not already an `epg/play/<id>`. A film with no airing
-anywhere gets "Nothing to record for this" rather than a guessed request.
+**Not known:** how a film's recording is cancelled. `stop_recording_form`
+covers airings and series; nothing captured stops a film booked this way. A
+card that says `isRecorded: "true"` is therefore left on the form route,
+where the log will say what came back.
 
 ## Recordings
 

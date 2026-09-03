@@ -391,6 +391,11 @@ def route_guide():
         return finish()
 
     kodiutils.log("guide: %d channel(s)" % len(channels))
+    # The web guide is a grid, and its columns are half hours. A folder list
+    # of channels cannot be a grid, but the other axis is worth having: what
+    # every channel is showing at one moment.
+    add_dir("What's on at...", url(action="guide_times"),
+            plot="Every channel at one time, half hour by half hour.")
     for channel in channels:
         display = channel.get("display") or {}
         name = display.get("title") or display.get("subtitle1") or ""
@@ -401,6 +406,101 @@ def route_guide():
                           name=name),
                 art={"icon": logo, "thumb": logo})
     finish()
+
+
+# The guide's columns, in the web player and here: half hours, on the hour
+# and on the half hour. Twelve hours of them is a day's evening viewing
+# without being a list nobody scrolls to the end of.
+SLOT_MS = 30 * 60 * 1000
+SLOTS = 24
+
+
+def route_guide_times():
+    """The half hours, so a time can be picked before a channel."""
+    now = int(time.time() * 1000)
+    # The half hour currently in progress, not the next one: "what is on now"
+    # is the first thing anyone wants from a guide.
+    first = now - (now % SLOT_MS)
+    for index in range(SLOTS):
+        when = first + index * SLOT_MS
+        label = _clock(when)
+        if index == 0:
+            label = "Now  (%s)" % label
+        elif _day(when) != _day(now):
+            label = "%s %s" % (_day(when), label)
+        add_dir(label, url(action="guide_at", at=when))
+    finish()
+
+
+def route_guide_at(at_ms):
+    """Every channel, and what it is showing at one moment."""
+    client = _client()
+    if client is None:
+        return finish()
+    now = int(time.time() * 1000)
+    when = int(at_ms or 0) or now
+    try:
+        channels = client.lineup()
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not read the guide")
+        return finish()
+
+    try:
+        rows = client.guide_window([c["id"] for c in channels],
+                                   when, when + SLOT_MS)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not read the guide")
+        return finish()
+
+    showing = {}
+    for row in rows:
+        programmes = [parse.programme(raw) for raw in (row.get("programs") or [])]
+        # The one covering the moment asked about; failing that the first to
+        # start inside the half hour, which is what a grid column shows when
+        # a programme begins part-way through it.
+        programmes.sort(key=lambda p: p["start_ms"])
+        covering = next((p for p in programmes
+                         if p["start_ms"] <= when < (p["end_ms"] or 0)), None)
+        if not covering:
+            covering = next((p for p in programmes
+                             if when <= p["start_ms"] < when + SLOT_MS), None)
+        if covering:
+            showing[str(row.get("channelId"))] = covering
+
+    live_now = when <= now < when + SLOT_MS
+    kodiutils.log("guide at %s: %d of %d channel(s) answered"
+                  % (_clock(when), len(showing), len(channels)))
+    for channel in channels:
+        prog = showing.get(channel["id"])
+        if not prog:
+            continue
+        on_now = prog["start_ms"] <= now < (prog["end_ms"] or 0)
+        plain = "%s  %s  (%s)" % (channel["name"], prog["title"],
+                                  _clock(prog["start_ms"]))
+        label = _badged(plain, "On Now" if on_now else "")
+        item = xbmcgui.ListItem(label=label)
+        _set_guide_meta(item, prog, {}, channel["name"], on_now)
+        if channel["logo"]:
+            item.setArt({"icon": channel["logo"], "thumb": channel["logo"]})
+        item.addContextMenuItems(_guide_menu(prog, {}))
+        if live_now and on_now and channel["path"]:
+            item.setProperty("IsPlayable", "true")
+            xbmcplugin.addDirectoryItem(
+                HANDLE,
+                url(action="guide_play", path=channel["path"],
+                    programme=prog["path"], label=plain),
+                item, isFolder=False)
+        else:
+            # Nothing to play at a time that has not come: an item with no
+            # url is one Kodi tries to open anyway, so it points at the info
+            # route instead.
+            xbmcplugin.addDirectoryItem(
+                HANDLE,
+                url(action="programme", name=prog["title"],
+                    channel=channel["name"], start=prog["start_ms"],
+                    end=prog["end_ms"]),
+                item, isFolder=False)
+    finish("videos")
 
 
 def route_guide_channel(channel_id, name):
@@ -463,9 +563,12 @@ def route_guide_channel(channel_id, name):
         # the service; a schedule row carries no badge at all, but the times
         # say it, so the row is marked the same way and in the same words.
         on_now = prog["start_ms"] <= now < prog["end_ms"]
-        label = _badged("%s  %s%s" % (_clock(prog["start_ms"]), prog["title"],
-                                      "  [REC]" if taping else ""),
-                        "On Now" if on_now else "")
+        # The badge is markup, and markup belongs in what is drawn, not in
+        # what is passed on: a label carried into the play url reaches the
+        # player as "[COLOR lime]" in the title.
+        plain = "%s  %s%s" % (_clock(prog["start_ms"]), prog["title"],
+                              "  [REC]" if taping else "")
+        label = _badged(plain, "On Now" if on_now else "")
         item = xbmcgui.ListItem(label=label)
         _set_guide_meta(item, prog, over, name, on_now)
         item.addContextMenuItems(_guide_menu(prog, over, taping))
@@ -478,7 +581,7 @@ def route_guide_channel(channel_id, name):
             xbmcplugin.addDirectoryItem(
                 HANDLE,
                 url(action="guide_play", path=live_path,
-                    programme=prog["path"], label=label),
+                    programme=prog["path"], label=plain),
                 item, isFolder=False)
         else:
             # Not on the air, so nothing to play -- but an item with an empty
@@ -715,65 +818,37 @@ def _recording_menu(programme_path, taping=None):
     return [stop] if taping else [record]
 
 
-# The form code the capture uses to record a film, asked with the airing that
-# plays it rather than with the film's own path.
-AIRING_FORM = "recording_form"
+def _records_from_its_page(item):
+    """Whether this card records the way a title's page does.
 
+    A film is not recorded through the form mechanism at all. Its page has a
+    Record button, and pressing it posts the film's own path:
 
-def _card_airing(item):
-    """The airing a card records against, where the card names one.
+        POST /service/api/auth/unify/series/record
+        path=movies/11883820150&action=1   -> "Scheduled to Record"
 
-    A film's card does not only say which form applies -- it carries the
-    airing itself, in its own ``pageAttributes``:
-
-        path:        movies/1059029
-        contentType: epg
-        id:          3478252        <- the programme, not the film
-
-    Every one of the 548 captured cards whose path *is* an ``epg/play/<id>``
-    carries that same id here, so this field is the airing's id and nothing
-    else. 546 film cards carry one; the web player records a film against
-    exactly that: ``recording_form`` with ``epg/play/<id>``.
-
-    Only films are redirected. A series card records from its own path under
-    its own form, which works and offers the whole series as well as the
-    episode; sending it to one airing instead would narrow it.
+    Asking a film's own form instead answers with a title and a cancel button
+    and nothing to choose, which is what the addon used to report. Only films
+    take this route: a series' form offers all-episodes and this-episode as a
+    choice, and this call has no way to say which.
     """
     path = item.get("path") or ""
-    if not path.startswith("movies/"):
-        return "", ""
-    if (item.get("content_type") or "").lower() != "epg":
-        return "", ""
-    airing = item.get("content_id") or ""
-    if not airing:
-        return "", ""
-    return "epg/play/%s" % airing, AIRING_FORM
+    return path.startswith("movies/") and not item.get("is_recorded")
 
 
-def _airing_path(client, path):
-    """The ``epg/play/<id>`` a title plays from, where it has one.
-
-    A film's page holds the button that plays it, and for a film tied to a
-    scheduled airing that button's target is an ``epg/play/<id>`` -- which is
-    what the web player records against:
-
-        form?code=recording_form&path=epg/play/3498954
-        -> "Record Movie", value action:1;contentId:982759543;
-           contentType:movie;programId:3498954
-
-    Films not tied to an airing play from ``movie/play/<...>`` instead, and
-    nothing captured records one of those, so those get nothing rather than a
-    guess.
-    """
+def route_record_title(path, name=""):
+    """Record a title from its own path, and say what the service said."""
+    client = _client()
+    if client is None:
+        return
     try:
-        detail = parse.detail(client.page(path), client)
+        said = client.record_title(path)
     except (api.ApiError, auth.AuthError) as exc:
-        kodiutils.log("could not read %s to find its airing: %s" % (path, exc))
-        return "", ""
-    for action in detail["actions"]:
-        if str(action.get("path", "")).startswith("epg/play/"):
-            return action["path"], AIRING_FORM
-    return "", ""
+        kodiutils.ok_dialog(str(exc), "Recording")
+        return
+    kodiutils.log("recorded %s: %s" % (path, said or "no message"))
+    kodiutils.notify(said or ("Recording %s" % (name or "it")))
+    _refresh()
 
 
 def route_record(programme_path, form_code):
@@ -795,24 +870,6 @@ def route_record(programme_path, form_code):
         return
 
     options = parse.form_options(form)
-    if not options and not programme_path.startswith("epg/play/"):
-        # A film's card asks with its own path and gets a form with a title
-        # and a cancel button and nothing to choose. The web player records a
-        # film from the *airing*: "recording_form" with epg/play/<id>, which
-        # is what the film's page plays. So the page is followed and asked
-        # again, once.
-        airing, form_code2 = _airing_path(client, programme_path)
-        if airing:
-            kodiutils.log("%s offered nothing to record; asking %r for %s"
-                          % (programme_path, form_code2, airing))
-            try:
-                form = client.form(form_code2, airing)
-            except (api.ApiError, auth.AuthError) as exc:
-                kodiutils.ok_dialog(str(exc), "Recording")
-                return
-            options = parse.form_options(form)
-            if options:
-                programme_path, form_code = airing, form_code2
     if not options:
         kodiutils.log("recording form %r on %s offered no options; it "
                       "returned element(s): %s"
@@ -1403,13 +1460,13 @@ def _card_menu(item):
     form = item.get("recording_form")
     path = item.get("path")
     if form and item.get("can_record") and path:
-        # A film's own path answers with a form that has nothing on it; the
-        # card names the airing to use instead.
-        airing, airing_form = _card_airing(item)
-        if airing:
-            path, form = airing, airing_form
-        menu.append(("Recording...", "RunPlugin(%s)"
-                     % url(action="record", path=path, form=form)))
+        if _records_from_its_page(item):
+            menu.append(("Record", "RunPlugin(%s)"
+                         % url(action="record_title", path=path,
+                               name=item.get("title", ""))))
+        else:
+            menu.append(("Recording...", "RunPlugin(%s)"
+                         % url(action="record", path=path, form=form)))
     if item.get("playable") and item.get("path") and not item.get("coming_soon"):
         # What the service says comes after this. It asks the same thing
         # during playback, naming what is playing.
@@ -1970,6 +2027,12 @@ def _dispatch():
         # RunPlugin, not a directory: nothing to draw, and the listing the
         # menu was opened from stays where it is.
         route_record(params.get("path", ""), params.get("form", RECORD_FORM))
+    elif action == "guide_times":
+        route_guide_times()
+    elif action == "guide_at":
+        route_guide_at(params.get("at", ""))
+    elif action == "record_title":
+        route_record_title(params.get("path", ""), params.get("name", ""))
     elif action == "play":
         route_play(params.get("path", ""), params.get("label", ""))
     elif action == "play_page":

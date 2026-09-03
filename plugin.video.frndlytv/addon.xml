@@ -38,11 +38,17 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
-- Recording a film works. A film's own card offers a form with nothing on it;
-  the web player records a film from the airing that plays it instead, under
-  the guide's form -- and the card names that airing itself, which is how a
-  Coming Soon film can be recorded before it has a page to play from. Where a
-  card names none, the title's page is read for it.
+- Recording a film works, Coming Soon films included. A film is not recorded
+  through the form mechanism at all: its page posts the film's own path to a
+  call of its own, which is why a film that has not aired yet -- and so has no
+  airing to record and nothing to play -- can still be recorded.
+- The guide has a second way in: "What's on at...", which lists the half
+  hours, and each one lists every channel and what it is showing then. The
+  web guide is a grid and a Kodi listing cannot be, but both of the grid's
+  axes are now reachable.
+- A guide row's "On Now" badge no longer follows the programme into the
+  player: the markup was being passed along in the url, so it reached the
+  player as part of the title.
 - The log line describing the box no longer reads "on Busy", which is what
   Kodi answers with while an info label is not ready.
 - The guide marks what is on now. A schedule row carries no badge -- the
