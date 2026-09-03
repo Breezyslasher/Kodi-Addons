@@ -353,7 +353,7 @@ def detail(response, api):
     found = {"title": "", "plot": "", "poster": "", "fanart": "", "actions": [],
              "cast": [], "directors": [], "year": 0, "rating": "", "now": "",
              "airing": "", "expires": "", "is_favourite": None,
-             "subscribe": None}
+             "subscribe": None, "record": "", "record_label": ""}
 
     # A title the subscription does not include says so on its own page, in
     # the row where the play button would be: an "addonsubscribe" button whose
@@ -404,6 +404,23 @@ def detail(response, api):
                         found["actions"].append(
                             {"label": str(data or sub or "Play"),
                              "path": target})
+                    elif sub.startswith("record"):
+                        # Every captured title page carries one of these --
+                        # films tied to an airing, pure VOD films and series
+                        # alike -- and the card in a listing usually does not:
+                        # 4804 of the 5386 captured title cards carry no
+                        # recording attributes at all. So the page is where a
+                        # title says it can be recorded.
+                        #
+                        #   {"elementSubtype": "record_off", "data": "Record",
+                        #    "target": " "}
+                        #
+                        # Only the "off" half has been captured. The subtype
+                        # is carried verbatim rather than reduced to a
+                        # boolean, so a caller can tell "says it is not
+                        # recording" from "says something else".
+                        found["record"] = sub
+                        found["record_label"] = str(data or "Record")
                     elif ("favourite" in sub or "favorite" in sub) \
                             and found["is_favourite"] is None:
                         # Which button the page drew -- "add_to_favourites"

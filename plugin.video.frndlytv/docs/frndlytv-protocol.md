@@ -830,9 +830,34 @@ the same call, which is why it is named for series.
 This is what makes a Coming Soon film recordable: it has not aired, so there
 is no airing to record against and its page has nothing to play.
 
-Which verb to offer comes from the card: `pageAttributes.isRecorded`, which
-every one of the 569 captured film cards carries (and 2104 of the 2303 other
-recordable cards). Where it is missing, both are offered rather than guessed.
+**A card usually says nothing about recording at all.** Of 5386 captured
+title cards, only 582 carry `recordingForm`/`isRecordingAllowed`/`isRecorded`
+— the ones tied to an airing, which is what Coming Soon and the live rows are
+made of. The other 4804, every plain catalogue film and show, carry none of
+those keys, so a menu built from the card alone offers nothing on them.
+
+The **page** is what says a title can be recorded, and every captured title
+page says so — a film tied to an airing, a pure-VOD film that plays from
+`movie/play/…`, and a series alike:
+
+```json
+{"elementType": "button", "elementSubtype": "record_off",
+ "data": "Record", "target": " ",
+ "properties": {"vertical": "false", "upgradeinfo": "upgrade_form"}}
+```
+
+Note the blank target: the button calls the endpoint above rather than opening
+anything, which is why `parse.detail` — which takes a target as a path only
+when it looks like one — passed straight over it.
+
+So which verb to offer comes from whichever source knows:
+
+* the page's own button, where a page was read: `record_off` means it is not
+  recording. Only that half has been captured; anything else is the service
+  saying something unseen, so both verbs are offered and the log says what it
+  drew;
+* the card's `isRecorded`, on the 582 cards that carry it;
+* otherwise Record, which is what every captured page's button says.
 
 The **other** route is real too, and it is the one the guide overlay uses —
 recording a film from the player, rather than from its page:

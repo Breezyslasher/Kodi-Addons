@@ -46,6 +46,13 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   card, so nothing offers to stop a recording that was never started. Guide
   airings keep the form, where the choice between this episode and the whole
   series is asked.
+- Recording is offered on every film and show, not only the ones showing on a
+  channel. A plain catalogue title's card says nothing about recording -- 4804
+  of the 5386 captured title cards carry none of those fields -- but its page
+  draws a Record button all the same, so the entry is there where the service
+  puts it.
+- Listings look up details for 100 titles rather than 40, and the setting goes
+  to 200.
 - The guide has a second way in: "What's on at...", which lists the half
   hours, and each one lists every channel and what it is showing then. The
   web guide is a grid and a Kodi listing cannot be, but both of the grid's

@@ -550,7 +550,7 @@ def route_guide_channel(channel_id, name):
         try:
             raw = client.overlays(
                 [p["path"] for p in upcoming],
-                limit=kodiutils.get_setting_int("info_limit", 40))
+                limit=kodiutils.get_setting_int("info_limit", 100))
             overlays = {path: parse.overlay(data, client)
                         for path, data in raw.items()}
         except (api.ApiError, auth.AuthError) as exc:
@@ -846,20 +846,24 @@ def _records_from_its_page(item):
 
 
 def _title_recording_menu(item):
-    """Record or stop, by what the card says the service has already.
+    """Record or stop, by what is known about the title's state.
 
-    The verb offered is the applicable one. The card carries ``isRecorded``,
-    and carries it on every one of the captured film cards; where it is
-    missing both are offered, for the same reason the guide offers both when
-    it does not know -- offering only "stop" for something that was never
-    recorded is worse than offering one entry too many.
+    Three states, and they are not the same question:
+
+    * the card says ``isRecorded`` -- 582 of the captured title cards do, the
+      ones tied to an airing -- so the applicable verb is the only one shown;
+    * the card says nothing, which is the other 4804: every captured title
+      page carries a ``record_off`` button, so a plain catalogue title is
+      offered Record. Stopping it is reachable where the service says it is
+      recording, which is where that is known;
+    * a title's own page said, in which case that is used, since the page is
+      the thing with a Record button on it.
 
     A guide airing and a channel keep the form the card names. That is not
-    the same question: the form asks whether to record this episode or the
-    whole series, and this call has no way to say.
+    the same question either: the form asks whether to record this episode or
+    the whole series, and this call has no way to say.
     """
     path, name = item["path"], item.get("title", "")
-    recorded = item.get("is_recorded")
     if not _records_from_its_page(item):
         return [("Recording...", "RunPlugin(%s)"
                  % url(action="record", path=path,
@@ -869,9 +873,17 @@ def _title_recording_menu(item):
               % url(action="record_title", path=path, name=name))
     stop = ("Stop recording", "RunPlugin(%s)"
             % url(action="record_title", path=path, name=name, stop=1))
-    if recorded is None:
-        return [record, stop]
-    return [stop] if recorded else [record]
+    state = item.get("record")
+    if state:
+        # A page's own button. "record_off" is the only half ever captured;
+        # anything else is the service saying something this addon has not
+        # seen, so both verbs are offered rather than one being guessed.
+        if state != "record_off":
+            kodiutils.log("%s draws a %r button; offering both verbs"
+                          % (path, state))
+            return [record, stop]
+        return [record]
+    return [stop] if item.get("is_recorded") else [record]
 
 
 def route_record_title(path, name="", stop=False):
@@ -1136,10 +1148,15 @@ def _add_detail_action(action, detail, media="video", page_path=""):
         # verb is shown here rather than both. The rest is what a card of the
         # same title offers in a listing: reaching a film through its own page
         # should not lose the menu that reaching it through a row gives.
-        stand_in = {"path": page_path, "title": detail["title"]}
-        menu = (_favourite_menu(page_path, detail["title"],
-                                detail.get("is_favourite")) +
-                _similar_menu(stand_in) + _cast_menu(stand_in))
+        stand_in = {"path": page_path, "title": detail["title"],
+                    "record": detail.get("record")}
+        menu = _favourite_menu(page_path, detail["title"],
+                               detail.get("is_favourite"))
+        if detail.get("record") and _records_from_its_page(stand_in):
+            # The page drew a Record button, so this title can be recorded
+            # whatever its card in a listing did or did not say.
+            menu.extend(_title_recording_menu(stand_in))
+        menu += _similar_menu(stand_in) + _cast_menu(stand_in)
         if action.get("path"):
             menu.append(("Up next", "Container.Update(%s)"
                          % url(action="next", path=action["path"],
@@ -1273,7 +1290,7 @@ def _describe(cards, client):
         return
     try:
         pages = client.details(wanted,
-                               limit=kodiutils.get_setting_int("info_limit", 40))
+                               limit=kodiutils.get_setting_int("info_limit", 100))
     except (api.ApiError, auth.AuthError) as exc:
         kodiutils.log("could not read details for this listing: %s" % exc)
         return
@@ -1498,9 +1515,14 @@ def _card_menu(item):
                      % url(action="forget", content_id=item["content_id"],
                            content_type=item.get("content_type", ""),
                            name=item.get("title", ""))))
-    form = item.get("recording_form")
     path = item.get("path")
-    if form and item.get("can_record") and path:
+    if path and (_records_from_its_page(item)
+                 or (item.get("recording_form") and item.get("can_record"))):
+        # A title is offered recording whatever its card says: 4804 of the
+        # 5386 captured title cards carry no recording attributes at all --
+        # every plain catalogue film and show -- and their pages all carry a
+        # Record button regardless. Everything else is offered it only when
+        # its own card says recording is allowed.
         menu.extend(_title_recording_menu(item))
     if item.get("playable") and item.get("path") and not item.get("coming_soon"):
         # What the service says comes after this. It asks the same thing

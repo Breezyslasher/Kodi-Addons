@@ -47,8 +47,8 @@
 				</setting>
 				<setting id="info_limit" type="integer" label="30033" help="30034">
 					<level>1</level>
-					<default>40</default>
-					<constraints><minimum>0</minimum><step>10</step><maximum>100</maximum></constraints>
+					<default>100</default>
+					<constraints><minimum>0</minimum><step>10</step><maximum>200</maximum></constraints>
 					<control type="slider" format="integer"/>
 					<dependencies>
 						<dependency type="enable" setting="full_info" operator="is">true</dependency>
