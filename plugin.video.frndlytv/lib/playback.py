@@ -33,6 +33,9 @@ CONTEXT_FILE = "playing.json"
 
 WIDEVINE = "com.widevine.alpha"
 
+# What the service calls the same system in a stream's "streamType".
+WIDEVINE_TYPE = "widevine"
+
 
 class PlaybackError(Exception):
     """The stream could not be resolved into something playable."""
@@ -51,16 +54,73 @@ def _manifest_type(url):
     return "mpd"
 
 
+def _container(url):
+    """"dash", "hls", or "" -- from the path Friendly TV's packager uses.
+
+    Its DASH manifests live under ``/v1/dash/`` and end ``.mpd``; its HLS ones
+    live under ``/v1/master/``. Both are checked because the query string on
+    these urls is enormous and the extension is the more fragile of the two
+    signals.
+    """
+    path = urlparse(url or "").path.lower()
+    if "/v1/dash/" in path or path.endswith(".mpd"):
+        return "dash"
+    if "/v1/master/" in path or path.endswith(".m3u8"):
+        return "hls"
+    return ""
+
+
 def _pick(streams):
     """The stream to play, out of what the service offered.
 
-    Entries without a url describe side-car assets (the capture's first entry
-    is tagged ``eia608/1``, the caption track) and are not manifests.
+    ``streamType`` names the **DRM system**, not the container, and a single
+    title can come back once per system. The VOD capture answers with three:
+
+        0  widevine   /v1/dash/...      <- the only one Kodi can play
+        1  playready  /v1/dash/...
+        2  fairplay   /v1/master/...    (HLS, for Apple)
+
+    Taking the first entry with a url was wrong and not merely fragile: when
+    the service put the FairPlay entry first, the addon handed ISA an HLS
+    manifest encrypted for FairPlay while telling it the key system was
+    Widevine. ISA cannot fault that cleanly -- the log fills with "Cannot
+    detect container type from media url, fallback to TS", "Codec id 27
+    require extradata" and finally "InitializePeriod: Unhandled encrypted
+    stream", which is the same message a missing key system produces and so
+    reads like the DRM bug that was already fixed.
+
+    Widevine is the only system in the addon, so it is the only one taken.
     """
-    for stream in streams or []:
-        if stream.get("url"):
+    playable = [s for s in streams or [] if s.get("url")]
+    if not playable:
+        return None
+
+    kinds = ", ".join("%s/%s" % (s.get("streamType") or "?",
+                                 _container(s.get("url")) or "?")
+                      for s in playable)
+    kodiutils.log("the service offered %d stream(s): %s" % (len(playable), kinds))
+
+    widevine = [s for s in playable
+                if (s.get("streamType") or "").lower() == WIDEVINE_TYPE]
+    if not widevine:
+        if not any(s.get("streamType") for s in playable):
+            # Nothing declared a system at all. Every capture declares one, so
+            # this is unexplored rather than known-bad, and refusing it would
+            # turn a stream that might play into one that certainly does not.
+            kodiutils.log("no stream declares a DRM system; taking the first")
+            return playable[0]
+        # Naming what did come back turns a blank failure into a report.
+        raise PlaybackError(
+            "Friendly TV offered no Widevine stream for this title, only: %s. "
+            "Kodi cannot play the others." % kinds)
+
+    # Among Widevine entries prefer DASH: ISA plays either, but every Widevine
+    # manifest in every capture is DASH, so an HLS one would be unexplored
+    # ground rather than a considered choice.
+    for stream in widevine:
+        if _container(stream["url"]) == "dash":
             return stream
-    return None
+    return widevine[0]
 
 
 def resolve(client, path, label="", from_start=False):

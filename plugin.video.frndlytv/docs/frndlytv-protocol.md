@@ -288,6 +288,50 @@ Both live (`channel/live/<slug>`) and on-demand (`ads.contenttype=catchup`,
 served from `sr-vod-gen.akamaized.net`) come back through this same endpoint
 in this same shape.
 
+### `streams` is one entry per DRM system, and order is not a promise
+
+`streamType` names the **DRM system**, never the container. The five captured
+stream responses split cleanly in two:
+
+| path | `stream_provider_device_id` | streams returned |
+|---|---|---|
+| `channel/live/me_tv` | `5` | widevine, DASH |
+| `channel/live/metv_toons` | `5` | widevine, DASH |
+| `epg/play/3488570` | `5` | widevine, DASH |
+| `video/play/vszuyoc` | *absent* | widevine DASH, playready DASH, **fairplay HLS** |
+
+Friendly TV's packager puts DASH under `/v1/dash/` and HLS under
+`/v1/master/`, which is a steadier signal than the extension given how long
+the query strings on these urls are. All three entries in the VOD answer carry
+`attributes.mimeType: "eia608/1"` — that is the caption format, not the
+manifest type, and it says nothing about which entry to take.
+
+**Take the entry whose `streamType` is `widevine`.** Taking the first entry
+with a url is wrong. When the FairPlay entry comes first, that hands ISA an
+HLS manifest encrypted for FairPlay while declaring the key system to be
+Widevine, and ISA cannot report that cleanly. The Kodi 21 log reads:
+
+```
+Manifest successfully parsed (Periods: 1, Streams in first period: 2, Type: live)
+ParseChildManifest: Cannot detect container type from media url, fallback to TS
+Cannot create sample reader due to unhandled representation container type
+OpenStream: Codec id 27 require extradata.
+InitializePeriod: Unhandled encrypted stream.
+```
+
+That last line is the same message a missing key system produces, so it reads
+like the ISA-version DRM bug rather than the wrong stream — and the `Type:
+live` on a VOD, the TS fallback and the "require extradata" above it are the
+tell that the manifest itself is the wrong one. Whatever rung ends up on
+screen in that state is incidental; resolution cannot be judged from it.
+
+**Not known:** whether `stream_provider_device_id` is what selects between the
+one-stream and three-stream answers. The correlation holds across all five
+captures but no capture varies the parameter against a fixed path, so cause is
+not established. The addon sends the parameter exactly where the capture shows
+the web player sending it — live and guide paths, not VOD — and picks by
+`streamType` rather than trusting position, so it is correct either way.
+
 ### The DRM, and why there is no licence proxy
 
 The captured licence request is a **plain POST of the raw Widevine challenge**

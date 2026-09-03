@@ -24,10 +24,24 @@ from . import auth, kodiutils
 API_BASE = auth.API_BASE
 GUIDE_BASE = "https://frndlytv-tvguideapi.revlet.net"
 
-# The stream endpoint wants to know which provider profile to hand back. The
-# web player sends 5 and receives Widevine-protected DASH, which is what
-# InputStream Adaptive can play; this is copied from the capture.
+# The stream endpoint takes an optional provider-profile id, and the web
+# player does not send it consistently: every captured request for a live
+# channel or a guide airing carries "5", and the one captured request for a
+# VOD title carries no such parameter at all. Sending it is therefore only
+# copied where the capture actually shows it.
+#
+#     page/stream?path=channel/live/me_tv&stream_provider_device_id=5
+#     page/stream?path=epg/play/3488570&stream_provider_device_id=5
+#     page/stream?path=video/play/vszuyoc
+#
+# The two shapes answer differently: with the parameter, one Widevine DASH
+# stream; without it, three streams -- Widevine DASH, PlayReady DASH and
+# FairPlay HLS. Whether the parameter *causes* that is not established by any
+# capture, so playback.py picks by streamType rather than trusting position.
 STREAM_PROVIDER_DEVICE_ID = "5"
+
+# Path prefixes the capture shows carrying the parameter.
+STREAM_DEVICE_ID_PATHS = ("channel/live/", "epg/play/")
 
 TIMEOUT = 30
 
@@ -702,9 +716,10 @@ class Api(object):
         account may watch it, and a ``sessionInfo`` holding the poll key that
         identifies this stream to the concurrency counter.
         """
-        body = self.get("/service/api/v2/page/stream",
-                        {"path": path,
-                         "stream_provider_device_id": STREAM_PROVIDER_DEVICE_ID})
+        params = {"path": path}
+        if path.startswith(STREAM_DEVICE_ID_PATHS):
+            params["stream_provider_device_id"] = STREAM_PROVIDER_DEVICE_ID
+        body = self.get("/service/api/v2/page/stream", params)
         return body.get("response") or {}
 
     def end_session(self, poll_key):

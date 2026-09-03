@@ -38,6 +38,17 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- A film played the wrong stream entirely. The service answers with one entry
+  per DRM system -- Widevine and PlayReady as DASH, FairPlay as HLS -- and the
+  addon took whichever came first. With FairPlay first that gave Kodi an HLS
+  manifest encrypted for Apple while telling it the key system was Widevine,
+  which ISA reports as "Unhandled encrypted stream": the same words a missing
+  key system produces, so it read like a DRM fault rather than the wrong file.
+  The Widevine entry is now chosen by name, a DASH manifest is preferred, and
+  an answer with no Widevine in it says so instead of being played anyway.
+- The stream request now carries the provider-profile id exactly where the
+  web player was captured carrying it -- live channels and guide airings, not
+  on-demand titles -- rather than on everything.
 - Video quality is a setting, and it no longer opens at the worst copy the
   service has. Friendly TV offers 288p, 360p, 432p and 720p and nothing
   higher, all four in one adaptive set in all 21 periods of an ad-inserted
