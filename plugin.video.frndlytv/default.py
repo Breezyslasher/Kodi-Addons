@@ -720,6 +720,36 @@ def _recording_menu(programme_path, taping=None):
 AIRING_FORM = "recording_form"
 
 
+def _card_airing(item):
+    """The airing a card records against, where the card names one.
+
+    A film's card does not only say which form applies -- it carries the
+    airing itself, in its own ``pageAttributes``:
+
+        path:        movies/1059029
+        contentType: epg
+        id:          3478252        <- the programme, not the film
+
+    Every one of the 548 captured cards whose path *is* an ``epg/play/<id>``
+    carries that same id here, so this field is the airing's id and nothing
+    else. 546 film cards carry one; the web player records a film against
+    exactly that: ``recording_form`` with ``epg/play/<id>``.
+
+    Only films are redirected. A series card records from its own path under
+    its own form, which works and offers the whole series as well as the
+    episode; sending it to one airing instead would narrow it.
+    """
+    path = item.get("path") or ""
+    if not path.startswith("movies/"):
+        return "", ""
+    if (item.get("content_type") or "").lower() != "epg":
+        return "", ""
+    airing = item.get("content_id") or ""
+    if not airing:
+        return "", ""
+    return "epg/play/%s" % airing, AIRING_FORM
+
+
 def _airing_path(client, path):
     """The ``epg/play/<id>`` a title plays from, where it has one.
 
@@ -1371,9 +1401,15 @@ def _card_menu(item):
                            content_type=item.get("content_type", ""),
                            name=item.get("title", ""))))
     form = item.get("recording_form")
-    if form and item.get("can_record") and item.get("path"):
+    path = item.get("path")
+    if form and item.get("can_record") and path:
+        # A film's own path answers with a form that has nothing on it; the
+        # card names the airing to use instead.
+        airing, airing_form = _card_airing(item)
+        if airing:
+            path, form = airing, airing_form
         menu.append(("Recording...", "RunPlugin(%s)"
-                     % url(action="record", path=item["path"], form=form)))
+                     % url(action="record", path=path, form=form)))
     if item.get("playable") and item.get("path") and not item.get("coming_soon"):
         # What the service says comes after this. It asks the same thing
         # during playback, naming what is playing.

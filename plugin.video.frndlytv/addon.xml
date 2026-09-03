@@ -40,9 +40,11 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 2026.9.1 - First release
 - Recording a film works. A film's own card offers a form with nothing on it;
   the web player records a film from the airing that plays it instead, under
-  the guide's form. So when a card's form comes back empty the addon follows
-  the title's page to that airing and asks once more, which is exactly what
-  the capture of recording a film does.
+  the guide's form -- and the card names that airing itself, which is how a
+  Coming Soon film can be recorded before it has a page to play from. Where a
+  card names none, the title's page is read for it.
+- The log line describing the box no longer reads "on Busy", which is what
+  Kodi answers with while an info label is not ready.
 - The guide marks what is on now. A schedule row carries no badge -- the
   guide endpoint sends a title and two times and nothing else -- but the times
   say which one the channel is showing, and a listing card of the same

@@ -819,15 +819,40 @@ So a film records under the **guide's** `recording_form`, against the
 `epg/play/<id>` that airs it, and the single option is titled "Record Movie" —
 carried, oddly, under `record_series`, the same element code a series uses.
 
-The airing is on the film's own page: its play button's `target` is that
-`epg/play/<id>`, as on `movies/1058109` → `epg/play/3470223`. A film with no
-scheduled airing plays from `movie/play/<...>` instead (`movies/444981` →
-`movie/play/titl0000000000002575`), and nothing captured records one of those.
+**The card already names that airing**, so no page read is needed in the
+common case. A film's card carries it in its own `target.pageAttributes`:
 
-The addon therefore asks the card's own form first, and only when that comes
-back with nothing to choose *and* the path is not already an `epg/play/<id>`
-does it read the page, take the airing, and ask once more. A film with no
-airing gets "Nothing to record for this" rather than a guessed request.
+```json
+"path": "movies/1059029",
+"pageAttributes": { "contentType": "epg", "id": "3478252",
+                    "assetType": "MO", "channelName": "Grit",
+                    "startTime": "1788307200000",
+                    "recordingForm": "player_recording_form" }
+```
+
+`id` there is the *programme*, not the film: on all 548 captured cards whose
+path **is** an `epg/play/<id>`, that path's id and this field are the same
+value, and 546 film cards carry one. So a film's card records at
+`epg/play/<pageAttributes.id>` under `recording_form`. This matters for
+Coming Soon, where the film has not aired yet and its page has no play button
+to follow.
+
+Series cards are left alone: their own path under `player_recording_form`
+answers with options, and it offers the whole series as well as the single
+episode, which one airing would not.
+
+The airing is also on the film's own page, for a film that has one: its play
+button's `target` is that `epg/play/<id>`, as on `movies/1058109` →
+`epg/play/3470223`. That is the fallback for the 23 film cards carrying no id.
+A film with no scheduled airing at all plays from `movie/play/<...>`
+(`movies/444981` → `movie/play/titl0000000000002575`), and nothing captured
+records one of those.
+
+The addon therefore records a film against the airing its card names, and
+where a card names none it asks the card's own form first and falls back to
+reading the page -- only when that form came back with nothing to choose, and
+only when the path is not already an `epg/play/<id>`. A film with no airing
+anywhere gets "Nothing to record for this" rather than a guessed request.
 
 ## Recordings
 

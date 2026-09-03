@@ -144,14 +144,23 @@ def platform():
     if _PLATFORM[0]:
         return _PLATFORM[0]
     parts = []
+    ready = True
     for label, info in (("kodi", "System.BuildVersion"),
                         ("on", "System.OSVersionInfo")):
         try:
             said = xbmc.getInfoLabel(info)
         except Exception:
             said = ""
+        said = (said or "").replace("\n", " ").strip()
+        # An info label that is not ready yet answers with the literal string
+        # "Busy", and a line reading "on Busy" says nothing about the box.
+        # Python knows the same thing without waiting.
+        if said == "Busy":
+            ready = False
+            said = ("%s %s" % (os_name(), os_version())).strip() \
+                if info == "System.OSVersionInfo" else ""
         if said:
-            parts.append("%s %s" % (label, said.replace("\n", " ").strip()))
+            parts.append("%s %s" % (label, said))
     parts.append("inputstream.adaptive " + (isa_version() or "not installed"))
     # Named plainly rather than inferred from the OS string, which is
     # "Linux" on Android too.
@@ -161,8 +170,12 @@ def platform():
                          "one")
     except Exception:
         pass
-    _PLATFORM[0] = "; ".join(parts)
-    return _PLATFORM[0]
+    line = "; ".join(parts)
+    # Only remembered once Kodi answered properly, so a later call in the same
+    # process is not stuck with the stand-in.
+    if ready:
+        _PLATFORM[0] = line
+    return line
 
 
 def os_name():
