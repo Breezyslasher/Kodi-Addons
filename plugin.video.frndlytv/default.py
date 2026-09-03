@@ -459,10 +459,15 @@ def route_guide_channel(channel_id, name):
     for prog in upcoming:
         over = overlays.get(prog["path"]) or {}
         taping = _programme_id(prog) in recorded
-        label = "%s  %s%s" % (_clock(prog["start_ms"]), prog["title"],
-                              "  [REC]" if taping else "")
+        # The one the channel is showing. A listing card gets "On Now" from
+        # the service; a schedule row carries no badge at all, but the times
+        # say it, so the row is marked the same way and in the same words.
+        on_now = prog["start_ms"] <= now < prog["end_ms"]
+        label = _badged("%s  %s%s" % (_clock(prog["start_ms"]), prog["title"],
+                                      "  [REC]" if taping else ""),
+                        "On Now" if on_now else "")
         item = xbmcgui.ListItem(label=label)
-        _set_guide_meta(item, prog, over, name)
+        _set_guide_meta(item, prog, over, name, on_now)
         item.addContextMenuItems(_guide_menu(prog, over, taping))
         if live_path and prog["start_ms"] <= now < prog["end_ms"]:
             # On the air: two ways to watch it, so the choice is offered
@@ -517,8 +522,13 @@ def _guide_menu(prog, over, taping=None):
     return menu
 
 
-def _set_guide_meta(item, prog, over, channel):
-    """One guide row: when it is on, and whatever its overlay knows."""
+def _set_guide_meta(item, prog, over, channel, on_now=False):
+    """One guide row: when it is on, and whatever its overlay knows.
+
+    ``on_now`` decorates the title as well as the row's label, because in a
+    video container Kodi draws the info tag's title over the label it was
+    given -- a badge written only into the label is never seen.
+    """
     when = "%s - %s on %s" % (_clock(prog["start_ms"]),
                               _clock(prog["end_ms"]), channel)
     bits = [when]
@@ -541,7 +551,8 @@ def _set_guide_meta(item, prog, over, channel):
     try:
         tag = item.getVideoInfoTag()
         tag.setMediaType(media)
-        tag.setTitle(over.get("episode_title") or prog["title"])
+        tag.setTitle(_badged(over.get("episode_title") or prog["title"],
+                             "On Now" if on_now else ""))
         tag.setPlot(plot)
         if over.get("cast"):
             tag.setCast([xbmc.Actor(person) for person in over["cast"]])
@@ -1449,6 +1460,15 @@ BADGE_COLOURS = {
 BADGE_DEFAULT = "orange"
 
 
+def _badged(label, badge):
+    """A label with one of the service's badges on it, coloured."""
+    badge = (badge or "").strip()
+    if not badge or badge.lower() in label.lower():
+        return label
+    return "%s [COLOR %s](%s)[/COLOR]" % (
+        label, BADGE_COLOURS.get(badge.lower(), BADGE_DEFAULT), badge)
+
+
 def _labelled(item, label):
     """The label a card shows, with the service's own badge on it.
 
@@ -1464,11 +1484,7 @@ def _labelled(item, label):
     "On Now", "New Episodes", "Expires in 24 hours" and "+ Add-On" all come
     through as the service wrote them.
     """
-    badge = (item.get("badge") or "").strip()
-    if not badge or badge.lower() in label.lower():
-        return label
-    colour = BADGE_COLOURS.get(badge.lower(), BADGE_DEFAULT)
-    return "%s [COLOR %s](%s)[/COLOR]" % (label, colour, badge)
+    return _badged(label, item.get("badge"))
 
 
 def _art(item):
