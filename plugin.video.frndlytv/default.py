@@ -874,6 +874,10 @@ def _title_recording_menu(item):
     stop = ("Stop recording", "RunPlugin(%s)"
             % url(action="record_title", path=path, name=name, stop=1))
     state = item.get("record")
+    if not state and item.get("is_recorded") is None \
+            and path in _recorded_here():
+        # Nothing on the card or the page says, but this box recorded it.
+        return [stop]
     if state:
         # A page's own button. "record_off" is the only half ever captured;
         # anything else is the service saying something this addon has not
@@ -884,6 +888,43 @@ def _title_recording_menu(item):
             return [record, stop]
         return [record]
     return [stop] if item.get("is_recorded") else [record]
+
+
+# What this installation has recorded by path, so a title can be stopped
+# again afterwards. A plain catalogue card carries no isRecorded to read and
+# does not grow one after recording -- the service answers "Scheduled to
+# Record" and the listing comes back exactly as it was -- so without this the
+# only offer on a title just recorded is to record it again, which is what
+# happened: two "Scheduled to Record" five seconds apart.
+#
+# It is a note of what this box did, not a claim about the account: a
+# recording made in another app is not in it, and the card's own flag still
+# wins wherever the service does say.
+RECORDED_FILE = "recorded.json"
+# Long enough to cover a scheduled airing, short enough that the file does not
+# grow forever. Nothing captured says when a booking stops existing.
+RECORDED_DAYS = 60
+_RECORDED = [None]
+
+
+def _recorded_here():
+    """The paths this box has recorded, read once per plugin call."""
+    if _RECORDED[0] is None:
+        stored = kodiutils.read_json(RECORDED_FILE, default={}) or {}
+        _RECORDED[0] = stored if isinstance(stored, dict) else {}
+    return _RECORDED[0]
+
+
+def _remember_recording(path, recording):
+    stored = dict(_recorded_here())
+    if recording:
+        stored[path] = int(time.time())
+    else:
+        stored.pop(path, None)
+    cutoff = int(time.time()) - RECORDED_DAYS * 24 * 3600
+    stored = {p: t for p, t in stored.items() if int(t or 0) >= cutoff}
+    _RECORDED[0] = stored
+    kodiutils.write_json(RECORDED_FILE, stored)
 
 
 def route_record_title(path, name="", stop=False):
@@ -897,6 +938,7 @@ def route_record_title(path, name="", stop=False):
     except (api.ApiError, auth.AuthError) as exc:
         kodiutils.ok_dialog(str(exc), "Recording")
         return
+    _remember_recording(path, not stop)
     kodiutils.log("%s %s: %s" % ("stopped recording" if stop else "recorded",
                                  path, said or "no message"))
     kodiutils.notify(said or (("Stopped recording %s" if stop

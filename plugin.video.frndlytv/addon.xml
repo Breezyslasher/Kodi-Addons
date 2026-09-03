@@ -51,6 +51,10 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   of the 5386 captured title cards carry none of those fields -- but its page
   draws a Record button all the same, so the entry is there where the service
   puts it.
+  A title recorded from Kodi can be stopped from Kodi: the listing comes back
+  from the service unchanged after recording -- a plain catalogue card has no
+  recorded flag to grow -- so the addon notes what it recorded and offers Stop
+  on it. What the service says still wins wherever it says anything.
 - Listings look up details for 100 titles rather than 40, and the setting goes
   to 200.
 - The guide has a second way in: "What's on at...", which lists the half

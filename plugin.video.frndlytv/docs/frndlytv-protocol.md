@@ -859,6 +859,15 @@ So which verb to offer comes from whichever source knows:
 * the card's `isRecorded`, on the 582 cards that carry it;
 * otherwise Record, which is what every captured page's button says.
 
+**The listing does not change after recording.** `page/content` answers with
+the same card it did before — no `isRecorded` appears, because that key is not
+on a plain catalogue card at all — so nothing on the card says a booking now
+exists, and the only offer would be to record it again. The addon therefore
+notes what it recorded, by path, in its own profile (`recorded.json`), and
+offers Stop on those until they are stopped. That note is about this box, not
+the account: what the service says, on the card or on the page, still wins,
+and a recording made in another app is not in it.
+
 The **other** route is real too, and it is the one the guide overlay uses —
 recording a film from the player, rather than from its page:
 
