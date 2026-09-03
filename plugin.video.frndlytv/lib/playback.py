@@ -191,6 +191,8 @@ def _configure_isa(item, manifest_type, licence_url, from_start=False):
         kodiutils.log("start over: opening at the beginning of the "
                       "timeshift window rather than the live edge")
 
+    _configure_quality(item)
+
     if not licence_url:
         kodiutils.log("no licence url on this stream; playing unencrypted")
         return
@@ -214,6 +216,54 @@ def _configure_isa(item, manifest_type, licence_url, from_start=False):
     kodiutils.log("DRM configured for %s (%s)"
                   % (kodiutils.isa_version() or "unknown ISA",
                      "json drm" if json_drm else "legacy properties"))
+
+
+# The resolutions ISA accepts on its chooser properties, verbatim from its own
+# RES_CONV_LIST (src/CompSettings.h). Anything else is rejected with
+# "Resolution not valid on ... property" and silently ignored, so the addon
+# only ever sends one of these.
+QUALITY_RESOLUTIONS = ("480p", "640p", "720p", "1080p", "2K", "1440p", "4K")
+
+
+def _configure_quality(item):
+    """Tell ISA which rung to play, when the viewer has asked for one.
+
+    Left to itself ISA runs its "default" chooser, which seeds its bandwidth
+    estimate from the speed of the *manifest* download -- a 120 KB object over
+    a freshly opened HTTPS connection, whose measured rate counts the connect
+    and TLS handshake -- and then refuses any representation above 90% of that
+    estimate. Friendly TV's rungs are 0.70, 0.85, 1.67 and 2.28 Mbit/s, so a
+    seed under about 0.95 Mbit/s lands on the 288p rung, which is what a viewer
+    sees as "it played the worst copy".
+
+    "fixed-res" instead picks the highest representation that fits inside a
+    resolution and stays there. Both the property and this chooser name are
+    read by ISA 21.5 and 22.x alike (CompKodiProps.cpp, Chooser.cpp), so this
+    needs no version fork -- unlike the DRM property.
+
+    The secure limit is set as well as the plain one: these streams are
+    Widevine, and ISA applies the secure limit to a protected session.
+    """
+    choice = kodiutils.get_setting("quality", "1080p")
+
+    if choice in ("", "adaptive", "default"):
+        return
+
+    if choice == "ask-quality":
+        # ISA's own quality dialog, listed once per playback.
+        item.setProperty("inputstream.adaptive.stream_selection_type", "ask-quality")
+        kodiutils.log("quality: asking through InputStream Adaptive")
+        return
+
+    if choice not in QUALITY_RESOLUTIONS:
+        kodiutils.log("quality: %r is not a resolution ISA knows; "
+                      "leaving the choice to it" % choice)
+        return
+
+    item.setProperty("inputstream.adaptive.stream_selection_type", "fixed-res")
+    item.setProperty("inputstream.adaptive.chooser_resolution_max", choice)
+    item.setProperty("inputstream.adaptive.chooser_resolution_secure_max", choice)
+    kodiutils.log("quality: highest rung up to %s, held (fixed-res)" % choice)
 
 
 def _remember(response, path, from_start=False):

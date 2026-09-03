@@ -439,6 +439,106 @@ bundle are the teardown above and the active-sessions list. The player chunk
 that would do the polling was not in the capture. The addon therefore does not
 poll, and a long unattended stream may be reaped server-side.
 
+## Why a stream plays at 288p, and what actually fixes it
+
+The service does not send a low-quality copy. The captured VOD manifest
+(`sr-vod-dai-frndly.akamaized.net/.../stream_ad_tp.mpd`, 120 KB) offers four
+video rungs, all H.264, in **one** AdaptationSet:
+
+| height | width | bandwidth |
+|--------|-------|-----------|
+| 288    | 512   | ~0.70 Mbit/s |
+| 360    | 640   | ~0.85 Mbit/s |
+| 432    | 768   | ~1.67 Mbit/s |
+| 720    | 1280  | ~2.28 Mbit/s |
+
+**720p is the ceiling — there is no 1080p in this service.** Alongside them is
+an `image/jpeg` AdaptationSet of 640x180 thumbnail tiles for trick play, which
+is why a naive scan of the manifest reports a "180p" rung that no player would
+ever choose.
+
+The manifest has **21 periods**: six of content and fifteen inserted ads
+(dynamic ad insertion — `-dai-` is in the hostname). The ad periods are
+packaged by a different encoder, marking their video set with `mimeType`
+where the content periods use `contentType`, but **every period carries all
+four rungs in a single AdaptationSet**, so a period boundary never strands a
+player on a lower one. Segments are 6 s (`timescale="15360"`, `d="92160"`).
+
+So neither the service nor the manifest is the cause. The choice is
+InputStream Adaptive's, made by its default representation chooser
+(`src/common/ChooserDefault.cpp`):
+
+```
+score = |rep.width * rep.height  -  screen.width * screen.height|
+if rep.bandwidth > 0.9 * estimated_bandwidth:  skip this rep entirely
+score += sqrt(0.9 * estimated_bandwidth - rep.bandwidth)
+pick the lowest score
+```
+
+On any screen 720p or larger the 720p rung always has the best pixel score, so
+the *only* way to land on 288p is the bandwidth filter. Working the numbers
+against the rungs above:
+
+* below ~0.75 Mbit/s estimated — nothing qualifies, and ISA falls back to
+  `selector.Lowest()`, which is literally the first representation listed
+* ~0.75 to ~0.91 Mbit/s — **only the 288p rung qualifies**
+* ~2.5 Mbit/s and up — 720p qualifies and wins
+
+And where does that estimate come from? `src/Session.cpp` seeds it from the
+speed of the **manifest download**, scaled by a stated hack:
+
+```cpp
+// The download speed with small file sizes is not accurate ...
+if (manifestResp.dataSize < 512 * 1024)
+  manifestResp.downloadSpeed = (manifestResp.downloadSpeed / manifestResp.dataSize) * 512 * 1024;
+m_reprChooser->SetDownloadSpeed(manifestResp.downloadSpeed);
+```
+
+That is a 120 KB object fetched over a freshly opened HTTPS connection, and
+Kodi's `GetFileDownloadSpeed()` counts connect and TLS handshake time in the
+elapsed total. After that, only downloads **over 512 KB** update the average
+(`AdaptiveStream.cpp`), which here means the video segments do count (a 288p
+6 s segment is ~527 KB) but audio segments never do, so the average moves
+slowly. A stream can therefore open low and stay there.
+
+### The lever
+
+`inputstream.adaptive.stream_selection_type` = `fixed-res` selects
+`CRepresentationChooserFixedRes`, which takes `selector.Highest()` — the
+highest representation fitting inside a resolution limit — and **never adapts
+away from it**. The limit comes from
+`inputstream.adaptive.chooser_resolution_max` and, for a DRM session,
+`inputstream.adaptive.chooser_resolution_secure_max`; these streams are
+Widevine, so both must be set or the setting has no effect.
+
+The chooser names, verbatim from `GetReprChooser()` in
+`src/common/Chooser.cpp`, are `default` / `adaptive`, `fixed-res`,
+`ask-quality`, `manual-osd`, `test`. The accepted resolution strings, verbatim
+from `RES_CONV_LIST` in `src/CompSettings.h`, are `auto`, `disabled`, `480p`,
+`640p`, `720p`, `1080p`, `2K`, `1440p`, `4K` — anything else is logged as
+"Resolution not valid" and dropped.
+
+All four properties are read by **ISA 21.5.x and 22.x alike**, so unlike the
+DRM property this needs no version fork. Verified against
+`src/CompKodiProps.cpp` on both the `Omega` (21.5.24) and `master` (22.3.21)
+branches.
+
+Two things this is *not*:
+
+* `inputstream.adaptive.max_bandwidth` — gone; the property is now
+  `inputstream.adaptive.chooser_bandwidth_max`.
+* `inputstream.adaptive.config` with `resolution_limit` — that exists, but it
+  marks representations *unplayable* (`Session.cpp`), which is a cap, not a
+  floor, and so cannot raise anything.
+
+If a log shows `Disabled stream repr ID "..." as not HDCP compliant`, none of
+the above applies: the DRM session itself is refusing the higher rungs, and
+that is a display-chain limit rather than a bandwidth one.
+
+The addon exposes this as **Settings > Playback > Video quality**, defaulting
+to "Best available" (`1080p`, which on this service resolves to the 720p rung).
+"Let InputStream Adaptive decide" sets nothing and restores the old behaviour.
+
 ## Browse by Genre is a row of words, not pages
 
 Home carries a `browse_by_genre` section of fifteen cards, marked

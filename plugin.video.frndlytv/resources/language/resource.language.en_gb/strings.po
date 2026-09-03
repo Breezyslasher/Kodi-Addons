@@ -96,3 +96,35 @@ msgstr ""
 msgctxt "#30026"
 msgid "Guide endpoint"
 msgstr ""
+
+msgctxt "#30040"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#30041"
+msgid "Video quality"
+msgstr ""
+
+msgctxt "#30042"
+msgid "Friendly TV's own ceiling is 720p at about 2.3 Mbit/s, so \"Best available\" asks InputStream Adaptive for the top rung and holds it. \"Let InputStream Adaptive decide\" hands the choice back to its own adaptive chooser, which starts from a bandwidth guess taken off the manifest download and can settle low."
+msgstr ""
+
+msgctxt "#30043"
+msgid "Best available"
+msgstr ""
+
+msgctxt "#30044"
+msgid "Up to 720p"
+msgstr ""
+
+msgctxt "#30045"
+msgid "Up to 480p"
+msgstr ""
+
+msgctxt "#30046"
+msgid "Let InputStream Adaptive decide"
+msgstr ""
+
+msgctxt "#30047"
+msgid "Ask before each video"
+msgstr ""

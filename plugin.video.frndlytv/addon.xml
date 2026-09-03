@@ -38,6 +38,16 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- Video quality is a setting, and it no longer opens at the worst copy the
+  service has. Friendly TV offers 288p, 360p, 432p and 720p and nothing
+  higher, all four in one adaptive set in all 21 periods of an ad-inserted
+  film, so nothing about the stream forced the choice. InputStream Adaptive
+  made it: its default chooser skips any rendition above 90% of its estimated
+  bandwidth, and it seeds that estimate from the speed of the manifest
+  download -- a 120 KB file over a connection it has just opened, handshake
+  time included. Between roughly 0.75 and 0.91 Mbit/s of estimate, 288p is the
+  only rendition left standing. The addon now asks for the best rendition that
+  fits and holds it, which for this service means 720p.
 - Playback on Kodi 21 is fixed. The DRM configuration was being written in
   the form only InputStream Adaptive 22.1.5 and newer reads, and ISA 21 does
   not warn about that -- it ignores the property and then refuses the stream
