@@ -38,6 +38,11 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- A Coming Soon title is no longer offered to the player. The service lists
+  these and then refuses them, so Kodi was trying, failing, and logging
+  "skipping unplayable item" once per attempt -- and a season of them takes
+  several tries to find one that plays. They still appear in their place in
+  the season, badged, and selecting one says what it is.
 - Stopping a video says so properly. Friendly TV has an event for it and no
   capture had ever caught one, so the addon sent a final position instead
   rather than invent a code; leaving a video with the back button turns out

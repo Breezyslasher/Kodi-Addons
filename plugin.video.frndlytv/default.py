@@ -1049,7 +1049,14 @@ def _without_addon_titles(cards, client=None):
 
 def _add_card(item):
     """List one card, as whatever kind of thing it is."""
-    if item["playable"]:
+    if item.get("coming_soon") and item["playable"]:
+        # The service lists these and then refuses them -- "The content
+        # provider has restricted this program from being available On
+        # Demand." Offering them as playable means Kodi tries, fails, and
+        # logs "skipping unplayable item"; a season of them takes several
+        # tries to find one that plays. Selecting one now says what it is.
+        _add_coming_soon(item)
+    elif item["playable"]:
         _add_playable(item)
     elif parse.is_genre(item):
         # A genre is a word, not a page: there is nothing at "Westerns"
@@ -1210,6 +1217,45 @@ def _similar_menu(item):
              % url(action="similar", path=item["path"],
                    name=item.get("title", "")))]
 
+
+
+def _add_coming_soon(item):
+    """A title the service has listed but will not serve yet.
+
+    Listed rather than hidden: it is part of the season and its place in the
+    order is worth seeing. Not playable, because it is not.
+    """
+    label = _labelled(item, item["episode_title"] or item["title"]
+                      or item["path"])
+    listitem = xbmcgui.ListItem(label=label)
+    listitem.setArt(_art(item))
+    _set_meta(listitem, item, label)
+    menu = _card_menu(item)
+    if menu:
+        listitem.addContextMenuItems(menu)
+    xbmcplugin.addDirectoryItem(
+        HANDLE, url(action="coming_soon",
+                    label=item["episode_title"] or item["title"],
+                    name=item.get("title") or "",
+                    path=item["path"]),
+        listitem, isFolder=False)
+
+
+def route_coming_soon(label, name=""):
+    """Say that a title is not out yet, and stay where we are.
+
+    Friendly TV's own words for it, when it is asked for anyway, are "The
+    content provider has restricted this program from being available On
+    Demand." -- which reads like a fault rather than a schedule.
+    """
+    said = "%s is not available to watch yet." % (label or "This")
+    if name and name != label:
+        said = "%s\n\n%s" % (said, name)
+    kodiutils.log("coming soon: %s" % (label or "?"))
+    kodiutils.ok_dialog(
+        "%s\n\nFriendly TV lists it as Coming Soon. It plays once the "
+        "service releases it on demand." % said, label or "Coming Soon")
+    xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
 
 def _add_playable(item, label=None, action="play"):
     # The badge is decoration for the row only. It must not reach the url:
@@ -1633,6 +1679,8 @@ def _dispatch():
     elif action == "section":
         route_section(params.get("path", ""), params.get("code", ""),
                       params.get("name", ""))
+    elif action == "coming_soon":
+        route_coming_soon(params.get("label", ""), params.get("name", ""))
     elif action == "trending":
         route_trending()
     elif action == "trending_row":
