@@ -38,6 +38,14 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- A Trending folder, holding the three carousels the service's own search
+  screen opens with: Trending Movies, Trending TV Shows and Trending Searches,
+  twenty-five titles apiece. Their names and descriptions are the service's,
+  not ones invented here.
+- Add-Ons is a top-level folder now rather than one row of Home. It was being
+  skipped from the menu the service itself provides, which left it reachable
+  only by scrolling Home; it is a page like any other, so it sits with Movies
+  and TV, and the row that duplicated it is off Home.
 - A badge stays on the row it decorates. It was going into the url as well,
   so the player was told it was playing "A New Beginning [COLOR gold](+
   Add-On)[/COLOR]", markup and all.

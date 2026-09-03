@@ -1122,6 +1122,35 @@ Search is where the flag lives: 21 of the 22 flagged cards captured before the
 subscription came from search, one from a series page, and none from anywhere
 else.
 
+## Trending: three carousels on the search surface
+
+Two endpoints, on the same `/search/api/tivo/v1` surface as search rather
+than `/service/api/v1`, both answering in the ordinary card shape but
+wrapping it differently:
+
+```
+GET /search/api/tivo/v1/search/screen
+→ searchResults is a LIST of carousels
+    {"name": "Trending Movies ",  "path": "/carousels/trendingMovies",
+     "description": "Trending Movies based on rovi score and viewEvents...",
+     "isThirdPartySection": true, "data": [ <25 cards> ]}
+    {"name": "Trending TV Shows", "path": "/carousels/trendingTVSHOWS", ...}
+
+GET /search/api/tivo/v1/search/screen/trendingSearches
+→ searchResults is a SINGLE carousel object
+    {"name": "Trending Searches",
+     "path": "/carousels/trendingSearches_Smart", "data": [ <25 cards> ]}
+```
+
+25 cards each. Trending Movies is `movies/...` cards **bar one**: the
+captured carousel mixes in a film that happens to be on the air, and that
+card is the live channel (`channel/live/family_movie_channel`,
+`pageType: player`), not the film's page. Trending TV Shows and Trending
+Searches are both `series/shows/...`.
+
+The names, descriptions and paths are the service's own, so the addon shows
+them rather than inventing labels.
+
 ## The Add-ons page, and the six channels
 
 `system/config`'s own menu already carries `ADD-ONS -> add-ons`, so the folder

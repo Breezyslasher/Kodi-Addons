@@ -74,6 +74,9 @@ IMAGE_PROFILES = {
 
 CONFIG_FILE = "config.json"
 PACKAGES_FILE = "packages.json"
+
+# Home rows the addon reaches by a better route, and so leaves off Home.
+HOME_ROWS_ELSEWHERE = {"add_ons"}
 CONFIG_MAX_AGE = 24 * 60 * 60
 
 
@@ -365,11 +368,15 @@ class Api(object):
     def menus(self):
         """The service's own top-level menu, minus what this addon cannot do.
 
-        ``settings`` is Kodi's own screen here and ``search`` runs on a
-        different API surface this addon has no capture of, so neither is
-        offered.
+        ``settings`` is Kodi's own screen here, and ``search`` has a richer
+        entry of its own above, so neither is repeated.
+
+        ``add-ons`` is kept. It is a page like any other -- a section of the
+        six channels, then rows of their content -- and belongs at the top
+        level rather than buried as one row of Home, which is where it was
+        reachable from before.
         """
-        skip = {"settings", "search", "add-ons"}
+        skip = {"settings", "search"}
         out = []
         for entry in (self.config().get("menus") or []):
             target = (entry.get("targetPath") or "").strip()
@@ -443,6 +450,12 @@ class Api(object):
                               % (page + 1, exc))
                 break
             for section in parse.sections(body, self):
+                if section["code"] in HOME_ROWS_ELSEWHERE:
+                    # The add-ons row is the Add-ons page in miniature, and
+                    # that page is a top-level entry of its own. Repeating it
+                    # as a row of Home puts the same six channels two clicks
+                    # apart in two places.
+                    continue
                 if section["cards"] and section["code"] not in seen:
                     seen.add(section["code"])
                     rows.append(section)
@@ -488,6 +501,46 @@ class Api(object):
             "has_more": bool(response.get("hasMore")),
             "total": response.get("totalCount") or len(cards),
         }
+
+    def trending(self):
+        """The three carousels the search screen opens with.
+
+        Two endpoints on the same surface as search, both answering in the
+        card shape but wrapping it differently:
+
+            GET /search/api/tivo/v1/search/screen
+              -> searchResults is a **list** of carousels
+                 "Trending Movies "  /carousels/trendingMovies      25 cards
+                 "Trending TV Shows" /carousels/trendingTVSHOWS     25 cards
+
+            GET /search/api/tivo/v1/search/screen/trendingSearches
+              -> searchResults is a single carousel **object**
+                 "Trending Searches" /carousels/trendingSearches_Smart
+
+        Each carries `name`, `description`, `path` and `data`. Returned in the
+        order the service lists them, films then shows then searches, with
+        whichever endpoint failed simply absent.
+        """
+        rows = []
+        for endpoint, single in (
+                ("/search/api/tivo/v1/search/screen", False),
+                ("/search/api/tivo/v1/search/screen/trendingSearches", True)):
+            try:
+                body = self.get(endpoint)
+            except (ApiError, auth.AuthError) as exc:
+                kodiutils.log("could not read %s: %s" % (endpoint, exc))
+                continue
+            results = (body.get("response") or {}).get("searchResults")
+            for row in ([results] if single else results or []):
+                if not isinstance(row, dict):
+                    continue
+                rows.append({
+                    "name": (row.get("name") or "").strip(),
+                    "description": (row.get("description") or "").strip(),
+                    "path": row.get("path") or "",
+                    "cards": row.get("data") or [],
+                })
+        return rows
 
     def search_all(self, query, bucket="All", limit=16, max_pages=20):
         """Every result for a query, not just the first page.

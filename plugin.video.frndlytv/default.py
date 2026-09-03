@@ -101,6 +101,11 @@ def route_root():
             plot="Channels and their schedule for the next day.")
     add_dir("Search", url(action="search"),
             plot="Search Friendly TV's catalogue of shows and films.")
+    if client:
+        add_dir("Trending", url(action="trending"),
+                plot="What Friendly TV is putting in front of everyone right "
+                     "now: trending films, trending shows, and the titles "
+                     "people are searching for.")
 
     if client:
         for entry in client.menus():
@@ -126,6 +131,50 @@ def route_root():
         add_dir("Sign in", url(action="signin"))
     finish()
 
+
+
+def route_trending():
+    """The carousels the service's own search screen opens with.
+
+    Three of them, and they are the service's, not this addon's: two come
+    from the search screen and one from its trending-searches endpoint, each
+    naming and describing itself.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    rows = client.trending()
+    if not rows:
+        kodiutils.notify("Friendly TV sent no trending rows")
+        return finish()
+    kodiutils.log("trending: %s"
+                  % ", ".join("%s (%d)" % (r["name"], len(r["cards"]))
+                              for r in rows))
+    for row in rows:
+        add_dir(row["name"] or row["path"],
+                url(action="trending_row", code=row["path"],
+                    name=row["name"]),
+                plot=row["description"])
+    finish()
+
+
+def route_trending_row(code, name=""):
+    """One trending carousel, in full.
+
+    Fetched again rather than carried through the url, for the same reason a
+    Home row is: twenty-five cards do not fit in a plugin path.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    for row in client.trending():
+        if row["path"] == code or (name and row["name"] == name):
+            cards = [parse.card(c, client) for c in row["cards"]]
+            kodiutils.log("trending %s: %d card(s)"
+                          % (row["name"] or code, len(cards)))
+            return finish(_add_cards(cards, client))
+    kodiutils.notify("That row is no longer there")
+    finish("videos")
 
 def route_sessions():
     """What this account currently has playing, anywhere.
@@ -1576,6 +1625,10 @@ def _dispatch():
     elif action == "section":
         route_section(params.get("path", ""), params.get("code", ""),
                       params.get("name", ""))
+    elif action == "trending":
+        route_trending()
+    elif action == "trending_row":
+        route_trending_row(params.get("code", ""), params.get("name", ""))
     elif action == "section_cached":
         route_section_cached(params.get("path", ""), params.get("code", ""),
                              params.get("name", ""))
