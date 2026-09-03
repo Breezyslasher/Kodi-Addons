@@ -38,6 +38,19 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- A film on a channel the subscription does not include says so, instead of
+  "Friendly TV's page for this offers nothing to play". Those titles have a
+  full page -- synopsis, cast, artwork -- with a subscribe button where the
+  play button would be, which read as a page with nothing on it. The offer is
+  repeated in the service's own words, because that is the only thing that
+  knows what it is.
+- Playback reports are no longer refused. The POST carries two form fields
+  and only one was being sent; the service said so plainly once it was asked
+  to. The missing one is a constant in the web player's own configuration,
+  not a secret and not per-account.
+- The device an event came from is described by Python rather than by Kodi's
+  info labels, which answer "Busy" when they are not ready yet and duly sent
+  a machine whose operating system was "Busy".
 - What you watch in Kodi now reaches Continue Watching, and remembers where
   you left off. That row is written by whatever is playing, and this addon was
   writing nothing: the web player posts player state and position throughout

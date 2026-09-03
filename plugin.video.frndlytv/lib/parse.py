@@ -7,6 +7,7 @@ is the one place that reads that shape, so the routing code can deal in plain
 dictionaries.
 """
 
+import json
 import re
 import time
 
@@ -277,7 +278,15 @@ def detail(response, api):
     """
     found = {"title": "", "plot": "", "poster": "", "fanart": "", "actions": [],
              "cast": [], "directors": [], "year": 0, "rating": "", "now": "",
-             "airing": "", "expires": "", "is_favourite": None}
+             "airing": "", "expires": "", "is_favourite": None,
+             "subscribe": None}
+
+    # A title the subscription does not include says so on its own page, in
+    # the row where the play button would be: an "addonsubscribe" button whose
+    # properties carry the service's own wording. This is why a film can have
+    # a page and nothing to play on it.
+    info = (response.get("info") or {}).get("attributes") or {}
+    upgrade_form = info.get("upgradeForm") or ""
 
     # The page does say whether this is already a favourite, in a block of its
     # own rather than on the card: {"isFavourite": false,
@@ -315,7 +324,9 @@ def detail(response, api):
                 data = element.get("data")
                 target = str(element.get("target") or "").strip()
                 if kind == "button":
-                    if "/" in target:
+                    if sub == "addonsubscribe":
+                        found["subscribe"] = _subscribe(element, upgrade_form)
+                    elif "/" in target:
                         found["actions"].append(
                             {"label": str(data or sub or "Play"),
                              "path": target})
@@ -346,6 +357,38 @@ def detail(response, api):
         found["expires"] = got.get("expires") or ""
     return found
 
+
+
+def _subscribe(element, upgrade_form=""):
+    """What an "addonsubscribe" button says, for a title outside the plan.
+
+    The wording is the service's own and is used verbatim rather than
+    invented, because it is the only thing that knows what the offer is:
+
+        {"buttonText": "Start 7-day Free Trial", "buttonColor": "#d1a128",
+         "masterPackageId": 27, "goToSettings": true,
+         "descriptionAddonSubscribe": "", "messageAddonSubscribe": "",
+         "showPopupAddonSubscribe": false,
+         "imageUrl": "network,network/images/xdzdpu.png", ...}
+
+    ``properties.addOnInfo`` is a JSON **string**, not an object.
+    """
+    raw = (element.get("properties") or {}).get("addOnInfo")
+    info = {}
+    if isinstance(raw, dict):
+        info = raw
+    elif isinstance(raw, str):
+        try:
+            info = json.loads(raw)
+        except ValueError:
+            info = {}
+    return {
+        "text": info.get("buttonText") or str(element.get("data") or ""),
+        "message": info.get("messageAddonSubscribe") or "",
+        "description": info.get("descriptionAddonSubscribe") or "",
+        "package_id": info.get("masterPackageId") or 0,
+        "upgrade_form": upgrade_form,
+    }
 
 def _names(value):
     """A credit list as names, in either form the service writes it.

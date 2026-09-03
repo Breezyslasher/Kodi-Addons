@@ -158,25 +158,28 @@ def platform():
 
 
 def os_name():
-    """This box's operating system, for the fields that describe the device.
+    """This box's operating system, in the shape the field expects.
 
-    The capture's web player sent "Linux x86_64" here -- the browser's own
-    platform string. Kodi's System.OSVersionInfo is the nearest equivalent it
-    can answer truthfully, and a truthful answer is better than a copied one
-    for a field whose whole purpose is to say what the device is.
+    The capture's web player sent "Linux x86_64" -- the browser's platform
+    string. Python answers the same question about the same machine and always
+    answers: Kodi's System.OSVersionInfo returns the literal string "Busy"
+    while an info label is not ready, and a real box duly reported
+    ``dos='Busy'``.
     """
     try:
-        said = (xbmc.getInfoLabel("System.OSVersionInfo") or "").strip()
+        import platform as _platform
+        parts = [_platform.system(), _platform.machine()]
+        said = " ".join(p for p in parts if p)
     except Exception:
         said = ""
-    return said.replace("\n", " ") or "unknown"
+    return said or "unknown"
 
 
 def os_version():
-    """A version to sit beside `os_name`. Kodi's own, which is what varies."""
+    """A version to sit beside `os_name`, from the same source."""
     try:
-        return (xbmc.getInfoLabel("System.BuildVersionShort") or "").strip() \
-            or "unknown"
+        import platform as _platform
+        return _platform.release() or "unknown"
     except Exception:
         return "unknown"
 

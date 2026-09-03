@@ -29,6 +29,20 @@ from . import auth, kodiutils
 
 ANALYTICS_URL = "https://ace.api.yuppcdn.net/analytics/partner"
 
+# The POST carries **two** form fields, not one: the JSON under "data", and
+# this. Leaving it out is refused outright --
+#
+#     HTTP 400  Request is missing required form field 'analytics_id'
+#
+# It is not a secret and not per-user: it is a constant in the web app's own
+# configuration block, beside the API base paths and the Facebook and Google
+# client ids, and it is the same value on every one of the eight captured
+# events.
+#
+#     analyticsId:"d36bad5f857d14e3d4d4ca4b7055e179"
+#
+ANALYTICS_ID = "d36bad5f857d14e3d4d4ca4b7055e179"
+
 # The capture's headers, which carry no credentials at all: the account is
 # identified inside the payload by ``ui`` and ``bi``, not by a session header.
 HEADERS = {
@@ -184,7 +198,8 @@ class Reporter(object):
         try:
             import requests
             response = requests.post(ANALYTICS_URL,
-                                     data={"data": json.dumps(body)},
+                                     data={"data": json.dumps(body),
+                                           "analytics_id": ANALYTICS_ID},
                                      headers=HEADERS, timeout=10)
             ok = response.status_code == 200
         except Exception as exc:

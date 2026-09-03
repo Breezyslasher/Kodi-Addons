@@ -704,7 +704,10 @@ def route_page(path, name=""):
                              section["code"], section["name"], "section",
                              describe)
     if not sections and not detail["actions"]:
-        kodiutils.notify("Nothing here")
+        if detail.get("subscribe"):
+            _say_needs_subscription(detail, path)
+        else:
+            kodiutils.notify("Nothing here")
     finish("seasons" if describe and media == "tvshow" else "")
 
 
@@ -1297,6 +1300,31 @@ def route_similar(path, name=""):
     finish(_add_cards(cards, client))
 
 
+
+def _say_needs_subscription(detail, label):
+    """Say that a title is on a channel the account does not have.
+
+    Every word shown is the service's own. Friendly TV sells add-on channels
+    on top of the base plan, and a title on one still has a full page --
+    synopsis, cast, artwork -- with an "addonsubscribe" button in place of the
+    play button. Nothing here can subscribe: that is a payment flow, and it
+    belongs in Friendly TV's own apps.
+    """
+    offer = detail["subscribe"]
+    said = offer.get("message") or offer.get("description") or ""
+    lines = ["%s is on a channel your subscription does not include."
+             % (detail["title"] or label)]
+    if said:
+        lines.append(said)
+    if offer.get("text"):
+        lines.append('Friendly TV offers: "%s"' % offer["text"])
+    lines.append("Add the channel in the Friendly TV app or at "
+                 "watch.frndlytv.com, and it will play here.")
+    kodiutils.log("%s needs an add-on subscription (package %s): %s"
+                  % (detail["title"] or label, offer.get("package_id") or "?",
+                     offer.get("text") or "no wording given"))
+    kodiutils.ok_dialog("\n".join(lines), "Not in your subscription")
+
 def route_play_page(path, label=""):
     """Play a details page: fetch it, take its play button, resolve that.
 
@@ -1316,13 +1344,18 @@ def route_play_page(path, label=""):
 
     actions = detail["actions"]
     if not actions:
-        # The card was listed as playable because its path is under movies/,
-        # and every captured movies/ page holds one play button and nothing
-        # else. This one does not. Rather than dead-ending on a heuristic,
-        # show the page: whatever is actually on it is what the viewer wanted.
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        if detail.get("subscribe"):
+            # Not a broken page: a title on one of the add-on channels the
+            # account is not subscribed to. The service draws its own offer
+            # where the play button would be, and its wording is the only
+            # thing that knows what the offer is.
+            return _say_needs_subscription(detail, label or path)
+        # A page that genuinely has nothing to play on it. Rather than
+        # dead-ending on the "anything under movies/ is a film" heuristic,
+        # show the page: whatever is on it is what the viewer wanted.
         kodiutils.log("%s has no play button on its page; opening the page "
                       "instead of refusing" % path)
-        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return xbmc.executebuiltin(
             "Container.Update(%s,replace)"
             % url(action="page", path=path, label=label or detail["title"]))

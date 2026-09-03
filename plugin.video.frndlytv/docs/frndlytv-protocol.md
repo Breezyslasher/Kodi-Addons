@@ -880,10 +880,27 @@ The web player POSTs to a **different host** during playback:
 
 ```
 POST https://ace.api.yuppcdn.net/analytics/partner
-Content-Type: application/x-www-form-urlencoded
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
 
-data=<url-encoded JSON>
+data=<url-encoded JSON>&analytics_id=d36bad5f857d14e3d4d4ca4b7055e179
 ```
+
+**Two form fields, not one.** Sending only `data` is refused:
+
+```
+HTTP 400  Request is missing required form field 'analytics_id'
+```
+
+`analytics_id` is neither a secret nor per-user: it is a constant in the web
+app's own configuration block, beside the API base paths and the Facebook and
+Google client ids, and it is byte-identical on all eight captured events.
+
+```js
+analyticsId:"d36bad5f857d14e3d4d4ca4b7055e179"
+```
+
+No authentication headers are sent at all. The account is identified inside
+the payload, by `ui` and `bi`.
 
 Eight of these went out in the two captured minutes, one per player-state
 change. The fields that matter:
@@ -971,9 +988,11 @@ Three fields are chosen rather than copied:
 * `ip` — **omitted**. The web player sends the client's public address; the
   addon does not know it and will not ask a third party for it. The receiving
   end sees the source address regardless.
-* `dos` / `dosv` — Kodi's own `System.OSVersionInfo` and version, rather than
-  the capture's browser platform string. These describe the device, and a
-  true answer is better than a copied one.
+* `dos` / `dosv` — Python's `platform.system()`/`machine()` and `release()`,
+  rather than the capture's browser platform string. These describe the
+  device, and a true answer is better than a copied one. **Not** Kodi's
+  `System.OSVersionInfo`: that returns the literal string `"Busy"` while an
+  info label is not ready, and a real box duly sent `dos='Busy'`.
 * `sk` — a fresh uuid per play. The captured value is a v3 (name-based) uuid
   whose derivation is not known, and nothing captured shows it having to
   match anything.
@@ -983,6 +1002,36 @@ Everything else is the capture verbatim, `dt: "web"`, `dc: "firefox"`,
 player everywhere else — same User-Agent, same Origin, same device id on the
 stream request — and being inconsistent here would file these events under a
 client that does not exist.
+
+## A title the subscription does not include
+
+Friendly TV sells add-on channels on top of the base plan. A title on one has
+a **full page** — synopsis, cast, artwork, certificate — and no play button.
+Where the play button would be there is instead:
+
+```json
+{"elementType": "button", "elementSubtype": "addonsubscribe",
+ "data": "addOnInfo", "target": "settings", "isClickable": true,
+ "properties": {"addOnInfo": "{\"buttonText\":\"Start 7-day Free Trial\",
+    \"buttonColor\":\"#d1a128\", \"masterPackageId\":27,
+    \"goToSettings\":true, \"showPopupAddonSubscribe\":false,
+    \"descriptionAddonSubscribe\":\"\", \"messageAddonSubscribe\":\"\",
+    \"imageUrl\":\"network,network/images/xdzdpu.png\"}"}}
+```
+
+`properties.addOnInfo` is a JSON **string**, not an object.
+
+Read as an ordinary page this is indistinguishable from a broken one, and the
+addon reported it as `Friendly TV's page for this offers nothing to play`.
+Two other things on the same page say the same thing in other words:
+
+* `info.attributes.upgradeForm: "upgrade_form"`;
+* the Record and Favorite buttons carry `properties.upgradeinfo`
+  (`"upgrade_form"`, `"upgrade_form_favorites"`) instead of working.
+
+The addon says so using the service's own wording, which is the only thing
+that knows what the offer is. It does not attempt to subscribe: that is a
+payment flow and belongs in Friendly TV's own apps.
 
 ## Removing something from Continue Watching
 
