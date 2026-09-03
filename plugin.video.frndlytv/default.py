@@ -950,11 +950,18 @@ def _add_detail_action(action, detail, media="video", page_path=""):
     item.setProperty("IsPlayable", "true")
     if page_path:
         # The page states whether it is already a favourite, so the right
-        # verb is shown here rather than both.
-        item.addContextMenuItems(
-            _favourite_menu(page_path, detail["title"],
-                            detail.get("is_favourite")) +
-            _similar_menu({"path": page_path, "title": detail["title"]}))
+        # verb is shown here rather than both. The rest is what a card of the
+        # same title offers in a listing: reaching a film through its own page
+        # should not lose the menu that reaching it through a row gives.
+        stand_in = {"path": page_path, "title": detail["title"]}
+        menu = (_favourite_menu(page_path, detail["title"],
+                                detail.get("is_favourite")) +
+                _similar_menu(stand_in) + _cast_menu(stand_in))
+        if action.get("path"):
+            menu.append(("Up next", "Container.Update(%s)"
+                         % url(action="next", path=action["path"],
+                               name=detail["title"] or label)))
+        item.addContextMenuItems(menu)
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action="play", path=action["path"], label=label),
         item, isFolder=False)

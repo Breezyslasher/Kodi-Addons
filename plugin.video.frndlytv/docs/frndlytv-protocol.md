@@ -774,6 +774,34 @@ whatever is on it**, and is titled with that programme. Treating a card as an
 episode purely because it has S/E numbers turns the Live TV list into a list of
 programmes retitled away from their channels.
 
+## `player_recording_form` works for a show and not for a film
+
+The form a card names, as opposed to the guide's `recording_form`, was never
+captured — clicking Record in the web player reloads the page and drops the
+request. Running it from the addon settles it:
+
+```
+form?code=player_recording_form&path=series/shows/...   -> options; recorded
+form?code=player_recording_form&path=movies/1054314     -> no options
+   returned only: [('title', 'label'), ('form_cancel', 'cancel')]
+```
+
+So it is the **path**, not the form. A series card records; a `movies/...`
+card gets a form with a title and a cancel button and nothing to choose. Both
+kinds of card say recording is allowed, and 488 movie cards do:
+
+```json
+"isRecordingAllowed": "true", "isRecordingDisabled": "false"
+```
+
+so the flags do not predict it either, and the addon is right to offer the
+entry and report what came back.
+
+**Not known:** whether a film can be recorded by some other path. Every
+captured *successful* form request uses `epg/play/<id>`, and a movie card
+carries an `id` of its own, but nothing captured shows that combination being
+asked for.
+
 ## Recordings
 
 Recording is not a dedicated endpoint. It is a generic **form** mechanism: the

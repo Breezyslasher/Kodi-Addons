@@ -38,6 +38,9 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- Reaching a film through its own page no longer loses the menu that reaching
+  it through a row gives: "Search the cast...", "More like this" and "Up next"
+  are all there beside the favourite verb.
 - The main menu is ordered and illustrated. Home leads, then the things to
   watch, then the ways to find something, then the account -- rather than the
   order the web player's navigation bar happens to use, where Home comes
