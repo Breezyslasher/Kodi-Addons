@@ -447,6 +447,29 @@ class Api(object):
                       % (what, len(out), len(wanted), time.time() - started))
         return out
 
+    def forget_continue_watching(self, content_id, content_type):
+        """Take a title out of the Continue Watching row.
+
+        A POST, unlike favourites, and the two fields are the card's own
+        ``pageAttributes.id`` and ``pageAttributes.contentType`` -- the
+        captured call for an episode of Criminal Minds is exactly
+        ``{"contentId": 3488570, "contentType": "epg"}``, which is that card's
+        id and type verbatim.
+
+        ``contentId`` goes out as a **number**, where every pageAttributes
+        value arrives as a string, so it is converted rather than passed
+        through.
+        """
+        try:
+            identifier = int(content_id)
+        except (TypeError, ValueError):
+            raise ApiError("That item has no id to forget.")
+        body = self._call("POST",
+                          API_BASE + "/service/api/v1/delete/continuewatch/content",
+                          json={"contentId": identifier,
+                                "contentType": content_type or ""})
+        return (body.get("response") or {}).get("message") or ""
+
     def favourite(self, path, on):
         """Add this to My Stuff, or take it out again.
 

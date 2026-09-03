@@ -994,6 +994,22 @@ def route_favourite(path, name, on):
     _refresh()
 
 
+def route_forget(content_id, content_type, name=""):
+    """Take a title out of the Continue Watching row."""
+    client = _client()
+    if client is None:
+        return
+    try:
+        said = client.forget_continue_watching(content_id, content_type)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Continue Watching")
+        return
+    kodiutils.log("forgot %s (%s) -> %s"
+                  % (content_id, content_type, said or "no message"))
+    kodiutils.notify(said or ("Removed %s" % (name or "it")))
+    _refresh()
+
+
 def _card_menu(item):
     """Everything a card offers besides opening or playing it.
 
@@ -1004,6 +1020,14 @@ def _card_menu(item):
     """
     menu = _favourite_menu(item.get("path"), item.get("title", ""),
                            item.get("is_favourite"))
+    if item.get("resume") and item.get("content_id"):
+        # A part-watched card, which is what Continue Watching is made of --
+        # the "seek" marker is only ever on those. Taking it out of that row
+        # is keyed by the card's own id and content type.
+        menu.append(("Remove from Continue Watching", "RunPlugin(%s)"
+                     % url(action="forget", content_id=item["content_id"],
+                           content_type=item.get("content_type", ""),
+                           name=item.get("title", ""))))
     form = item.get("recording_form")
     if form and item.get("can_record") and item.get("path"):
         menu.append(("Recording...", "RunPlugin(%s)"
@@ -1407,6 +1431,9 @@ def _dispatch():
         route_similar(params.get("path", ""), params.get("name", ""))
     elif action == "cast":
         route_cast(params.get("path", ""), params.get("name", ""))
+    elif action == "forget":
+        route_forget(params.get("content_id", ""),
+                     params.get("content_type", ""), params.get("name", ""))
     elif action == "favourite":
         # RunPlugin: nothing to draw, and the listing stays where it is.
         route_favourite(params.get("path", ""), params.get("name", ""),

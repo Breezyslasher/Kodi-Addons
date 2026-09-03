@@ -151,6 +151,10 @@ def card(raw, api):
                    (attrs.get("RokuGenreCode") or "").split(",") if g.strip()],
         "duration_ms": _int(attrs.get("duration")),
         "network_id": attrs.get("networkid") or "",
+        # The service's own id for the thing behind the card, which is what
+        # the Continue Watching removal keys on. Not the same as raw["id"],
+        # which a card usually does not have at all.
+        "content_id": attrs.get("id") or "",
         "is_favourite": str(attrs.get("isFavourite", "")).lower() == "true",
         # Cards name their own recording form -- "player_recording_form",
         # where a guide airing's overlay names "recording_form". Carried

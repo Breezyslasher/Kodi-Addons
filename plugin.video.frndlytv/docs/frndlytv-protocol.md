@@ -691,6 +691,22 @@ to `drm-global.videograph.ai`.
 `auth/v2/signin` request body, in clear text.** Anything shared publicly needs
 that request scrubbed first.
 
+## Removing something from Continue Watching
+
+```
+POST /service/api/v1/delete/continuewatch/content
+{"contentId": 3488570, "contentType": "epg"}
+→ {"response": {"message": "Deleted successfully"}, "status": true}
+```
+
+Both fields are the card's own: `pageAttributes.id` and
+`pageAttributes.contentType`. The captured call is exactly the Criminal Minds
+card's id and type. Note `contentId` goes out as a **number**, where every
+`pageAttributes` value arrives as a string.
+
+Which cards this applies to is knowable without a flag: only a part-watched
+card carries the `seek` marker, and that is what the row is made of.
+
 ## Favourites
 
 ```

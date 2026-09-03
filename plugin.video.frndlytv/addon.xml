@@ -81,6 +81,9 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   shows, channels and guide airings alike. Only the verb that applies is
   offered, because the cards carry whether they are already in. These are
   Friendly TV's My Stuff, so they appear there and in its own apps.
+- "Remove from Continue Watching" on any part-watched title. The row is made
+  of cards carrying a resume position, so no flag is needed to know which
+  ones qualify, and the call is keyed by the card's own id and content type.
 - A listing no longer fails whole because of one row Kodi would not accept,
   and an unexpected error no longer surfaces as Kodi's bare "Error getting
   plugin://..." with nothing about the cause. The row is skipped and named,
