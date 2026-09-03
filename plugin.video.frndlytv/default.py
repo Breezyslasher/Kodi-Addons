@@ -818,36 +818,77 @@ def _recording_menu(programme_path, taping=None):
     return [stop] if taping else [record]
 
 
-def _records_from_its_page(item):
-    """Whether this card records the way a title's page does.
+# The paths a title's own page is at, and so the ones that record the way its
+# page does. Everything else on a card -- a guide airing, a channel -- keeps
+# the form, which is where "this episode or the series" is asked.
+TITLE_PATHS = ("movies/", "series/")
 
-    A film is not recorded through the form mechanism at all. Its page has a
-    Record button, and pressing it posts the film's own path:
+
+def _records_from_its_page(item):
+    """Whether this card records the way its own page does.
+
+    A title is not recorded through the form mechanism at all. Its page has
+    Record and Stop Recording buttons, and pressing either posts the title's
+    own path -- four captures, two titles, both actions:
 
         POST /service/api/auth/unify/series/record
-        path=movies/11883820150&action=1   -> "Scheduled to Record"
+        path=movies/11883820150&action=1        -> "Scheduled to Record"
+        path=movies/434993&action=0             -> "Stop Recording"
+        path=series/shows/1897528247&action=1   -> "Scheduled to Record"
+        path=series/shows/1897528247&action=0   -> "Stop Recording"
 
-    Asking a film's own form instead answers with a title and a cancel button
-    and nothing to choose, which is what the addon used to report. Only films
-    take this route: a series' form offers all-episodes and this-episode as a
-    choice, and this call has no way to say which.
+    Which is what the endpoint's name says: it is not film-specific, and a
+    series' page uses the same call. Asking a *film's* own form instead
+    answers with a title and a cancel button and nothing to choose, which is
+    what the addon used to report.
     """
-    path = item.get("path") or ""
-    return path.startswith("movies/") and not item.get("is_recorded")
+    return (item.get("path") or "").startswith(TITLE_PATHS)
 
 
-def route_record_title(path, name=""):
-    """Record a title from its own path, and say what the service said."""
+def _title_recording_menu(item):
+    """Record or stop, by what the card says the service has already.
+
+    The verb offered is the applicable one. The card carries ``isRecorded``,
+    and carries it on every one of the captured film cards; where it is
+    missing both are offered, for the same reason the guide offers both when
+    it does not know -- offering only "stop" for something that was never
+    recorded is worse than offering one entry too many.
+
+    A guide airing and a channel keep the form the card names. That is not
+    the same question: the form asks whether to record this episode or the
+    whole series, and this call has no way to say.
+    """
+    path, name = item["path"], item.get("title", "")
+    recorded = item.get("is_recorded")
+    if not _records_from_its_page(item):
+        return [("Recording...", "RunPlugin(%s)"
+                 % url(action="record", path=path,
+                       form=item.get("recording_form")))]
+
+    record = ("Record", "RunPlugin(%s)"
+              % url(action="record_title", path=path, name=name))
+    stop = ("Stop recording", "RunPlugin(%s)"
+            % url(action="record_title", path=path, name=name, stop=1))
+    if recorded is None:
+        return [record, stop]
+    return [stop] if recorded else [record]
+
+
+def route_record_title(path, name="", stop=False):
+    """Record a title from its own path, or stop it, and report the answer."""
     client = _client()
     if client is None:
         return
+    action = api.Api.STOP if stop else api.Api.RECORD
     try:
-        said = client.record_title(path)
+        said = client.record_title(path, action)
     except (api.ApiError, auth.AuthError) as exc:
         kodiutils.ok_dialog(str(exc), "Recording")
         return
-    kodiutils.log("recorded %s: %s" % (path, said or "no message"))
-    kodiutils.notify(said or ("Recording %s" % (name or "it")))
+    kodiutils.log("%s %s: %s" % ("stopped recording" if stop else "recorded",
+                                 path, said or "no message"))
+    kodiutils.notify(said or (("Stopped recording %s" if stop
+                               else "Recording %s") % (name or "it")))
     _refresh()
 
 
@@ -1460,13 +1501,7 @@ def _card_menu(item):
     form = item.get("recording_form")
     path = item.get("path")
     if form and item.get("can_record") and path:
-        if _records_from_its_page(item):
-            menu.append(("Record", "RunPlugin(%s)"
-                         % url(action="record_title", path=path,
-                               name=item.get("title", ""))))
-        else:
-            menu.append(("Recording...", "RunPlugin(%s)"
-                         % url(action="record", path=path, form=form)))
+        menu.extend(_title_recording_menu(item))
     if item.get("playable") and item.get("path") and not item.get("coming_soon"):
         # What the service says comes after this. It asks the same thing
         # during playback, naming what is playing.
@@ -2032,7 +2067,8 @@ def _dispatch():
     elif action == "guide_at":
         route_guide_at(params.get("at", ""))
     elif action == "record_title":
-        route_record_title(params.get("path", ""), params.get("name", ""))
+        route_record_title(params.get("path", ""), params.get("name", ""),
+                           bool(params.get("stop")))
     elif action == "play":
         route_play(params.get("path", ""), params.get("label", ""))
     elif action == "play_page":

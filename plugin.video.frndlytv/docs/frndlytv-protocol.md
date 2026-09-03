@@ -781,11 +781,14 @@ whatever is on it**, and is titled with that programme. Treating a card as an
 episode purely because it has S/E numbers turns the Live TV list into a list of
 programmes retitled away from their channels.
 
-## `player_recording_form` works for a show and not for a film
+## Recording a title, as opposed to an airing
 
-The form a card names, as opposed to the guide's `recording_form`, was never
-captured — clicking Record in the web player reloads the page and drops the
-request. Running it from the addon settles it:
+The form a card names — `player_recording_form`, as opposed to the guide's
+`recording_form` — was never captured: clicking Record in the web player
+reloads the page and drops the request. Running it from the addon settles
+what it does, and a later capture settles what the web player does instead.
+
+Running the form from the addon:
 
 ```
 form?code=player_recording_form&path=series/shows/...   -> options; recorded
@@ -804,27 +807,34 @@ kinds of card say recording is allowed, and 488 movie cards do:
 so the flags do not predict it either, and the addon is right to offer the
 entry and report what came back.
 
-**A film is recorded from its own page, by a call of its own.** Pressing
-Record on `watch.frndlytv.com/movies/11883820150` sends no form at all:
+**A title is recorded from its own page, by a call of its own.** Pressing
+Record or Stop Recording on `watch.frndlytv.com/movies/…` or
+`…/series/shows/…` sends no form at all — four captures, two titles, both
+buttons:
 
 ```
 POST /service/api/auth/unify/series/record
 Content-Type: application/x-www-form-urlencoded
 
-path=movies/11883820150&action=1
-→ {"response": {"message": "Scheduled to Record"}, "status": true}
+path=movies/11883820150&action=1        → {"message": "Scheduled to Record"}
+path=movies/434993&action=0             → {"message": "Stop Recording"}
+path=series/shows/1897528247&action=1   → {"message": "Scheduled to Record"}
+path=series/shows/1897528247&action=0   → {"message": "Stop Recording"}
 ```
 
-That is the film's own path, the same one its card carries, and `action=1`.
-Nothing shows what other values of `action` do, so only 1 is sent. The
-endpoint is named for series and was captured with a film, so it is not
-film-specific; the addon still records a series through its form, which
-offers all-episodes and this-episode as a choice this call cannot express.
+The title's own path — the same one its card carries — and `action` 1 to
+record, 0 to stop. No other value of `action` has been seen and none is sent.
+The endpoint's name is not a misnomer for the film case: a series' page uses
+the same call, which is why it is named for series.
 
 This is what makes a Coming Soon film recordable: it has not aired, so there
 is no airing to record against and its page has nothing to play.
 
-The **other** route is real too, and it is the one the guide overlay uses --
+Which verb to offer comes from the card: `pageAttributes.isRecorded`, which
+every one of the 569 captured film cards carries (and 2104 of the 2303 other
+recordable cards). Where it is missing, both are offered rather than guessed.
+
+The **other** route is real too, and it is the one the guide overlay uses —
 recording a film from the player, rather than from its page:
 
 ```
@@ -838,13 +848,10 @@ POST /service/api/v1/form/submit
 → {"message": {"message": "Added to My Stuff"}}
 ```
 
-so a film's airing records like any other airing. The addon uses the page
-call, because that is what a film's card is: a page, not an airing.
-
-**Not known:** how a film's recording is cancelled. `stop_recording_form`
-covers airings and series; nothing captured stops a film booked this way. A
-card that says `isRecorded: "true"` is therefore left on the form route,
-where the log will say what came back.
+so a film's airing records like any other airing. The addon keeps the form
+for guide airings and channels, because there it is a different question —
+this episode, or the series? — that the page call has no way to express. For
+a film or a show it uses the page call, which is what those pages do.
 
 ## Recordings
 

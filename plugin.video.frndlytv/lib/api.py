@@ -906,10 +906,11 @@ class Api(object):
             return message.get("message") or ""
         return message or ""
 
-    # What the capture's action field held. Only the one that was captured is
-    # named: a film's Record button sends 1, and nothing shows what this
-    # endpoint does with any other value.
+    # What the action field holds. Both are captured, from the two buttons a
+    # film's page shows: Record sends 1, and Stop Recording sends 0. No other
+    # value has been seen and none is sent.
     RECORD = 1
+    STOP = 0
 
     # How many channels the web player asks about in one guide request.
     # Copied rather than chosen: every captured guide request names twelve.
@@ -953,6 +954,11 @@ class Api(object):
             path=movies/11883820150&action=1
             -> {"response": {"message": "Scheduled to Record"},
                 "status": true}
+
+        and stopping it is the same call with the other action:
+
+            path=movies/434993&action=0
+            -> {"response": {"message": "Stop Recording"}, "status": true}
 
         No form, no airing, no programme id -- which is why this works for a
         Coming Soon film, whose page has nothing to play yet and whose own
