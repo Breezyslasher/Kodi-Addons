@@ -813,10 +813,25 @@ def route_section(path, code, name):
     except (api.ApiError, auth.AuthError) as exc:
         kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or code))
         return finish()
+    rows = parse.section_data(response, client)
     cards = []
-    for row in parse.section_data(response, client):
+    for row in rows:
         cards.extend(row["cards"])
-    kodiutils.log("section %s/%s: %d card(s)" % (path, code, len(cards)))
+
+    # Two different nothings, and a blank folder cannot tell them apart: the
+    # service answering with the row and no items in it, or not answering with
+    # the row at all. The first is an empty row and correct; the second means
+    # the request was wrong. Naming the rows that came back puts that in the
+    # log instead of leaving it to be guessed at.
+    kodiutils.log("section %s/%s: %d card(s) from %d row(s) [%s]"
+                  % (path, code, len(cards), len(rows),
+                     ", ".join("%s:%d%s" % (r["code"] or "?", len(r["cards"]),
+                                            "+" if r["has_more"] else "")
+                               for r in rows) or "none"))
+
+    if not cards:
+        kodiutils.notify("Nothing in %s" % (name or code) if rows
+                         else "Friendly TV sent no rows for %s" % (name or code))
     finish(_add_cards(cards, client))
 
 

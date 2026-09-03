@@ -874,6 +874,64 @@ to `drm-global.videograph.ai`.
 `auth/v2/signin` request body, in clear text.** Anything shared publicly needs
 that request scrubbed first.
 
+## Playback progress is reported, and this addon does not report it
+
+The web player POSTs to a **different host** during playback:
+
+```
+POST https://ace.api.yuppcdn.net/analytics/partner
+Content-Type: application/x-www-form-urlencoded
+
+data=<url-encoded JSON>
+```
+
+Eight of these went out in the two captured minutes, one per player-state
+change. The fields that matter:
+
+| field | meaning | example |
+|---|---|---|
+| `ps` | player state | `idle`, `buffering`, `playing`, `paused` |
+| `pp` | **position, ms** | `46642`, then `54838`, then `54871` |
+| `tvl` | total length, ms | `2997099` |
+| `meta_id` | what is playing | `web_series_episode_vod_51084` |
+| `su` | the manifest url | the `.mpd` handed back by `page/stream` |
+| `psk` / `ts` | play-session key, epoch ms | `1788394984505` |
+| `sk` | session uuid | `df9f58e7-…` |
+| `ui` | user id | `2965565` |
+| `bi` | box id | the same `box-id` header the API uses |
+| `di` | device id | `"5"` — the same value as `stream_provider_device_id` |
+| `a1` | account context | verbatim `analyticsInfo.customData` from `page/stream` |
+| `cdn` | DRM system | `Widevine` |
+| `et` / `ec` / `av` | event type, count, schema version | `1`, `1`, `v2` |
+| `pln` / `plv` | player name and version | `bitmovin`, `8.179.0` |
+| `dos` / `dosv` / `dc` / `dt` / `appv` | OS, OS version, browser, device type, app version | |
+
+Unset numeric fields go out as `-1`, not omitted.
+
+Two things tie this to Continue Watching rather than to pure telemetry:
+
+* the first `pp` reported, `46642`, is **exactly** the
+  `seekPositionInMillis` that `page/stream` had just handed back for the same
+  title — the position the addon reads to resume;
+* `meta_id` ends in `51084`, and `51084` is exactly the `contentId` that
+  `delete/continuewatch/content` takes to remove that title from the row.
+
+**Not known:** whether this endpoint is what *writes* Continue Watching. The
+correspondence above is strong and there is no other candidate in any capture
+— no `bookmark`, `progress` or `continuewatch`-write endpoint appears on
+`revlet.net` — but nothing captured proves the causal link, and no capture
+shows the row changing in response to one of these POSTs.
+
+**The addon sends none of this.** So a title watched in Kodi never reaches
+Continue Watching, and never gets a resume position: the row is populated
+entirely by what was watched in Friendly TV's own apps. That is the reason
+Movies → Continue Watching answers with a row and no items after watching a
+film through the addon:
+
+```
+section movies/continue_watching_movies: 0 card(s)
+```
+
 ## Removing something from Continue Watching
 
 ```
