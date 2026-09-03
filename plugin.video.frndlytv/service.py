@@ -47,8 +47,30 @@ class Service(xbmc.Monitor):
                     self._playing_key = key
                     kodiutils.log("holding a stream slot for %s"
                                   % (context.get("path") or "?"))
+                    self._report_position(player, context)
         elif self._playing_key:
             self._release()
+
+    def _report_position(self, player, context):
+        """Say where playback actually began, once it is under way.
+
+        The addon can log what it *asked* for, but not what ISA did with it,
+        and for a start-over those are exactly the thing in question: a live
+        manifest opened at its window start looks identical, from the plugin
+        side, to one opened at the live edge. The player knows. On a live
+        stream the position is measured within the timeshift window, so a
+        start-over that worked reads near zero and one that did not reads
+        near the window's length.
+        """
+        try:
+            where, total = player.getTime(), player.getTotalTime()
+        except Exception as exc:
+            kodiutils.log("could not read the play position: %s" % exc)
+            return
+        kodiutils.log("playback began at %s of %s%s"
+                      % (_hms(where), _hms(total),
+                         "  (start over)" if context.get("from_start")
+                         else ""))
 
     def _release(self):
         key, self._playing_key = self._playing_key, ""
@@ -61,6 +83,11 @@ class Service(xbmc.Monitor):
             # reaped server-side, and a slot left behind times out on its own.
             kodiutils.log("could not release the stream slot: %s" % exc)
         kodiutils.delete_file(playback.CONTEXT_FILE)
+
+
+def _hms(seconds):
+    seconds = int(seconds or 0)
+    return "%d:%02d:%02d" % (seconds // 3600, seconds // 60 % 60, seconds % 60)
 
 
 if __name__ == "__main__":

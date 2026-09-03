@@ -374,10 +374,18 @@ So starting a programme over is asking the stream endpoint for the
 **programme's own path** rather than its channel's. Both come back Widevine
 with a licence url as usual.
 
-Not established: whether `epg/play/<id>` is answered this way for a programme
-still on the air. The capture that proves the VOD shape was of one that had
-already finished. The addon offers the choice and lets the service's own
-refusal speak if there is one.
+**A programme still on the air is answered differently**, and this is now
+established rather than assumed. Asked for one that is still running,
+`epg/play/<id>` returns a **live** manifest — five periods, against one or two
+for the plain channel — not the VOD asset it returns once the programme has
+finished. ISA opens a live manifest at the live edge, so following that path
+alone plays from wherever the channel is, which is not starting over.
+
+What makes it start over is telling ISA to open at the beginning of that
+manifest's timeshift window
+(`inputstream.adaptive.play_timeshift_buffer`). The window is the one the
+service chose to publish for this programme's path, and its start is the
+programme's start — confirmed on hardware.
 
 ### Related titles
 

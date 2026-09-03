@@ -125,7 +125,7 @@ def resolve(client, path, label="", from_start=False):
             item.setProperty("TotalTime", "%.0f" % (total_ms / 1000.0))
         kodiutils.log("the service asked to start at %s" % _hms(seek_ms))
 
-    _remember(response, path)
+    _remember(response, path, from_start)
     return item
 
 
@@ -213,19 +213,23 @@ def _configure_isa(item, manifest_type, licence_url, from_start=False):
                      "json drm" if json_drm else "legacy properties"))
 
 
-def _remember(response, path):
+def _remember(response, path, from_start=False):
     """Write down the stream slot this play took.
 
     Friendly TV caps concurrent streams and only frees a slot when something
     posts its poll key back. The plugin process exits the moment it hands the
     url to Kodi, so the service reads this file and does it when playback
     stops.
+
+    ``from_start`` rides along for the log: the service reports where playback
+    actually began, and that is only interesting against what was asked for.
     """
     info = response.get("sessionInfo") or {}
     kodiutils.write_json(CONTEXT_FILE, {
         "path": path,
         "poll_key": info.get("streamPollKey") or "",
         "poll_interval_ms": info.get("pollIntervalInMillis") or 0,
+        "from_start": bool(from_start),
     })
 
 
