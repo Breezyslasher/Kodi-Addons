@@ -72,6 +72,18 @@ def _media_kind(path, season, episode):
     return "video"
 
 
+
+def _meta(raw, name):
+    """One of a card's ``metadata`` values.
+
+    Each entry is itself an object -- ``{"key": "comingSoon", "value":
+    "true"}`` -- and the values are strings, "true" and "false" included.
+    """
+    entry = (raw.get("metadata") or {}).get(name)
+    if isinstance(entry, dict):
+        return str(entry.get("value") or "")
+    return str(entry or "")
+
 def _markers(display):
     """A card's badges as {type: value}.
 
@@ -93,6 +105,18 @@ def _markers(display):
                 out[marker["markerType"]] = marker.get("value", "")
     return out
 
+
+
+def _redirects_to_payment(display):
+    """Whether any of a card's badges says the title has to be paid for.
+
+    Only the list form of ``markers`` carries the flag; the guide's dict form
+    has no badge of this kind at all.
+    """
+    for marker in display.get("markers") or []:
+        if isinstance(marker, dict) and marker.get("isRedirectToPayment"):
+            return True
+    return False
 
 def _int(value):
     try:
@@ -168,6 +192,21 @@ def card(raw, api):
         "start_ms": start_ms,
         "end_ms": end_ms,
         "badge": markers.get("badgeV2") or markers.get("badge") or "",
+        # An episode the service lists but will not serve yet. Two signals,
+        # captured on 501 cards and in agreement on every one: the metadata
+        # flag, and a red "Coming Soon" badge. Selecting one is refused with
+        # the service's own words -- "The content provider has restricted this
+        # program from being available On Demand." -- so saying so up front
+        # saves opening several before finding one that plays.
+        "coming_soon": (_meta(raw, "comingSoon") == "true"
+                        or (markers.get("badgeV2") or "").strip().lower()
+                        == "coming soon"),
+        # A title on one of the add-on channels sold on top of the base plan.
+        # The card *does* say so, in the badge it carries: across 2112
+        # captured badges, "+ Add-On" is the only value ever accompanied by
+        # isRedirectToPayment, and it carries it on all 22 of its cards. The
+        # flag is read rather than the wording, so a renamed badge still works.
+        "needs_addon": _redirects_to_payment(display),
         "poster": api.image(display.get("imageUrl")),
         "channel_logo": api.image(display.get("parentIcon")),
         "id": raw.get("id"),

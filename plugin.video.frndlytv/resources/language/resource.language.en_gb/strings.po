@@ -136,3 +136,11 @@ msgstr ""
 msgctxt "#30049"
 msgid "Send player state and position during playback, as Friendly TV's own apps do. Without it a title watched in Kodi never reaches Continue Watching and never remembers where you left off, because that row is written by whatever is playing. It also sends the device and account context the web player sends."
 msgstr ""
+
+msgctxt "#30035"
+msgid "Show titles that need an add-on subscription"
+msgstr ""
+
+msgctxt "#30036"
+msgid "Friendly TV sells extra channels on top of the base plan, and lists their titles alongside the rest. Off, they are left out of listings. A card says nothing about this -- only the title's own page does -- so this can only hide the ones whose page was fetched, which means it depends on \"Fetch full descriptions and cast\" and its cap."
+msgstr ""

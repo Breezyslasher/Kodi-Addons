@@ -40,6 +40,11 @@
 					<default>true</default>
 					<control type="toggle"/>
 				</setting>
+				<setting id="show_addon_content" type="boolean" label="30035" help="30036">
+					<level>0</level>
+					<default>false</default>
+					<control type="toggle"/>
+				</setting>
 				<setting id="info_limit" type="integer" label="30033" help="30034">
 					<level>1</level>
 					<default>40</default>

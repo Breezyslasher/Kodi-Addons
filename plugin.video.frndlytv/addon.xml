@@ -38,6 +38,20 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- Cards wear the badge the service gave them -- "On Now", "Coming Soon",
+  "New Episodes", "Expires in 24 hours", "+ Add-On" -- on films and shows
+  alike. Kodi has nowhere to draw a badge, so it goes in the label, in the
+  service's own words rather than any invented here.
+- "Coming Soon" matters most of the six: those episodes are listed and then
+  refused, with a message that reads like a fault -- "The content provider has
+  restricted this program from being available On Demand." Thirty-nine of the
+  forty-seven episodes of one captured series are Coming Soon, so finding one
+  that plays took several tries.
+- Titles that need an add-on subscription are left out of listings, and a
+  setting brings them back. The card says so itself, so nothing has to be
+  fetched to know: "+ Add-On" is the one badge in the whole capture that
+  carries a redirect-to-payment flag, and it carries it on every card it is
+  on. The flag is what is read, not the wording.
 - A film on a channel the subscription does not include says so, instead of
   "Friendly TV's page for this offers nothing to play". Those titles have a
   full page -- synopsis, cast, artwork -- with a subscribe button where the

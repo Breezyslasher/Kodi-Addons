@@ -916,6 +916,7 @@ def _add_cards(cards, client=None):
     """
     if client is not None:
         _describe(cards, client)
+    cards = _without_addon_titles(cards)
     for item in cards:
         if not item["path"]:
             continue
@@ -931,6 +932,33 @@ def _add_cards(cards, client=None):
                                 % (item.get("title"), item.get("path"), exc))
     return _content_of(cards)
 
+
+
+def _without_addon_titles(cards):
+    """Drop titles that need an add-on subscription, unless asked to keep them.
+
+    The card says so itself, so this costs nothing and does not depend on the
+    pages being fetched: a title on an add-on channel carries a badge whose
+    ``isRedirectToPayment`` is set. Across 2112 captured badges that flag
+    appears on exactly one wording, "+ Add-On", and on all 22 of its cards.
+
+    The title's own page is consulted as well where it happens to have been
+    fetched for the synopsis, since that is the statement the card is a
+    summary of -- but the card alone is enough.
+    """
+    if kodiutils.get_setting_bool("show_addon_content", False):
+        return cards
+    kept, dropped = [], []
+    for item in cards:
+        needs = (item.get("needs_addon")
+                 or bool((item.get("detail") or {}).get("subscribe")))
+        (dropped if needs else kept).append(item)
+    if dropped:
+        kodiutils.log("hiding %d title(s) that need an add-on subscription: %s"
+                      % (len(dropped),
+                         ", ".join(d.get("title") or d.get("path") or "?"
+                                   for d in dropped[:5])))
+    return kept
 
 def _add_card(item):
     """List one card, as whatever kind of thing it is."""
@@ -957,7 +985,7 @@ def _add_card_folder(item):
     show: without the mediatype it lists as an unnamed directory and a skin
     has nothing to draw a poster shelf from.
     """
-    label = item["title"] or item["path"]
+    label = _labelled(item, item["title"] or item["path"])
     listitem = xbmcgui.ListItem(label=label)
     listitem.setArt(_art(item))
     _set_meta(listitem, item, label)
@@ -1096,7 +1124,7 @@ def _similar_menu(item):
 
 
 def _add_playable(item, label=None, action="play"):
-    label = label or item["title"] or item["path"]
+    label = _labelled(item, label or item["title"] or item["path"])
     listitem = xbmcgui.ListItem(label=label)
     listitem.setArt(_art(item))
     listitem.setProperty("IsPlayable", "true")
@@ -1107,6 +1135,42 @@ def _add_playable(item, label=None, action="play"):
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action=action, path=item["path"], label=label),
         listitem, isFolder=False)
+
+
+# The badges the service puts on a card, and what to colour them. Every value
+# captured, over 2112 badges, is one of these or an "Expires in ..." -- which
+# is why the fallback is a colour rather than a rule.
+#
+#   On Now 1476 | Coming Soon 384 | New Episodes 91 | Expires in ... 102
+#   New Episode 33 | + Add-On 22 | New Movie 4
+BADGE_COLOURS = {
+    "on now": "lime",
+    "coming soon": "grey",
+    "+ add-on": "gold",
+}
+BADGE_DEFAULT = "orange"
+
+
+def _labelled(item, label):
+    """The label a card shows, with the service's own badge on it.
+
+    Friendly TV badges a card and Kodi has nowhere to draw one, so it goes in
+    the label -- which is what a viewer reads before choosing. It matters
+    most for "Coming Soon": those episodes are listed but not served, and
+    selecting one is refused with the service's own words, "The content
+    provider has restricted this program from being available On Demand.",
+    which reads like a fault. A season of them takes several tries to find
+    one that plays.
+
+    The badge's own wording is used rather than one invented here, so
+    "On Now", "New Episodes", "Expires in 24 hours" and "+ Add-On" all come
+    through as the service wrote them.
+    """
+    badge = (item.get("badge") or "").strip()
+    if not badge or badge.lower() in label.lower():
+        return label
+    colour = BADGE_COLOURS.get(badge.lower(), BADGE_DEFAULT)
+    return "%s [COLOR %s](%s)[/COLOR]" % (label, colour, badge)
 
 
 def _art(item):

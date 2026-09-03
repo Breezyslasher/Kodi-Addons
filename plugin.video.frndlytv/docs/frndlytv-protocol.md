@@ -1003,6 +1003,60 @@ player everywhere else — same User-Agent, same Origin, same device id on the
 stream request — and being inconsistent here would file these events under a
 client that does not exist.
 
+## Badges, and what they mark
+
+A card carries its badges in `display.markers`, as a list of objects on a page
+card and as a dict keyed by marker type in the guide. Every badge value across
+2112 captured badges:
+
+| badge | cards | means |
+|---|---|---|
+| `On Now` | 1476 | airing on a live channel right now |
+| `Coming Soon` | 384 | listed but not yet available |
+| `Expires in ...` | 102 | leaving the catalogue |
+| `New Episodes` / `New Episode` | 124 | |
+| `+ Add-On` | 22 | **needs an add-on subscription** |
+| `New Movie` | 4 | |
+
+Kodi has nowhere to draw a badge, so the addon puts the service's own wording
+in the label rather than inventing its own.
+
+### `Coming Soon`
+
+Two independent signals, both on the card, agreeing on all 47 episodes of the
+captured series:
+
+* `display.markers[]` → `{"markerType": "badgeV2", "value": "Coming Soon"}`
+* `metadata.comingSoon` → `{"key": "comingSoon", "value": "true"}`
+
+`metadata` entries are objects, and their values are strings — `"true"` and
+`"false"` included.
+
+These are not cosmetic. Selecting one is refused by the service:
+
+```
+The content provider has restricted this program from being available On Demand.
+```
+
+39 of the 47 episodes of *The Three Stooges* are Coming Soon, so finding one
+that plays takes several tries without the tag.
+
+### `+ Add-On`
+
+**This is the card-level flag for a title outside the plan**, and it is the
+one badge that carries `isRedirectToPayment`:
+
+```json
+{"markerType": "badgeV2", "value": "+ Add-On", "isRedirectToPayment": true,
+ "bgColor": "E6322E2E", "strokeColor": "196BA4", "textColor": "FFFFFF",
+ "position": "bottomCenter"}
+```
+
+Across all 2112 captured badges that flag appears on exactly this wording, and
+on all 22 of its cards; no other badge carries it. The addon reads the **flag**
+rather than the wording, so a renamed badge still works. This means a listing
+can be filtered without fetching a single page.
+
 ## A title the subscription does not include
 
 Friendly TV sells add-on channels on top of the base plan. A title on one has
@@ -1023,11 +1077,12 @@ Where the play button would be there is instead:
 
 Read as an ordinary page this is indistinguishable from a broken one, and the
 addon reported it as `Friendly TV's page for this offers nothing to play`.
-Two other things on the same page say the same thing in other words:
 
-* `info.attributes.upgradeForm: "upgrade_form"`;
-* the Record and Favorite buttons carry `properties.upgradeinfo`
-  (`"upgrade_form"`, `"upgrade_form_favorites"`) instead of working.
+`info.attributes.upgradeForm: "upgrade_form"` is **not** a second signal, and
+must not be read as one: a fully subscribed series page carries it too. Nor is
+an `addOnInfo` element by itself — a subscribed page has one, of
+`elementType: "text"` with empty properties. What distinguishes the two is the
+**button** of `elementSubtype: "addonsubscribe"` with a populated `addOnInfo`.
 
 The addon says so using the service's own wording, which is the only thing
 that knows what the offer is. It does not attempt to subscribe: that is a
