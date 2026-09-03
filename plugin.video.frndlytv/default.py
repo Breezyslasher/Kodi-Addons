@@ -1076,7 +1076,7 @@ def _add_card_folder(item):
     label = _labelled(item, plain)
     listitem = xbmcgui.ListItem(label=label)
     listitem.setArt(_art(item))
-    _set_meta(listitem, item, plain)
+    _set_meta(listitem, item, label)
     menu = _card_menu(item)
     if menu:
         listitem.addContextMenuItems(menu)
@@ -1220,7 +1220,7 @@ def _add_playable(item, label=None, action="play"):
     listitem = xbmcgui.ListItem(label=shown)
     listitem.setArt(_art(item))
     listitem.setProperty("IsPlayable", "true")
-    _set_meta(listitem, item, plain)
+    _set_meta(listitem, item, shown)
     menu = _card_menu(item)
     if menu:
         listitem.addContextMenuItems(menu)
@@ -1299,6 +1299,11 @@ def _set_meta(listitem, item, label):
     ``mediatype`` matters more than it looks: without it Kodi treats every row
     as an anonymous video, so a show gets no poster shelf and an episode no
     season grouping, whatever artwork is attached.
+
+    ``label`` is what the row should read, badge and all, and it is set as the
+    **title** as well as being the list item's label. In a video container
+    Kodi draws the info tag's title over the label it was given, so a badge
+    that only reached the label was computed, written, and never seen.
     """
     detail = item.get("detail") or {}
     # The card's own subtitles are a fallback; the page's synopsis is the
@@ -1310,7 +1315,7 @@ def _set_meta(listitem, item, label):
     try:
         tag = listitem.getVideoInfoTag()
         tag.setMediaType(media)
-        tag.setTitle(item.get("title") or label)
+        tag.setTitle(label or item.get("title") or "")
         if plot:
             tag.setPlot(plot)
         if detail.get("cast"):
@@ -1343,9 +1348,12 @@ def _set_meta(listitem, item, label):
             if item.get("episode"):
                 tag.setEpisode(item["episode"])
             # The episode's own name, where the card carries one; the row's
-            # title is the show on a season listing.
+            # title is the show on a season listing. It takes the badge as
+            # well, or this would undo it: a season of Coming Soon episodes
+            # all carry an episode title, so this line was quietly replacing
+            # every badged title with a plain one.
             if item.get("episode_title"):
-                tag.setTitle(item["episode_title"])
+                tag.setTitle(_labelled(item, item["episode_title"]))
                 tag.setTvShowTitle(item.get("title") or "")
         elif item.get("episode_title"):
             tag.setTagLine(item["episode_title"])

@@ -38,6 +38,12 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- Badges are actually visible now. They were being written into the row's
+  label and then painted over: Kodi draws the info tag's title on top of the
+  label it was given, and for an episode the addon set that title a second
+  time from the episode's own name. So every badge computed on a season of
+  episodes -- which is where "Coming Soon" lives -- was correct, written, and
+  never seen.
 - A Trending folder, holding the three carousels the service's own search
   screen opens with: Trending Movies, Trending TV Shows and Trending Searches,
   twenty-five titles apiece. Their names and descriptions are the service's,
