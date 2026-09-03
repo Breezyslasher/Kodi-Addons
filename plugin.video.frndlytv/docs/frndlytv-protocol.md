@@ -972,12 +972,19 @@ bare epoch-ms number with HTTP 200, and carries no state.
 The addon sends only the codes whose meaning the capture shows: 1, 11, 12, 7,
 13 and 14. Types 2 and 10 are not sent.
 
-**Not known — the stop event.** The capture never stopped playback, so no
-"stopped" code was ever seen. Stopping therefore sends a final **position**
-event (7) rather than an invented type: the position is what Continue
-Watching needs, and a wrong event code could be recorded as something else
-entirely. A capture of a play being stopped in the web player would close
-this.
+**The stop event is `et=8`**, captured by leaving a video with the back
+button — the ordinary way out of one:
+
+```
+et=13 ec=7  ps=paused   pp=18158
+et=14 ec=8  ps=playing  pp=18158
+et=8  ec=9  ps=idle     pp=20072   <- left the video
+```
+
+It carries the same 25 fields as every other event; only `et`, `ps`, `pp`,
+`ts` and `ec` differ from the one before it, and `ec` keeps counting. Until
+this was captured the addon sent a final position event instead, rather than
+invent a code.
 
 **Not known — the cadence.** One position event went out in the two captured
 minutes, which establishes no interval. The addon reports every 30 s while

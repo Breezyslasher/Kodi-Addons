@@ -38,6 +38,10 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- Stopping a video says so properly. Friendly TV has an event for it and no
+  capture had ever caught one, so the addon sent a final position instead
+  rather than invent a code; leaving a video with the back button turns out
+  to send it, with the player back to idle and the position it reached.
 - Badges are actually visible now. They were being written into the row's
   label and then painted over: Kodi draws the info tag's title on top of the
   label it was given, and for an episode the addon set that title a second

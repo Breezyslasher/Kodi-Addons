@@ -52,7 +52,7 @@ HEADERS = {
     "Origin": auth.ORIGIN,
 }
 
-# Event types, as observed. The capture's eight events were, in order:
+# Event types, as observed. The first capture's eight events were, in order:
 #
 #     et=1  ec=1  ps=idle       the session opening, with the long payload
 #     et=2  ec=2  ps=idle       unknown; not sent
@@ -63,21 +63,20 @@ HEADERS = {
 #     et=13 ec=7  ps=paused
 #     et=14 ec=8  ps=playing    resumed
 #
-# Only the ones whose meaning the capture actually shows are sent. Guessing a
-# code here would be guessing at what the service records.
+# and a later one, taken by leaving a video with the back button, ended:
+#
+#     et=8  ec=9  ps=idle       pp=20072, where playback had got to
+#
+# Only the ones whose meaning a capture actually shows are sent. Guessing a
+# code here would be guessing at what the service records, which is why
+# stopping sent a position event until this one was captured.
 EV_START = 1
 EV_BUFFERING = 11
 EV_PLAYING = 12
 EV_POSITION = 7
 EV_PAUSED = 13
 EV_RESUMED = 14
-
-# **Not known:** which event says "stopped". The capture never stopped
-# playback, so no stop code was ever seen. Stopping therefore sends a final
-# position report rather than an invented code -- the position is the part
-# Continue Watching needs, and a wrong event type could be recorded as
-# something else entirely.
-EV_STOP = EV_POSITION
+EV_STOPPED = 8
 
 # How often to report a position while playing. No capture establishes a
 # cadence -- the web player sent one position event in the two captured
@@ -239,7 +238,8 @@ class Reporter(object):
 
 
 _NAMES = {EV_START: "start", EV_BUFFERING: "buffering", EV_PLAYING: "playing",
-          EV_POSITION: "position", EV_PAUSED: "paused", EV_RESUMED: "resumed"}
+          EV_POSITION: "position", EV_PAUSED: "paused", EV_RESUMED: "resumed",
+          EV_STOPPED: "stopped"}
 
 
 def _name(event):

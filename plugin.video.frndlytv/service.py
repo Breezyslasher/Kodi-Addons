@@ -124,17 +124,16 @@ class Service(xbmc.Monitor):
                                 position_ms=where, total_ms=total)
 
     def _end_reporting(self):
-        """The last position, sent as playback ends.
+        """Playback stopped, and where it got to.
 
-        No captured event says "stopped" -- the capture never stopped -- so
-        this is a position report rather than an invented event type. The
-        position is what Continue Watching needs; the event code is what
-        would be a guess.
+        The service's own stop event, captured by leaving a video with the
+        back button: the player goes back to "idle" and reports the position
+        it left off at.
         """
         reporter, self._reporter = self._reporter, None
         if not reporter or self._last_position is None:
             return
-        reporter.send(progress.EV_STOP, state="playing",
+        reporter.send(progress.EV_STOPPED, state="idle",
                       position_ms=self._last_position)
 
     @staticmethod
