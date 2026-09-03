@@ -1129,6 +1129,50 @@ Search is where the flag lives: 21 of the 22 flagged cards captured before the
 subscription came from search, one from a series page, and none from anywhere
 else.
 
+## A section says where the rest of it lives
+
+Every section carries `sectionControls.viewAllTargetPath`, and across the
+captures it takes two shapes — 33 of one, 36 of the other:
+
+```
+section/live_now_home        a page path
+/carousels/nostalgia         a carousel
+```
+
+The first is opened with the ordinary page endpoint, which the captures do:
+
+```
+GET /service/api/v1/page/content?path=section/all-networks
+→ info.pageType "list", info.code "section_items",
+  one section holding the whole row
+GET /service/api/v1/page/content?path=section/trending_series_history_vault&count=36
+```
+
+**Not known:** how to open a `/carousels/...` path on its own. It is the same
+shape the search screen's trending rows use, and those come from
+`search/screen` as a set; no capture asks for a single carousel. So the addon
+follows the `section/` half and leaves the other alone rather than guess an
+endpoint. Without this a long row is silently cut off at whatever the page
+chose to embed.
+
+## When a Coming Soon episode airs
+
+The card says, in the service's own wording and timezone, and the addon shows
+it rather than only saying the title is unavailable:
+
+```json
+"subtitle4": "Sat, Sep 5 | 12:25 AM - 12:50 AM"
+"pageAttributes": {"channelName": "MeTV+", "startTime": "1788582300000"}
+```
+
+`subtitle4` is a **mixed field**: of the 453 captured cards carrying it at
+all, most hold a bare numeric id (`253656`), and only on a Coming Soon card is
+it a window. Shape decides, so an id is never shown as a date. One captured
+card puts its window in `subtitle1` instead — normally `"S1 E1 | 25m"` — and
+the same shape test reads it safely there.
+
+All 39 Coming Soon episodes of the captured series say when they air.
+
 ## Trending: three carousels on the search surface
 
 Two endpoints, on the same `/search/api/tivo/v1` surface as search rather

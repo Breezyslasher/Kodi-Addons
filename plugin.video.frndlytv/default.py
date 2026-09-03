@@ -27,6 +27,10 @@ SEARCH_PAGE = 16
 # The buckets the search endpoint takes. "All" is the unfiltered search; the
 # other three are the type filters the web player offers, named as it names
 # them in the request rather than as it labels them on screen.
+# How much of a section to ask for when following its own "view all" path.
+# The web player asks for 36 there; this is a listing the viewer chose to
+# open in full, so it asks for more and takes whatever comes back.
+SECTION_ALL = 200
 SEARCH_ALL = "All"
 SEARCH_BUCKETS = (("Shows", "Series"), ("Movies", "Movie"),
                   ("Channels", "Station"))
@@ -745,7 +749,14 @@ def route_page(path, name=""):
     # nothing on it is what makes a show look like it has no description.
     describe = detail if detail["plot"] or detail["cast"] else None
     for section in sections:
-        if section["cards"]:
+        full = _view_all_of(section)
+        if full:
+            # The section says where its whole list lives, so the folder goes
+            # there rather than to the two or three dozen cards the page
+            # happened to embed.
+            _add_section_dir(section["name"] or full, full, section["code"],
+                             section["name"], "section_all", describe)
+        elif section["cards"]:
             _add_section_dir(section["name"] or path, path, section["code"],
                              section["name"], "section_cached", describe)
         elif section["code"]:
@@ -886,6 +897,46 @@ def route_section(path, code, name):
                          else "Friendly TV sent no rows for %s" % (name or code))
     finish(_add_cards(cards, client))
 
+
+
+def _view_all_of(section):
+    """A section's own "see everything" path, where the addon can follow it.
+
+    Sections name one in ``sectionControls.viewAllTargetPath``, in two shapes:
+
+        section/live_now_home          a page path -- page/content opens it
+        /carousels/nostalgia           never fetched in any capture
+
+    Only the first is followed. The second is the shape the search screen's
+    trending rows also use, and nothing captured shows how a single carousel
+    is asked for on its own, so guessing an endpoint would be guessing.
+    """
+    target = (section.get("view_all") or "").strip()
+    return target if target.startswith("section/") else ""
+
+
+def route_section_all(path, code, name):
+    """A section in full, from the path the section itself named.
+
+    A page embeds two or three dozen cards of a row and the row says where the
+    rest are; without this a long row is silently cut off at whatever the page
+    chose to include.
+    """
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        response = client.page(path, count=SECTION_ALL)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Could not open %s" % (name or path))
+        return finish()
+    cards = []
+    for section in parse.sections(response, client):
+        cards.extend(section["cards"])
+    kodiutils.log("section %s in full: %d card(s)" % (path, len(cards)))
+    if not cards:
+        kodiutils.notify("Nothing in %s" % (name or path))
+    finish(_add_cards(cards, client))
 
 def route_section_cached(path, code, name):
     """A section the page already sent the cards for.
@@ -1236,25 +1287,26 @@ def _add_coming_soon(item):
     xbmcplugin.addDirectoryItem(
         HANDLE, url(action="coming_soon",
                     label=item["episode_title"] or item["title"],
-                    name=item.get("title") or "",
-                    path=item["path"]),
+                    name=_when(item), path=item["path"]),
         listitem, isFolder=False)
 
 
 def route_coming_soon(label, name=""):
-    """Say that a title is not out yet, and stay where we are.
+    """Say that a title is not out yet, when it airs, and stay where we are.
 
     Friendly TV's own words for it, when it is asked for anyway, are "The
     content provider has restricted this program from being available On
-    Demand." -- which reads like a fault rather than a schedule.
+    Demand." -- which reads like a fault rather than a schedule. ``name`` is
+    the airing window the card carried, already worded.
     """
-    said = "%s is not available to watch yet." % (label or "This")
-    if name and name != label:
-        said = "%s\n\n%s" % (said, name)
-    kodiutils.log("coming soon: %s" % (label or "?"))
-    kodiutils.ok_dialog(
-        "%s\n\nFriendly TV lists it as Coming Soon. It plays once the "
-        "service releases it on demand." % said, label or "Coming Soon")
+    lines = ["%s is not available to watch yet." % (label or "This")]
+    if name:
+        lines.append(name)
+    lines.append("Friendly TV lists it as Coming Soon. It plays once the "
+                 "service releases it on demand.")
+    kodiutils.log("coming soon: %s%s" % (label or "?",
+                                         (" -- %s" % name) if name else ""))
+    kodiutils.ok_dialog("\n\n".join(lines), label or "Coming Soon")
     xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
 
 def _add_playable(item, label=None, action="play"):
@@ -1336,7 +1388,21 @@ def _plot_text(item):
             parts.append(value)
     if item.get("episode_title") and item["episode_title"] not in parts:
         parts.insert(0, item["episode_title"])
+    # When a not-yet-released episode airs. It is the answer to the obvious
+    # question a "Coming Soon" badge raises, and the card carries it.
+    when = _when(item)
+    if when and when not in parts:
+        parts.append(when)
     return "\n".join(parts)
+
+
+def _when(item):
+    """"Airs Sat, Sep 5 | 12:25 AM - 12:50 AM on MeTV+", where the card says so."""
+    window = item.get("airing") or ""
+    if not window:
+        return ""
+    channel = item.get("channel_name") or ""
+    return "Airs %s%s" % (window, (" on " + channel) if channel else "")
 
 
 def _set_meta(listitem, item, label):
@@ -1679,6 +1745,9 @@ def _dispatch():
     elif action == "section":
         route_section(params.get("path", ""), params.get("code", ""),
                       params.get("name", ""))
+    elif action == "section_all":
+        route_section_all(params.get("path", ""), params.get("code", ""),
+                          params.get("name", ""))
     elif action == "coming_soon":
         route_coming_soon(params.get("label", ""), params.get("name", ""))
     elif action == "trending":

@@ -107,6 +107,23 @@ def _markers(display):
 
 
 
+
+_WINDOW = re.compile(r"^\w{3}, \w{3} \d{1,2} \| .*\d")
+
+
+def _airing_window(value):
+    """subtitle4 when it is an airing window, and "" when it is not.
+
+    Of the 453 captured cards carrying subtitle4 at all, most hold a bare
+    numeric id; every one of the 275 on a Coming Soon card holds a window.
+    Shape decides, so a card that carries an id gets nothing rather than a
+    number presented as a date -- and subtitle1, normally "S1 E1 | 25m",
+    can be read the same way for the one captured card that puts its window
+    there instead.
+    """
+    text = str(value or "").strip()
+    return text if _WINDOW.match(text) else ""
+
 def _redirects_to_payment(display):
     """Whether any of a card's badges says the title has to be paid for.
 
@@ -207,6 +224,12 @@ def card(raw, api):
         # isRedirectToPayment, and it carries it on all 22 of its cards. The
         # flag is read rather than the wording, so a renamed badge still works.
         "needs_addon": _redirects_to_payment(display),
+        # When a not-yet-released episode airs, in the service's own words and
+        # its own timezone: "Sat, Sep 5 | 12:25 AM - 12:50 AM". subtitle4 is a
+        # mixed field -- on most cards that carry it at all it is a bare
+        # numeric id -- so it is only taken when it is shaped like a window.
+        "airing": (_airing_window(display.get("subtitle4"))
+                   or _airing_window(display.get("subtitle1"))),
         "poster": api.image(display.get("imageUrl")),
         "channel_logo": api.image(display.get("parentIcon")),
         "id": raw.get("id"),
@@ -273,6 +296,10 @@ def sections(response, api):
         # not this one.
         return out
     for pane in (response.get("data") or []):
+        # A pane is normally an object, but "data" is a general-purpose list
+        # across this API and some responses put other things in it.
+        if not isinstance(pane, dict):
+            continue
         section = pane.get("section")
         if not isinstance(section, dict):
             continue

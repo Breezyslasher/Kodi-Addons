@@ -38,6 +38,19 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- A row opens in full rather than at whatever the page embedded. Every row
+  names where the rest of it lives, in one of two shapes, and the addon
+  follows the one the service's own page endpoint opens. The other is a
+  carousel, which no capture ever asks for on its own, so it is left alone
+  rather than guessed at.
+- A Coming Soon title says when it airs, and on which channel. The card
+  carries it, worded by the service and in its timezone, so a badge that
+  raised the obvious question now answers it. The field it lives in holds a
+  bare id on most other cards, so it is read only where it is shaped like a
+  date, and one card that puts it somewhere else entirely is read too.
+- A listing no longer fails on a row that is not shaped like a row. The
+  service's "data" list is general purpose and not everything in it is a
+  pane.
 - A Coming Soon title is no longer offered to the player. The service lists
   these and then refuses them, so Kodi was trying, failing, and logging
   "skipping unplayable item" once per attempt -- and a season of them takes
