@@ -128,3 +128,11 @@ msgstr ""
 msgctxt "#30047"
 msgid "Ask before each video"
 msgstr ""
+
+msgctxt "#30048"
+msgid "Report what you watch to Friendly TV"
+msgstr ""
+
+msgctxt "#30049"
+msgid "Send player state and position during playback, as Friendly TV's own apps do. Without it a title watched in Kodi never reaches Continue Watching and never remembers where you left off, because that row is written by whatever is playing. It also sends the device and account context the web player sends."
+msgstr ""

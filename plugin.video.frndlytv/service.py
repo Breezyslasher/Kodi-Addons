@@ -11,9 +11,11 @@ plays, with "you are watching on too many devices" and no device actually
 watching.
 """
 
+import time
+
 import xbmc
 
-from lib import api, auth, kodiutils, playback
+from lib import api, auth, kodiutils, playback, progress
 
 # How long to let the player settle before believing its clock,
 # and how many times to look. Kept short: this is a log line, and
@@ -26,6 +28,10 @@ class Service(xbmc.Monitor):
     def __init__(self):
         super(Service, self).__init__()
         self._playing_key = ""
+        self._reporter = None
+        self._paused = False
+        self._last_position = None
+        self._next_report = 0.0
 
     def run(self):
         kodiutils.log("service starting; %s" % kodiutils.platform())
@@ -53,9 +59,94 @@ class Service(xbmc.Monitor):
                     self._playing_key = key
                     kodiutils.log("holding a stream slot for %s"
                                   % (context.get("path") or "?"))
+                    self._begin_reporting(context)
                     self._report_position(player, context)
+            else:
+                self._follow(player)
         elif self._playing_key:
             self._release()
+
+    # -- reporting progress ------------------------------------------------
+
+    def _begin_reporting(self, context):
+        """Open a reporting session for the play that has just started."""
+        self._reporter = None
+        self._paused = False
+        self._last_position = None
+        self._next_report = 0.0
+        if not progress.enabled():
+            return
+        try:
+            reporter = progress.Reporter(context)
+        except Exception as exc:
+            kodiutils.log("could not start progress reporting: %s" % exc)
+            return
+        if not reporter.usable:
+            kodiutils.log("nothing to report progress against for %s "
+                          "(no analytics id or no user id)"
+                          % (context.get("path") or "?"))
+            return
+        self._reporter = reporter
+        reporter.send(progress.EV_START, state="idle")
+        reporter.send(progress.EV_BUFFERING, state="buffering")
+        reporter.send(progress.EV_PLAYING, state="playing")
+
+    def _follow(self, player):
+        """Report pauses, resumes, and where playback has got to.
+
+        Position is only reported once the running time can contain it, for
+        the same reason `_report_position` waits: asked too early, a
+        multi-period manifest answers with a number that is not a position.
+        """
+        if not self._reporter:
+            return
+        where, total = self._clock(player)
+        if where is None:
+            return
+        self._last_position = where
+
+        paused = _is_paused()
+        if paused != self._paused:
+            self._paused = paused
+            self._reporter.send(
+                progress.EV_PAUSED if paused else progress.EV_RESUMED,
+                state="paused" if paused else "playing",
+                position_ms=where, total_ms=total)
+            self._next_report = time.time() + progress.POSITION_INTERVAL
+            return
+
+        if paused:
+            return
+        now = time.time()
+        if now >= self._next_report:
+            self._next_report = now + progress.POSITION_INTERVAL
+            self._reporter.send(progress.EV_POSITION, state="playing",
+                                position_ms=where, total_ms=total)
+
+    def _end_reporting(self):
+        """The last position, sent as playback ends.
+
+        No captured event says "stopped" -- the capture never stopped -- so
+        this is a position report rather than an invented event type. The
+        position is what Continue Watching needs; the event code is what
+        would be a guess.
+        """
+        reporter, self._reporter = self._reporter, None
+        if not reporter or self._last_position is None:
+            return
+        reporter.send(progress.EV_STOP, state="playing",
+                      position_ms=self._last_position)
+
+    @staticmethod
+    def _clock(player):
+        """(position_ms, total_ms), or (None, 0) while the answer is nonsense."""
+        try:
+            where, total = player.getTime(), player.getTotalTime()
+        except Exception:
+            return None, 0
+        if total <= 0 or not 0 <= where <= total:
+            return None, 0
+        return int(where * 1000), int(total * 1000)
 
     def _report_position(self, player, context):
         """Say where playback actually began, once it is under way.
@@ -91,6 +182,7 @@ class Service(xbmc.Monitor):
                       "(%s of %s); not reporting one" % (where, total))
 
     def _release(self):
+        self._end_reporting()
         key, self._playing_key = self._playing_key, ""
         if not key:
             return
@@ -101,6 +193,13 @@ class Service(xbmc.Monitor):
             # reaped server-side, and a slot left behind times out on its own.
             kodiutils.log("could not release the stream slot: %s" % exc)
         kodiutils.delete_file(playback.CONTEXT_FILE)
+
+
+def _is_paused():
+    try:
+        return bool(xbmc.getCondVisibility("Player.Paused"))
+    except Exception:
+        return False
 
 
 def _hms(seconds):

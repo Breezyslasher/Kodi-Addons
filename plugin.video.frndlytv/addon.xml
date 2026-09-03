@@ -38,6 +38,15 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- What you watch in Kodi now reaches Continue Watching, and remembers where
+  you left off. That row is written by whatever is playing, and this addon was
+  writing nothing: the web player posts player state and position throughout
+  playback, to a host that is not the API, and the addon posted none of it. So
+  the row was fed only by Friendly TV's own apps, and a film watched here left
+  no trace -- which is why Movies had a Continue Watching row with nothing in
+  it. Only the event types the capture shows the meaning of are sent; the two
+  it does not are left alone, and stopping sends a final position rather than
+  an invented "stopped". Under Playback, and it can be turned off.
 - Opening a section the page had not filled in no longer fails with an error
   and an empty folder. Those come from a different endpoint, and it answers
   with a bare list -- one element per section code asked for, in which

@@ -922,15 +922,67 @@ correspondence above is strong and there is no other candidate in any capture
 `revlet.net` — but nothing captured proves the causal link, and no capture
 shows the row changing in response to one of these POSTs.
 
-**The addon sends none of this.** So a title watched in Kodi never reaches
-Continue Watching, and never gets a resume position: the row is populated
-entirely by what was watched in Friendly TV's own apps. That is the reason
-Movies → Continue Watching answers with a row and no items after watching a
-film through the addon:
+The addon now sends this, from the background service, under **Settings →
+Playback → Report what you watch to Friendly TV**. Before it did, a title
+watched in Kodi never reached Continue Watching and never got a resume
+position — which is why Movies → Continue Watching answered with the row and
+no items after watching a film through the addon:
 
 ```
 section movies/continue_watching_movies: 0 card(s)
 ```
+
+### The event stream
+
+`ec` counts events from 1 within a play. `psk` is the play-session key, held
+constant for the whole play at the epoch ms it began; `ts` moves with each
+event. `et` is the event type, and the eight captured events were:
+
+| `ec` | `et` | `ps` | `pp` | what it is |
+|---|---|---|---|---|
+| 1 | 1 | `idle` | -1 | the session opening — **38 fields**, the only one with the device block |
+| 2 | 2 | `idle` | -1 | **unknown** |
+| 3 | 11 | `buffering` | -1 | |
+| 4 | 12 | `playing` | -1 | |
+| 5 | 7 | `playing` | 46642 | the first with a position |
+| 6 | 10 | -1 | 46642 | **unknown**; carries `ep` as well as `pp` |
+| 7 | 13 | `paused` | 54838 | |
+| 8 | 14 | `playing` | 54871 | resumed |
+
+Every event after the first carries the same **25 fields**. The response is a
+bare epoch-ms number with HTTP 200, and carries no state.
+
+The addon sends only the codes whose meaning the capture shows: 1, 11, 12, 7,
+13 and 14. Types 2 and 10 are not sent.
+
+**Not known — the stop event.** The capture never stopped playback, so no
+"stopped" code was ever seen. Stopping therefore sends a final **position**
+event (7) rather than an invented type: the position is what Continue
+Watching needs, and a wrong event code could be recorded as something else
+entirely. A capture of a play being stopped in the web player would close
+this.
+
+**Not known — the cadence.** One position event went out in the two captured
+minutes, which establishes no interval. The addon reports every 30 s while
+playing, plus on every pause and resume.
+
+Three fields are chosen rather than copied:
+
+* `ip` — **omitted**. The web player sends the client's public address; the
+  addon does not know it and will not ask a third party for it. The receiving
+  end sees the source address regardless.
+* `dos` / `dosv` — Kodi's own `System.OSVersionInfo` and version, rather than
+  the capture's browser platform string. These describe the device, and a
+  true answer is better than a copied one.
+* `sk` — a fresh uuid per play. The captured value is a v3 (name-based) uuid
+  whose derivation is not known, and nothing captured shows it having to
+  match anything.
+
+Everything else is the capture verbatim, `dt: "web"`, `dc: "firefox"`,
+`pln: "bitmovin"` and `di: "5"` included: the addon presents itself as the web
+player everywhere else — same User-Agent, same Origin, same device id on the
+stream request — and being inconsistent here would file these events under a
+client that does not exist.
 
 ## Removing something from Continue Watching
 

@@ -338,11 +338,24 @@ def _remember(response, path, from_start=False):
     actually began, and that is only interesting against what was asked for.
     """
     info = response.get("sessionInfo") or {}
+    analytics = response.get("analyticsInfo") or {}
+    status = response.get("streamStatus") or {}
+    stream = _pick(response.get("streams")) or {}
     kodiutils.write_json(CONTEXT_FILE, {
         "path": path,
         "poll_key": info.get("streamPollKey") or "",
         "poll_interval_ms": info.get("pollIntervalInMillis") or 0,
         "from_start": bool(from_start),
+        # What the progress reporter needs, so it does not have to repeat the
+        # stream call. dataKey is the analytics id verbatim: the capture's
+        # meta_id and its analyticsInfo.dataKey are the same string.
+        "analytics": {
+            "meta_id": analytics.get("dataKey") or "",
+            "custom_data": analytics.get("customData") or "",
+            "content_type": analytics.get("contentType") or "",
+            "stream_url": stream.get("url") or "",
+            "total_ms": _int(status.get("totalDurationInMillis")),
+        },
     })
 
 

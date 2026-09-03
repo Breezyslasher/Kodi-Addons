@@ -157,6 +157,30 @@ def platform():
     return _PLATFORM[0]
 
 
+def os_name():
+    """This box's operating system, for the fields that describe the device.
+
+    The capture's web player sent "Linux x86_64" here -- the browser's own
+    platform string. Kodi's System.OSVersionInfo is the nearest equivalent it
+    can answer truthfully, and a truthful answer is better than a copied one
+    for a field whose whole purpose is to say what the device is.
+    """
+    try:
+        said = (xbmc.getInfoLabel("System.OSVersionInfo") or "").strip()
+    except Exception:
+        said = ""
+    return said.replace("\n", " ") or "unknown"
+
+
+def os_version():
+    """A version to sit beside `os_name`. Kodi's own, which is what varies."""
+    try:
+        return (xbmc.getInfoLabel("System.BuildVersionShort") or "").strip() \
+            or "unknown"
+    except Exception:
+        return "unknown"
+
+
 def isa_version():
     """inputstream.adaptive's version string, or "" when it is not installed."""
     try:
