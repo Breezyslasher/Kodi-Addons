@@ -937,32 +937,32 @@ def _add_cards(cards, client=None):
 def _without_addon_titles(cards, client=None):
     """Drop what the account cannot watch, unless asked to keep it.
 
-    Two different things are hidden, and only one of them is certain.
+    Two things are hidden, and both are now settled rather than inferred.
 
-    **An add-on channel itself** -- the six network cards on the Add-ons page,
-    marked ``pageAttributes.contentType: "network"``. Which of those the
-    account holds is stated outright by ``activepackages``, so hiding the rest
-    is not an inference at all.
+    **A title flagged ``isRedirectToPayment``** -- the "+ Add-On" badge. The
+    flag is **account-relative**: it means "you cannot watch this", not "this
+    is add-on content". One search proves it, taken while the account held a
+    HISTORY Vault trial and nothing else. `query=good witch` answered with
+    eleven titles in one response:
 
-    **A title flagged ``isRedirectToPayment``** -- the "+ Add-On" badge. Here
-    what the flag means is *still not established*, and an earlier reading of
-    it was wrong. The evidence:
+        6 unflagged   "The Good Witch..."  -- Hallmark Channel, in the plan
+        5 flagged     "Good Witch..."      -- Hallmark+, an add-on NOT held
 
-      * before any add-on was held, 22 cards carried it -- 21 of them in
-        **search results**, one on a series page;
-      * after taking a HISTORY Vault trial, that channel's content came back
-        unflagged -- but from the **partner and Add-ons pages**, and those
-        flag nothing at all: 20 cards of Hallmark+ content, an add-on that is
-        *not* held, sit unflagged on the same page.
+    So flags were live in that very response, while searches in the same
+    session returned the held add-on's own films -- "Perspectives: Babe Ruth"
+    among them, the film that had refused to play before -- with no markers at
+    all. Held is unflagged, unheld is flagged, base plan is unflagged.
 
-    So the two captures differ in where they came from as well as in what was
-    subscribed, and "the flag is account-relative" does not follow. Nothing
-    captured shows a search made while an add-on was held.
+    (An earlier reading of this was wrong twice over, which is why it is
+    spelled out: the partner and Add-ons pages flag *nothing*, held or not, so
+    evidence drawn from them showed only which page it came from.)
 
-    Until that is settled, hiding on the flag happens only when the account
-    holds **no** add-on, where both readings agree the title is unwatchable.
-    An unwatchable title left in a listing costs a dialog; a watchable one
-    taken out costs the subscription.
+    **An add-on channel itself** -- a card marked
+    ``pageAttributes.contentType: "network"``. That marking does not mean
+    add-on: MeTV, MeTV+ and MeTV Toons carry it too, with partner pages of
+    their own, and they are in the base plan. Only a channel the service names
+    as an add-on counts, and then only if the account does not hold it --
+    which ``activepackages`` states outright.
     """
     if kodiutils.get_setting_bool("show_addon_content", False):
         return cards
@@ -972,36 +972,19 @@ def _without_addon_titles(cards, client=None):
     drop = set()
 
     for item in cards:
-        # "network" alone does not mean add-on: MeTV, MeTV+ and MeTV Toons are
-        # base-plan channels carrying the same marking and their own
-        # partner/... pages, and hiding on the marking would take them out of
-        # a search. Only a channel the service actually sells as an add-on
-        # counts, and only then if the account does not hold it.
+        if item.get("needs_addon") or (item.get("detail") or {}).get("subscribe"):
+            drop.add(id(item))
+            continue
         if item.get("content_type") != "network" or not channels:
             continue
         name = api._addon_key(item.get("title"))
         if name in channels and name not in (held or set()):
             drop.add(id(item))
 
-    flagged = [c for c in cards
-               if c.get("needs_addon")
-               or (c.get("detail") or {}).get("subscribe")]
-    if flagged:
-        if held:
-            kodiutils.log("keeping %d flagged title(s): this account holds an "
-                          "add-on, and whether the flag means \"not yours\" "
-                          "or just \"add-on content\" is not established"
-                          % len(flagged))
-        elif held is None:
-            kodiutils.log("keeping %d flagged title(s): the account's packages "
-                          "could not be read" % len(flagged))
-        else:
-            drop.update(id(c) for c in flagged)
-
     if not drop:
         return cards
     gone = [c for c in cards if id(c) in drop]
-    kodiutils.log("hiding %d: %s"
+    kodiutils.log("hiding %d title(s) this account cannot watch: %s"
                   % (len(gone), ", ".join(c.get("title") or c.get("path") or "?"
                                           for c in gone[:6])))
     return [c for c in cards if id(c) not in drop]

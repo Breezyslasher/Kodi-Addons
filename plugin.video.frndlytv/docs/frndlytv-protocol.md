@@ -1090,55 +1090,37 @@ A bare list of six, all captured with `buttonMessage: "Add"`:
 the captured film names 27, and 27 is HISTORY Vault — so a subscribe prompt
 can say which add-on is wanted rather than just "an add-on".
 
-### `isRedirectToPayment` — still NOT settled, and an earlier note here was wrong
+### `isRedirectToPayment` is account-relative — settled
 
-A capture taken across taking a HISTORY Vault trial looked like it settled
-this. It does not, and the note that said it did was mistaken.
+One search settles it. Made while the account held a HISTORY Vault trial and
+nothing else, `query=good witch` answered with eleven titles in a single
+response:
 
-What the trial capture does establish:
-
-* **`activepackages` grew to two** — `Classic` (id 4) and `HISTORY Vault`
-  (id 51, code `history_vault_svod`, `isFreeTrail: true`).
-* **A package says for itself whether it is an add-on.** This is what to read;
-  see the table below.
-* **`addon/packages` drops what is held** — six entries became five, HISTORY
-  Vault gone. So matching active packages against the catalogue would answer
-  "no add-ons" for exactly the account that has one.
-
-What it does **not** establish. The "after" evidence was HISTORY Vault content
-coming back unflagged — but it came from the **partner and Add-ons pages**,
-and those flag nothing at all. On the very same Add-ons page sit 20 cards of
-**Hallmark+** content, an add-on that is *not* held, and they are unflagged
-too. Meanwhile every one of the 22 flagged cards ever captured came from
-somewhere else: 21 from **search**, one from a series page.
-
-So the before and after differ in where they came from as well as in what was
-subscribed, and the variable was never isolated.
-
-**Searches made while the add-on was held** close most of that gap. Search
-is where flags appear -- 21 of the 22 came from there -- and:
-
-* `query=babe` returns **"Perspectives: Babe Ruth"** (`movies/107679378926`),
-  the very film that had refused to play, with `"markers": []`;
-* `query=history vault` returns another HISTORY Vault film, also unflagged.
-
-So the same title that the service gated before the subscription comes back
-ungated in the flagging context after it. What is still missing is the other
-half: no post-subscription search has returned a title from an add-on that is
-**not** held, so nothing shows the flag still operates at all in that session.
-
-**The capture that would finish it:** a search, while HISTORY Vault is held,
-for a title on an add-on that is not -- `Granite Flats`, `Like Dandelion
-Dust` or `Legal Action`, all of which came back flagged before. If they are
-still flagged, the flag is account-relative and the condition below can go.
-
-Until then the addon hides on the flag only when the account holds no add-on,
-where both readings agree the title is unwatchable.
-
-| | `dependentPackage` | `cusomAttributes.isSVOD` |
+| results | channel | flagged |
 |---|---|---|
-| Classic (base) | `false` | `""` |
-| HISTORY Vault (add-on) | `true` | `"true"` |
+| 6 × "The Good Witch…" | Hallmark Channel, in the base plan | no |
+| 5 × "Good Witch…" | **Hallmark+**, an add-on **not** held | **`+ Add-On`** |
+
+So flags were live in that very response. In the same session, searches
+returned the **held** add-on's own films unflagged — `query=babe` gives
+"Perspectives: Babe Ruth" (`movies/107679378926`), the film that had refused
+to play before the subscription, with `"markers": []`.
+
+Held → unflagged. Unheld → flagged. Base plan → unflagged. The flag means
+**"you cannot watch this"**, not "this is add-on content", so hiding on it is
+correct whatever the account holds.
+
+Two earlier readings of this were wrong, both worth recording:
+
+* Claiming it *confirmed* from the trial capture alone. The unflagged content
+  there came from the **partner and Add-ons pages**, and those flag nothing at
+  all — 20 cards of Hallmark+ content, an add-on not held, sit unflagged on
+  the Add-ons page. That evidence showed only which page it came from.
+* Before that, assuming no card-level flag existed at all.
+
+Search is where the flag lives: 21 of the 22 flagged cards captured before the
+subscription came from search, one from a series page, and none from anywhere
+else.
 
 ## The Add-ons page, and the six channels
 
