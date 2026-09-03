@@ -38,6 +38,13 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- A badge stays on the row it decorates. It was going into the url as well,
+  so the player was told it was playing "A New Beginning [COLOR gold](+
+  Add-On)[/COLOR]", markup and all.
+- A listing that does not filter says why. The account's packages decide what
+  is hidden, and when they cannot be read nothing is -- which looked exactly
+  like a listing with nothing to hide, so the same row filtered once and not
+  the next time with no way to tell which had happened.
 - Searching for a channel no longer risks losing MeTV. Friendly TV marks a
   card as a network whether the channel is an add-on or part of the plan, and
   MeTV, MeTV+ and MeTV Toons all carry that marking with pages of their own,

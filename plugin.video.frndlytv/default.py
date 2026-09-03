@@ -969,6 +969,14 @@ def _without_addon_titles(cards, client=None):
 
     held = client.held_addons() if client is not None else None
     channels = client.addon_channel_names() if client is not None else None
+
+    # A listing that quietly does not filter is indistinguishable from one
+    # with nothing to filter, and a log showed the same row filtered once and
+    # not the next time with no way to tell which had happened. Say it.
+    if client is None or channels is None:
+        kodiutils.log("not filtering this listing: %s"
+                      % ("no client" if client is None
+                         else "the account's packages could not be read"))
     drop = set()
 
     for item in cards:
@@ -1015,10 +1023,11 @@ def _add_card_folder(item):
     show: without the mediatype it lists as an unnamed directory and a skin
     has nothing to draw a poster shelf from.
     """
-    label = _labelled(item, item["title"] or item["path"])
+    plain = item["title"] or item["path"]
+    label = _labelled(item, plain)
     listitem = xbmcgui.ListItem(label=label)
     listitem.setArt(_art(item))
-    _set_meta(listitem, item, label)
+    _set_meta(listitem, item, plain)
     menu = _card_menu(item)
     if menu:
         listitem.addContextMenuItems(menu)
@@ -1154,16 +1163,20 @@ def _similar_menu(item):
 
 
 def _add_playable(item, label=None, action="play"):
-    label = _labelled(item, label or item["title"] or item["path"])
-    listitem = xbmcgui.ListItem(label=label)
+    # The badge is decoration for the row only. It must not reach the url:
+    # that label is what the player is told it is playing, and it came out as
+    # "A New Beginning [COLOR gold](+ Add-On)[/COLOR]" in a plugin path.
+    plain = label or item["title"] or item["path"]
+    shown = _labelled(item, plain)
+    listitem = xbmcgui.ListItem(label=shown)
     listitem.setArt(_art(item))
     listitem.setProperty("IsPlayable", "true")
-    _set_meta(listitem, item, label)
+    _set_meta(listitem, item, plain)
     menu = _card_menu(item)
     if menu:
         listitem.addContextMenuItems(menu)
     xbmcplugin.addDirectoryItem(
-        HANDLE, url(action=action, path=item["path"], label=label),
+        HANDLE, url(action=action, path=item["path"], label=plain),
         listitem, isFolder=False)
 
 
