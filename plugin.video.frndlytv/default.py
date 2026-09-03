@@ -103,6 +103,40 @@ def _client(quiet=False):
 # -- routes ---------------------------------------------------------------
 
 
+# Kodi's own icons, so the root menu reads as a menu rather than a column of
+# identical folders. A skin that does not carry one simply draws none.
+ROOT_ICONS = {
+    "home": "DefaultFolder.png",
+    "live": "DefaultAddonPVRClient.png",
+    "guide": "DefaultAddonPVRClient.png",
+    "movies": "DefaultMovies.png",
+    "tv_series": "DefaultTVShows.png",
+    "trending": "DefaultInProgressShows.png",
+    "search": "DefaultAddonsSearch.png",
+    "my_recordings": "DefaultVideoPlaylists.png",
+    "add-ons": "DefaultAddonVideo.png",
+    "sessions": "DefaultNetwork.png",
+    "account": "DefaultUser.png",
+}
+
+# The order the root menu is drawn in, by the key above. The service's own
+# menu is not in a useful order for this -- it is the web player's navigation
+# bar, where Home comes after Search -- so the pages are placed here and
+# anything the service adds later falls in after them rather than being lost.
+ROOT_ORDER = ("home", "live", "guide", "movies", "tv_series", "trending",
+              "search", "my_recordings", "add-ons")
+
+
+def _root_entry(key, title, target, plot=""):
+    # A page the service adds later has no icon named here, and a row with no
+    # icon beside rows that have one looks like a mistake rather than a
+    # difference. The plain folder is the honest default.
+    icon = ROOT_ICONS.get(key) or "DefaultFolder.png"
+    add_dir(title, target, plot=plot,
+            art={"icon": icon, "thumb": icon,
+                 "fanart": kodiutils.addon().getAddonInfo("fanart")})
+
+
 def route_root(update=False):
     kodiutils.log("root menu; %s" % kodiutils.platform())
     client = _client(quiet=True)
@@ -110,42 +144,58 @@ def route_root(update=False):
     # Everything here needs an account. Listing them signed out offers folders
     # that can only fail, and a first-run viewer is better told what to do.
     if not client:
-        add_dir("Sign in to Friendly TV", url(action="signin"),
-                plot="Enter your Friendly TV email address and password. "
-                     "They can also be saved in this addon's settings.")
+        _root_entry("account", "Sign in to Friendly TV", url(action="signin"),
+                    plot="Enter your Friendly TV email address and password. "
+                         "They can also be saved in this addon's settings.")
         kodiutils.log("root menu: not signed in")
         return finish(update=update)
 
-    add_dir("Live TV", url(action="live"),
-            plot="Every channel in your lineup, with what is on right now.")
-    add_dir("TV Guide", url(action="guide"),
-            plot="Channels and their schedule for the next day.")
-    add_dir("Search", url(action="search"),
-            plot="Search Friendly TV's catalogue of shows and films.")
-    add_dir("Trending", url(action="trending"),
-            plot="What Friendly TV is putting in front of everyone right "
-                 "now: trending films, trending shows, and the titles "
-                 "people are searching for.")
-
+    # What this addon has its own route for, keyed the same way as the
+    # service's pages so the two can be ordered together.
+    entries = {
+        "live": ("Live TV", url(action="live"),
+                 "Every channel in your lineup, with what is on right now."),
+        "guide": ("TV Guide", url(action="guide"),
+                  "Channels and their schedule for the next day."),
+        "search": ("Search", url(action="search"),
+                   "Search Friendly TV's catalogue of shows and films."),
+        "trending": ("Trending", url(action="trending"),
+                     "What Friendly TV is putting in front of everyone right "
+                     "now: trending films, trending shows, and the titles "
+                     "people are searching for."),
+    }
     for entry in client.menus():
-        # Guide has a richer listing of its own above; the service's own
-        # "guide" page is a duplicate of it.
-        if entry["path"] == "guide":
+        path = entry["path"]
+        if path == "guide":
+            # The addon's own guide above is a richer listing of the same
+            # thing; the service's "guide" page duplicates it.
             continue
-        # Home is assembled from two endpoints and has its own route.
-        if entry["path"] == "home":
-            add_dir(entry["title"], url(action="home"))
+        if path == "home":
+            entries["home"] = (entry["title"], url(action="home"), "")
             continue
-        add_dir(entry["title"], url(action="page", path=entry["path"]))
+        entries[path] = (entry["title"],
+                         url(action="page", path=path), "")
 
-    add_dir("Active streams", url(action="sessions"),
-            plot="What this account has playing right now, anywhere. "
-                 "Friendly TV limits how many streams run at once.")
+    drawn = set()
+    for key in ROOT_ORDER:
+        if key in entries:
+            _root_entry(key, *entries[key])
+            drawn.add(key)
+    # Anything the service offers that this order does not name -- a page
+    # added after this was written -- still gets listed, after the rest.
+    for key, value in entries.items():
+        if key not in drawn:
+            _root_entry(key, *value)
+
+    _root_entry("sessions", "Active streams", url(action="sessions"),
+                plot="What this account has playing right now, anywhere. "
+                     "Friendly TV limits how many streams run at once.")
 
     if client.session.email:
-        add_dir("Sign out (%s)" % client.session.email,
-                url(action="signout"))
+        _root_entry("account", "Sign out (%s)" % client.session.email,
+                    url(action="signout"))
     finish(update=update)
+
 
 
 

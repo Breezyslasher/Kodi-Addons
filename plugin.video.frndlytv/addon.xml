@@ -38,6 +38,12 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- The main menu is ordered and illustrated. Home leads, then the things to
+  watch, then the ways to find something, then the account -- rather than the
+  order the web player's navigation bar happens to use, where Home comes
+  after Search. Each entry carries an icon, so the menu reads as a menu
+  instead of a column of identical folders, and a page the service adds later
+  still appears, after the ones named here.
 - "Up next" on anything that plays, which is the same question the web player
   asks the service during playback: what follows this.
 - The addon asks where Friendly TV's APIs are rather than assuming. The web
