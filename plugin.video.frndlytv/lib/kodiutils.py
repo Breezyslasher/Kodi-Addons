@@ -9,6 +9,14 @@ import xbmcgui
 import xbmcvfs
 
 
+# Sent as a plain browser. The API does not gate on this, but the CDN in
+# front of it is likelier to answer a request that looks like the client the
+# service actually ships. It lives here rather than in auth so that the host
+# bootstrap can use it -- auth depends on that, so it cannot depend on auth.
+USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64; rv:154.0) Gecko/20100101 "
+              "Firefox/154.0")
+
+
 def addon():
     """A fresh Addon handle.
 

@@ -8,14 +8,38 @@ is *not* known, this document says so rather than filling the gap.
 Friendly TV's backend is **Revlet** (`revlet.net`), a white-label OTT platform,
 so the shapes below are Revlet's rather than Friendly TV's own.
 
-## Hosts
+## Hosts, which the client asks for rather than assumes
 
-| Host | What it serves |
-|------|----------------|
-| `frndlytv-api.revlet.net` | everything: auth, pages, streams, sessions |
-| `frndlytv-tvguideapi.revlet.net` | the schedule (`static/tvguide`) only |
-| `d229kpbsb5jevy.cloudfront.net` | artwork |
-| `drm-global.videograph.ai` | Widevine licences |
+The web player fetches this before anything else:
+
+```
+GET https://paas-init.revlet.net/clients/frndlytv/init/live/frndlytv-live-v2.json
+→ {"default": {...}, "web": {...}, "roku": {...}, "android": {...},
+   "androidtv": {...}, "amazontv": {...}, "appletv": {...}, "ios": {...}}
+```
+
+Each block is the same shape:
+
+```json
+{"location": "https://frndlytv-api.revlet.net",
+ "api":      "https://frndlytv-api.revlet.net",
+ "search":   "https://frndlytv-api.revlet.net",
+ "pgURL":    "https://frndlytv-api.revlet.net",
+ "guideURL": "https://frndlytv-tvguideapi.revlet.net",
+ "tivo":      "https://op4fswl7z7.execute-api.us-east-1.amazonaws.com",
+ "tivoClick": "https://zc0o5laiad.execute-api.us-east-1.amazonaws.com/...",
+ "tenantCode": "frndlytv", "product": "frndlytv", "isSupported": true}
+```
+
+**The blocks differ**, which is the proof they matter: Roku's `search` is
+`frndlytv-rokuapi`, and Android's whole `api` is `frndlytv-androidapi`. This
+addon presents itself as the web player everywhere else, so it reads `web`
+over `default`.
+
+The addon caches this for a day and falls back, per key, to the captured
+value. A value that is not an `https://` url is refused. So a moved host is
+followed rather than fatal, and a hostile or broken file cannot redirect the
+addon anywhere.
 
 ## Session headers
 
@@ -1194,6 +1218,19 @@ card puts its window in `subtitle1` instead — normally `"S1 E1 | 25m"` — and
 the same shape test reads it safely there.
 
 All 39 Coming Soon episodes of the captured series say when they air.
+
+## Up next
+
+```
+GET /service/api/v2/next/videos?path=video/play/vszuyoc&count=1
+GET /service/api/v2/next/videos?path=epg/play/3488570&count=1
+→ {"data": [ <ordinary cards> ]}
+```
+
+The web player asks this during playback, naming what is playing. Both
+captured calls ask for one; the cards are the ordinary card shape, and both
+captured answers parse — `epg/play/3488570` is followed by *Criminal Minds*,
+`video/play/vszuyoc` by the next episode of *Kevin Costner's The West*.
 
 ## Trending: three carousels on the search surface
 

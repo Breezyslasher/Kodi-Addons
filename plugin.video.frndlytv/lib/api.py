@@ -19,10 +19,12 @@ import time
 
 import requests
 
-from . import auth, kodiutils
+from . import auth, hosts, kodiutils
 
-API_BASE = auth.API_BASE
-GUIDE_BASE = "https://frndlytv-tvguideapi.revlet.net"
+# Both hosts are read from the file the web player bootstraps with, falling
+# back to what it says today. Called at use, never bound at import.
+API_BASE = hosts.api
+GUIDE_BASE = hosts.guide
 
 # The stream endpoint takes an optional provider-profile id, and the web
 # player does not send it consistently: every captured request for a live
@@ -193,7 +195,7 @@ class Api(object):
             self.session.refresh()
 
     def get(self, path, params=None, base=None, retry=True):
-        return self._call("GET", (base or API_BASE) + path, params=params,
+        return self._call("GET", (base or API_BASE()) + path, params=params,
                           retry=retry)
 
     # -- configuration -----------------------------------------------------
@@ -502,6 +504,23 @@ class Api(object):
             "total": response.get("totalCount") or len(cards),
         }
 
+    def next_videos(self, path, count=5):
+        """What the service says comes after a title.
+
+        The web player asks this during playback, naming what is playing:
+
+            GET /service/api/v2/next/videos?path=video/play/vszuyoc&count=1
+            GET /service/api/v2/next/videos?path=epg/play/3488570&count=1
+            -> {"data": [ <ordinary cards> ]}
+
+        Both captured calls ask for one; the count is the caller's, and the
+        cards are the same shape as anywhere else.
+        """
+        body = self.get("/service/api/v2/next/videos",
+                        {"path": path, "count": count})
+        response = body.get("response") or {}
+        return response.get("data") or []
+
     def trending(self):
         """The three carousels the search screen opens with.
 
@@ -662,7 +681,7 @@ class Api(object):
         except (TypeError, ValueError):
             raise ApiError("That item has no id to forget.")
         body = self._call("POST",
-                          API_BASE + "/service/api/v1/delete/continuewatch/content",
+                          API_BASE() + "/service/api/v1/delete/continuewatch/content",
                           json={"contentId": identifier,
                                 "contentType": content_type or ""})
         return (body.get("response") or {}).get("message") or ""
@@ -838,7 +857,7 @@ class Api(object):
         if page:
             params["skip_tabs"] = 1
         body = self.get("/service/api/v1/static/tvguide", params,
-                        base=GUIDE_BASE)
+                        base=GUIDE_BASE())
         return (body.get("response") or {}).get("data") or []
 
     def watch_live_path(self, programme_path):
@@ -879,7 +898,7 @@ class Api(object):
         stopping either, deleting a series -- posts under the single field
         name ``record_program``, whichever radio button it came from.
         """
-        body = self._call("POST", API_BASE + "/service/api/v1/form/submit",
+        body = self._call("POST", API_BASE() + "/service/api/v1/form/submit",
                           json={"code": code, "path": path,
                                 "fields": {field: value}})
         message = (body.get("response") or {}).get("message")
@@ -919,7 +938,7 @@ class Api(object):
         """
         if not poll_key:
             return
-        self._call("POST", API_BASE + "/service/api/v1/stream/session/end",
+        self._call("POST", API_BASE() + "/service/api/v1/stream/session/end",
                    files={"poll_key": (None, poll_key)})
         kodiutils.log("released the stream slot")
 

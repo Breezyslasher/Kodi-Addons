@@ -149,6 +149,23 @@ def route_root(update=False):
 
 
 
+
+def route_next(path, name=""):
+    """What Friendly TV says comes after a title."""
+    client = _client()
+    if client is None:
+        return finish()
+    try:
+        raw = client.next_videos(path)
+    except (api.ApiError, auth.AuthError) as exc:
+        kodiutils.ok_dialog(str(exc), "Up next")
+        return finish()
+    cards = [parse.card(c, client) for c in raw]
+    kodiutils.log("up next after %s: %d card(s)" % (path, len(cards)))
+    if not cards:
+        kodiutils.notify("Nothing after %s" % (name or "this"))
+    finish(_add_cards(cards, client))
+
 def route_trending():
     """The carousels the service's own search screen opens with.
 
@@ -1245,6 +1262,13 @@ def _card_menu(item):
     if form and item.get("can_record") and item.get("path"):
         menu.append(("Recording...", "RunPlugin(%s)"
                      % url(action="record", path=item["path"], form=form)))
+    if item.get("playable") and item.get("path") and not item.get("coming_soon"):
+        # What the service says comes after this. It asks the same thing
+        # during playback, naming what is playing.
+        menu.append(("Up next", "Container.Update(%s)"
+                     % url(action="next", path=item["path"],
+                           name=item.get("episode_title")
+                           or item.get("title", ""))))
     return menu + _similar_menu(item) + _cast_menu(item)
 
 
@@ -1777,6 +1801,8 @@ def _dispatch():
                           params.get("name", ""))
     elif action == "coming_soon":
         route_coming_soon(params.get("label", ""), params.get("name", ""))
+    elif action == "next":
+        route_next(params.get("path", ""), params.get("name", ""))
     elif action == "trending":
         route_trending()
     elif action == "trending_row":

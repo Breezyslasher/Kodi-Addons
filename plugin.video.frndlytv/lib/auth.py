@@ -19,9 +19,14 @@ import uuid
 
 import requests
 
-from . import kodiutils
+from . import hosts, kodiutils
 
-API_BASE = "https://frndlytv-api.revlet.net"
+# Where the API lives is asked for rather than assumed -- hosts.api() reads
+# the file the web player reads before anything else, and falls back to
+# "https://frndlytv-api.revlet.net", which is what it says today. Called at
+# use rather than bound at import, so a moved host needs no reload.
+api_base = hosts.api
+# The file names these too; these are what it says today.
 TENANT_CODE = "frndlytv"
 PRODUCT = "frndlytv"
 
@@ -39,11 +44,9 @@ DEVICE_ID = "5"
 DEVICE_SUB_TYPE = "Firefox,5,UNIX"
 DISPLAY_LANG = "ENG"
 
-# Sent as a plain browser. The API does not gate on this, but the CDN in
-# front of it is likelier to answer a request that looks like the client the
-# service actually ships.
-USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64; rv:154.0) Gecko/20100101 "
-              "Firefox/154.0")
+# Defined in kodiutils so the host bootstrap can use it too; re-exported here
+# because this is where every caller looks for it.
+USER_AGENT = kodiutils.USER_AGENT
 ORIGIN = "https://watch.frndlytv.com"
 
 SESSION_FILE = "session.json"
@@ -153,7 +156,7 @@ class Session(object):
             "Origin": ORIGIN,
             "Referer": ORIGIN + "/",
             "box-id": self.box_id,
-            "tenant-code": TENANT_CODE,
+            "tenant-code": hosts.tenant(),
         }
         if self.session_id:
             head["session-id"] = self.session_id
@@ -164,9 +167,9 @@ class Session(object):
     def anonymous_token(self):
         """Step one: an anonymous session id for this device."""
         params = {
-            "tenant_code": TENANT_CODE,
+            "tenant_code": hosts.tenant(),
             "box_id": self.box_id,
-            "product": PRODUCT,
+            "product": hosts.product(),
             "device_id": DEVICE_ID,
             "display_lang_code": DISPLAY_LANG,
             "device_sub_type": DEVICE_SUB_TYPE,
@@ -176,7 +179,7 @@ class Session(object):
             # The headers the capture sends on this one call, which are fewer
             # than on every other: no box-id, no tenant-code, no Referer.
             # There is no session yet for a session-id to carry.
-            reply = requests.get(API_BASE + "/service/api/v1/get/token",
+            reply = requests.get(api_base() + "/service/api/v1/get/token",
                                  params=params, headers=TOKEN_HEADERS,
                                  timeout=TIMEOUT)
         except requests.RequestException as exc:
@@ -213,7 +216,7 @@ class Session(object):
         head = self.headers()
         head["Content-Type"] = "application/json"
         try:
-            reply = requests.post(API_BASE + "/service/api/auth/v2/signin",
+            reply = requests.post(api_base() + "/service/api/auth/v2/signin",
                                   json=payload, headers=head, timeout=TIMEOUT)
         except requests.RequestException as exc:
             raise AuthError("Could not reach Friendly TV: %s" % exc)

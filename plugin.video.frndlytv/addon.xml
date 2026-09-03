@@ -38,6 +38,16 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
+- "Up next" on anything that plays, which is the same question the web player
+  asks the service during playback: what follows this.
+- The addon asks where Friendly TV's APIs are rather than assuming. The web
+  player fetches a small file naming them before it does anything else, one
+  block per kind of client, and those blocks are not identical -- Roku's
+  search and Android's whole API live elsewhere. Reading it means a host that
+  moves is followed rather than fatal. It is cached for a day, falls back per
+  entry to the address built in, and refuses anything that is not an https
+  address, so a file that is missing, broken or hostile cannot send the addon
+  anywhere.
 - Signing in works again. Friendly TV asks which device is asking, the addon
   answered with the number an early capture used, and the service has since
   started refusing that one outright -- an empty HTTP 403, which surfaced as
