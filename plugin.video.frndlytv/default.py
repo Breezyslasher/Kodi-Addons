@@ -1110,8 +1110,17 @@ def _set_meta(listitem, item, label):
             tag.setGenres(item["genres"])
         if item.get("channel_name"):
             tag.setStudios([item["channel_name"]])
-        if item.get("duration_ms"):
+        live = item.get("is_live") or (item.get("path") or "").startswith(
+            "channel/live/")
+        if item.get("duration_ms") and not live:
             tag.setDuration(int(item["duration_ms"] / 1000))
+        if live:
+            # A live channel's card carries the running time of whatever is on
+            # it, and giving Kodi that duration makes a channel look like a
+            # finite video: stop watching and it gets marked watched, because
+            # Kodi computed a percentage from a length the channel does not
+            # have. A channel is never "finished".
+            tag.setPlaycount(0)
         _set_resume(listitem, tag, item)
         if media == "episode":
             if item.get("season"):
@@ -1137,8 +1146,12 @@ def _set_meta(listitem, item, label):
             info["year"] = detail["year"]
         if detail.get("rating"):
             info["mpaa"] = detail["rating"]
-        if item.get("duration_ms"):
+        if item.get("duration_ms") and not (
+                item.get("is_live")
+                or (item.get("path") or "").startswith("channel/live/")):
             info["duration"] = int(item["duration_ms"] / 1000)
+        if item.get("is_live"):
+            info["playcount"] = 0
         if media == "episode":
             if item.get("season"):
                 info["season"] = item["season"]
@@ -1203,7 +1216,7 @@ def route_guide_play(live_path, programme_path, label=""):
     if choice == 0:
         return route_play(live_path, label)
     kodiutils.log("starting %s over from %s" % (label, programme_path))
-    route_play(programme_path, label)
+    route_play(programme_path, label, from_start=True)
 
 
 def route_similar(path, name=""):
@@ -1270,7 +1283,8 @@ def route_play_page(path, label=""):
                media=parse.media_of(path))
 
 
-def route_play(path, label="", detail=None, media="video"):
+def route_play(path, label="", detail=None, media="video",
+               from_start=False):
     client = _client()
     if client is None:
         return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -1281,7 +1295,8 @@ def route_play(path, label="", detail=None, media="video"):
             "No Widevine")
         return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
     try:
-        item = playback.resolve(client, path, label)
+        item = playback.resolve(client, path, label,
+                                from_start=from_start)
     except (playback.PlaybackError, api.ApiError, auth.AuthError) as exc:
         kodiutils.ok_dialog(str(exc), "Cannot play this")
         return xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())

@@ -63,8 +63,12 @@ def _pick(streams):
     return None
 
 
-def resolve(client, path, label=""):
-    """Ask for a stream and build the ListItem that plays it."""
+def resolve(client, path, label="", from_start=False):
+    """Ask for a stream and build the ListItem that plays it.
+
+    ``from_start`` is a "start over": the viewer asked for a programme from
+    its beginning rather than from where the channel happens to be.
+    """
     response = client.stream(path)
 
     status = response.get("streamStatus") or {}
@@ -100,11 +104,13 @@ def resolve(client, path, label=""):
     item.setMimeType("application/dash+xml" if manifest_type == "mpd"
                      else "application/vnd.apple.mpegurl")
 
-    _configure_isa(item, manifest_type, licence)
+    _configure_isa(item, manifest_type, licence, from_start)
 
-    if _is_live(response, path):
+    if _is_live(response, path) and not from_start:
         # Live has no meaningful end, and a duration gives Kodi a progress
-        # bar that runs out while the channel keeps playing.
+        # bar that runs out while the channel keeps playing. Not set for a
+        # start-over: that is a finite programme being watched from its
+        # beginning, and flagging it live would deny it a seek bar.
         item.setProperty("IsLive", "true")
 
     if seek_ms > 0 and total_ms > seek_ms:
@@ -142,7 +148,7 @@ def _is_live(response, path):
     return info.get("contentType") == "live"
 
 
-def _configure_isa(item, manifest_type, licence_url):
+def _configure_isa(item, manifest_type, licence_url, from_start=False):
     """Point ISA at the manifest and, when there is one, the licence server.
 
     Two spellings, because they are read by different ISA generations, and the
@@ -166,6 +172,21 @@ def _configure_isa(item, manifest_type, licence_url):
     headers = urlencode(STREAM_HEADERS)
     item.setProperty("inputstream.adaptive.manifest_headers", headers)
     item.setProperty("inputstream.adaptive.stream_headers", headers)
+
+    if from_start:
+        # Asked for a programme still on the air, the service answers with a
+        # *live* manifest -- not the VOD asset it returns once the programme
+        # has finished -- and ISA opens a live manifest at the live edge. So
+        # "start over" played from wherever the channel was.
+        #
+        # This tells ISA to begin at the start of the manifest's timeshift
+        # window instead. The window is what the service chose to publish for
+        # this programme's path (five periods, against one or two for the
+        # plain channel), so its beginning is the closest thing to the
+        # programme's start that the manifest offers.
+        item.setProperty("inputstream.adaptive.play_timeshift_buffer", "true")
+        kodiutils.log("start over: opening at the beginning of the "
+                      "timeshift window rather than the live edge")
 
     if not licence_url:
         kodiutils.log("no licence url on this stream; playing unencrypted")
