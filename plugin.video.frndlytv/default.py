@@ -935,29 +935,24 @@ def _add_cards(cards, client=None):
 
 
 def _without_addon_titles(cards, client=None):
-    """Drop titles that need an add-on subscription, unless asked to keep them.
+    """Drop titles the account cannot watch, unless asked to keep them.
 
-    The card says which those are, so this costs nothing and does not depend
-    on any page being fetched: a title on an add-on channel carries a badge
-    whose ``isRedirectToPayment`` is set. Across 2112 captured badges that flag
-    appears on exactly one wording, "+ Add-On", and on all 22 of its cards.
+    A title on an add-on channel the account does not have carries a badge
+    whose ``isRedirectToPayment`` is set -- "+ Add-On", the only one of the
+    fourteen captured badge wordings that ever carries it, and it carries it
+    on all 22 of its cards.
 
-    **What no capture establishes is whether that flag is account-relative.**
-    The captured account holds only the base "Classic" package and none of the
-    six add-ons, so every add-on title in every capture is one it cannot
-    watch, and "this is add-on content" and "you cannot watch this" cannot be
-    told apart. The name argues for the second -- a title you own would not
-    redirect you to payment -- and the page's own offer is a free trial, which
-    only makes sense unowned. But the web player never reads the field in any
-    captured bundle, so nothing confirms it.
+    The flag is **account-relative**, which a capture taken across a
+    subscription settles. Before the account took HISTORY Vault, "Perspectives:
+    Babe Ruth" would not play and its page offered a trial instead. After, the
+    same card comes back with ``"markers": []`` -- no badge at all -- and 527
+    cards of that add-on's content carry not one "+ Add-On" between them. The
+    service personalises this in the obvious way; it even drops a held add-on
+    from the catalogue that offers add-ons.
 
-    So the question is sidestepped rather than answered. If the account holds
-    **no** add-on, both readings agree that every flagged title is unwatchable
-    and hiding them is right. If it holds one, they disagree, and hiding could
-    take away something paid for -- so nothing is hidden, and the badge on the
-    label is left to say it. Where that cannot be established at all, nothing
-    is hidden either: an unwatchable title left in a listing costs a dialog,
-    a watchable one taken out costs the subscription.
+    So the flag says "you cannot watch this" rather than "this is add-on
+    content", and hiding on it is safe whatever the account holds. The flag
+    itself is read rather than the wording, so a renamed badge still works.
     """
     if kodiutils.get_setting_bool("show_addon_content", False):
         return cards
@@ -966,22 +961,12 @@ def _without_addon_titles(cards, client=None):
                or (c.get("detail") or {}).get("subscribe")]
     if not flagged:
         return cards
-
-    holds = client.holds_an_addon() if client is not None else None
-    if holds is not False:
-        kodiutils.log("keeping %d add-on title(s): the account %s"
-                      % (len(flagged),
-                         "holds an add-on, so the badge may not mean "
-                         "unwatchable" if holds
-                         else "package could not be read"))
-        return cards
-
-    kodiutils.log("hiding %d title(s) on add-ons this account does not have: "
-                  "%s" % (len(flagged),
-                          ", ".join(c.get("title") or c.get("path") or "?"
-                                    for c in flagged[:5])))
-    keep = {id(c) for c in cards} - {id(c) for c in flagged}
-    return [c for c in cards if id(c) in keep]
+    kodiutils.log("hiding %d title(s) this account cannot watch: %s"
+                  % (len(flagged),
+                     ", ".join(c.get("title") or c.get("path") or "?"
+                               for c in flagged[:5])))
+    out = {id(c) for c in flagged}
+    return [c for c in cards if id(c) not in out]
 
 
 def _add_card(item):

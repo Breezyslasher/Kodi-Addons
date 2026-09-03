@@ -227,6 +227,10 @@ class Api(object):
         Movie Club, Great American Pure Flix, HISTORY Vault and A&E Crime
         Central. Their master ids are what a title's ``addOnInfo`` names, so
         this is also how a subscribe prompt can say *which* add-on is wanted.
+
+        The catalogue lists only add-ons the account does **not** hold: taking
+        HISTORY Vault took it from six entries to five. That suits naming a
+        blocked title's add-on, which is by definition one that is not held.
         """
         if self._packages is not None:
             return self._packages
@@ -240,9 +244,13 @@ class Api(object):
             body = self.get("/service/api/auth/user/activepackages",
                             {"version": "2"})
             active = (body.get("response") or {}).get("userAcivePackages") or []
-            found["active"] = [{"id": p.get("id"), "name": p.get("name") or "",
-                                "code": p.get("code") or ""}
-                               for p in active if isinstance(p, dict)]
+            found["active"] = [
+                {"id": p.get("id"), "name": p.get("name") or "",
+                 "code": p.get("code") or "",
+                 "is_addon": bool(p.get("dependentPackage"))
+                 or str((p.get("cusomAttributes") or {}).get("isSVOD") or "")
+                 .lower() == "true"}
+                for p in active if isinstance(p, dict)]
             base = found["active"][0]["id"] if found["active"] else 4
             body = self.get("/service/api/auth/v2/addon/packages",
                             {"package": base})
@@ -271,15 +279,19 @@ class Api(object):
     def holds_an_addon(self):
         """Whether the account subscribes to any add-on package.
 
-        Returns None when that could not be established, which is not the same
-        as False and must not be collapsed into it: the caller uses this to
-        decide whether hiding add-on titles is safe.
+        An active package is an add-on where it says so about itself, rather
+        than by being counted or by being absent from the catalogue -- the
+        catalogue **drops an add-on once it is held**, so matching against it
+        would answer "no add-ons" for exactly the account that has one.
+        Two fields say it, and the captured trial sets both:
+
+            Classic        dependentPackage false  isSVOD ""
+            HISTORY Vault  dependentPackage true   isSVOD "true"
         """
         packs = self.packages()
         if not packs.get("known"):
             return None
-        ids = set(packs.get("addon_ids") or [])
-        return any(p.get("id") in ids for p in packs.get("active") or [])
+        return any(p.get("is_addon") for p in packs.get("active") or [])
 
     def addon_name(self, master_id):
         """"HISTORY Vault" for 27, and "" for an id the catalogue does not name."""

@@ -1090,30 +1090,31 @@ A bare list of six, all captured with `buttonMessage: "Add"`:
 the captured film names 27, and 27 is HISTORY Vault — so a subscribe prompt
 can say which add-on is wanted rather than just "an add-on".
 
-### Whether `isRedirectToPayment` is account-relative — NOT KNOWN
+### `isRedirectToPayment` is account-relative — CONFIRMED
 
-The captured account holds only `Classic` and none of the six add-ons. So
-every add-on title in every capture is one it cannot watch, and two different
-meanings of the flag fit the evidence equally:
+Settled by a capture taken across a subscription. The account took a HISTORY
+Vault trial, and three things changed:
 
-* **"this is add-on content"** — a static label on the title;
-* **"you cannot watch this"** — computed against the account.
+1. **`activepackages` grew to two** — `Classic` (id 4) and `HISTORY Vault`
+   (id 51, code `history_vault_svod`, `isFreeTrail: true`).
+2. **`addon/packages` shrank to five.** HISTORY Vault is gone from it. The
+   catalogue lists only add-ons the account does *not* hold — so matching
+   active packages against it would answer "no add-ons" for exactly the
+   account that has one.
+3. **The badge is gone.** Across 527 cards of that add-on's content, not one
+   `isRedirectToPayment`. "Perspectives: Babe Ruth" — the film that would not
+   play, whose page had offered a trial — comes back with `"markers": []`.
 
-The name argues for the second: a title you own would not redirect you to
-payment, and the page's offer is a *free trial*, which only makes sense
-unowned. But no captured JS bundle ever reads the field, and no capture shows
-an account that holds an add-on, so nothing confirms it.
+So the flag means *"you cannot watch this"*, not *"this is add-on content"*,
+and hiding on it is safe whatever the account holds.
 
-The addon does not guess. It hides flagged titles only when
-`activepackages` shows the account holds **no** add-on — where both readings
-agree the titles are unwatchable. If an add-on is held, or the packages
-cannot be read, nothing is hidden and the "+ Add-On" badge on the label is
-left to say it. An unwatchable title left in a listing costs a dialog; a
-watchable one taken out costs the subscription.
+An active package says for itself whether it is an add-on, which is what to
+read rather than counting packages or consulting the catalogue:
 
-**The capture that would settle it:** a listing from an account holding one
-add-on but not another. If titles from the held add-on come back unflagged,
-the flag is account-relative and the condition above can go.
+| | `dependentPackage` | `cusomAttributes.isSVOD` |
+|---|---|---|
+| Classic (base) | `false` | `""` |
+| HISTORY Vault (add-on) | `true` | `"true"` |
 
 ## A title the subscription does not include
 
