@@ -577,7 +577,8 @@ class _Handler(BaseHTTPRequestHandler):
             # DRM session fails; the 540 tier's key comes back usable (status
             # 1) and plays. Verified on desktop L3 -- 540 plays, 720 is
             # output-restricted -- matching the usual "no HDCP required at or
-            # below 540p" policy (the same ceiling the Netflix add-on hits).
+            # below 540p" policy. This ceiling is Apple's alone: the Netflix
+            # add-on licenses and plays 720p on the same L3 desktop.
             #
             # Hardware (L1) Widevine is granted the HD tiers, so on L1 lift any
             # SD-range cap (the 540 default or a 360 saved by an older build)
