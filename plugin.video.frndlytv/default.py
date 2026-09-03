@@ -935,38 +935,70 @@ def _add_cards(cards, client=None):
 
 
 def _without_addon_titles(cards, client=None):
-    """Drop titles the account cannot watch, unless asked to keep them.
+    """Drop what the account cannot watch, unless asked to keep it.
 
-    A title on an add-on channel the account does not have carries a badge
-    whose ``isRedirectToPayment`` is set -- "+ Add-On", the only one of the
-    fourteen captured badge wordings that ever carries it, and it carries it
-    on all 22 of its cards.
+    Two different things are hidden, and only one of them is certain.
 
-    The flag is **account-relative**, which a capture taken across a
-    subscription settles. Before the account took HISTORY Vault, "Perspectives:
-    Babe Ruth" would not play and its page offered a trial instead. After, the
-    same card comes back with ``"markers": []`` -- no badge at all -- and 527
-    cards of that add-on's content carry not one "+ Add-On" between them. The
-    service personalises this in the obvious way; it even drops a held add-on
-    from the catalogue that offers add-ons.
+    **An add-on channel itself** -- the six network cards on the Add-ons page,
+    marked ``pageAttributes.contentType: "network"``. Which of those the
+    account holds is stated outright by ``activepackages``, so hiding the rest
+    is not an inference at all.
 
-    So the flag says "you cannot watch this" rather than "this is add-on
-    content", and hiding on it is safe whatever the account holds. The flag
-    itself is read rather than the wording, so a renamed badge still works.
+    **A title flagged ``isRedirectToPayment``** -- the "+ Add-On" badge. Here
+    what the flag means is *still not established*, and an earlier reading of
+    it was wrong. The evidence:
+
+      * before any add-on was held, 22 cards carried it -- 21 of them in
+        **search results**, one on a series page;
+      * after taking a HISTORY Vault trial, that channel's content came back
+        unflagged -- but from the **partner and Add-ons pages**, and those
+        flag nothing at all: 20 cards of Hallmark+ content, an add-on that is
+        *not* held, sit unflagged on the same page.
+
+    So the two captures differ in where they came from as well as in what was
+    subscribed, and "the flag is account-relative" does not follow. Nothing
+    captured shows a search made while an add-on was held.
+
+    Until that is settled, hiding on the flag happens only when the account
+    holds **no** add-on, where both readings agree the title is unwatchable.
+    An unwatchable title left in a listing costs a dialog; a watchable one
+    taken out costs the subscription.
     """
     if kodiutils.get_setting_bool("show_addon_content", False):
         return cards
+
+    held = client.held_addons() if client is not None else None
+    drop = set()
+
+    for item in cards:
+        if item.get("content_type") == "network":
+            # An add-on channel. held is None only when the account's packages
+            # could not be read, and then nothing is dropped.
+            if held is not None and api._addon_key(item.get("title")) not in held:
+                drop.add(id(item))
+
     flagged = [c for c in cards
                if c.get("needs_addon")
                or (c.get("detail") or {}).get("subscribe")]
-    if not flagged:
+    if flagged:
+        if held:
+            kodiutils.log("keeping %d flagged title(s): this account holds an "
+                          "add-on, and whether the flag means \"not yours\" "
+                          "or just \"add-on content\" is not established"
+                          % len(flagged))
+        elif held is None:
+            kodiutils.log("keeping %d flagged title(s): the account's packages "
+                          "could not be read" % len(flagged))
+        else:
+            drop.update(id(c) for c in flagged)
+
+    if not drop:
         return cards
-    kodiutils.log("hiding %d title(s) this account cannot watch: %s"
-                  % (len(flagged),
-                     ", ".join(c.get("title") or c.get("path") or "?"
-                               for c in flagged[:5])))
-    out = {id(c) for c in flagged}
-    return [c for c in cards if id(c) not in out]
+    gone = [c for c in cards if id(c) in drop]
+    kodiutils.log("hiding %d: %s"
+                  % (len(gone), ", ".join(c.get("title") or c.get("path") or "?"
+                                          for c in gone[:6])))
+    return [c for c in cards if id(c) not in drop]
 
 
 def _add_card(item):

@@ -77,6 +77,18 @@ PACKAGES_FILE = "packages.json"
 CONFIG_MAX_AGE = 24 * 60 * 60
 
 
+def _addon_key(name):
+    """A package name reduced to something two spellings of it agree on.
+
+    The same add-on is named in three places -- the active package, the
+    catalogue entry, and the card on the Add-ons page -- and all three say
+    "HISTORY Vault" in the capture. This survives them not always agreeing on
+    case or punctuation ("A&E Crime Central").
+    """
+    return "".join(ch for ch in (name or "").lower() if ch.isalnum())
+
+
+
 class ApiError(Exception):
     """The service answered, and the answer was not usable.
 
@@ -276,14 +288,18 @@ class Api(object):
         self._packages = found
         return self._packages
 
-    def holds_an_addon(self):
-        """Whether the account subscribes to any add-on package.
+    def held_addons(self):
+        """The add-on packages the account holds, as comparable names.
 
-        An active package is an add-on where it says so about itself, rather
-        than by being counted or by being absent from the catalogue -- the
-        catalogue **drops an add-on once it is held**, so matching against it
-        would answer "no add-ons" for exactly the account that has one.
-        Two fields say it, and the captured trial sets both:
+        None when that could not be established, which is not the same as an
+        empty set and must not be collapsed into one: the caller uses this to
+        decide whether hiding is safe.
+
+        An active package says for itself whether it is an add-on, rather than
+        being counted or matched against the catalogue -- the catalogue
+        **drops an add-on once it is held**, so matching against it would
+        answer "no add-ons" for exactly the account that has one. Two fields
+        say it, and a captured trial sets both:
 
             Classic        dependentPackage false  isSVOD ""
             HISTORY Vault  dependentPackage true   isSVOD "true"
@@ -291,7 +307,8 @@ class Api(object):
         packs = self.packages()
         if not packs.get("known"):
             return None
-        return any(p.get("is_addon") for p in packs.get("active") or [])
+        return {_addon_key(p.get("name")) for p in packs.get("active") or []
+                if p.get("is_addon")}
 
     def addon_name(self, master_id):
         """"HISTORY Vault" for 27, and "" for an id the catalogue does not name."""

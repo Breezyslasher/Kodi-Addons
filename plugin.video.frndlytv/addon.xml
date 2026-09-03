@@ -38,15 +38,20 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
 		</assets>
 		<news>
 2026.9.1 - First release
-- Hiding add-on titles hides only what the account really cannot watch, and a
-  prompt names the add-on rather than calling it one. Friendly TV sells six --
-  Hallmark+, UP Faith &amp; Family, Lifetime Movie Club, Great American Pure
-  Flix, HISTORY Vault and A&amp;E Crime Central -- and a capture taken across
-  taking one of them settles what the badge means: subscribe to HISTORY Vault
-  and the film that would not play comes back with no badge at all, along with
-  527 other cards of that channel's content. The badge says "you cannot watch
-  this", not "this is add-on content", so a channel you pay for is never
-  hidden.
+- The Add-ons folder lists only the channels the account actually has, unless
+  the setting says otherwise. Friendly TV sells six of them -- Hallmark+, UP
+  Faith &amp; Family, Great American Pure Flix, Lifetime Movie Club, A&amp;E
+  Crime Central and HISTORY Vault -- and its own page lists all six whether
+  they are paid for or not. Which ones are paid for is stated outright by the
+  account's packages, so this is exact rather than inferred: a package says
+  for itself that it is an add-on, which matters because the list of add-ons
+  on offer drops one the moment it is bought.
+- Hiding individual titles still happens only on an account with no add-on at
+  all. A subscription taken mid-testing looked like it proved what the
+  "+ Add-On" badge means, and did not: the content that came back unbadged
+  came from the Add-ons and channel pages, and those badge nothing -- an
+  unsubscribed channel's content sits unbadged on the same page. Every badged
+  card ever captured came from a search. So the safe rule stays.
 - Cards wear the badge the service gave them -- "On Now", "Coming Soon",
   "New Episodes", "Expires in 24 hours", "+ Add-On" -- on films and shows
   alike. Kodi has nowhere to draw a badge, so it goes in the label, in the

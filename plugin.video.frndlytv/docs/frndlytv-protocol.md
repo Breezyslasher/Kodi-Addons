@@ -1090,31 +1090,70 @@ A bare list of six, all captured with `buttonMessage: "Add"`:
 the captured film names 27, and 27 is HISTORY Vault — so a subscribe prompt
 can say which add-on is wanted rather than just "an add-on".
 
-### `isRedirectToPayment` is account-relative — CONFIRMED
+### `isRedirectToPayment` — still NOT settled, and an earlier note here was wrong
 
-Settled by a capture taken across a subscription. The account took a HISTORY
-Vault trial, and three things changed:
+A capture taken across taking a HISTORY Vault trial looked like it settled
+this. It does not, and the note that said it did was mistaken.
 
-1. **`activepackages` grew to two** — `Classic` (id 4) and `HISTORY Vault`
-   (id 51, code `history_vault_svod`, `isFreeTrail: true`).
-2. **`addon/packages` shrank to five.** HISTORY Vault is gone from it. The
-   catalogue lists only add-ons the account does *not* hold — so matching
-   active packages against it would answer "no add-ons" for exactly the
-   account that has one.
-3. **The badge is gone.** Across 527 cards of that add-on's content, not one
-   `isRedirectToPayment`. "Perspectives: Babe Ruth" — the film that would not
-   play, whose page had offered a trial — comes back with `"markers": []`.
+What the trial capture does establish:
 
-So the flag means *"you cannot watch this"*, not *"this is add-on content"*,
-and hiding on it is safe whatever the account holds.
+* **`activepackages` grew to two** — `Classic` (id 4) and `HISTORY Vault`
+  (id 51, code `history_vault_svod`, `isFreeTrail: true`).
+* **A package says for itself whether it is an add-on.** This is what to read;
+  see the table below.
+* **`addon/packages` drops what is held** — six entries became five, HISTORY
+  Vault gone. So matching active packages against the catalogue would answer
+  "no add-ons" for exactly the account that has one.
 
-An active package says for itself whether it is an add-on, which is what to
-read rather than counting packages or consulting the catalogue:
+What it does **not** establish. The "after" evidence was HISTORY Vault content
+coming back unflagged — but it came from the **partner and Add-ons pages**,
+and those flag nothing at all. On the very same Add-ons page sit 20 cards of
+**Hallmark+** content, an add-on that is *not* held, and they are unflagged
+too. Meanwhile every one of the 22 flagged cards ever captured came from
+somewhere else: 21 from **search**, one from a series page.
+
+So the before and after differ in where they came from as well as in what was
+subscribed, and the variable was never isolated.
+
+**The capture that would settle it:** a **search**, made while an add-on is
+held, for something in the held add-on and something in an unheld one. If the
+held add-on's results come back unflagged and the unheld one's flagged, the
+flag is account-relative.
+
+Until then the addon hides on the flag only when the account holds no add-on,
+where both readings agree the title is unwatchable.
 
 | | `dependentPackage` | `cusomAttributes.isSVOD` |
 |---|---|---|
 | Classic (base) | `false` | `""` |
 | HISTORY Vault (add-on) | `true` | `"true"` |
+
+## The Add-ons page, and the six channels
+
+`system/config`'s own menu already carries `ADD-ONS -> add-ons`, so the folder
+comes from the service. The page holds a section `available_add_ons` of six
+cards, one per add-on, each marked `pageAttributes.contentType: "network"`:
+
+| card | path |
+|---|---|
+| Hallmark+ | `partner/hallmark_plus` |
+| UP Faith & Family | `partner/up_faith_family` |
+| Great American Pure Flix | `partner/pure_flix` |
+| Lifetime Movie Club | `partner/lifetime_movie_club` |
+| A&E Crime Central | `partner/crime_central` |
+| HISTORY Vault | `partner/history_vault` |
+
+All six are listed whether held or not — the held one is there too — so this
+is the complete list, where the `addon/packages` catalogue is not. Each
+`partner/...` page is an ordinary page: a content pane and sections.
+
+The cards carry nothing to say which are held, so that comes from
+`activepackages`. The same add-on is named identically in all three places
+("HISTORY Vault"), which is what the match is made on.
+
+**This filtering is not an inference.** Which add-ons the account holds is
+stated outright, so hiding the channels it does not hold is exact — unlike
+hiding individual titles on the `isRedirectToPayment` flag above.
 
 ## A title the subscription does not include
 
