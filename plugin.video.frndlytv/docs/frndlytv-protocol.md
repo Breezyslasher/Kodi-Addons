@@ -249,11 +249,21 @@ setting — the same trade as a listing's descriptions.
 
 ### Resume
 
-Continue Watching cards carry a `seek` marker whose value is progress **as a
-fraction of the running time** (`"0.01795995379283789"`), alongside a
-`lastUpdatedTime`. It is the only progress the service sends, and it needs the
-card's `duration` to become a position. Values outside 0..1 are worth
+The service sends progress **twice**, and only one of the two actually
+resumes playback.
+
+On the card, a Continue Watching row carries a `seek` marker whose value is a
+fraction of the running time (`"0.01795995379283789"`), alongside a
+`lastUpdatedTime`. That is what draws a progress bar in a listing; it needs the
+card's `duration` to become a position, and values outside 0..1 are worth
 rejecting rather than trusting.
+
+On the **stream**, `streamStatus.seekPositionInMillis` is an absolute position,
+and that is what resumes: opening an episode from Continue Watching answers
+with it set (12000 in the observed case), and ISA seeks there before the first
+frame — `PosTime (12000)`, then `Seek time 12.0 … continues at 12.0`. A client
+that reads only the card's fraction will draw the right progress bar and still
+start from zero.
 
 ## Playback
 

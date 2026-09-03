@@ -114,9 +114,12 @@ def resolve(client, path, label="", from_start=False):
         item.setProperty("IsLive", "true")
 
     if seek_ms > 0 and total_ms > seek_ms:
-        # The service asked for playback to begin partway in. Nothing
-        # observed has done this yet, so it is honoured rather than assumed
-        # impossible -- and it is the mechanism a resumed title would use.
+        # The service asked for playback to begin partway in, and this is
+        # how Continue Watching actually resumes: opening an episode from
+        # that row answers with seekPositionInMillis set, ISA seeks there,
+        # and playback starts where the viewer left off. The card's own
+        # "seek" marker is the same progress expressed as a fraction, but it
+        # is this that does the work.
         try:
             item.getVideoInfoTag().setResumePoint(seek_ms / 1000.0,
                                                   total_ms / 1000.0)
