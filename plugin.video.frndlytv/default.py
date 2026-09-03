@@ -62,13 +62,21 @@ def _plot(item, text):
         item.setInfo("video", {"plot": text})
 
 
-def finish(content=""):
+def finish(content="", update=False):
+    """End the listing.
+
+    ``update`` replaces the listing the viewer is looking at instead of
+    opening a new one under it. That is what an entry which *does* something
+    -- signing in, signing out -- wants: it has no listing of its own, and
+    ending one unsuccessfully is precisely what makes Kodi say
+    "Error getting plugin://...".
+    """
     if content:
         xbmcplugin.setContent(HANDLE, content)
     # The service orders its own rows deliberately -- "On Now" first, a
     # channel's schedule in time order -- so nothing is re-sorted here.
     xbmcplugin.addSortMethod(HANDLE, xbmcplugin.SORT_METHOD_NONE)
-    xbmcplugin.endOfDirectory(HANDLE)
+    xbmcplugin.endOfDirectory(HANDLE, updateListing=update)
 
 
 def _client(quiet=False):
@@ -95,7 +103,7 @@ def _client(quiet=False):
 # -- routes ---------------------------------------------------------------
 
 
-def route_root():
+def route_root(update=False):
     kodiutils.log("root menu; %s" % kodiutils.platform())
     client = _client(quiet=True)
 
@@ -106,7 +114,7 @@ def route_root():
                 plot="Enter your Friendly TV email address and password. "
                      "They can also be saved in this addon's settings.")
         kodiutils.log("root menu: not signed in")
-        return finish()
+        return finish(update=update)
 
     add_dir("Live TV", url(action="live"),
             plot="Every channel in your lineup, with what is on right now.")
@@ -137,7 +145,7 @@ def route_root():
     if client.session.email:
         add_dir("Sign out (%s)" % client.session.email,
                 url(action="signout"))
-    finish()
+    finish(update=update)
 
 
 
@@ -230,46 +238,42 @@ def route_sessions():
 def route_signin():
     """Ask for the credentials and sign in.
 
-    Listed as a folder, so Kodi calls this expecting a directory: every way
-    out has to end one, or it reports "Error getting plugin://...?action=
-    signin" and the viewer is told nothing.
+    Listed as a folder, so Kodi calls this expecting a listing. Every way out
+    draws the root menu over the one the viewer is looking at: ending the
+    directory unsuccessfully is what produced "Error getting
+    plugin://...?action=signin", and after signing in the root menu is what
+    they want to see anyway.
     """
-    def done(refresh=False):
-        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
-        if refresh:
-            _refresh()
-
     email = kodiutils.get_setting("username") or ""
     email = kodiutils.input_text("Friendly TV email address", default=email)
     if not email:
-        return done()
+        return route_root(update=True)
     password = kodiutils.input_text("Password", hidden=True)
     if not password:
-        return done()
+        return route_root(update=True)
     session = auth.Session()
     try:
         session.sign_in(email, password)
     except auth.AuthError as exc:
         kodiutils.ok_dialog(str(exc), "Could not sign in")
-        return done()
+        return route_root(update=True)
     kodiutils.set_setting("username", email)
     kodiutils.set_setting("password", password)
     kodiutils.notify("Signed in as %s" % session.email)
-    done(refresh=True)
+    route_root(update=True)
 
 
 def route_signout():
     """Forget this device's session. A folder, so it ends a directory too."""
     if not kodiutils.yesno("Sign out of Friendly TV on this device?"):
-        return xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+        return route_root(update=True)
     auth.Session().clear()
     kodiutils.set_setting("password", "")
     kodiutils.delete_file(api.CONFIG_FILE)
     # The cached packages belong to the account that just left.
     kodiutils.delete_file(api.PACKAGES_FILE)
     kodiutils.notify("Signed out")
-    xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
-    _refresh()
+    route_root(update=True)
 
 
 def _refresh():
@@ -408,12 +412,16 @@ def route_guide_channel(channel_id, name):
             # Not on the air, so nothing to play -- but an item with an empty
             # url is not "inert", it is one Kodi tries to open, once per row,
             # which is where a guide full of "InputStream: Error opening,"
-            # came from. A folder pointing at the info route is inert.
+            # came from. Pointing it at the info route instead makes it inert.
+            #
+            # Not a folder, though: a folder that then declines to produce a
+            # listing is reported as "Error getting plugin://...", which is
+            # the whole reason sign-in looked broken.
             xbmcplugin.addDirectoryItem(
                 HANDLE,
                 url(action="programme", name=prog["title"], channel=name,
                     start=prog["start_ms"], end=prog["end_ms"]),
-                item, isFolder=True)
+                item, isFolder=False)
     finish("videos")
 
 

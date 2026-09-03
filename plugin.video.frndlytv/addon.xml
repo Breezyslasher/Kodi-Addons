@@ -48,8 +48,11 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   search and the rest need an account, and listing them was offering folders
   that could only fail.
 - Sign in and sign out no longer end in "Error getting plugin://". They are
-  listed as folders, so Kodi calls them expecting a listing, and cancelling
-  either one returned without giving it anything.
+  listed as folders, so Kodi calls them expecting a listing, and telling it
+  there was none is exactly what that message reports. Both now draw the menu
+  over the one being looked at, which after signing in is what is wanted
+  anyway. A guide row for something not yet on the air was the same shape and
+  is fixed with it.
 - A row opens in full rather than at whatever the page embedded. Every row
   names where the rest of it lives, in one of two shapes, and the addon
   follows the one the service's own page endpoint opens. The other is a
