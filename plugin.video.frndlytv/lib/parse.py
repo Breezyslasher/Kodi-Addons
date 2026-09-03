@@ -281,9 +281,13 @@ def detail(response, api):
                         found["actions"].append(
                             {"label": str(data or sub or "Play"),
                              "path": target})
-                    elif "favourite" in sub or "favorite" in sub:
-                        # "add_to_favourites" vs a removal wording: the button
-                        # the page chose to draw says which state it is in.
+                    elif ("favourite" in sub or "favorite" in sub) \
+                            and found["is_favourite"] is None:
+                        # Which button the page drew -- "add_to_favourites"
+                        # against a removal wording -- implies the state, but
+                        # only the "add" half has ever been captured, so this
+                        # is an inference and pageButtons.isFavourite is a
+                        # statement. It fills the gap and never overrides.
                         found["is_favourite"] = sub.startswith("remove")
                 elif kind == "marker" and sub == "tag":
                     found["year"], found["rating"] = _year_and_rating(data)

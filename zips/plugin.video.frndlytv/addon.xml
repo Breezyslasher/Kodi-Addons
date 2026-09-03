@@ -81,6 +81,11 @@ Your subscription, your account, your lineup. Nothing is proxied through a third
   shows, channels and guide airings alike. Only the verb that applies is
   offered, because the cards carry whether they are already in. These are
   Friendly TV's My Stuff, so they appear there and in its own apps.
+- Favouriting a film from a listing and coming back no longer offers to add
+  it again. A listing card's isFavourite does not keep up with a change --
+  a live channel's and a guide airing's do -- but the title's own page states
+  it, and that page is already being fetched for the synopsis, so the
+  authoritative answer was free and was simply not being used.
 - Leaving a live channel no longer marks it watched. A channel's card
   carries the running time of whatever is on it, and handing Kodi that as a
   duration made a channel look like a finite video, so stopping partway

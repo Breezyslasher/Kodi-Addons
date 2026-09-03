@@ -883,8 +883,17 @@ def _describe(cards, client):
         return
     for card in cards:
         response = pages.get(card["path"])
-        if response:
-            card["detail"] = parse.detail(response, client)
+        if not response:
+            continue
+        detail = parse.detail(response, client)
+        card["detail"] = detail
+        # The title's own page states whether it is a favourite, and a
+        # listing card does not keep up: favouriting a film and coming back
+        # left the card still saying it was not one, so the menu kept
+        # offering "Add" and a second press added it again. The page is
+        # already fetched here, so the authoritative answer is free.
+        if detail.get("is_favourite") is not None:
+            card["is_favourite"] = detail["is_favourite"]
 
 
 def _add_cards(cards, client=None):
