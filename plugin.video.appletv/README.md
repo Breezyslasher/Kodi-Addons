@@ -67,15 +67,19 @@ possible, but on a typical desktop the CDM will refuse the key.
 The SD limit above is a property of the **software Widevine L3** CDM on
 desktop, not of the addon. On a **Widevine-L1-certified Android device** (most
 phones, an Nvidia Shield, a certified Android TV box), Kodi's InputStream
-Adaptive uses the device's own **hardware Widevine (L1)** via MediaCodec, and
-Apple's licence server grants it the **HD and 4K tiers** — the same as the
-official app. Verified on an L1 Android device: **1080p H.264 and HEVC tiers
-licence and render**, with **Dolby Digital 5.1 audio**, no bypass. The addon
-probes the Widevine level at playback and, on L1, lifts the default SD height
-cap to **1080 automatically** (a cap the user changed themselves is left
-alone; HEVC/4K stays opt-in via the settings). It also requests a **secure
-MediaCodec** on Android so those L1-protected frames actually display (a
-non-secure decoder shows black).
+Adaptive uses the device's own **hardware Widevine (L1)** via MediaCodec, which
+can attest the HDCP output protection the higher tiers require. The addon
+serves the **HD (HDCP TYPE-0) tiers, up to 1080p**, and leaves 4K/HDR (HDCP
+TYPE-1) out — Apple grants an L1 device those keys too, but the addon caps at
+1080p — so L1 playback tops at HD. Verified on an L1 Android device (Samsung
+SM-F956U, Kodi 22 / ISA 22): the **1080p H.264 (TYPE-0) tier** licences with
+key status USABLE and renders through the secure decoder, with **Dolby Digital
+5.1 audio**, no bypass. The addon probes the Widevine level at playback and, on
+L1, lifts the default SD height cap to **1080 automatically** (a cap the user
+changed themselves is left alone; HEVC SDR can be enabled in the settings, but
+4K/HDR (TYPE-1) is not served). It also requests a **secure MediaCodec** on
+Android so those L1-protected frames actually display (a non-secure decoder
+shows black).
 
 **Android requires Kodi 22.** On Kodi 21, InputStream Adaptive's Android
 decrypter hardcodes `HasLicenseKey() { return true; }`
@@ -121,11 +125,12 @@ Two hard limits remain and neither can be coded away:
 1. **Standard definition on desktop (max ~540p).** Kodi ships the **software
    Widevine L3** CDM, and Apple flags the keys for tiers above ~540p as
    output-restricted, which an L3 CDM cannot use — so desktop tops out at the
-   540p tier (verified: 540p plays, 720p comes back output-restricted). HD/4K
-   needs the hardware **Widevine L1** DRM, which desktop Kodi does not have.
-   **A Widevine-L1-certified Android device running Kodi 22 is the exception**
-   — there Kodi uses the device's hardware L1 and Apple grants HD/4K (see
-   *HD/4K on Android* above; Kodi 21 Android cannot license the audio track).
+   540p tier (verified: 540p plays, 720p comes back output-restricted). HD
+   (up to 1080p) needs the hardware **Widevine L1** DRM, which desktop Kodi
+   does not have. **A Widevine-L1-certified Android device running Kodi 22 is
+   the exception** — there Kodi uses the device's hardware L1 and plays HD up
+   to 1080p (see *HD/4K on Android* above; 4K/HDR is not served, and Kodi 21
+   Android cannot license the audio track).
 2. **Apple gives no public API.** Sign-in, two-factor auth, the catalogue and
    the playback/licence endpoints are all reverse-engineered from Apple's web
    app. Apple changes these deliberately to break unofficial clients, so parts

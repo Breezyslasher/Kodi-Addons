@@ -40,8 +40,8 @@ UTS_STORE_VERSION = "94"
 # The Android TV app's caller. A capture of it shows the account-wide Continue
 # Watching shelf populated only for this caller -- caller=vz with vz=true,
 # pfm=vz and mfr=AndroidTV -- while the web and Windows-store callers get an
-# empty shell. It authenticates with the mz_at_ssl store cookie and X-Dsid,
-# not a bearer.
+# empty shell. It authenticates with the ordinary Apple TV+ bearer and
+# media-user-token -- no store cookie needed.
 UTS_ANDROID_CALLER = "vz"
 UTS_ANDROID_PFM = "vz"
 UTS_ANDROID_VERSION = "76"

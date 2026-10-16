@@ -532,13 +532,15 @@ class _Handler(BaseHTTPRequestHandler):
         return "\n".join(out) + "\n"
 
     def _rewrite_master(self, text, base_url, clear=False):
-        """Rewrite the master playlist, optionally capping video height.
+        """Rewrite the master playlist, capping the tiers to what the CDM can play.
 
-        Apple uses a different content key per quality tier. The web player
-        selects an SD variant and its key decrypts under Kodi's software (L3)
-        Widevine CDM; a higher tier's key is licensed but the CDM will not use
-        it, which surfaces as kNoKey. Capping the height keeps InputStream
-        Adaptive on the tier the web player uses.
+        Apple uses a different content key per quality tier and tags each
+        variant with an HDCP-LEVEL. A software (L3) Widevine CDM is granted the
+        higher tiers' keys but flags them output-restricted and refuses to use
+        them, which surfaces as kNoKey; a hardware (L1) CDM can use the HD
+        (TYPE-0) tiers. So variants are dropped by HDCP-LEVEL -- NONE (~540p) on
+        L3, NONE+TYPE-0 (up to 1080p) on L1 -- with a height cap as the fallback
+        for a manifest that carries no HDCP-LEVEL tag.
 
         Renditions referenced only by dropped variants are removed too, so ISA
         does not report "Cannot find variant for AUDIO GROUP-ID".

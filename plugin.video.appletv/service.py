@@ -46,7 +46,7 @@ class WatchHistory(object):
         return self._api
 
     def start(self, player):
-        """Mint a now-playing token for whatever the addon just started."""
+        """Set up position reporting for whatever the addon just started."""
         self.reset()
         context = kodiutils.read_json(PLAYBACK_REPORT_CACHE, default=None)
         if not context:
