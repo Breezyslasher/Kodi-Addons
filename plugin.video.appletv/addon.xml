@@ -14,7 +14,7 @@
 		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
 		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, live sports and your iTunes movie and TV library, playing back through InputStream Adaptive with Widevine DRM.
 
-EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). On a software Widevine L3 CDM -- every desktop, and L3 Android -- Apple's output-protected HD tiers are refused, so playback is standard definition (about 540p); a hardware Widevine L1 Android device (on Kodi 22) plays HD up to 1080p through the secure decoder. 4K and Dolby Vision need output protection Apple grants only its own clients. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
 
 Features:
 * Apple ID sign-in with two-factor authentication
