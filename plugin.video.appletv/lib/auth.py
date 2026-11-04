@@ -287,7 +287,7 @@ class AppleAuth(object):
             # SMS-only account: ask Apple to text a code to the first number.
             self.tokens["_2fa_phone_id"] = phones[0].get("id", 1)
             try:
-                self.session.put(
+                resp = self.session.put(
                     AUTH_BASE + "/verify/phone",
                     data=json.dumps({
                         "phoneNumber": {"id": self.tokens["_2fa_phone_id"]},
@@ -296,6 +296,10 @@ class AppleAuth(object):
                     headers=self._oauth_headers(),
                     timeout=30,
                 )
+                if resp.status_code >= 400:
+                    kodiutils.log_error(
+                        "SMS code request returned HTTP %s; no message will "
+                        "arrive" % resp.status_code)
             except Exception as exc:
                 kodiutils.log_error("SMS code request failed: %s" % exc)
         else:
