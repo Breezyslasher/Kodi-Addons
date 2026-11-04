@@ -1471,9 +1471,25 @@ class AppleTVApi(object):
 
     def _subtitle_vtt(self, playlist_url, headers, delay=0.0):
         """Build one .vtt from a subtitle playlist's real (non-padding) WebVTT
-        segments. Apple pads the head with empty-*.webvtt segments that carry no
-        cues, so they are skipped. delay shifts every cue later to line up with
-        the picture."""
+        segments.
+
+        Apple does not serve one subtitle track per title. It serves one file
+        per asset -- each promo it puts in front, the bumper, the "previously
+        on" recap, then the feature -- and every file's cues start again from
+        zero, relative to its own asset. #EXT-X-DISCONTINUITY marks where one
+        asset ends and the next begins, and the #EXTINF durations give the
+        running position, so a cue belongs at its own time plus the position
+        of the asset it came from.
+
+        Shifting each segment by its own running position would be wrong: the
+        feature arrives as many segments that all count from the feature's own
+        zero, so that adds the offset twice over and runs the cues off the end
+        of the stream. The position has to be taken at the discontinuity.
+
+        Apple pads stretches it has no cues for with empty-*.webvtt segments.
+        Those are skipped, but still count towards the running position.
+        delay shifts every cue later to line up with the picture.
+        """
         from urllib.parse import urljoin
         try:
             resp = self.session.get(playlist_url, headers=headers, timeout=30)
@@ -1484,8 +1500,20 @@ class AppleTVApi(object):
         base = playlist_url.rsplit("/", 1)[0] + "/"
         parts = []
         byterange = None
+        cum = 0.0           # running position in the playlist
+        pending = 0.0       # duration of the segment about to be named
+        asset_start = 0.0   # position of the asset the segment belongs to
         for ln in resp.text.splitlines():
             s = ln.strip()
+            if s.startswith("#EXT-X-DISCONTINUITY"):
+                asset_start = cum
+                continue
+            if s.startswith("#EXTINF:"):
+                try:
+                    pending = float(s.split(":", 1)[1].split(",")[0])
+                except (ValueError, IndexError):
+                    pending = 0.0
+                continue
             if s.startswith("#EXT-X-BYTERANGE:"):
                 byterange = s.split(":", 1)[1]
                 continue
@@ -1496,7 +1524,9 @@ class AppleTVApi(object):
             if "empty-" not in name:
                 seg = self._fetch_vtt_segment(url, headers, byterange)
                 if seg:
-                    parts.append(seg)
+                    parts.append((seg, asset_start))
+            cum += pending
+            pending = 0.0
             byterange = None
         return self._merge_vtt(parts, delay) if parts else None
 
@@ -1520,14 +1550,14 @@ class AppleTVApi(object):
 
     @staticmethod
     def _merge_vtt(parts, delay=0.0):
-        """Merge WebVTT segments into one file with a single header, shifting
-        every cue later by a flat delay.
+        """Merge (segment text, asset position) pairs into one file with a
+        single header.
 
-        Apple's on-demand WebVTT segments carry an X-TIMESTAMP-MAP tag that
-        Kodi ignores for an external file, so the tracks land ~10s early. A
-        constant delay (default 10s, adjustable) lines them back up -- the same
-        offset syncs both films and shows, so no per-title computation is done.
-        STYLE blocks and cue text pass through untouched.
+        Each cue is shifted by the position of the asset it came from, which
+        places it in stream time, plus the flat delay that lines Apple's cue
+        timeline up with the picture. STYLE blocks and cue text pass through
+        untouched. X-TIMESTAMP-MAP is dropped, as Kodi ignores it on an
+        external file.
         """
         import re
         cue_re = re.compile(
@@ -1550,13 +1580,14 @@ class AppleTVApi(object):
             return "%02d:%02d:%06.3f" % (h, m, s)
 
         out = ["WEBVTT", ""]
-        for part in parts:
+        for part, start in parts:
+            shift = start + delay
             for line in part.splitlines():
                 s = line.strip()
                 if s.startswith("WEBVTT") or s.startswith("X-TIMESTAMP-MAP"):
                     continue
-                if delay and cue_re.search(line):
-                    line = ts_re.sub(lambda mt: fmt(to_sec(mt.group(1)) + delay), line)
+                if shift and cue_re.search(line):
+                    line = ts_re.sub(lambda mt: fmt(to_sec(mt.group(1)) + shift), line)
                 out.append(line)
             out.append("")
         return "\n".join(out) + "\n"
