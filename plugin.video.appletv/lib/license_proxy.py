@@ -265,6 +265,26 @@ def kid_from_data_uri(uri):
     return None
 
 
+def _strip_key_info(uri):
+    """A key's data: URI without Apple's non-standard keyInfo= parameter.
+
+    Apple emits data:text/plain;keyInfo=<blob>;base64,<pssh>. keyInfo= is not
+    a data URI parameter: RFC 2397 allows only the media type and its own
+    parameters before the ";base64" marker. inputstream.adaptive reads that
+    header strictly, so the extra parameter is carried into what it decodes
+    and the PSSH it extracts is malformed -- it asks for a licence with a key
+    id it never managed to read.
+
+    Only the PSSH is of any use to ISA, so the parameter is dropped from the
+    copy it is served. Anything else in the URI, the payload included, is
+    passed through exactly as Apple sent it.
+    """
+    head, sep, payload = uri.partition("base64,")
+    if not sep:
+        return uri
+    return re.sub(r";keyInfo=[^;]*", "", head) + sep + payload
+
+
 def _license_key_ids(licence):
     """Best-effort list of the key ids a Widevine licence carries.
 
@@ -693,7 +713,15 @@ class _Handler(BaseHTTPRequestHandler):
         m = re.search(r'URI="([^"]+)"', line)
         if not m:
             return line
-        kid = kid_from_data_uri(m.group(1))
+        uri = m.group(1)
+        # Serve ISA the URI without Apple's keyInfo= parameter. The original
+        # is untouched in _DISCOVERED_KEYS, recorded by the caller before this
+        # runs, because the licence request sends it to Apple's key server
+        # verbatim and that server does want keyInfo.
+        clean = _strip_key_info(uri)
+        if clean != uri:
+            line = line[:m.start(1)] + clean + line[m.end(1):]
+        kid = kid_from_data_uri(uri)
         if not kid:
             kodiutils.log_error("Could not read key id from EXT-X-KEY URI")
             return line
