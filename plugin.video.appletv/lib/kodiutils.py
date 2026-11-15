@@ -150,3 +150,16 @@ def delete_file(filename):
             os.remove(path)
     except Exception:
         pass
+
+
+def b64_padded(data):
+    """Base64 text with its "=" padding restored.
+
+    Apple omits the padding from the base64 payload of the data: URIs in its
+    EXT-X-KEY tags. base64.b64decode is strict about the length being a
+    multiple of four and raises binascii.Error on a short one, so the PSSH
+    cannot be read and the licence request goes out without a key id.
+    Correctly padded input is returned unchanged.
+    """
+    data = (data or "").strip()
+    return data + "=" * (-len(data) % 4)
