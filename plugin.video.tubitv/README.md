@@ -200,6 +200,12 @@ A film reports as itself. An episode reports as itself too, with its series
 named alongside as a `parent_id` — a string, where the content id is a number.
 Trailers report nothing.
 
+Which of the two a play is comes from the title Tubi returned, not from the
+plugin url. An episode plays from its own id as well as from the
+`episode|series|season` form the listings use, and deciding from the url meant
+such a play was reported as a film with no series attached — the wrong place
+in Continue Watching.
+
 The same history is read back to place resume points, so a film or episode
 started on another device carries on where it left off here. Removing a title
 from Continue Watching keys on the history entry's own id rather than the
