@@ -26,6 +26,7 @@ import time
 import xbmc
 
 import common
+from addon_links import addon_path
 from client import PROTOCOL_VERSION, RelayClient, RelayError
 from relay import redact_url
 
@@ -333,6 +334,17 @@ def _playable_url(item):
     if file.startswith(('http://', 'https://')):
         return ''
     return file
+
+
+def _addon_ref(item):
+    """An installed streaming addon's path for a shared web link (Watch
+    Party's Android app and browser): {'file': plugin path}, or None."""
+    if item.get('plugin'):
+        return None
+    addon, path = addon_path(item.get('file') or '', item.get('type') or '')
+    if not addon or not xbmc.getCondVisibility('System.HasAddon(%s)' % addon):
+        return None
+    return {'file': path}
 
 
 def _find_in_library(item):
@@ -1141,14 +1153,19 @@ class SyncEngine:
 
             # Single item — candidates in preference order: plugin path
             # (device resolves its own stream), own library copy by id
-            # (full metadata on screen), the shared plain path. A failed
-            # candidate falls through to the next.
+            # (full metadata on screen), an installed addon that plays a
+            # web link's title (Watch Party's Android app and browser share
+            # those), the shared plain path. A failed candidate falls
+            # through to the next.
             candidates = []
             if item.get('plugin'):
                 candidates.append({'file': item['plugin']})
             lib_ref, _lib_file = _find_in_library(item)
             if lib_ref:
                 candidates.append(lib_ref)
+            addon_ref = _addon_ref(item)
+            if addon_ref:
+                candidates.append(addon_ref)
             plain = _playable_url(item)
             if plain and plain != item.get('plugin'):
                 candidates.append({'file': plain})

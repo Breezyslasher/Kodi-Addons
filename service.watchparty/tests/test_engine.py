@@ -141,6 +141,27 @@ class AppItemTest(unittest.TestCase):
         self.assertEqual(engine._find_in_library(item), (None, ''))
 
 
+class AddonRefTest(unittest.TestCase):
+    """A web link from the Android app or browser plays in an installed
+    streaming addon (addon_links.py) when there's no library copy."""
+    item = {'file': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'label': 'Song',
+            'ids': {'android': 'com.google.android.youtube.tv'}}
+
+    def tearDown(self):
+        sys.modules['xbmc'].getCondVisibility = lambda cond: False
+
+    def test_only_when_the_addon_is_installed(self):
+        self.assertIsNone(engine._addon_ref(self.item))
+        asked = []
+        sys.modules['xbmc'].getCondVisibility = lambda cond: asked.append(cond) or True
+        self.assertEqual(engine._addon_ref(self.item), {'file': 'plugin://plugin.video.youtube/play/?video_id=dQw4w9WgXcQ'})
+        self.assertEqual(asked, ['System.HasAddon(plugin.video.youtube)'])
+
+    def test_kodi_items_keep_their_own_path(self):
+        sys.modules['xbmc'].getCondVisibility = lambda cond: True
+        self.assertIsNone(engine._addon_ref({'file': 'http://127.0.0.1:8095/x', 'plugin': 'plugin://slyguy.hulu/?_=play&id=1'}))
+
+
 class EntryRefTest(unittest.TestCase):
     def test_plugin_entries_pass_through(self):
         ref, key = engine._local_entry_ref(

@@ -1,0 +1,115 @@
+"""Streaming-service web links <-> Kodi streaming addons' plugin paths.
+
+Watch Party's Android app and browser extension share a title as its web
+link (https://www.netflix.com/watch/80057281, …); Kodi plays addon content
+from a plugin:// path. addon_path() turns a shared link into the path of an
+addon that plays the same title, for the addons below; the apps do the
+reverse (their AddonLinks / addon-links.js). Each format was read from the
+addon's own source (2026-11-15):
+
+- Netflix, plugin.video.netflix (CastagnaIT): play/movie/<id>/ — the id in
+  netflix.com/watch/<id> (common/videoid.py VideoId.from_path). An episode
+  needs its show and season ids too (play/show/<s>/season/<x>/episode/<e>/),
+  which a web link doesn't have: episodes aren't converted.
+- YouTube, plugin.video.youtube: play/?video_id=<id> (yt_play.py docstring).
+- Disney+, slyguy.disney.plus: ?_=play&deeplink_id=<id> — the id in
+  disneyplus.com/play/<id> and /browse/entity-<id> (plugin.py _play:
+  api.deeplink(deeplink_id) with refIdType deeplinkId).
+- Hulu, slyguy.hulu: ?_=play&id=<entity id> — the uuid in hulu.com/watch/<id>
+  and hulu.com/movie/<slug>-<id> (plugin.py _play: api.deeplink, namespace
+  entity).
+- Paramount+, slyguy.paramount.plus: ?_=play&video_id=<contentId> — the id
+  in paramountplus.com/movies/<name>/<id> and /shows/<show>/video/<id>/….
+- HBO Max, slyguy.max (and Discovery+, slyguy.discovery.plus): play takes an
+  edit id, only in links copied while playing (/video/watch/<video>/<edit>).
+- Prime Video, plugin.video.amazon-test (Sandmann79): ?asin=<id>&mode=
+  PlayVideo — the asin= or gti= of watch.amazon.com/watch, or the asin in
+  /gp/video/detail/<asin> and primevideo.com/detail/<asin>.
+- Apple TV, plugin.video.appletv: ?action=play&item_id=<umc id>&item_type=
+  Movie|Episode — the umc.cmc… id of tv.apple.com/<cc>/movie|episode/….
+- Tubi, plugin.video.tubitv: ?mode=GV&url=<id> — the id of
+  tubitv.com/movies/<id>. Episodes resolve through their series and season
+  (url=<episode>|<series>|<season>), which a link doesn't have.
+
+SlyGuy's paths are built as SlyGuy's router builds them (route in "_",
+arguments sorted); the addons parse them the same way.
+"""
+import re
+from urllib.parse import parse_qs, urlencode, urlsplit
+
+_UUID = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+
+
+def _slyguy(addon, **args):
+    params = sorted([('_', 'play')] + list(args.items()))
+    return 'plugin://%s/?%s' % (addon, urlencode(params))
+
+
+def addon_path(link, media_type=''):
+    """(addon id, plugin path) that plays the title `link` points to, or
+    (None, None). `media_type` is the item's type ('movie', 'episode' or
+    ''), where it decides between forms."""
+    link = (link or '').strip()
+    url = urlsplit(link)
+    if url.scheme not in ('http', 'https'):
+        return None, None
+    host = (url.hostname or '').lower()
+    path = url.path
+    query = parse_qs(url.query)
+
+    def on(site):
+        return host == site or host.endswith('.' + site)
+
+    if on('netflix.com'):
+        m = re.match(r'^/(?:[a-z]{2}(?:-[a-z]{2})?/)?(?:watch|title)/(\d+)', path)
+        if m and media_type != 'episode':
+            return ('plugin.video.netflix',
+                    'plugin://plugin.video.netflix/play/movie/%s/' % m.group(1))
+    elif on('youtube.com') or host == 'youtu.be':
+        vid = (query.get('v') or [None])[0]
+        if host == 'youtu.be':
+            vid = path.strip('/').split('/')[0] or None
+        if vid and re.match(r'^[A-Za-z0-9_-]{6,}$', vid):
+            return ('plugin.video.youtube',
+                    'plugin://plugin.video.youtube/play/?video_id=%s' % vid)
+    elif on('disneyplus.com'):
+        m = re.match(r'^/(?:[a-z]{2}-[a-z]{2}/)?(?:play/|browse/entity-)(%s)' % _UUID, path)
+        if m:
+            return ('slyguy.disney.plus', _slyguy('slyguy.disney.plus', deeplink_id=m.group(1).lower()))
+    elif on('hulu.com'):
+        m = re.match(r'^/(?:watch/|movie/[^/]*?-?)(%s)' % _UUID, path)
+        if m:
+            return ('slyguy.hulu', _slyguy('slyguy.hulu', id=m.group(1).lower()))
+    elif on('paramountplus.com'):
+        m = (re.match(r'^/(?:[a-z]{2}/)?shows/[^/]+/video/([A-Za-z0-9_-]+)', path)
+             or re.match(r'^/(?:[a-z]{2}/)?movies/(?:video/|[^/]+/)([A-Za-z0-9_-]+)/?$', path))
+        if m:
+            return ('slyguy.paramount.plus', _slyguy('slyguy.paramount.plus', video_id=m.group(1)))
+    elif on('hbomax.com') or on('max.com'):
+        m = re.match(r'^/video/watch/%s/(%s)' % (_UUID, _UUID), path)
+        if m:
+            return ('slyguy.max', _slyguy('slyguy.max', edit_id=m.group(1).lower()))
+    elif on('discoveryplus.com'):
+        m = re.match(r'^/video/watch/%s/(%s)' % (_UUID, _UUID), path)
+        if m:
+            return ('slyguy.discovery.plus', _slyguy('slyguy.discovery.plus', edit_id=m.group(1).lower()))
+    elif on('amazon.com') or on('primevideo.com'):
+        asin = (query.get('asin') or query.get('gti') or [None])[0]
+        if not asin:
+            m = re.search(r'/(?:gp/video/)?detail/([A-Za-z0-9.-]+)', path)
+            asin = m.group(1) if m else None
+        if asin:
+            return ('plugin.video.amazon-test', 'plugin://plugin.video.amazon-test/?' + urlencode(
+                [('asin', asin), ('mode', 'PlayVideo'), ('name', ''), ('adult', '0')]))
+    elif host == 'tv.apple.com':
+        m = re.match(r'^/[a-z]{2}/(movie|episode)/[^/]+/(umc\.[A-Za-z0-9.]+)', path)
+        if m:
+            return ('plugin.video.appletv', 'plugin://plugin.video.appletv/?' + urlencode(
+                [('action', 'play'), ('item_id', m.group(2)),
+                 ('item_type', 'Movie' if m.group(1) == 'movie' else 'Episode')]))
+    elif on('tubitv.com'):
+        m = re.match(r'^/movies/(\d+)', path)
+        if m:
+            return ('plugin.video.tubitv',
+                    'plugin://plugin.video.tubitv/?mode=GV&url=%s' % m.group(1))
+    return None, None

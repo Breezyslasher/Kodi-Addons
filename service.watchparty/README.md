@@ -188,6 +188,16 @@ copy.
   open it on a streaming service. A library file and a streaming copy can
   start a few seconds apart (studio logos, recaps); sync then keeps that
   offset. A pasted link carries no identity and is skipped here.
+- **Their links in Kodi's streaming addons:** when there's no library copy,
+  a shared link plays in an installed addon that has the title
+  (`addon_links.py`, formats read from each addon's source): Netflix
+  (CastagnaIT's, movies — an episode needs ids a link doesn't have),
+  YouTube, SlyGuy's Disney+, Hulu and Paramount+, SlyGuy's HBO Max and
+  Discovery+ (only links copied while playing, which carry the edit id),
+  Sandmann79's Prime Video, and the Apple TV and Tubi addons in this repo
+  (Tubi: movies). The apps do the reverse: a title playing in one of these
+  addons opens in the service's app or website there (`AddonLinks.kt`,
+  `links.js`). Untested with the real addons.
 - Stopping playback stops the party's shared item for everyone (like taking
   the disc out). Natural end-of-file does the same.
 - Members are pruned after 15 s without contact, but devices rejoin
