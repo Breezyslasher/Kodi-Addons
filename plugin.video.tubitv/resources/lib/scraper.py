@@ -674,9 +674,15 @@ class myAddon(t1mAddon):
         """Look up a playable title.
 
         A film is fetched by its own id. An episode arrives as
-        `episodeId|seriesId|season` and is picked out of its season, because
-        that is where Tubi publishes episode streams. `trailer|id` asks for a
-        title's trailer rather than the title itself.
+        `episodeId|seriesId|season` and is picked out of its season, which is
+        what every listing and .strm file here produces. `trailer|id` asks for
+        a title's trailer rather than the title itself.
+
+        A bare episode id works too: /api/v3/content answers one with its own
+        video_resources, detailed_type "episode" and series_id, so it falls
+        through to the one-part branch and plays (seen 2026-11-15 on Forensic
+        Files S1 E1, 438034 of series 2914, anonymous token). Other things
+        send that form - see seriesOf() for what it costs to assume otherwise.
         """
         parts = uqp(url).split('|')
         if parts[0] == 'trailer' and len(parts) > 1:
@@ -710,10 +716,28 @@ class myAddon(t1mAddon):
         playing = {'content_id': contentId,
                    'content_type': HISTORY_MOVIE,
                    'duration': content.get('duration')}
-        if len(parts) >= 3:
+        parentId = self.seriesOf(url, content)
+        if parentId is not None:
             playing['content_type'] = HISTORY_EPISODE
-            playing['parent_id'] = parts[1]
+            # Tubi's history wants the parent as a string, the content as a number
+            playing['parent_id'] = str(parentId)
         window.setProperty(PLAYING, json.dumps(playing))
+
+    @staticmethod
+    def seriesOf(url, content):
+        """The series a playing title belongs to, or None if it is a film.
+
+        Deciding this from the url alone was wrong. The three-part form
+        names the series, but an episode also plays from its own id -
+        /api/v3/content answers one with detailed_type "episode" and a
+        series_id - and such a play was reported to Tubi as a film, with no
+        series attached. The content is asked first and the url stands in
+        for the season payload, which carries neither field.
+        """
+        if content.get('detailed_type') == HISTORY_EPISODE and content.get('series_id'):
+            return content['series_id']
+        parts = uqp(url).split('|')
+        return parts[1] if len(parts) >= 3 else None
 
     def getAddonVideo(self, url):
         try:
