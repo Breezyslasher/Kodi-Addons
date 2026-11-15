@@ -20,6 +20,9 @@ LIBRARY = {
         {'movieid': 2, 'label': 'Inception',
          'file': 'nfs://mynas/films/decoy.mkv',
          'uniqueid': {'imdb': 'tt9999999'}, 'year': 1999},
+        {'movieid': 3, 'label': 'Thunderbolts*',
+         'file': 'nfs://mynas/films/thunderbolts.mkv',
+         'uniqueid': {'tmdb': '986056', 'imdb': 'tt20969586'}, 'year': 2025},
     ]},
     'VideoLibrary.GetTVShows': {'tvshows': [
         {'tvshowid': 7, 'label': 'Severance'},
@@ -103,6 +106,39 @@ class LibraryMatchTest(unittest.TestCase):
     def test_song_without_title_no_match(self):
         self.assertEqual(engine._find_in_library(
             {'type': 'song', 'artist': ['X'], 'file': 'x'}), (None, ''))
+
+
+class AppItemTest(unittest.TestCase):
+    """Watch Party's Android app and browser extension share streaming
+    links (Kodi can't open them) with the title's identity in these same
+    fields (RelayClient.appItem / links.js roomItem): Kodi plays its own
+    library copy instead."""
+
+    def test_android_movie_plays_the_library_copy(self):
+        item = {'file': 'https://www.disneyplus.com/play/f51dce23',
+                'label': 'Thunderbolts*', 'type': 'movie',
+                'title': 'Thunderbolts*', 'year': 2025,
+                'ids': {'android': 'com.disney.disneyplus', 'tmdb': '986056'}}
+        self.assertEqual(engine._playable_url(item), '')
+        ref, file = engine._find_in_library(item)
+        self.assertEqual(ref, {'movieid': 3})
+        self.assertEqual(file, 'nfs://mynas/films/thunderbolts.mkv')
+
+    def test_android_episode_plays_the_library_copy(self):
+        item = {'file': 'https://www.netflix.com/watch/81721676',
+                'label': 'Severance · S2 · E4 · Woe\'s Hollow',
+                'title': 'Severance · S2 · E4 · Woe\'s Hollow',
+                'type': 'episode', 'show': 'Severance', 'season': 2,
+                'episode': 4, 'ids': {'android': 'com.netflix.ninja'}}
+        self.assertEqual(engine._playable_url(item), '')
+        ref, file = engine._find_in_library(item)
+        self.assertEqual(ref, {'episodeid': 71})
+
+    def test_pasted_link_without_identity_is_not_playable(self):
+        item = {'file': 'https://www.netflix.com/watch/1', 'label': 'X',
+                'title': 'X', 'ids': {'android': 'com.netflix.ninja'}}
+        self.assertEqual(engine._playable_url(item), '')
+        self.assertEqual(engine._find_in_library(item), (None, ''))
 
 
 class EntryRefTest(unittest.TestCase):

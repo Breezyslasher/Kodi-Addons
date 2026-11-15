@@ -178,6 +178,16 @@ copy.
   the same movie/episode (matched by id — see above); otherwise turn off
   *Follow party item* there and start the same content manually —
   pause/seek sync still applies once playback has begun.
+- **Watch Party's Android app and browser extension** can share a room with
+  Kodi. They share streaming-service links (Netflix, Disney+, …), which Kodi
+  doesn't open; titles they start from their *Browse* also carry the title's
+  identity in the same fields Kodi uses (`type`, `title`, `year`, `ids`, or
+  `show`, `season`, `episode`), so Kodi plays its **own library copy** of
+  that movie or episode, matched as above (tested in `tests/test_engine.py`,
+  `AppItemTest`). The other way, they look a Kodi title up on JustWatch and
+  open it on a streaming service. A library file and a streaming copy can
+  start a few seconds apart (studio logos, recaps); sync then keeps that
+  offset. A pasted link carries no identity and is skipped here.
 - Stopping playback stops the party's shared item for everyone (like taking
   the disc out). Natural end-of-file does the same.
 - Members are pruned after 15 s without contact, but devices rejoin
