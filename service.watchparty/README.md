@@ -195,7 +195,8 @@ copy.
   YouTube, SlyGuy's Disney+, Hulu and Paramount+, SlyGuy's HBO Max and
   Discovery+ (only links copied while playing, which carry the edit id),
   Sandmann79's Prime Video, and the Apple TV and Tubi addons in this repo
-  (Tubi: movies). The apps do the reverse: a title playing in one of these
+  (Tubi: movies and episodes; episode progress reports correctly from
+  TubiTV 2026.11.15). The apps do the reverse: a title playing in one of these
   addons opens in the service's app or website there (`AddonLinks.kt`,
   `links.js`). Untested with the real addons.
 - Stopping playback stops the party's shared item for everyone (like taking

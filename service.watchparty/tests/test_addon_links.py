@@ -68,7 +68,11 @@ class AddonPathTest(unittest.TestCase):
         self.assertEqual(args(path)['item_type'], 'Episode')
         self.assertEqual(addon_links.addon_path('https://tubitv.com/movies/100012345/the-movie'),
                          ('plugin.video.tubitv', 'plugin://plugin.video.tubitv/?mode=GV&url=100012345'))
-        self.assertEqual(addon_links.addon_path('https://tubitv.com/tv-shows/200012345'), (None, None))
+        # an episode plays from its own id too (the one-part form)
+        self.assertEqual(addon_links.addon_path('https://tubitv.com/tv-shows/200012345'),
+                         ('plugin.video.tubitv', 'plugin://plugin.video.tubitv/?mode=GV&url=200012345'))
+        # a series' page isn't a title
+        self.assertEqual(addon_links.addon_path('https://tubitv.com/series/300012345/forensic-files'), (None, None))
 
     def test_not_links(self):
         for link in ('smb://nas/movie.mkv', 'plugin://plugin.video.netflix/play/movie/1/', '', 'https://example.com/x'):

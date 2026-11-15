@@ -28,8 +28,11 @@ addon's own source (2026-11-15):
 - Apple TV, plugin.video.appletv: ?action=play&item_id=<umc id>&item_type=
   Movie|Episode — the umc.cmc… id of tv.apple.com/<cc>/movie|episode/….
 - Tubi, plugin.video.tubitv: ?mode=GV&url=<id> — the id of
-  tubitv.com/movies/<id>. Episodes resolve through their series and season
-  (url=<episode>|<series>|<season>), which a link doesn't have.
+  tubitv.com/movies/<id>, and of an episode's tubitv.com/tv-shows/<id>: Tubi's
+  /api/v3/content answers an episode id with its own streams and series_id
+  (probed 2026-11-15, WatchParty's tools/probe/tubi_episode.py), so the
+  addon's one-part form plays it; since 2026.11.15 the addon also reports
+  its progress as an episode (seriesOf()).
 
 SlyGuy's paths are built as SlyGuy's router builds them (route in "_",
 arguments sorted); the addons parse them the same way.
@@ -108,7 +111,7 @@ def addon_path(link, media_type=''):
                 [('action', 'play'), ('item_id', m.group(2)),
                  ('item_type', 'Movie' if m.group(1) == 'movie' else 'Episode')]))
     elif on('tubitv.com'):
-        m = re.match(r'^/movies/(\d+)', path)
+        m = re.match(r'^/(?:movies|tv-shows)/(\d+)', path)
         if m:
             return ('plugin.video.tubitv',
                     'plugin://plugin.video.tubitv/?mode=GV&url=%s' % m.group(1))
