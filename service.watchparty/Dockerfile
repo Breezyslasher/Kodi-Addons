@@ -10,6 +10,8 @@ FROM python:3.12-alpine
 WORKDIR /app
 COPY relay_standalone.py .
 COPY resources/lib/relay.py resources/lib/
+# the remote page (/remote)
+COPY resources/remote resources/remote/
 
 # room playback state survives container restarts (mount /data to also
 # survive container re-creation)

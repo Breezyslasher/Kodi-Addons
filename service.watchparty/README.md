@@ -145,6 +145,20 @@ docker build -t kodi-watchparty-relay . && docker run -d -p 8765:8765 --restart 
   the relay, so a token never reaches the page.
   The embedded in-Kodi relay serves the same dashboard for its room
   (`http://kodi-ip:8765/status`) — handy on a phone while hosting.
+- **Remote** (`/remote`, or the dashboard's *Open the remote* button;
+  `/remote?room=CODE` fills in the code): runs a room from any browser
+  with nothing to install — search movies and shows (or paste a link),
+  start one for everyone, play, pause, seek ±10/30 s, go to a time, stop
+  for everyone. It plays nothing itself; it joins as a member (under the
+  name you give it) so it can send commands. Its screens are the Watch
+  Party browser extension's, copied into `resources/remote/` by
+  WatchParty's `tools/vendor-remote.sh` (see `VENDORED.txt` there).
+  JustWatch's API and HBO Max's public pages don't answer other sites'
+  pages, so the remote fetches those through the relay
+  (`POST /remote/fetch`): members only, and only
+  `https://apis.justwatch.com/graphql` (POST) and `https://www.hbomax.com/…`
+  (GET) — it isn't an open proxy. The relay needs internet access for
+  search to work.
 
 The relay is pure Python standard library (`relay_standalone.py` +
 `resources/lib/relay.py`) — no pip installs. Point it behind a reverse

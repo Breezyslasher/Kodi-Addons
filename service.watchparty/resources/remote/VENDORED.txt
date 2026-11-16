@@ -1,0 +1,4 @@
+Copied from Breezyslasher/WatchParty watchparty-browser/extension/ at 0b086c1
+by tools/vendor-remote.sh: links.js justwatch.js hbomax.js relay.js ui.js
+screens.js room.css fonts/ icons/icon32.png. Edit them there, then re-run it.
+remote.html, remote.js and remote.css are the remote's own.

@@ -1,0 +1,25 @@
+/* The remote's own bits, on top of the extension's room.css. */
+
+.controls { margin: 28px 0 8px; max-width: 900px; }
+.controls[hidden] { display: none !important; }
+.clock { display: flex; align-items: baseline; gap: 14px; }
+.clock b { font-size: 44px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.clock span { color: var(--text-2); font-size: 16px; }
+.buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.buttons button { display: inline-flex; align-items: center; justify-content: center; height: 53px; min-width: 74px; padding: 0 20px; border-radius: 10px; border: 0;
+  font: 600 17px Figtree, system-ui, sans-serif; background: var(--chip); color: var(--text); cursor: pointer; }
+.buttons button:hover { background: var(--line); }
+.buttons button.play { background: var(--accent); color: var(--on-accent); min-width: 140px; }
+.buttons button.stop { margin-left: auto; color: var(--warn); }
+.buttons button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.jump { display: flex; gap: 12px; margin-top: 14px; align-items: center; }
+.jump input { width: 150px; height: 50px; }
+.jump button { height: 50px; }
+.controlsNote { color: var(--muted); font-size: 15px; line-height: 1.4; margin: 16px 0 0; }
+
+@media (max-width: 760px) {
+  .clock b { font-size: 34px; }
+  .buttons button { flex: 1 1 28%; min-width: 0; padding: 0 8px; }
+  .buttons button.play { flex-basis: 100%; }
+  .buttons button.stop { margin-left: 0; flex-basis: 100%; }
+}

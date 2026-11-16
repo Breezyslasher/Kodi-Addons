@@ -77,6 +77,48 @@ class EmbeddedRelayTest(unittest.TestCase):
         self.guest.join('guest')
         self.assertIsNone(self.guest.poll(0, False, '')['item'])
 
+    def _get(self, path):
+        try:
+            with urllib.request.urlopen('http://127.0.0.1:%d%s' % (self.port, path)) as r:
+                return r.status, r.headers.get('Content-Type'), r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers.get('Content-Type'), e.read()
+
+    def test_remote_page_and_its_files(self):
+        status, ctype, body = self._get('/remote')
+        self.assertEqual((status, ctype), (200, 'text/html; charset=utf-8'))
+        self.assertIn(b'/remote/remote.js', body)
+        for path, kind in (('/remote/remote.js', 'text/javascript'), ('/remote/screens.js', 'text/javascript'),
+                           ('/remote/room.css', 'text/css'), ('/remote/fonts/Figtree-Regular.ttf', 'font/ttf')):
+            status, ctype, _ = self._get(path)
+            self.assertEqual(status, 200, path)
+            self.assertTrue(ctype.startswith(kind), (path, ctype))
+        for path in ('/remote/../relay.py', '/remote/%2e%2e/lib/relay.py', '/remote/VENDORED.txt',
+                     '/remote/a/b/c.js', '/remote/nothing.js'):
+            self.assertEqual(self._get(path)[0], 404, path)
+
+    def _remote_fetch(self, member_id, url, method='POST'):
+        req = urllib.request.Request(
+            'http://127.0.0.1:%d/remote/fetch' % self.port,
+            data=json.dumps({'room': 'TEST', 'member_id': member_id, 'url': url,
+                             'method': method, 'body': '{}'}).encode(),
+            headers={'Content-Type': 'application/json'})
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status, json.load(r)
+        except urllib.error.HTTPError as e:
+            return e.code, json.load(e)
+
+    def test_remote_fetch_is_for_members_and_two_sites_only(self):
+        jw = 'https://apis.justwatch.com/graphql'
+        self.assertEqual(self._remote_fetch('nobody', jw)[0], 410)
+        for url, method in (('https://example.com/', 'GET'), ('http://apis.justwatch.com/graphql', 'POST'),
+                            ('https://apis.justwatch.com/graphql?x=1', 'POST'), (jw, 'GET'),
+                            ('https://www.hbomax.com/x', 'POST'), ('https://www.hbomax.com.evil.com/', 'GET'),
+                            ('http://127.0.0.1:%d/status.json' % self.port, 'GET')):
+            status, data = self._remote_fetch(self.host.member_id, url, method)
+            self.assertEqual((status, data['error']), (403, 'not an allowed address'), url)
+
     def test_member_listing(self):
         state = self.guest.poll(1.5, True, 'somefile')
         names = sorted(m['name'] for m in state['members'])

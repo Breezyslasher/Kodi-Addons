@@ -22,8 +22,11 @@ Kodi.
 """
 import json
 import os
+import re
 import threading
 import time
+import urllib.error
+import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -31,6 +34,31 @@ START_TIME = time.time()
 ICON_PATH = os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), 'icon.png')
 
+
+# The remote (/remote): a web page that runs the room — search, start a
+# title for everyone, play / pause / seek / stop — without playing anything
+# itself. Its files are the browser extension's screens (copied in by
+# WatchParty's tools/vendor-remote.sh) plus remote.html / remote.js.
+REMOTE_DIR = os.path.join(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__))), 'remote')
+REMOTE_FILE_RE = re.compile(r'^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9]+)?(?:/[A-Za-z0-9_-]+\.[A-Za-z0-9]+)?$')
+REMOTE_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
+                '.css': 'text/css; charset=utf-8', '.ttf': 'font/ttf', '.png': 'image/png'}
+# What the remote may fetch through the relay, for members only: a web page
+# can't call these itself (JustWatch's API and HBO Max's pages don't allow
+# other sites' pages). JustWatch: search and title pages; HBO Max: the public
+# pages its "(with ASL)" check reads (see the extension's hbomax.js).
+REMOTE_FETCH = (
+    ('POST', re.compile(r'^https://apis\.justwatch\.com/graphql$')),
+    ('GET', re.compile(r'^https://www\.hbomax\.com/[A-Za-z0-9/_.-]*$')),
+)
+REMOTE_FETCH_HEADERS = {
+    # JustWatch rejects default library user agents (WatchParty's tools/justwatch/jw.py)
+    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0',
+    'Origin': 'https://www.justwatch.com',
+    'Referer': 'https://www.justwatch.com/',
+}
+MAX_REMOTE_FETCH = 4 * 1024 * 1024
 
 MEMBER_TIMEOUT = 15.0    # seconds without a poll before a member is pruned
 MAX_BODY = 64 * 1024
@@ -155,6 +183,8 @@ DASH_HTML = """<!doctype html>
        border:1px solid #23262c;border-radius:16px;overflow:hidden}
  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
  /* top bar */
+ .remote{font:600 12px system-ui;color:#0b0c0e;background:#6ea8fe;border-radius:8px;
+   padding:8px 12px;text-decoration:none;white-space:nowrap}
  .top{display:flex;justify-content:space-between;align-items:center;
       flex-wrap:wrap;gap:14px;padding:18px 24px;background:#101216;
       border-bottom:1px solid #23262c}
@@ -336,6 +366,7 @@ DASH_HTML = """<!doctype html>
    <div class="stat"><span>ROOMS</span><b id="nrooms">0</b></div>
    <div class="stat"><span>POLL RTT</span><b id="rtt">&mdash;</b></div>
    <div class="upd">updated<br><span class="mono" id="updated">&mdash;</span></div>
+   <a class="remote" href="/remote">Open the remote &rarr;</a>
   </div>
  </div>
  <div class="body">
@@ -925,9 +956,69 @@ class _Handler(BaseHTTPRequestHandler):
         except Exception:
             return None
 
+    def _send_file(self, path, content_type, cache='no-cache'):
+        try:
+            with open(path, 'rb') as f:
+                body = f.read()
+        except OSError:
+            self._send(404, {'ok': False, 'error': 'not found'})
+            return
+        self.send_response(200)
+        self.send_header('Content-Type', content_type)
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', cache)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_remote(self, path):
+        """/remote and its files (no directory walking: a name, or one
+        folder and a name, with a known extension)."""
+        name = path[len('/remote/'):] if path.startswith('/remote/') else 'remote.html'
+        ext = os.path.splitext(name)[1]
+        if not REMOTE_FILE_RE.match(name) or ext not in REMOTE_TYPES:
+            self._send(404, {'ok': False, 'error': 'not found'})
+            return
+        self._send_file(os.path.join(REMOTE_DIR, *name.split('/')), REMOTE_TYPES[ext],
+                        'max-age=86400' if ext in ('.ttf', '.png') else 'no-cache')
+
+    def _remote_fetch(self, room, data, now):
+        """A JustWatch or HBO Max request from the remote page, made here
+        (members only, and only those URLs: see REMOTE_FETCH)."""
+        member_id = str(data.get('member_id') or '')
+        with room.lock:
+            member = member_id in room.members
+        if not member:
+            self._send(410, {'ok': False, 'error': 'not a member', 'server_time': now})
+            return
+        url = str(data.get('url') or '')
+        method = str(data.get('method') or 'GET').upper()
+        if not any(m == method and rx.match(url) for m, rx in REMOTE_FETCH):
+            self._send(403, {'ok': False, 'error': 'not an allowed address', 'server_time': now})
+            return
+        body = data.get('body')
+        headers = dict(REMOTE_FETCH_HEADERS)
+        if method == 'POST':
+            headers['Content-Type'] = 'application/json'
+        req = urllib.request.Request(
+            url, data=str(body).encode('utf-8') if method == 'POST' and body is not None else None,
+            headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                status, text = resp.status, resp.read(MAX_REMOTE_FETCH)
+                content_type = resp.headers.get('Content-Type') or ''
+        except urllib.error.HTTPError as e:
+            status, text, content_type = e.code, e.read(MAX_REMOTE_FETCH), e.headers.get('Content-Type') or ''
+        except Exception as e:
+            self._send(502, {'ok': False, 'error': 'fetch failed: %s' % e, 'server_time': now})
+            return
+        self._send(200, {'ok': True, 'status': status, 'content_type': content_type,
+                         'body': text.decode('utf-8', 'replace'), 'server_time': time.time()})
+
     def do_GET(self):
         path = self.path.split('?', 1)[0]
-        if path == '/ping':
+        if path == '/remote' or path.startswith('/remote/'):
+            self._send_remote(path)
+        elif path == '/ping':
             self._send(200, {'ok': True, 'app': 'watchparty',
                              'protocol': PROTOCOL_VERSION,
                              'server_time': time.time()})
@@ -1024,6 +1115,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         now = time.time()
+        if self.path == '/remote/fetch':
+            self._remote_fetch(room, data, now)
+            return
         if self.path == '/join':
             member_id = room.join(str(data.get('name') or ''))
             self._send(200, {'ok': True, 'member_id': member_id,
