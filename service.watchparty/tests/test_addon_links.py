@@ -42,7 +42,10 @@ class AddonPathTest(unittest.TestCase):
             self.assertEqual(addon, 'slyguy.hulu')
             self.assertEqual(args(path), {'_': 'play', 'id': '3e8b8c5f-1a2b-4c3d-9e8f-0a1b2c3d4e5f'})
         for link, vid in (('https://www.paramountplus.com/movies/top-gun-maverick/wjQ4RChi6BHHu4MVTncppVuCwu44uq2Q/', 'wjQ4RChi6BHHu4MVTncppVuCwu44uq2Q'),
-                          ('https://www.paramountplus.com/shows/star-trek-strange-new-worlds/video/abc123DEF/x', 'abc123DEF')):
+                          ('https://www.paramountplus.com/shows/star-trek-strange-new-worlds/video/abc123DEF/x', 'abc123DEF'),
+                          # the site's own nameless links (the named ones redirect there)
+                          ('https://www.paramountplus.com/movies/video/Alcn0hcGx0HosdhcawKteH8DXh3RiOF7/', 'Alcn0hcGx0HosdhcawKteH8DXh3RiOF7'),
+                          ('https://www.paramountplus.com/shows/video/7yX9OPrM_xsLmCiY_ZBNXVShlgSxglcI/', '7yX9OPrM_xsLmCiY_ZBNXVShlgSxglcI')):
             self.assertEqual(args(addon_links.addon_path(link)[1]), {'_': 'play', 'video_id': vid})
         # a movie's page without an id isn't a title
         self.assertEqual(addon_links.addon_path('https://www.paramountplus.com/movies/top-gun-maverick/'), (None, None))
@@ -66,6 +69,10 @@ class AddonPathTest(unittest.TestCase):
         self.assertEqual(args(path), {'action': 'play', 'item_id': 'umc.cmc.3t6dvnnr87zwd4wmvpdx5came', 'item_type': 'Movie'})
         addon, path = addon_links.addon_path('https://tv.apple.com/us/episode/pilot/umc.cmc.1abc?showId=umc.cmc.2&action=play')
         self.assertEqual(args(path)['item_type'], 'Episode')
+        # by id alone (what Android and browsers make of Kodi's Apple TV titles)
+        for link, kind in (('https://tv.apple.com/movie/umc.cmc.c3xhu25rw4jxxxzq4oio6snu', 'Movie'),
+                           ('https://tv.apple.com/us/episode/umc.cmc.s80mx1ic96pu6ewupz8pfasf', 'Episode')):
+            self.assertEqual(args(addon_links.addon_path(link)[1])['item_type'], kind)
         self.assertEqual(addon_links.addon_path('https://tubitv.com/movies/100012345/the-movie'),
                          ('plugin.video.tubitv', 'plugin://plugin.video.tubitv/?mode=GV&url=100012345'))
         # an episode plays from its own id too (the one-part form)

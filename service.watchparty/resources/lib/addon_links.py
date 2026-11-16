@@ -19,14 +19,17 @@ addon's own source (2026-11-15):
   and hulu.com/movie/<slug>-<id> (plugin.py _play: api.deeplink, namespace
   entity).
 - Paramount+, slyguy.paramount.plus: ?_=play&video_id=<contentId> — the id
-  in paramountplus.com/movies/<name>/<id> and /shows/<show>/video/<id>/….
+  in paramountplus.com/movies/<name>/<id> and /shows/<show>/video/<id>/…, and
+  in the site's own nameless links they redirect to, /movies/video/<id>/ and
+  /shows/video/<id>/ (WatchParty's tools/probe/nameless_links.py, 2026-11-16).
 - HBO Max, slyguy.max (and Discovery+, slyguy.discovery.plus): play takes an
   edit id, only in links copied while playing (/video/watch/<video>/<edit>).
 - Prime Video, plugin.video.amazon-test (Sandmann79): ?asin=<id>&mode=
   PlayVideo — the asin= or gti= of watch.amazon.com/watch, or the asin in
   /gp/video/detail/<asin> and primevideo.com/detail/<asin>.
 - Apple TV, plugin.video.appletv: ?action=play&item_id=<umc id>&item_type=
-  Movie|Episode — the umc.cmc… id of tv.apple.com/<cc>/movie|episode/….
+  Movie|Episode — the umc.cmc… id of tv.apple.com/<cc>/movie|episode/<name>/<id>,
+  or of tv.apple.com/[<cc>/]movie|episode/<id> (which redirects there).
 - Tubi, plugin.video.tubitv: ?mode=GV&url=<id> — the id of
   tubitv.com/movies/<id>, and of an episode's tubitv.com/tv-shows/<id>: Tubi's
   /api/v3/content answers an episode id with its own streams and series_id
@@ -91,7 +94,7 @@ def addon_path(link, media_type=''):
         if m:
             return ('slyguy.hulu', _slyguy('slyguy.hulu', id=m.group(1).lower()))
     elif on('paramountplus.com'):
-        m = (re.match(r'^/(?:[a-z]{2}/)?shows/[^/]+/video/([A-Za-z0-9_-]+)', path)
+        m = (re.match(r'^/(?:[a-z]{2}/)?shows/(?:[^/]+/)?video/([A-Za-z0-9_-]+)', path)
              or re.match(r'^/(?:[a-z]{2}/)?movies/(?:video/|[^/]+/)([A-Za-z0-9_-]+)/?$', path))
         if m:
             return ('slyguy.paramount.plus', _slyguy('slyguy.paramount.plus', video_id=m.group(1)))
@@ -112,7 +115,7 @@ def addon_path(link, media_type=''):
             return ('plugin.video.amazon-test', 'plugin://plugin.video.amazon-test/?' + urlencode(
                 [('asin', asin), ('mode', 'PlayVideo'), ('name', ''), ('adult', '0')]))
     elif host == 'tv.apple.com':
-        m = re.match(r'^/[a-z]{2}/(movie|episode)/[^/]+/(umc\.[A-Za-z0-9.]+)', path)
+        m = re.match(r'^/(?:[a-z]{2}/)?(movie|episode)/(?:[^/]+/)?(umc\.[A-Za-z0-9.]+)', path)
         if m:
             return ('plugin.video.appletv', 'plugin://plugin.video.appletv/?' + urlencode(
                 [('action', 'play'), ('item_id', m.group(2)),
