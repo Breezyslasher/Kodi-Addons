@@ -174,7 +174,7 @@ relay. Keep `kodi.log` open on A and B — addon lines are prefixed
 
 ## Standalone Relay — Startup
 
-- [ ] `python3 relay_standalone.py` starts
+- [ ] `python3 relay_standalone.py` starts (WatchParty: `watchparty-relay/`)
 - [ ] Startup line names the mode (open/fixed) and the dashboard
 - [ ] `--port` changes the listening port
 - [ ] `--bind` restricts the interface

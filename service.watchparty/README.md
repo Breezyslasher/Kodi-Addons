@@ -91,81 +91,28 @@ who's in the room, what's playing, and each member's position.
 For friends outside your LAN, run the relay on a neutral, always-reachable
 machine instead of inside Kodi. Everyone — including you — joins it as a
 guest, and all connections go *outward*, so no port forwarding, VPN or
-router changes on anyone's side:
+router changes on anyone's side.
 
-```
-python3 relay_standalone.py                  # open mode on :8765
-python3 relay_standalone.py --room MOVIE     # invite-only: fixed room(s)
-```
+**The standalone relay lives in
+[Breezyslasher/WatchParty](https://github.com/Breezyslasher/WatchParty)
+(`watchparty-relay/`)**, with how to run it (Python, or the Docker image
+`ghcr.io/breezyslasher/watchparty-relay`, multi-arch), its modes,
+persistence, the dashboard and the **remote** page (`/remote`: run a room
+from any browser, nothing to install). It moved there from this folder;
+the old image `ghcr.io/breezyslasher/kodi-watchparty-relay` is no longer
+updated — switch to the new name and keep your `/data` volume.
 
-Or with Docker — a prebuilt multi-arch image (amd64 / arm64 / armv7, so
-Raspberry Pi works) is published to GHCR by CI:
+The relay this addon hosts inside Kodi (*Host a party on this device*) is
+the same code: `resources/lib/relay.py` and the remote page in
+`resources/remote/` are copies made by WatchParty's `tools/vendor-kodi.sh`
+(see `resources/remote/VENDORED.txt`) — change them there, not here. It
+serves the same dashboard (`http://kodi-ip:8765/status`) and remote
+(`http://kodi-ip:8765/remote`) for its room. The addon warns ("Relay is
+older than the addon") when it joins a relay that doesn't speak its
+protocol version.
 
-```
-docker run -d -p 8765:8765 --restart unless-stopped ghcr.io/breezyslasher/kodi-watchparty-relay:latest
-```
-
-Or build it yourself from this addon's folder:
-
-```
-docker compose up -d
-# or
-docker build -t kodi-watchparty-relay . && docker run -d -p 8765:8765 --restart unless-stopped kodi-watchparty-relay
-```
-
-- **Open mode** (default): any room code creates a room on first join —
-  SyncLounge-style. Rooms empty for 5 minutes are pruned.
-- **Fixed mode** (`--room CODE`, repeatable, or `WATCHPARTY_ROOMS=A,B`):
-  only the listed rooms exist; everything else is rejected.
-- **Persistence**: with `--state-file PATH` (or `WATCHPARTY_STATE`), room
-  playback state survives relay restarts — after an update or reboot,
-  guests auto-rejoin and the party continues where it was. The Docker
-  image has this on by default (`/data/state.json`; the compose file
-  mounts a volume so it also survives container re-creation). Members
-  aren't persisted; their devices rejoin automatically within seconds.
-- **Version handshake**: the addon warns ("Relay is older than the
-  addon") when it joins a relay that doesn't speak its protocol version,
-  so a stale container is a visible message instead of silently missing
-  features.
-- **Dashboard**: open the relay's address in a browser (the dashboard is
-  the landing page; `/status` is the same page) for a live monitoring view —
-  now playing with a sync timeline (every member plotted against the
-  server anchor, drift called out past the threshold), member list with
-  buffering / locked / no-poll states, relay health (poll round-trip,
-  commands per minute, corrective seeks) and other rooms. It keeps the
-  last good snapshot on screen if the relay goes away, and reads fine on
-  a phone. Cover art is uploaded to the relay by whoever started the item
-  and served from there, so it shows even when the artwork lives on a
-  media server the viewer cannot reach — and it keeps its own shape,
-  square for music covers, tall for posters.
-  Room codes are masked by default since they double as the access
-  token — set `WATCHPARTY_SHOW_CODES=1` to show them in full on a
-  private deployment. Media-server credentials are stripped from every
-  URL the dashboard and `/status.json` publish, on both the addon and
-  the relay, so a token never reaches the page.
-  The embedded in-Kodi relay serves the same dashboard for its room
-  (`http://kodi-ip:8765/status`) — handy on a phone while hosting.
-- **Remote** (`/remote`, or the dashboard's *Open the remote* button;
-  `/remote?room=CODE` fills in the code): runs a room from any browser
-  with nothing to install — search movies and shows (or paste a link),
-  start one for everyone, play, pause, seek ±10/30 s, go to a time, stop
-  for everyone. It plays nothing itself; it joins as a member (under the
-  name you give it) so it can send commands. Its screens are the Watch
-  Party browser extension's, copied into `resources/remote/` by
-  WatchParty's `tools/vendor-remote.sh` (see `VENDORED.txt` there).
-  JustWatch's API and HBO Max's public pages don't answer other sites'
-  pages, so the remote fetches those through the relay
-  (`POST /remote/fetch`): members only, and only
-  `https://apis.justwatch.com/graphql` (POST) and `https://www.hbomax.com/…`
-  (GET) — it isn't an open proxy. The relay needs internet access for
-  search to work.
-
-The relay is pure Python standard library (`relay_standalone.py` +
-`resources/lib/relay.py`) — no pip installs. Point it behind a reverse
-proxy or a tunnel (cloudflared, ngrok) for TLS, then guests join with the
-`https://` URL. Content still needs to be resolvable per device — a
-streaming addon everyone has, a shared media server, or each member's own
-copy.
+Content still needs to be resolvable per device — a streaming addon
+everyone has, a shared media server, or each member's own copy.
 
 ## Settings
 
@@ -238,8 +185,9 @@ releases). [`TESTING.md`](TESTING.md) is the companion: rig, suggested
 order, where bugs are most likely, and what is a known limit rather than
 a bug. Problems go in the *Watch Party — bug report* template.
 
-The automated suite (relay protocol + engine decision logic, no Kodi
-needed) runs on every PR:
+The automated suite (engine decision logic, addon links, and the built-in
+relay's copy; the relay's own tests are in WatchParty's `watchparty-relay/`)
+runs on every PR:
 
 ```
 python3 -m unittest discover service.watchparty/tests

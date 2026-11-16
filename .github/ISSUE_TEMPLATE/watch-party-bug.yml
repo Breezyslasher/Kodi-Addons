@@ -170,7 +170,7 @@ body:
       description: |
         `[Watch Party]` lines from **both** devices around the moment it
         went wrong (a minute either side is plenty), plus relay output
-        (`docker logs kodi-watchparty-relay`) if you have it. Redact
+        (`docker logs watchparty-relay`) if you have it. Redact
         tokens in any URLs you paste — stream and art URLs often carry
         one.
       render: text

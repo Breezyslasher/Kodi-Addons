@@ -18,7 +18,8 @@ position + (server_now - set_at) * speed while playing. All requests carry
 the room code, which doubles as the access token.
 
 Pure standard library — no Kodi imports — so it is unit-testable outside
-Kodi.
+Kodi. This file lives in WatchParty (watchparty-relay/); the Kodi addon runs
+a copy (tools/vendor-kodi.sh) for the relay it hosts inside Kodi.
 """
 import json
 import os
@@ -31,16 +32,32 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 START_TIME = time.time()
-ICON_PATH = os.path.join(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__))), 'icon.png')
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_UP = os.path.dirname(_HERE)
+# The relay's own copy is WatchParty's watchparty-relay/relay.py; the Kodi
+# addon (service.watchparty) runs the same file as resources/lib/relay.py,
+# copied there by WatchParty's tools/vendor-kodi.sh. Paths below cover both,
+# and the Docker image (/app/relay.py).
+ICON_PATHS = (
+    os.path.join(_UP, 'icon.png'),                                    # the Kodi addon's icon
+    os.path.join(_UP, 'watchparty-browser', 'extension', 'icons', 'icon128.png'),   # WatchParty
+    os.path.join(_HERE, 'remote', 'icons', 'icon128.png'),            # the Docker image
+)
 
 
 # The remote (/remote): a web page that runs the room — search, start a
 # title for everyone, play / pause / seek / stop — without playing anything
-# itself. Its files are the browser extension's screens (copied in by
-# WatchParty's tools/vendor-remote.sh) plus remote.html / remote.js.
-REMOTE_DIR = os.path.join(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__))), 'remote')
+# itself. Its files are remote.html / .js / .css and the browser extension's
+# screens (REMOTE_SHARED), looked up in REMOTE_DIRS: (folder, shared files
+# only). In WatchParty they're the extension's own files; the Docker image
+# and the Kodi addon have them all in one remote/ folder.
+REMOTE_SHARED = ('links.js', 'justwatch.js', 'hbomax.js', 'relay.js', 'ui.js', 'screens.js',
+                 'room.css', 'icons/icon32.png', 'icons/icon128.png')
+REMOTE_DIRS = (
+    (os.path.join(_HERE, 'remote'), False),                           # WatchParty, Docker
+    (os.path.join(_UP, 'remote'), False),                             # the Kodi addon: resources/remote
+    (os.path.join(_UP, 'watchparty-browser', 'extension'), True),     # WatchParty: the extension's files
+)
 REMOTE_FILE_RE = re.compile(r'^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9]+)?(?:/[A-Za-z0-9_-]+\.[A-Za-z0-9]+)?$')
 REMOTE_TYPES = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
                 '.css': 'text/css; charset=utf-8', '.ttf': 'font/ttf', '.png': 'image/png'}
@@ -978,8 +995,14 @@ class _Handler(BaseHTTPRequestHandler):
         if not REMOTE_FILE_RE.match(name) or ext not in REMOTE_TYPES:
             self._send(404, {'ok': False, 'error': 'not found'})
             return
-        self._send_file(os.path.join(REMOTE_DIR, *name.split('/')), REMOTE_TYPES[ext],
-                        'max-age=86400' if ext in ('.ttf', '.png') else 'no-cache')
+        shared = name in REMOTE_SHARED or (name.startswith('fonts/') and ext == '.ttf')
+        for folder, shared_only in REMOTE_DIRS:
+            found = os.path.join(folder, *name.split('/'))
+            if (shared or not shared_only) and os.path.isfile(found):
+                self._send_file(found, REMOTE_TYPES[ext],
+                                'max-age=86400' if ext in ('.ttf', '.png') else 'no-cache')
+                return
+        self._send(404, {'ok': False, 'error': 'not found'})
 
     def _remote_fetch(self, room, data, now):
         """A JustWatch or HBO Max request from the remote page, made here
@@ -1053,12 +1076,17 @@ class _Handler(BaseHTTPRequestHandler):
                     return
             self._send(404, {'ok': False, 'error': 'no art'})
         elif path == '/icon.png':
-            # present next to the addon; absent in the slim relay image,
-            # where the page falls back to a drawn mark
-            try:
-                with open(ICON_PATH, 'rb') as f:
-                    body = f.read()
-            except OSError:
+            # the addon's icon, or the extension's; with neither, the
+            # page falls back to a drawn mark
+            body = None
+            for icon in ICON_PATHS:
+                try:
+                    with open(icon, 'rb') as f:
+                        body = f.read()
+                    break
+                except OSError:
+                    continue
+            if body is None:
                 self._send(404, {'ok': False, 'error': 'no icon'})
                 return
             self.send_response(200)
