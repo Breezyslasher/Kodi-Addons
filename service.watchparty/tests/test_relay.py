@@ -56,6 +56,27 @@ class EmbeddedRelayTest(unittest.TestCase):
         state = self.guest.poll(0, False, '')
         self.assertIsNone(state['item'])
 
+    def test_last_member_leaving_drops_the_item(self):
+        self.host.command('open', position=0.0, item=ITEM)
+        self.host.leave()
+        self.assertEqual(self.guest.poll(0, False, '')['item']['file'], ITEM['file'])  # someone's still here
+        self.guest.leave()
+        self.guest.join('guest')     # whoever comes next starts fresh
+        self.assertIsNone(self.guest.poll(0, False, '')['item'])
+
+    def test_last_member_timing_out_drops_the_item(self):
+        import relay as relay_mod
+        self.host.command('open', position=0.0, item=ITEM)
+        original_timeout = relay_mod.MEMBER_TIMEOUT
+        relay_mod.MEMBER_TIMEOUT = 0.2
+        try:
+            time.sleep(0.4)
+            self.server.room.snapshot()   # prunes both
+        finally:
+            relay_mod.MEMBER_TIMEOUT = original_timeout
+        self.guest.join('guest')
+        self.assertIsNone(self.guest.poll(0, False, '')['item'])
+
     def test_member_listing(self):
         state = self.guest.poll(1.5, True, 'somefile')
         names = sorted(m['name'] for m in state['members'])

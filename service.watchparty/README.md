@@ -201,6 +201,10 @@ copy.
   `links.js`). Untested with the real addons.
 - Stopping playback stops the party's shared item for everyone (like taking
   the disc out). Natural end-of-file does the same.
+- When the last member leaves the room (or is pruned), the item goes with
+  them: whoever joins next starts with nothing playing instead of being sent
+  into the old title. A relay restart keeps it (saved rooms load with no
+  members, and members rejoin into them).
 - Members are pruned after 15 s without contact, but devices rejoin
   automatically after a network blip (with a "Rejoined party" toast) —
   no manual re-joining needed.

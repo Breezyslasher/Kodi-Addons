@@ -591,6 +591,24 @@ class RoomState:
     def leave(self, member_id):
         with self.lock:
             self.members.pop(member_id, None)
+            self._drop_item_if_empty()
+
+    def _drop_item_if_empty(self):
+        """The last member left (or timed out): the title goes with them, so
+        whoever joins next starts fresh instead of being sent into whatever
+        was playing. Caller holds lock. A relay restart doesn't count: its
+        saved rooms load with no members, and members rejoin into them."""
+        if self.members or not self.item:
+            return
+        self.item = None
+        self.position = 0.0
+        self.paused = False
+        self.locked_by = None
+        self.buffer_hold = None
+        self.art = None
+        self.set_at = time.time()
+        self.set_by = None
+        self.seq += 1
 
     def touch(self, member_id, position=None, paused=None, file=None,
               caching=None, on_item=None, corrections=None):
@@ -623,6 +641,8 @@ class RoomState:
                  if m['last_seen'] < cutoff]
         for mid in stale:
             del self.members[mid]
+        if stale:
+            self._drop_item_if_empty()
         if self.locked_by and self.locked_by not in self.members:
             self.locked_by = None
         if self.buffer_hold and self.buffer_hold not in self.members:
