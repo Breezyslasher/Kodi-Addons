@@ -74,6 +74,20 @@ class AddonPathTest(unittest.TestCase):
         # a series' page isn't a title
         self.assertEqual(addon_links.addon_path('https://tubitv.com/series/300012345/forensic-files'), (None, None))
 
+    def test_peacock_web_links_play_in_skyott(self):
+        addon, path = addon_links.addon_path(
+            'https://www.peacocktv.com/watch/asset/movies/the-grinch/153a1aee-b720-356e-bac2-6a9b85fb81b3')
+        self.assertEqual((addon, args(path)), ('plugin.video.skyott', {
+            'action': 'play', 'slug': '/movies/the-grinch/153a1aee-b720-356e-bac2-6a9b85fb81b3'}))
+        self.assertEqual(args(addon_links.addon_path(
+            'https://www.peacocktv.com/watch/asset/tv/the-office/4902514835143843112/seasons/1/episodes/'
+            'pilot-episode-1/58fabbf4-9291-3575-bcdc-bd25eee192c8')[1])['slug'],
+            '/tv/the-office/4902514835143843112/seasons/1/episodes/pilot-episode-1/58fabbf4-9291-3575-bcdc-bd25eee192c8')
+        # the play deeplink carries only the pvid, which SkyOTT can't look up
+        self.assertEqual(addon_links.addon_path(
+            'https://www.peacocktv.com/deeplink?deeplinkData=%7B%22pvid%22%3A%22153a1aee%22%2C%22action%22%3A%22PLAY%22%7D'),
+            (None, None))
+
     def test_not_links(self):
         for link in ('smb://nas/movie.mkv', 'plugin://plugin.video.netflix/play/movie/1/', '', 'https://example.com/x'):
             self.assertEqual(addon_links.addon_path(link), (None, None))

@@ -34,6 +34,13 @@ addon's own source (2026-11-15):
   addon's one-part form plays it; since 2026.11.15 the addon also reports
   its progress as an episode (seriesOf()).
 
+- Peacock, plugin.video.skyott (Paco8): ?action=play&slug=<slug> — the slug
+  is the path of peacocktv.com/watch/asset<slug> (WatchParty's
+  tools/probe/peacock_slug.py looked up a movie's and two episodes' paths with
+  the addon's own client, 2026-11-16). Peacock's play deeplink
+  (/deeplink?deeplinkData={"pvid":…}) can't be converted: the pvid alone
+  finds nothing in the addon's catalogue lookup.
+
 SlyGuy's paths are built as SlyGuy's router builds them (route in "_",
 arguments sorted); the addons parse them the same way.
 """
@@ -110,6 +117,11 @@ def addon_path(link, media_type=''):
             return ('plugin.video.appletv', 'plugin://plugin.video.appletv/?' + urlencode(
                 [('action', 'play'), ('item_id', m.group(2)),
                  ('item_type', 'Movie' if m.group(1) == 'movie' else 'Episode')]))
+    elif on('peacocktv.com'):
+        m = re.match(r'^/watch/asset(/(?:movies|tv)/[^?#]+?)/?$', path)
+        if m:
+            return ('plugin.video.skyott', 'plugin://plugin.video.skyott/?' + urlencode(
+                [('action', 'play'), ('slug', m.group(1))]))
     elif on('tubitv.com'):
         m = re.match(r'^/(?:movies|tv-shows)/(\d+)', path)
         if m:
