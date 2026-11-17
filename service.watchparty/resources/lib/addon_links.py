@@ -14,7 +14,7 @@ addon's own source (2026-11-15):
   movie's way: the addon builds the stream from the id alone
   (navigation/player.py get_inputstream_listitem: videoid.value), and its
   metadata lookup asks videos[<id>], which any video has (nfsession_ops.py
-  get_videoid_info). Untested on a device (2026-11-17).
+  get_videoid_info). Played live action One Piece S1E1 on Kodi (2026-11-17).
 - YouTube, plugin.video.youtube: play/?video_id=<id> (yt_play.py docstring).
 - Disney+, slyguy.disney.plus: ?_=play&deeplink_id=<id> — the id in
   disneyplus.com/play/<id> and /browse/entity-<id> (plugin.py _play:
