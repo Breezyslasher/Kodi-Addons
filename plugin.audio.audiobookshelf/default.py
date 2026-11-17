@@ -582,9 +582,10 @@ def list_audiobooks_combined(book_libs=None):
                                            build_url(action='parts', item_id=item_id),
                                            list_item, isFolder=True)
             else:
-                list_item.setProperty('IsPlayable', 'true')
+                # Not IsPlayable, so Kodi doesn't queue the folder and start the next book.
+                list_item.setProperty('IsPlayable', 'false')
                 xbmcplugin.addDirectoryItem(ADDON_HANDLE,
-                                           build_url(action='play', item_id=item_id),
+                                           build_url(action='play_book_resume', item_id=item_id),
                                            list_item, isFolder=False)
         
         xbmcplugin.endOfDirectory(ADDON_HANDLE)
@@ -778,9 +779,9 @@ def list_offline_books():
                                        build_url(action='offline_parts', item_id=item_id),
                                        list_item, isFolder=True)
         else:
-            list_item.setProperty('IsPlayable', 'true')
-            xbmcplugin.addDirectoryItem(ADDON_HANDLE, 
-                                       build_url(action='play_offline', key=item_id),
+            list_item.setProperty('IsPlayable', 'false')
+            xbmcplugin.addDirectoryItem(ADDON_HANDLE,
+                                       build_url(action='play_book_resume', item_id=item_id),
                                        list_item, isFolder=False)
     
     xbmcplugin.endOfDirectory(ADDON_HANDLE)
@@ -1228,9 +1229,10 @@ def list_library_items(library_id, is_podcast=False):
                                            build_url(action='parts', item_id=item_id),
                                            list_item, isFolder=True)
             else:
-                list_item.setProperty('IsPlayable', 'true')
+                # Not IsPlayable, so Kodi doesn't queue the folder and start the next book.
+                list_item.setProperty('IsPlayable', 'false')
                 xbmcplugin.addDirectoryItem(ADDON_HANDLE,
-                                           build_url(action='play', item_id=item_id),
+                                           build_url(action='play_book_resume', item_id=item_id),
                                            list_item, isFolder=False)
         
         xbmcplugin.endOfDirectory(ADDON_HANDLE)
@@ -2188,6 +2190,26 @@ def play_book_from(item_id, position):
         xbmcgui.Dialog().notification('Error', 'Playback failed', xbmcgui.NOTIFICATION_ERROR)
 
 
+def play_book_resume(item_id):
+    """Offer to resume, then play via play_book_from."""
+    library_service = None
+    if download_manager.is_downloaded(item_id):
+        try:
+            svc, _, _, offline = get_library_service()
+            if not offline:
+                library_service = svc
+        except Exception:
+            pass
+    else:
+        library_service, url, token, offline = get_library_service()
+        if not library_service:
+            return
+
+    current_time, is_finished, duration = get_best_resume_position(library_service, item_id)
+    start = current_time if current_time > 10 and not is_finished and ask_resume(current_time, duration) else 0
+    play_book_from(item_id, start)
+
+
 def _play_offline_book_from(item_id, position):
     """Offline counterpart of play_book_from."""
     info = download_manager.get_download_info(item_id)
@@ -2880,6 +2902,8 @@ def router(paramstring):
     elif action == 'play_at_position':
         overall_time = float(params.get('overall_time')) if params.get('overall_time') else None
         play_at_position(params['item_id'], params['file_ino'], float(params.get('seek_time', 0)), overall_time)
+    elif action == 'play_book_resume':
+        play_book_resume(params['item_id'])
     elif action == 'play_book':
         play_book_from(params['item_id'], float(params.get('position', 0)))
     elif action == 'play_episode':
