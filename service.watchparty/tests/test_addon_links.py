@@ -50,9 +50,14 @@ class AddonPathTest(unittest.TestCase):
         # a movie's page without an id isn't a title
         self.assertEqual(addon_links.addon_path('https://www.paramountplus.com/movies/top-gun-maverick/'), (None, None))
 
-    def test_hbo_max_only_with_an_edit_id(self):
-        self.assertEqual(addon_links.addon_path('https://play.hbomax.com/video/watch/c07ae042-082e-4b53-ba86-b6ac5e3004db'),
-                         (None, None))
+    def test_hbo_max_and_discovery_plus(self):
+        # one id (JustWatch's links): the addon looks up its edit id
+        addon, path = addon_links.addon_path('https://play.hbomax.com/video/watch/C07AE042-082e-4b53-ba86-b6ac5e3004db')
+        self.assertEqual((addon, args(path)), ('slyguy.max', {'_': 'play', 'id': 'c07ae042-082e-4b53-ba86-b6ac5e3004db'}))
+        addon, path = addon_links.addon_path('https://play.discoveryplus.com/video/watch/c07ae042-082e-4b53-ba86-b6ac5e3004db/')
+        self.assertEqual((addon, args(path)), ('slyguy.discovery.plus', {'_': 'play', 'id': 'c07ae042-082e-4b53-ba86-b6ac5e3004db'}))
+        self.assertEqual(addon_links.addon_path('https://play.hbomax.com/page/urn:hbo:page:abc'), (None, None))
+        # two ids (copied while playing): the second is the edit id
         addon, path = addon_links.addon_path(
             'https://play.max.com/video/watch/c07ae042-082e-4b53-ba86-b6ac5e3004db/0fc1d4b1-0f6a-4b5b-9c39-6a6e2ee44b3f')
         self.assertEqual((addon, args(path)), ('slyguy.max', {'_': 'play', 'edit_id': '0fc1d4b1-0f6a-4b5b-9c39-6a6e2ee44b3f'}))

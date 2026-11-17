@@ -22,8 +22,13 @@ addon's own source (2026-11-15):
   in paramountplus.com/movies/<name>/<id> and /shows/<show>/video/<id>/…, and
   in the site's own nameless links they redirect to, /movies/video/<id>/ and
   /shows/video/<id>/ (WatchParty's tools/probe/nameless_links.py, 2026-11-16).
-- HBO Max, slyguy.max (and Discovery+, slyguy.discovery.plus): play takes an
-  edit id, only in links copied while playing (/video/watch/<video>/<edit>).
+- HBO Max, slyguy.max (and Discovery+, slyguy.discovery.plus): ?_=play&edit_id=
+  <edit> for a link copied while playing (/video/watch/<video>/<edit>); a link
+  with one id (/video/watch/<id>, as JustWatch gives) goes to ?_=play&id=<id>,
+  which the addon turns into an edit id with /content/videos/<id>/
+  activeVideoForShow (plugin.py play, api.py get_edit_id). That route is what
+  the addon's own movie items use; whether HBO Max answers it for every id
+  JustWatch gives is untested (2026-11-17).
 - Prime Video, plugin.video.amazon-test (Sandmann79): ?asin=<id>&mode=
   PlayVideo — the asin= or gti= of watch.amazon.com/watch, or the asin in
   /gp/video/detail/<asin> and primevideo.com/detail/<asin>.
@@ -56,6 +61,16 @@ _UUID = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F
 def _slyguy(addon, **args):
     params = sorted([('_', 'play')] + list(args.items()))
     return 'plugin://%s/?%s' % (addon, urlencode(params))
+
+
+def _wbd(addon, path):
+    """HBO Max's and Discovery+'s /video/watch/<video>[/<edit>]."""
+    m = re.match(r'^/video/watch/(%s)(?:/(%s))?/?$' % (_UUID, _UUID), path)
+    if not m:
+        return None, None
+    if m.group(2):
+        return addon, _slyguy(addon, edit_id=m.group(2).lower())
+    return addon, _slyguy(addon, id=m.group(1).lower())
 
 
 def addon_path(link, media_type=''):
@@ -99,13 +114,9 @@ def addon_path(link, media_type=''):
         if m:
             return ('slyguy.paramount.plus', _slyguy('slyguy.paramount.plus', video_id=m.group(1)))
     elif on('hbomax.com') or on('max.com'):
-        m = re.match(r'^/video/watch/%s/(%s)' % (_UUID, _UUID), path)
-        if m:
-            return ('slyguy.max', _slyguy('slyguy.max', edit_id=m.group(1).lower()))
+        return _wbd('slyguy.max', path)
     elif on('discoveryplus.com'):
-        m = re.match(r'^/video/watch/%s/(%s)' % (_UUID, _UUID), path)
-        if m:
-            return ('slyguy.discovery.plus', _slyguy('slyguy.discovery.plus', edit_id=m.group(1).lower()))
+        return _wbd('slyguy.discovery.plus', path)
     elif on('amazon.com') or on('primevideo.com'):
         asin = (query.get('asin') or query.get('gti') or [None])[0]
         if not asin:
