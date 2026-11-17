@@ -13,7 +13,7 @@ import urllib.request
 ADDON_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ADDON_DIR, 'resources', 'lib'))
 
-from client import RelayClient  # noqa: E402
+from client import RelayClient, RelayError  # noqa: E402
 from relay import RelayServer  # noqa: E402
 
 ITEM = {'file': 'smb://nas/movies/Inception (2010).mkv', 'label': 'Inception',
@@ -61,6 +61,63 @@ class EmbeddedRelayTest(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(remote, name)), name)
         with open(os.path.join(ADDON_DIR, 'resources', 'lib', 'relay.py'), encoding='utf-8') as f:
             self.assertIn('tools/vendor-kodi.sh', f.read())
+
+
+class KeptAliveTest(unittest.TestCase):
+    """The client keeps one connection per thread instead of one per
+    request (over HTTPS each new one is a TLS handshake)."""
+
+    def test_polls_share_one_connection(self):
+        server = RelayServer(port=0, room_code='TEST')
+        server.start()
+        try:
+            c = RelayClient('127.0.0.1', server._httpd.server_address[1], 'TEST')
+            c.join('kodi')
+            conn = c._local.conn
+            for t in range(5):
+                c.poll(float(t), False, '')
+            self.assertIs(c._local.conn, conn)
+            self.assertIsNotNone(conn.sock)
+        finally:
+            c.close()
+            server.stop()
+
+    def test_it_reconnects_after_the_relay_restarts(self):
+        server = RelayServer(port=0, room_code='TEST')
+        port = server._httpd.server_address[1]
+        server.start()
+        c = RelayClient('127.0.0.1', port, 'TEST')
+        c.join('kodi')
+        c.poll(0.0, False, '')
+        server.stop()
+        # the stopped relay no longer answers on the old connection
+        with self.assertRaises(RelayError):
+            c.poll(1.0, False, '')
+        server = RelayServer(port=port, room_code='TEST')
+        server.start()
+        try:
+            # a new relay: a new connection, and it doesn't know us yet
+            with self.assertRaisesRegex(RelayError, 'not a member'):
+                c.poll(2.0, False, '')
+            c.join('kodi')
+            self.assertIn('item', c.poll(3.0, False, ''))
+        finally:
+            c.close()
+            server.stop()
+
+    def test_a_proxy_in_the_environment_goes_through_urllib(self):
+        old = os.environ.get('HTTPS_PROXY'), os.environ.get('NO_PROXY'), os.environ.get('no_proxy')
+        os.environ['HTTPS_PROXY'] = 'http://proxy.invalid:3128'
+        os.environ['NO_PROXY'] = os.environ['no_proxy'] = 'localhost'
+        try:
+            self.assertTrue(RelayClient('https://relay.example.com', 0, 'TEST')._use_urllib)
+            self.assertFalse(RelayClient('https://localhost:8765', 0, 'TEST')._use_urllib)
+        finally:
+            for key, value in zip(('HTTPS_PROXY', 'NO_PROXY', 'no_proxy'), old):
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
 
 
 if __name__ == '__main__':

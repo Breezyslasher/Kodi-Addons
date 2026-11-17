@@ -24,6 +24,7 @@ a copy (tools/vendor-kodi.sh) for the relay it hosts inside Kodi.
 import json
 import os
 import re
+import socket
 import threading
 import time
 import urllib.error
@@ -1188,14 +1189,47 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(404, {'ok': False, 'error': 'not found'})
 
 
+class _ClosingServer(ThreadingHTTPServer):
+    """A ThreadingHTTPServer whose server_close() also ends the kept-alive
+    connections. shutdown() only stops accepting new ones: each open one
+    has its own handler thread, which would go on answering its member
+    (the app, the browser extension, Kodi) after the Kodi host stopped
+    hosting the party."""
+    daemon_threads = True
+
+    def __init__(self, *args, **kwargs):
+        self._open = set()
+        self._open_lock = threading.Lock()
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        with self._open_lock:
+            self._open.add(request)
+        super().process_request(request, client_address)
+
+    def shutdown_request(self, request):
+        with self._open_lock:
+            self._open.discard(request)
+        super().shutdown_request(request)
+
+    def server_close(self):
+        super().server_close()
+        with self._open_lock:
+            still_open = list(self._open)
+        for sock in still_open:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+
 class RelayServer:
-    """Owns the ThreadingHTTPServer and its serve_forever thread."""
+    """Owns the HTTP server and its serve_forever thread."""
 
     def __init__(self, port, room_code):
         self.room = RoomState(room_code)
         handler = type('BoundHandler', (_Handler,), {'room': self.room})
-        self._httpd = ThreadingHTTPServer(('0.0.0.0', port), handler)
-        self._httpd.daemon_threads = True
+        self._httpd = _ClosingServer(('0.0.0.0', port), handler)
         self._thread = threading.Thread(target=self._httpd.serve_forever,
                                         name='watchparty-relay', daemon=True)
 
