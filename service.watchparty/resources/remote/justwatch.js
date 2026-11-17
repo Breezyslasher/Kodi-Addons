@@ -93,7 +93,9 @@ export class JustWatch {
       const t = await this.findTitle(identity.title, identity.ids.tmdb, 'MOVIE', identity.ids.imdb, identity.year);
       return t ? discoveryPlayLinks(await this.offers(t.id)) : [];
     }
-    const show = await this.findTitle(identity.show, null, 'SHOW');
+    // the show's show_tmdb / show_imdb and premiere year when sent (shows can share a name: One Piece)
+    const show = await this.findTitle(identity.show, identity.ids.show_tmdb || null, 'SHOW',
+      identity.ids.show_imdb || null, identity.year);
     if (!show) return [];
     const season = (await this.seasons(show.id)).find(s => s.number === identity.season);
     if (!season) return [];

@@ -17,12 +17,15 @@ def args(path):
 
 
 class AddonPathTest(unittest.TestCase):
-    def test_netflix_movies_only(self):
+    def test_netflix(self):
         self.assertEqual(addon_links.addon_path('https://www.netflix.com/watch/80057281?trackId=1', 'movie'),
                          ('plugin.video.netflix', 'plugin://plugin.video.netflix/play/movie/80057281/'))
         self.assertEqual(addon_links.addon_path('https://www.netflix.com/title/80057281')[0], 'plugin.video.netflix')
-        # an episode needs its show and season ids, which a link doesn't have
-        self.assertEqual(addon_links.addon_path('https://www.netflix.com/watch/82946792', 'episode'), (None, None))
+        # an episode's own id, through the movie route (the stream needs only the id)
+        self.assertEqual(addon_links.addon_path('https://www.netflix.com/watch/82946792', 'episode'),
+                         ('plugin.video.netflix', 'plugin://plugin.video.netflix/play/movie/82946792/'))
+        # but not its show's page
+        self.assertEqual(addon_links.addon_path('https://www.netflix.com/title/80057281', 'episode'), (None, None))
 
     def test_youtube(self):
         for link in ('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=10', 'https://youtu.be/dQw4w9WgXcQ'):

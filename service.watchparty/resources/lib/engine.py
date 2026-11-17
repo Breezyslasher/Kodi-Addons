@@ -69,7 +69,7 @@ def _active_player_id():
 
 
 ITEM_PROPS = ['file', 'uniqueid', 'title', 'year', 'showtitle', 'season',
-              'episode', 'artist', 'album', 'musicbrainztrackid']
+              'episode', 'artist', 'album', 'musicbrainztrackid', 'tvshowid']
 
 
 # Query parameters that carry a credential. Artwork URLs holding one are
@@ -226,6 +226,25 @@ def _identity(info):
     return out
 
 
+def _show_identity(tvshowid, ids):
+    """For a library episode: its show's ids (as ids.show_tmdb, show_imdb,
+    show_tvdb) and premiere year, which tell same-named shows apart on other
+    devices. {} for a non-library episode."""
+    if not isinstance(tvshowid, int) or tvshowid <= 0:
+        return {}
+    show = (_json_rpc('VideoLibrary.GetTVShowDetails',
+                      {'tvshowid': tvshowid, 'properties': ['uniqueid', 'year']})
+            or {}).get('tvshowdetails') or {}
+    out = {}
+    show_ids = {'show_' + k: v for k, v in (show.get('uniqueid') or {}).items()
+                if v and k in ('tmdb', 'imdb', 'tvdb')}
+    if show_ids:
+        out['ids'] = dict(ids or {}, **show_ids)
+    if show.get('year'):
+        out['year'] = show['year']
+    return out
+
+
 def _same_addon_item(a, b):
     """Two plugin:// paths for the same item: equal but for the addon's
     _play=1 marker (SlyGuy adds it to the path it plays)."""
@@ -350,6 +369,8 @@ def _now_playing_item(player):
             if picked:
                 item['plugin'] = picked
         item.update(_identity(info))
+        if item.get('type') == 'episode':
+            item.update(_show_identity(info.get('tvshowid'), item.get('ids')))
         if 'type' not in item and engine is not None:
             # nothing about the title either: the started list item's
             item.update(_identity(engine.started_info()))
@@ -461,9 +482,10 @@ def _find_in_library(item):
             return None, ''
         shows = (_json_rpc('VideoLibrary.GetTVShows',
                            {'filter': {'field': 'title', 'operator': 'is',
-                                       'value': str(item['show'])}})
+                                       'value': str(item['show'])},
+                            'properties': ['uniqueid', 'year']})
                  or {}).get('tvshows') or []
-        for show in shows:
+        for show in _same_show(shows, item):
             episodes = (_json_rpc('VideoLibrary.GetEpisodes',
                                   {'tvshowid': show['tvshowid'],
                                    'season': int(season),
@@ -496,6 +518,37 @@ def _find_in_library(item):
                 return {'movieid': movie['movieid']}, \
                     movie.get('file') or ''
     return None, ''
+
+
+def _same_show(shows, item):
+    """The library shows (VideoLibrary.GetTVShows, with uniqueid and year)
+    that are the shared episode's show. Names repeat ("One Piece" is the
+    1999 anime and the 2023 live action), so the show's ids (ids.show_tmdb,
+    show_imdb, show_tvdb) and premiere year decide: a show whose id or year
+    differs isn't it. Two left with nothing to tell them apart: none, rather
+    than a guess (the item falls through to an addon or its link)."""
+    ids = {k[len('show_'):]: str(v) for k, v in (item.get('ids') or {}).items()
+           if k.startswith('show_') and v}
+    year = item.get('year')
+    try:
+        year = int(year) if year not in (None, '') else None
+    except (TypeError, ValueError):
+        year = None
+    exact, possible = [], []
+    for show in shows:
+        uid = {k: str(v) for k, v in (show.get('uniqueid') or {}).items() if v}
+        if any(uid.get(k) == v for k, v in ids.items()):
+            exact.append(show)
+            continue
+        if any(k in uid and uid[k] != v for k, v in ids.items()):
+            continue
+        show_year = show.get('year') or 0
+        if year and show_year and abs(int(show_year) - year) > 1:
+            continue
+        possible.append(show)
+    if exact:
+        return exact
+    return possible if len(possible) <= 1 else []
 
 
 def _find_song(item):

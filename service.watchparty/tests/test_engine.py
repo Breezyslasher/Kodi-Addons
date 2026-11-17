@@ -85,6 +85,44 @@ class LibraryMatchTest(unittest.TestCase):
         self.assertEqual(ref, {'episodeid': 71})
         self.assertEqual(file, 'smb://guestnas/tv/severance/s02e04.mkv')
 
+    ANIME = {'tvshowid': 1, 'label': 'One Piece', 'year': 1999, 'uniqueid': {'tmdb': '37854', 'tvdb': '81797'}}
+    LIVE = {'tvshowid': 2, 'label': 'One Piece', 'year': 2023, 'uniqueid': {'tmdb': '111110', 'imdb': 'tt11737520'}}
+
+    def test_same_named_shows_by_the_shows_id(self):
+        """Live action One Piece played the anime (2026-11-17): the
+        show's ids pick the right one, or none."""
+        item = {'type': 'episode', 'show': 'One Piece', 'season': 1, 'episode': 1,
+                'ids': {'show_tmdb': '111110'}}
+        self.assertEqual(engine._same_show([self.ANIME, self.LIVE], item), [self.LIVE])
+        self.assertEqual(engine._same_show([self.ANIME], item), [])
+
+    def test_same_named_shows_by_year(self):
+        item = {'type': 'episode', 'show': 'One Piece', 'season': 1, 'episode': 1, 'year': 2023}
+        self.assertEqual(engine._same_show([self.ANIME, self.LIVE], item), [self.LIVE])
+        self.assertEqual(engine._same_show([self.ANIME], item), [])
+
+    def test_same_named_shows_without_details_match_none(self):
+        item = {'type': 'episode', 'show': 'One Piece', 'season': 1, 'episode': 1}
+        self.assertEqual(engine._same_show([self.ANIME, self.LIVE], item), [])
+        # one show of that name: it, as before
+        self.assertEqual(engine._same_show([self.ANIME], item), [self.ANIME])
+        bare = {'tvshowid': 7, 'label': 'Severance'}
+        self.assertEqual(engine._same_show([bare], dict(item, ids={'show_tmdb': '95396'}, year=2022)), [bare])
+
+    def test_the_shows_identity_is_shared(self):
+        saved = engine._json_rpc
+        engine._json_rpc = lambda method, params=None: (
+            {'tvshowdetails': {'year': 2023, 'uniqueid': {'tmdb': '111110', 'imdb': 'tt11737520', 'unknown': 'x'}}}
+            if method == 'VideoLibrary.GetTVShowDetails' and params['tvshowid'] == 2 else None)
+        try:
+            self.assertEqual(engine._show_identity(2, {'tmdb': '2229460'}),
+                             {'ids': {'tmdb': '2229460', 'show_tmdb': '111110', 'show_imdb': 'tt11737520'},
+                              'year': 2023})
+            self.assertEqual(engine._show_identity(-1, {}), {})
+            self.assertEqual(engine._show_identity(None, {}), {})
+        finally:
+            engine._json_rpc = saved
+
     def test_no_identity_no_match(self):
         self.assertEqual(engine._find_in_library({'file': 'x'}),
                          (None, ''))

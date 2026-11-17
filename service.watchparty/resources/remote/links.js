@@ -199,6 +199,7 @@ export function roomItem(link, label, service, identity = null) {
       if (identity.year) item.year = identity.year;
     } else {
       Object.assign(item, { show: identity.show, season: identity.season, episode: identity.episode });
+      if (identity.year) item.year = identity.year;   // the show's premiere year
     }
     Object.assign(ids, identity.ids || {});
   }

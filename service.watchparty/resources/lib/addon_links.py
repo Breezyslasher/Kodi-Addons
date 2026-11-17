@@ -8,9 +8,13 @@ reverse (their AddonLinks / addon-links.js). Each format was read from the
 addon's own source (2026-11-15):
 
 - Netflix, plugin.video.netflix (CastagnaIT): play/movie/<id>/ — the id in
-  netflix.com/watch/<id> (common/videoid.py VideoId.from_path). An episode
-  needs its show and season ids too (play/show/<s>/season/<x>/episode/<e>/),
-  which a web link doesn't have: episodes aren't converted.
+  netflix.com/watch/<id> (common/videoid.py VideoId.from_path). An episode's
+  own path needs its show and season ids too (play/show/<s>/season/<x>/
+  episode/<e>/), which a web link doesn't have, so an episode's id goes the
+  movie's way: the addon builds the stream from the id alone
+  (navigation/player.py get_inputstream_listitem: videoid.value), and its
+  metadata lookup asks videos[<id>], which any video has (nfsession_ops.py
+  get_videoid_info). Untested on a device (2026-11-17).
 - YouTube, plugin.video.youtube: play/?video_id=<id> (yt_play.py docstring).
 - Disney+, slyguy.disney.plus: ?_=play&deeplink_id=<id> — the id in
   disneyplus.com/play/<id> and /browse/entity-<id> (plugin.py _play:
@@ -89,10 +93,11 @@ def addon_path(link, media_type=''):
         return host == site or host.endswith('.' + site)
 
     if on('netflix.com'):
-        m = re.match(r'^/(?:[a-z]{2}(?:-[a-z]{2})?/)?(?:watch|title)/(\d+)', path)
-        if m and media_type != 'episode':
+        m = re.match(r'^/(?:[a-z]{2}(?:-[a-z]{2})?/)?(watch|title)/(\d+)', path)
+        # a show's /title/ page isn't an episode
+        if m and not (media_type == 'episode' and m.group(1) == 'title'):
             return ('plugin.video.netflix',
-                    'plugin://plugin.video.netflix/play/movie/%s/' % m.group(1))
+                    'plugin://plugin.video.netflix/play/movie/%s/' % m.group(2))
     elif on('youtube.com') or host == 'youtu.be':
         vid = (query.get('v') or [None])[0]
         if host == 'youtu.be':

@@ -372,8 +372,10 @@ export function titleScreen(app, t) {
     try {
       // the title's identity, so Kodi members play their library copy
       const identity = show
+        // the show's ids and premiere year tell same-named shows apart (One Piece, 1999 and 2023)
         ? { type: 'episode', show: t.title, season: episode && episode.season, episode: episode && episode.episode,
-          ids: wbd ? { wbd } : {} }
+          year: t.year || null, ids: Object.fromEntries(
+            [['show_tmdb', t.tmdbId], ['show_imdb', t.imdbId], ['wbd', wbd]].filter(([, v]) => v)) }
         : { type: 'movie', title: t.title, year: t.year || null, ids: Object.fromEntries(
           [['tmdb', t.tmdbId], ['imdb', t.imdbId]].filter(([, v]) => v)) };
       await app.start(link, label, { title, sub, service: serviceName(o), image: t.poster }, identity);
