@@ -1,0 +1,378 @@
+"""Resolving a path to a playable ListItem.
+
+Friendly TV's streams are Widevine-protected DASH, and the licence server it
+names takes a *raw* Widevine challenge and answers with *raw* licence bytes:
+the capture shows a POST whose body begins with the protobuf challenge and a
+response of ``application/octet-stream``, with the entitlement carried in a
+JWT already baked into the licence url's query string.
+
+That is exactly what InputStream Adaptive speaks natively, so this addon has
+no licence proxy. Nothing here translates a challenge, mints a token, or sits
+on localhost -- ISA posts straight to the url the service handed back. The
+Apple TV+ style proxy in the reference playbook exists because those services
+wrap the challenge in a JSON envelope; this one does not.
+"""
+
+import json
+
+from urllib.parse import urlencode, urlparse
+
+import xbmcgui
+
+from . import auth, kodiutils
+
+# Handed to the licence server and the CDN. Both are copied from the capture:
+# the licence POST carried a browser User-Agent and the site's Origin and
+# nothing else that identified the caller.
+STREAM_HEADERS = {
+    "User-Agent": auth.USER_AGENT,
+    "Origin": auth.ORIGIN,
+}
+
+CONTEXT_FILE = "playing.json"
+
+WIDEVINE = "com.widevine.alpha"
+
+# What the service calls the same system in a stream's "streamType".
+WIDEVINE_TYPE = "widevine"
+
+
+class PlaybackError(Exception):
+    """The stream could not be resolved into something playable."""
+
+
+def _manifest_type(url):
+    """"mpd" or "hls", from the manifest's own filename.
+
+    Every stream in the capture is DASH, but the field the service uses to
+    say so (``streamType``) names the DRM system rather than the container,
+    so the url is the only thing that actually distinguishes them.
+    """
+    path = urlparse(url).path.lower()
+    if path.endswith(".m3u8"):
+        return "hls"
+    return "mpd"
+
+
+def _container(url):
+    """"dash", "hls", or "" -- from the path Friendly TV's packager uses.
+
+    Its DASH manifests live under ``/v1/dash/`` and end ``.mpd``; its HLS ones
+    live under ``/v1/master/``. Both are checked because the query string on
+    these urls is enormous and the extension is the more fragile of the two
+    signals.
+    """
+    path = urlparse(url or "").path.lower()
+    if "/v1/dash/" in path or path.endswith(".mpd"):
+        return "dash"
+    if "/v1/master/" in path or path.endswith(".m3u8"):
+        return "hls"
+    return ""
+
+
+def _pick(streams):
+    """The stream to play, out of what the service offered.
+
+    ``streamType`` names the **DRM system**, not the container, and a single
+    title can come back once per system. The VOD capture answers with three:
+
+        0  widevine   /v1/dash/...      <- the only one Kodi can play
+        1  playready  /v1/dash/...
+        2  fairplay   /v1/master/...    (HLS, for Apple)
+
+    Taking the first entry with a url was wrong and not merely fragile: when
+    the service put the FairPlay entry first, the addon handed ISA an HLS
+    manifest encrypted for FairPlay while telling it the key system was
+    Widevine. ISA cannot fault that cleanly -- the log fills with "Cannot
+    detect container type from media url, fallback to TS", "Codec id 27
+    require extradata" and finally "InitializePeriod: Unhandled encrypted
+    stream", which is the same message a missing key system produces and so
+    reads like the DRM bug that was already fixed.
+
+    Widevine is the only system in the addon, so it is the only one taken.
+    """
+    playable = [s for s in streams or [] if s.get("url")]
+    if not playable:
+        return None
+
+    kinds = ", ".join("%s/%s" % (s.get("streamType") or "?",
+                                 _container(s.get("url")) or "?")
+                      for s in playable)
+    kodiutils.log("the service offered %d stream(s): %s" % (len(playable), kinds))
+
+    widevine = [s for s in playable
+                if (s.get("streamType") or "").lower() == WIDEVINE_TYPE]
+    if not widevine:
+        if not any(s.get("streamType") for s in playable):
+            # Nothing declared a system at all. Every capture declares one, so
+            # this is unexplored rather than known-bad, and refusing it would
+            # turn a stream that might play into one that certainly does not.
+            kodiutils.log("no stream declares a DRM system; taking the first")
+            return playable[0]
+        # Naming what did come back turns a blank failure into a report.
+        raise PlaybackError(
+            "Friendly TV offered no Widevine stream for this title, only: %s. "
+            "Kodi cannot play the others." % kinds)
+
+    # Among Widevine entries prefer DASH: ISA plays either, but every Widevine
+    # manifest in every capture is DASH, so an HLS one would be unexplored
+    # ground rather than a considered choice.
+    for stream in widevine:
+        if _container(stream["url"]) == "dash":
+            return stream
+    return widevine[0]
+
+
+def resolve(client, path, label="", from_start=False):
+    """Ask for a stream and build the ListItem that plays it.
+
+    ``from_start`` is a "start over": the viewer asked for a programme from
+    its beginning rather than from where the channel happens to be.
+    """
+    response = client.stream(path)
+
+    status = response.get("streamStatus") or {}
+    if status.get("hasAccess") is False:
+        raise PlaybackError(status.get("message") or
+                            "Your subscription does not include this channel.")
+
+    stream = _pick(response.get("streams"))
+    if not stream:
+        raise PlaybackError("Friendly TV returned no playable stream for "
+                            "this title.")
+
+    url = stream["url"]
+    licence = (stream.get("keys") or {}).get("licenseKey") or ""
+    manifest_type = _manifest_type(url)
+
+    # What the service says this stream is and where it wants playback to
+    # begin. Worth logging every time: it is the only way to tell from a log
+    # whether a "start over" really started over, since the answer to
+    # epg/play/<id> is a VOD asset for a finished programme but a live
+    # manifest for one still on the air.
+    seek_ms = _int(status.get("seekPositionInMillis"))
+    total_ms = _int(status.get("totalDurationInMillis"))
+    kodiutils.log("playing %s: %s manifest, %s licence, %s, starts at %s of %s"
+                  % (path, manifest_type, "widevine" if licence else "no",
+                     (response.get("analyticsInfo") or {}).get("contentType")
+                     or "unknown type",
+                     _hms(seek_ms), _hms(total_ms) if total_ms else "unknown"))
+
+    item = xbmcgui.ListItem(label=label or path, path=url)
+    item.setContentLookup(False)
+    item.setProperty("inputstream", "inputstream.adaptive")
+    item.setMimeType("application/dash+xml" if manifest_type == "mpd"
+                     else "application/vnd.apple.mpegurl")
+
+    _configure_isa(item, manifest_type, licence, from_start)
+
+    if _is_live(response, path) and not from_start:
+        # Live has no meaningful end, and a duration gives Kodi a progress
+        # bar that runs out while the channel keeps playing. Not set for a
+        # start-over: that is a finite programme being watched from its
+        # beginning, and flagging it live would deny it a seek bar.
+        item.setProperty("IsLive", "true")
+
+    if seek_ms > 0 and total_ms > seek_ms:
+        # The service asked for playback to begin partway in, and this is
+        # how Continue Watching actually resumes: opening an episode from
+        # that row answers with seekPositionInMillis set, ISA seeks there,
+        # and playback starts where the viewer left off. The card's own
+        # "seek" marker is the same progress expressed as a fraction, but it
+        # is this that does the work.
+        try:
+            item.getVideoInfoTag().setResumePoint(seek_ms / 1000.0,
+                                                  total_ms / 1000.0)
+        except (AttributeError, TypeError):
+            item.setProperty("ResumeTime", "%.0f" % (seek_ms / 1000.0))
+            item.setProperty("TotalTime", "%.0f" % (total_ms / 1000.0))
+        kodiutils.log("the service asked to start at %s" % _hms(seek_ms))
+
+    _remember(response, path, from_start)
+    return item
+
+
+def _int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _hms(milliseconds):
+    seconds = int((milliseconds or 0) / 1000)
+    return "%d:%02d:%02d" % (seconds // 3600, seconds // 60 % 60, seconds % 60)
+
+
+def _is_live(response, path):
+    if path.startswith("channel/live/"):
+        return True
+    info = (response.get("analyticsInfo") or {})
+    return info.get("contentType") == "live"
+
+
+def _configure_isa(item, manifest_type, licence_url, from_start=False):
+    """Point ISA at the manifest and, when there is one, the licence server.
+
+    Two spellings, because they are read by different ISA generations, and the
+    boundary between them is **ISA 22.1.5** -- not 21, which is what this
+    addon first shipped and why every protected stream died on Kodi 21 with
+    "InitializePeriod: Unhandled encrypted stream". ISA 21 does not read the
+    JSON property at all; it does not complain about it either, it simply
+    reaches the encrypted stream with no key system configured.
+
+    Only one spelling is written, so a log is never ambiguous about which was
+    in force.
+    """
+    json_drm = kodiutils.isa_has_json_drm()
+
+    # ISA 22 sniffs the container from the mime type, which is set on the item
+    # either way, and warns that this property is deprecated. Below that it is
+    # still what tells ISA which parser to use.
+    if not json_drm:
+        item.setProperty("inputstream.adaptive.manifest_type", manifest_type)
+
+    headers = urlencode(STREAM_HEADERS)
+    item.setProperty("inputstream.adaptive.manifest_headers", headers)
+    item.setProperty("inputstream.adaptive.stream_headers", headers)
+
+    if from_start:
+        # Asked for a programme still on the air, the service answers with a
+        # *live* manifest -- not the VOD asset it returns once the programme
+        # has finished -- and ISA opens a live manifest at the live edge. So
+        # "start over" played from wherever the channel was.
+        #
+        # This tells ISA to begin at the start of the manifest's timeshift
+        # window instead. The window is what the service chose to publish for
+        # this programme's path (five periods, against one or two for the
+        # plain channel), so its beginning is the closest thing to the
+        # programme's start that the manifest offers.
+        item.setProperty("inputstream.adaptive.play_timeshift_buffer", "true")
+        kodiutils.log("start over: opening at the beginning of the "
+                      "timeshift window rather than the live edge")
+
+    _configure_quality(item)
+
+    if not licence_url:
+        kodiutils.log("no licence url on this stream; playing unencrypted")
+        return
+
+    if json_drm:
+        item.setProperty("inputstream.adaptive.drm", json.dumps({
+            WIDEVINE: {
+                "license": {
+                    "server_url": licence_url,
+                    "req_headers": headers,
+                },
+            },
+        }))
+    else:
+        item.setProperty("inputstream.adaptive.license_type", WIDEVINE)
+        # server|headers|challenge|response. "R{SSM}" is the raw challenge
+        # and an empty response field means the body comes back as raw
+        # licence bytes, which is what this server does.
+        item.setProperty("inputstream.adaptive.license_key",
+                         "%s|%s|R{SSM}|" % (licence_url, headers))
+    kodiutils.log("DRM configured for %s (%s)"
+                  % (kodiutils.isa_version() or "unknown ISA",
+                     "json drm" if json_drm else "legacy properties"))
+
+
+# The resolutions ISA accepts on its chooser properties, verbatim from its own
+# RES_CONV_LIST (src/CompSettings.h). Anything else is rejected with
+# "Resolution not valid on ... property" and silently ignored, so the addon
+# only ever sends one of these.
+QUALITY_RESOLUTIONS = ("480p", "640p", "720p", "1080p", "2K", "1440p", "4K")
+
+
+def _configure_quality(item):
+    """Tell ISA which rung to play, when the viewer has asked for one.
+
+    Left to itself ISA runs its "default" chooser, which seeds its bandwidth
+    estimate from the speed of the *manifest* download -- a 120 KB object over
+    a freshly opened HTTPS connection, whose measured rate counts the connect
+    and TLS handshake -- and then refuses any representation above 90% of that
+    estimate. Friendly TV's rungs are 0.70, 0.85, 1.67 and 2.28 Mbit/s, so a
+    seed under about 0.95 Mbit/s lands on the 288p rung, which is what a viewer
+    sees as "it played the worst copy".
+
+    "fixed-res" instead picks the highest representation that fits inside a
+    resolution and stays there. Both the property and this chooser name are
+    read by ISA 21.5 and 22.x alike (CompKodiProps.cpp, Chooser.cpp), so this
+    needs no version fork -- unlike the DRM property.
+
+    The secure limit is set as well as the plain one: these streams are
+    Widevine, and ISA applies the secure limit to a protected session.
+    """
+    choice = kodiutils.get_setting("quality", "1080p")
+
+    if choice in ("", "adaptive", "default"):
+        return
+
+    if choice == "ask-quality":
+        # ISA's own quality dialog, listed once per playback.
+        item.setProperty("inputstream.adaptive.stream_selection_type", "ask-quality")
+        kodiutils.log("quality: asking through InputStream Adaptive")
+        return
+
+    if choice not in QUALITY_RESOLUTIONS:
+        kodiutils.log("quality: %r is not a resolution ISA knows; "
+                      "leaving the choice to it" % choice)
+        return
+
+    item.setProperty("inputstream.adaptive.stream_selection_type", "fixed-res")
+    item.setProperty("inputstream.adaptive.chooser_resolution_max", choice)
+    item.setProperty("inputstream.adaptive.chooser_resolution_secure_max", choice)
+    kodiutils.log("quality: highest rung up to %s, held (fixed-res)" % choice)
+
+
+def _remember(response, path, from_start=False):
+    """Write down the stream slot this play took.
+
+    Friendly TV caps concurrent streams and only frees a slot when something
+    posts its poll key back. The plugin process exits the moment it hands the
+    url to Kodi, so the service reads this file and does it when playback
+    stops.
+
+    ``from_start`` rides along for the log: the service reports where playback
+    actually began, and that is only interesting against what was asked for.
+    """
+    info = response.get("sessionInfo") or {}
+    analytics = response.get("analyticsInfo") or {}
+    status = response.get("streamStatus") or {}
+    stream = _pick(response.get("streams")) or {}
+    kodiutils.write_json(CONTEXT_FILE, {
+        "path": path,
+        "poll_key": info.get("streamPollKey") or "",
+        "poll_interval_ms": info.get("pollIntervalInMillis") or 0,
+        "from_start": bool(from_start),
+        # What the progress reporter needs, so it does not have to repeat the
+        # stream call. dataKey is the analytics id verbatim: the capture's
+        # meta_id and its analyticsInfo.dataKey are the same string.
+        "analytics": {
+            "meta_id": analytics.get("dataKey") or "",
+            "custom_data": analytics.get("customData") or "",
+            "content_type": analytics.get("contentType") or "",
+            "stream_url": stream.get("url") or "",
+            "total_ms": _int(status.get("totalDurationInMillis")),
+        },
+    })
+
+
+def ensure_widevine():
+    """Make sure a Widevine CDM is present before the first play.
+
+    inputstreamhelper installs it on demand and explains itself when it
+    cannot. It is an optional dependency: when it is absent, playback is
+    still attempted, because a box that already has the CDM does not need it.
+    """
+    try:
+        import inputstreamhelper
+    except ImportError:
+        return True
+    try:
+        helper = inputstreamhelper.Helper("mpd", drm=WIDEVINE)
+        return bool(helper.check_inputstream())
+    except Exception as exc:
+        kodiutils.log("inputstreamhelper could not check Widevine: %s" % exc)
+        return True

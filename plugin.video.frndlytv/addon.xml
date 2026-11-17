@@ -1,0 +1,375 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.frndlytv" name="Friendly TV" version="2026.9.1" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="20.3.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Friendly TV live channels, guide and on-demand for Kodi</summary>
+		<description lang="en_GB">Watch the live channel lineup, the programme guide and the on-demand catalogue from your own Friendly TV subscription, playing back through InputStream Adaptive with Widevine DRM.
+
+Friendly TV runs on Revlet, and this addon speaks the same private endpoints as the web player at watch.frndlytv.com. Sign in with the email address and password you already use.
+
+Features:
+* Live TV: every channel in your lineup, each showing what is on right now
+* Guide: a day of schedule per channel
+* Search across the channel lineup and the next twelve hours of guide
+* Record an episode or a whole series, and stop or delete a recording
+* The service's own Home, Movies, TV and My Stuff pages
+* Widevine playback through InputStream Adaptive, with no licence proxy -- Friendly TV's licence server speaks raw Widevine, so Kodi talks to it directly
+* Concurrent-stream slots are released when playback stops, so the account does not lock itself out
+* Optional IPTV Manager integration, putting the lineup and guide in Kodi's own TV section
+
+Your subscription, your account, your lineup. Nothing is proxied through a third party.</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Friendly Technologies or Frndly TV. This addon uses private, undocumented endpoints; use it with your own subscription.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.png</fanart>
+		</assets>
+		<news>
+2026.9.1 - First release
+- Recording works from a film or a show, Coming Soon films included, and can
+  be stopped again. Neither is recorded through the form mechanism: their
+  pages post the title's own path to a call of its own, which is why a film
+  that has not aired yet -- and so has no airing to record and nothing to
+  play -- can still be recorded. Which verb a title offers comes from the
+  card, so nothing offers to stop a recording that was never started. Guide
+  airings keep the form, where the choice between this episode and the whole
+  series is asked.
+- Recording is offered on every film and show, not only the ones showing on a
+  channel. A plain catalogue title's card says nothing about recording -- 4804
+  of the 5386 captured title cards carry none of those fields -- but its page
+  draws a Record button all the same, so the entry is there where the service
+  puts it.
+  A title recorded from Kodi can be stopped from Kodi: the listing comes back
+  from the service unchanged after recording -- a plain catalogue card has no
+  recorded flag to grow -- so the addon notes what it recorded and offers Stop
+  on it. What the service says still wins wherever it says anything.
+- Listings look up details for 100 titles rather than 40, and the setting goes
+  to 200.
+- The guide has a second way in: "What's on at...", which lists the half
+  hours, and each one lists every channel and what it is showing then. The
+  web guide is a grid and a Kodi listing cannot be, but both of the grid's
+  axes are now reachable.
+- A guide row's "On Now" badge no longer follows the programme into the
+  player: the markup was being passed along in the url, so it reached the
+  player as part of the title.
+- The log line describing the box no longer reads "on Busy", which is what
+  Kodi answers with while an info label is not ready.
+- The guide marks what is on now. A schedule row carries no badge -- the
+  guide endpoint sends a title and two times and nothing else -- but the times
+  say which one the channel is showing, and a listing card of the same
+  programme is badged "On Now" by the service, so the row says it in the same
+  words and the same colour.
+- Reaching a film through its own page no longer loses the menu that reaching
+  it through a row gives: "Search the cast...", "More like this" and "Up next"
+  are all there beside the favourite verb.
+- The main menu is ordered and illustrated. Home leads, then the things to
+  watch, then the ways to find something, then the account -- rather than the
+  order the web player's navigation bar happens to use, where Home comes
+  after Search. Each entry carries an icon, so the menu reads as a menu
+  instead of a column of identical folders, and a page the service adds later
+  still appears, after the ones named here.
+- "Up next" on anything that plays, which is the same question the web player
+  asks the service during playback: what follows this.
+- The addon asks where Friendly TV's APIs are rather than assuming. The web
+  player fetches a small file naming them before it does anything else, one
+  block per kind of client, and those blocks are not identical -- Roku's
+  search and Android's whole API live elsewhere. Reading it means a host that
+  moves is followed rather than fatal. It is cached for a day, falls back per
+  entry to the address built in, and refuses anything that is not an https
+  address, so a file that is missing, broken or hostile cannot send the addon
+  anywhere.
+- Signing in works again. Friendly TV asks which device is asking, the addon
+  answered with the number an early capture used, and the service has since
+  started refusing that one outright -- an empty HTTP 403, which surfaced as
+  "issued no session id" and left no way in. A capture of a browser signing in
+  from scratch names the number it uses now, which is the same one the addon
+  already sends when it asks for a stream.
+- Signed out, the menu offers signing in and nothing else. Live TV, the guide,
+  search and the rest need an account, and listing them was offering folders
+  that could only fail.
+- Sign in and sign out no longer end in "Error getting plugin://". They are
+  listed as folders, so Kodi calls them expecting a listing, and telling it
+  there was none is exactly what that message reports. Both now draw the menu
+  over the one being looked at, which after signing in is what is wanted
+  anyway. A guide row for something not yet on the air was the same shape and
+  is fixed with it.
+- A row opens in full rather than at whatever the page embedded. Every row
+  names where the rest of it lives, in one of two shapes, and the addon
+  follows the one the service's own page endpoint opens. The other is a
+  carousel, which no capture ever asks for on its own, so it is left alone
+  rather than guessed at.
+- A Coming Soon title says when it airs, and on which channel. The card
+  carries it, worded by the service and in its timezone, so a badge that
+  raised the obvious question now answers it. The field it lives in holds a
+  bare id on most other cards, so it is read only where it is shaped like a
+  date, and one card that puts it somewhere else entirely is read too.
+- A listing no longer fails on a row that is not shaped like a row. The
+  service's "data" list is general purpose and not everything in it is a
+  pane.
+- A Coming Soon title is no longer offered to the player. The service lists
+  these and then refuses them, so Kodi was trying, failing, and logging
+  "skipping unplayable item" once per attempt -- and a season of them takes
+  several tries to find one that plays. They still appear in their place in
+  the season, badged, and selecting one says what it is.
+- Stopping a video says so properly. Friendly TV has an event for it and no
+  capture had ever caught one, so the addon sent a final position instead
+  rather than invent a code; leaving a video with the back button turns out
+  to send it, with the player back to idle and the position it reached.
+- Badges are actually visible now. They were being written into the row's
+  label and then painted over: Kodi draws the info tag's title on top of the
+  label it was given, and for an episode the addon set that title a second
+  time from the episode's own name. So every badge computed on a season of
+  episodes -- which is where "Coming Soon" lives -- was correct, written, and
+  never seen.
+- A Trending folder, holding the three carousels the service's own search
+  screen opens with: Trending Movies, Trending TV Shows and Trending Searches,
+  twenty-five titles apiece. Their names and descriptions are the service's,
+  not ones invented here.
+- Add-Ons is a top-level folder now rather than one row of Home. It was being
+  skipped from the menu the service itself provides, which left it reachable
+  only by scrolling Home; it is a page like any other, so it sits with Movies
+  and TV, and the row that duplicated it is off Home.
+- A badge stays on the row it decorates. It was going into the url as well,
+  so the player was told it was playing "A New Beginning [COLOR gold](+
+  Add-On)[/COLOR]", markup and all.
+- A listing that does not filter says why. The account's packages decide what
+  is hidden, and when they cannot be read nothing is -- which looked exactly
+  like a listing with nothing to hide, so the same row filtered once and not
+  the next time with no way to tell which had happened.
+- Searching for a channel no longer risks losing MeTV. Friendly TV marks a
+  card as a network whether the channel is an add-on or part of the plan, and
+  MeTV, MeTV+ and MeTV Toons all carry that marking with pages of their own,
+  so hiding on it alone would have taken them out of a search for "metv". A
+  channel counts as an add-on only where the service names it as one.
+- The Add-ons folder lists only the channels the account actually has, unless
+  the setting says otherwise. Friendly TV sells six of them -- Hallmark+, UP
+  Faith &amp; Family, Great American Pure Flix, Lifetime Movie Club, A&amp;E
+  Crime Central and HISTORY Vault -- and its own page lists all six whether
+  they are paid for or not. Which ones are paid for is stated outright by the
+  account's packages, so this is exact rather than inferred: a package says
+  for itself that it is an add-on, which matters because the list of add-ons
+  on offer drops one the moment it is bought.
+- Titles on a channel the account does not pay for are left out of listings,
+  whatever else it pays for. One search settles what the "+ Add-On" badge
+  means: searching "good witch" while subscribed to one add-on and not another
+  answers with eleven titles at once -- six from a channel in the plan and
+  five from a channel that is not, and only the five are badged. In the same
+  session the subscribed channel's own films come back unbadged, the film that
+  had refused to play among them. The badge says "you cannot watch this", not
+  "this is add-on content".
+- Cards wear the badge the service gave them -- "On Now", "Coming Soon",
+  "New Episodes", "Expires in 24 hours", "+ Add-On" -- on films and shows
+  alike. Kodi has nowhere to draw a badge, so it goes in the label, in the
+  service's own words rather than any invented here.
+- "Coming Soon" matters most of the six: those episodes are listed and then
+  refused, with a message that reads like a fault -- "The content provider has
+  restricted this program from being available On Demand." Thirty-nine of the
+  forty-seven episodes of one captured series are Coming Soon, so finding one
+  that plays took several tries.
+- Titles that need an add-on subscription are left out of listings, and a
+  setting brings them back. The card says so itself, so nothing has to be
+  fetched to know: "+ Add-On" is the one badge in the whole capture that
+  carries a redirect-to-payment flag, and it carries it on every card it is
+  on. The flag is what is read, not the wording.
+- A film on a channel the subscription does not include says so, instead of
+  "Friendly TV's page for this offers nothing to play". Those titles have a
+  full page -- synopsis, cast, artwork -- with a subscribe button where the
+  play button would be, which read as a page with nothing on it. The offer is
+  repeated in the service's own words, because that is the only thing that
+  knows what it is.
+- Playback reports are no longer refused. The POST carries two form fields
+  and only one was being sent; the service said so plainly once it was asked
+  to. The missing one is a constant in the web player's own configuration,
+  not a secret and not per-account.
+- The device an event came from is described by Python rather than by Kodi's
+  info labels, which answer "Busy" when they are not ready yet and duly sent
+  a machine whose operating system was "Busy".
+- What you watch in Kodi now reaches Continue Watching, and remembers where
+  you left off. That row is written by whatever is playing, and this addon was
+  writing nothing: the web player posts player state and position throughout
+  playback, to a host that is not the API, and the addon posted none of it. So
+  the row was fed only by Friendly TV's own apps, and a film watched here left
+  no trace -- which is why Movies had a Continue Watching row with nothing in
+  it. Only the event types the capture shows the meaning of are sent; the two
+  it does not are left alone, and stopping sends a final position rather than
+  an invented "stopped". Under Playback, and it can be turned off.
+- Opening a section the page had not filled in no longer fails with an error
+  and an empty folder. Those come from a different endpoint, and it answers
+  with a bare list -- one element per section code asked for, in which
+  "section" is the code as a plain string -- where a page answers with an
+  object whose "section" holds the info, the data and the controls under it.
+  Read as a page it raised before it read anything.
+- The log no longer claims playback began 106 hours into a fifty minute film.
+  The stream slot is claimed the moment Kodi says it is playing, which is
+  before the demuxer has settled, and a multi-period manifest answered for its
+  position with a number the running time could not contain. The player is now
+  asked again until its answer fits, and told so in the log if it never does.
+- A film played the wrong stream entirely. The service answers with one entry
+  per DRM system -- Widevine and PlayReady as DASH, FairPlay as HLS -- and the
+  addon took whichever came first. With FairPlay first that gave Kodi an HLS
+  manifest encrypted for Apple while telling it the key system was Widevine,
+  which ISA reports as "Unhandled encrypted stream": the same words a missing
+  key system produces, so it read like a DRM fault rather than the wrong file.
+  The Widevine entry is now chosen by name, a DASH manifest is preferred, and
+  an answer with no Widevine in it says so instead of being played anyway.
+- The stream request now carries the provider-profile id exactly where the
+  web player was captured carrying it -- live channels and guide airings, not
+  on-demand titles -- rather than on everything.
+- Video quality is a setting, and it no longer opens at the worst copy the
+  service has. Friendly TV offers 288p, 360p, 432p and 720p and nothing
+  higher, all four in one adaptive set in all 21 periods of an ad-inserted
+  film, so nothing about the stream forced the choice. InputStream Adaptive
+  made it: its default chooser skips any rendition above 90% of its estimated
+  bandwidth, and it seeds that estimate from the speed of the manifest
+  download -- a 120 KB file over a connection it has just opened, handshake
+  time included. Between roughly 0.75 and 0.91 Mbit/s of estimate, 288p is the
+  only rendition left standing. The addon now asks for the best rendition that
+  fits and holds it, which for this service means 720p.
+- Playback on Kodi 21 is fixed. The DRM configuration was being written in
+  the form only InputStream Adaptive 22.1.5 and newer reads, and ISA 21 does
+  not warn about that -- it ignores the property and then refuses the stream
+  with "InitializePeriod: Unhandled encrypted stream". The form is now chosen
+  by the installed ISA version, and the log says which one went out.
+- Home shows its real rows. Friendly TV assembles that one screen from two
+  endpoints, and the obvious one carries only the Live Now row, so Home was
+  a single row of live channels. The rest come from the carousel endpoint,
+  paged behind a cursor.
+- Search is Friendly TV's own catalogue search, paged, now that a capture
+  reached the endpoint. Results mix pages to open with episodes that play,
+  and each is routed by what it is. Shows, Movies and Channels filters sit
+  at the top of the first page.
+- A film's page is no longer empty. Films and series are not built from the
+  section shape the rest of the service uses: what plays them is a button in
+  the page's content pane, and a film has nothing else on it at all.
+- A search that matches nothing says so instead of reporting an error. The
+  search API answers no-matches with status false and a 404, which is a
+  refusal in the protocol's terms and an empty list in anyone else's.
+- Search shows every result at once rather than a chain of "Next page"
+  folders. It walks the pages itself, which for the totals this service
+  returns is three to five requests.
+- A film plays in one click. Its card points at a page, but that page holds
+  a single play button and nothing else, so the page is fetched and the
+  button followed rather than listed as a folder to open. A series stays a
+  folder, because it really does have seasons under it.
+- Shows, films and episodes are labelled as such for Kodi, so skins lay them
+  out as shows and films instead of anonymous folders, and an episode
+  carries its own name and its season and episode numbers.
+- Descriptions, cast, director, year and certificate now reach Kodi's own
+  Information dialog. Friendly TV sends none of that with a listing -- it is
+  empty on all but a handful of the 8191 cards captured, and lives only on
+  each title's page -- so those pages are fetched for a listing's films and
+  shows on a small pool of threads. One request per title is a real cost, so
+  it is a setting with a cap, under Listings.
+- Picking the programme on the air in the guide asks whether to play live or
+  start it over. Those turn out to be two different paths to the same
+  endpoint rather than two kinds of request: the channel's gives the live
+  edge, the programme's own is answered with the programme from its start.
+- Add to and remove from Favourites, on anything with a path -- films,
+  shows, channels and guide airings alike. Only the verb that applies is
+  offered, because the cards carry whether they are already in. These are
+  Friendly TV's My Stuff, so they appear there and in its own apps.
+- "Remove from Continue Watching" on any part-watched title. The row is made
+  of cards carrying a resume position, so no flag is needed to know which
+  ones qualify, and the call is keyed by the card's own id and content type.
+- A listing no longer fails whole because of one row Kodi would not accept,
+  and an unexpected error no longer surfaces as Kodi's bare "Error getting
+  plugin://..." with nothing about the cause. The row is skipped and named,
+  or the traceback is logged and the folder opens empty with a message.
+- Favouriting a film from a listing and coming back no longer offers to add
+  it again. A listing card's isFavourite does not keep up with a change --
+  a live channel's and a guide airing's do -- but the title's own page states
+  it, and that page is already being fetched for the synopsis, so the
+  authoritative answer was free and was simply not being used.
+- Leaving a live channel no longer marks it watched. A channel's card
+  carries the running time of whatever is on it, and handing Kodi that as a
+  duration made a channel look like a finite video, so stopping partway
+  through counted as finishing it. A channel is never finished.
+- Start Over now opens at the beginning of the programme's window rather
+  than at the live edge. Asked for a programme still on the air, the service
+  answers with a live manifest -- not the VOD asset it returns once the
+  programme has finished -- and a live manifest opens where the channel is.
+- The guide marks what is already set to record, and offers only the
+  context-menu entry that applies rather than both. The flag is on no
+  schedule row anywhere, so it comes from a second endpoint that answers for
+  a whole batch of channels at once -- which is what makes it affordable.
+  It is a membership set and nothing more: every "info" object in every
+  captured response is empty, and the web player treats it the same way.
+- An "Active streams" entry showing what the account has playing anywhere,
+  from the concurrency counter's own view. Every capture caught that
+  endpoint empty, so the count is trustworthy and the shape of an entry is
+  not; entries are rendered from whatever fields they turn out to carry.
+- Searching by genre and by person, which turned out to need no new
+  endpoint: the search the addon already had ranks over titles, people and
+  genre together. "Raymond Burr" answers with Perry Mason and two of his
+  films, none carrying his name; "drama" answers with The Golden Girls and
+  Murder She Wrote. It is a ranking rather than a filter, so a word common
+  in titles gives those first. Two ways in: Home's Browse by Genre row now
+  works -- those fifteen cards are bare words with no page behind them, and
+  were opening nothing -- and any film or show has "Search the cast...".
+- A search of hundreds of results no longer arrives one page at a time. The
+  first page says how many there are, so the rest are fetched at once: a
+  genre word matching 447 titles was 28 round trips in sequence before
+  anything was drawn.
+- A cast written as prose is read as names. Most pages send a plain list,
+  but some send "Starring Marlon Brand, Karl Malden and Katy Jurado", which
+  split on commas alone gave a cast whose first member was "Starring Marlon
+  Brand" and whose last was "and Katy Jurado".
+- A title's page says whether it is already a favourite, so the right verb
+  is shown there rather than both.
+- Recording reaches beyond the guide. 1803 of the captured cards say they
+  may be recorded -- films and channels among them -- and each names the
+  form to use, which is not the one a guide airing names. The card's own
+  form code is what gets asked for.
+- A title opened from Information can be favourited from there too; its play
+  button had no context menu at all.
+- "More like this" on any film or show's context menu, and "Go to show" on a
+  guide airing that belongs to a series -- the airing's overlay is the only
+  thing that names the show it came from.
+- The guide carries descriptions, cast, artwork, episode numbers and
+  certificates. The schedule endpoint sends a title and two times per airing
+  and nothing else; everything readable is in each airing's overlay, fetched
+  the same way and under the same setting as a listing's.
+- Continue Watching resumes. The service sends how far in you got as a
+  fraction of the running time, and it was being read and thrown away, so
+  that row restarted everything from the beginning.
+- A guide row for something not yet airing no longer fills the log with
+  "InputStream: Error opening,". Those rows had an empty url, which Kodi
+  treats as something to open rather than as inert; selecting one now says
+  what it is and when it is on.
+- A lapsed session signs in once, not once per thread. Listings are fetched
+  on a pool, so an expiry mid-listing would have had a dozen threads sign in
+  at the same time, each invalidating the one before.
+- A film and a series describe themselves differently and both are now read
+  correctly: a series has a description element and its subtitles are the
+  episode on the air, while a film has no description element at all and its
+  synopsis is the subtitle. Reading one rule for both left films blank and
+  gave series their current episode's synopsis instead of their own.
+- Record an episode or a series, and stop or delete a recording, from the
+  context menu on any guide airing. The service describes the choices and
+  the addon echoes the chosen one back untouched, so it never has to know
+  what the instruction strings mean.
+- The icon and fanart are Friendly TV's own logo, taken from the capture.
+- Live TV, the guide, and the service's own Home/Movies/TV/My Stuff pages.
+- Playback is Widevine DASH through InputStream Adaptive. Friendly TV's
+  licence server takes a raw Widevine challenge and answers with raw licence
+  bytes, which is exactly what ISA speaks, so there is no licence proxy in
+  this addon and nothing listening on localhost.
+- Stream slots are handed back when playback stops. Friendly TV counts
+  concurrent streams and only frees one when its poll key is posted back, so
+  a client that never does locks the account out of its own subscription.
+- Optional IPTV Manager integration for Kodi's TV section.
+		</news>
+	</extension>
+</addon>
