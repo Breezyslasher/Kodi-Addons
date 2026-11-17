@@ -301,16 +301,7 @@ def set_music_info(list_item, title, artist='', duration=0, playcount=0, tracknu
 
 
 def has_parts(media):
-    """True when a book should open a chapters/parts folder instead of playing.
-
-    The library list endpoint (/api/libraries/{id}/items) returns MINIFIED
-    media, which carries numAudioFiles/numChapters counts but NOT the
-    chapters/audioFiles arrays. Checking media['chapters'] there is always
-    falsy, so single-file books (numAudioFiles == 1) with embedded chapters
-    were treated as directly playable and never exposed their chapters.
-    Prefer the numChapters count, falling back to the array for expanded
-    payloads. A lone chapter spanning the whole book isn't worth a folder.
-    """
+    """True when a book should open a chapters/parts folder (minified media has numChapters, not chapters)."""
     if media.get('numAudioFiles', 1) > 1:
         return True
     num_chapters = media.get('numChapters')
@@ -1866,8 +1857,7 @@ def list_parts(item_id):
                     break
 
             list_item = xbmcgui.ListItem(label=f'[Resume: {format_time(current_time)}{current_chapter}]')
-            # Not IsPlayable: play_book queues the rest of the book itself, so
-            # Kodi doesn't queue this folder (which made Part 1 play next).
+            # Not IsPlayable: play_book queues the rest of the book itself.
             list_item.setProperty('IsPlayable', 'false')
             xbmcplugin.addDirectoryItem(ADDON_HANDLE,
                                        build_url(action='play_book', item_id=item_id, position=current_time),

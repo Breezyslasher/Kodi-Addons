@@ -16,14 +16,7 @@ class AudioBookShelfLibraryService:
 
 	@staticmethod
 	def _json_or_ok(response):
-		"""Parse a 2xx body as JSON, or report success when it isn't JSON.
-
-		Several Audiobookshelf endpoints answer a successful request with
-		res.sendStatus(200) - an empty body, or the plain text "OK" - so
-		calling .json() on them raises even though the call worked. Note
-		Kodi's bundled requests raises its own JSONDecodeError, which is a
-		ValueError subclass rather than the stdlib json.JSONDecodeError.
-		"""
+		"""Parse a 2xx body as JSON, or return success for empty/"OK" bodies."""
 		if not response.content:
 			return {"success": True}
 		try:
@@ -275,14 +268,7 @@ class AudioBookShelfLibraryService:
 			return None
 	
 	def start_playback_session(self, library_item_id, episode_id=None):
-		"""Start a playback session on the server.
-
-		Uses POST /api/items/{id}/play (or /play/{episodeId}), which is the
-		endpoint that opens a session and returns it. The old code posted to
-		/api/session/local, which is SessionController.syncLocal - the route
-		mobile apps use to upload *offline-recorded* sessions - so no session
-		was ever opened here.
-		"""
+		"""Start a playback session via POST /api/items/{id}/play."""
 		try:
 			session = self.play_library_item_by_id(
 				library_item_id,
@@ -301,10 +287,7 @@ class AudioBookShelfLibraryService:
 			return None
 
 	def sync_playback_session(self, session_id, current_time, duration, time_listened=0):
-		"""Sync playback session with server.
-
-		Route is /api/session/{id}/sync - there is no /api/session/local/{id}/sync.
-		"""
+		"""Sync playback session with server."""
 		endpoint = f"/api/session/{session_id}/sync"
 
 		data = {
@@ -328,13 +311,7 @@ class AudioBookShelfLibraryService:
 			return None
 
 	def close_playback_session(self, session_id, current_time=None, duration=None, time_listened=0):
-		"""Close a playback session on the server.
-
-		Route is /api/session/{id}/close - there is no
-		/api/session/local/{id}/close. The server accepts an optional sync
-		body here, so passing the final position records it as part of
-		closing instead of needing a separate sync call.
-		"""
+		"""Close a playback session, recording the final position if given."""
 		endpoint = f"/api/session/{session_id}/close"
 
 		payload = None
@@ -412,10 +389,7 @@ class AudioBookShelfLibraryService:
 			raise
 	
 	def download_podcast_episodes(self, podcast_id, episode_ids):
-		"""Download specific podcast episodes on the server.
-
-		Requires an admin account server-side (non-admins get 403).
-		"""
+		"""Download specific podcast episodes on the server (admin only)."""
 		try:
 			url = f"{self.base_url}/api/podcasts/{podcast_id}/download-episodes"
 			payload = episode_ids if isinstance(episode_ids, list) else [episode_ids]
@@ -423,9 +397,7 @@ class AudioBookShelfLibraryService:
 			response = requests.post(url, headers=self.headers, json=payload, timeout=30)
 			response.raise_for_status()
 			xbmc.log(f"Queued download for {len(payload)} episodes", xbmc.LOGINFO)
-			# On success the server replies res.sendStatus(200), whose body is
-			# the plain text "OK" - not JSON. Calling .json() on that raised
-			# and made a successful queue look like a failure.
+			# Success body is "OK", not JSON.
 			return self._json_or_ok(response)
 		except Exception as e:
 			xbmc.log(f"Error downloading podcast episodes: {str(e)}", xbmc.LOGERROR)
@@ -458,10 +430,7 @@ class AudioBookShelfLibraryService:
 			raise
 	
 	def download_podcast_episodes_with_data(self, podcast_id, episode_data):
-		"""Download specific podcast episodes with full episode data.
-
-		Requires an admin account server-side (non-admins get 403).
-		"""
+		"""Download specific podcast episodes with full episode data (admin only)."""
 		try:
 			url = f"{self.base_url}/api/podcasts/{podcast_id}/download-episodes"
 			payload = [episode_data] if isinstance(episode_data, dict) else episode_data
@@ -470,8 +439,7 @@ class AudioBookShelfLibraryService:
 			response.raise_for_status()
 			title = episode_data.get('title', 'Unknown') if isinstance(episode_data, dict) else 'episodes'
 			xbmc.log(f"Queued download for: {title}", xbmc.LOGINFO)
-			# Success is res.sendStatus(200) with the body "OK" (not JSON), so
-			# treat any 2xx as success rather than trying to parse it.
+			# Success body is "OK", not JSON.
 			return self._json_or_ok(response)
 		except Exception as e:
 			xbmc.log(f"Error downloading podcast episodes with data: {str(e)}", xbmc.LOGERROR)

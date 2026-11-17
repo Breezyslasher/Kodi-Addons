@@ -52,10 +52,7 @@ class PlaybackMonitor:
         self.last_position = 0
         self.last_synced_position = 0
         self.is_finished = False
-        # The media file this monitor is bound to. In an auto-play-next
-        # playlist Kodi advances to the next episode in the SAME player; if we
-        # kept reading getTime() we'd save the next track's position onto this
-        # episode. We record the file and stop cleanly when it changes.
+        # File this monitor tracks; stop when the playlist moves on.
         self.playing_file = None
         
         # Initialize sync manager with library service
@@ -129,8 +126,7 @@ class PlaybackMonitor:
             last_sync_time = time.time()
             self.last_position = self.start_position
             self.last_synced_position = self.start_position
-            # Session sync bookkeeping: the server wants the seconds actually
-            # listened since the previous sync, not just the new position.
+            # For time_listened since the last session sync.
             self._session_clock = time.time()
             self._session_position = self.start_position + self.file_offset
 
@@ -141,9 +137,7 @@ class PlaybackMonitor:
                         xbmc.log("[MONITOR] Audio playback stopped", xbmc.LOGINFO)
                         break
 
-                    # Auto-play-next: the playlist advanced to a different item.
-                    # Stop now so we keep THIS episode's last good position
-                    # instead of overwriting it with the next episode's time.
+                    # Playlist advanced: stop before saving the next item's time here.
                     if self.playing_file:
                         try:
                             current_file = self.player.getPlayingFile()
@@ -207,26 +201,14 @@ class PlaybackMonitor:
             xbmc.log(f"[MONITOR] Worker error: {str(e)}", xbmc.LOGERROR)
     
     def _listened_since_last_sync(self, current_time):
-        """Seconds actually listened since the last session sync.
-
-        Uses the playback-position delta, clamped to the wall-clock time
-        that has passed. The position delta alone would over-count a seek
-        forward; wall-clock alone would over-count time spent paused
-        (isPlayingAudio stays true while paused). Taking the smaller of the
-        two is right in both cases.
-        """
+        """Seconds listened since the last sync: min(position delta, wall-clock time)."""
         overall_time = current_time + self.file_offset
         wall_elapsed = time.time() - getattr(self, '_session_clock', time.time())
         position_delta = overall_time - getattr(self, '_session_position', overall_time)
         return max(0, min(position_delta, wall_elapsed))
 
     def _sync_session(self, current_time):
-        """Push the current position to the open server-side playback session.
-
-        Keeps Audiobookshelf's "currently listening" state and listening-time
-        stats live during playback. Only applies to online playback - offline
-        items have no library service, so no session was opened.
-        """
+        """Push the current position to the open server-side playback session."""
         if not self.session_id or not self.library_service:
             return
         try:
