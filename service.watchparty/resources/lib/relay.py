@@ -1194,8 +1194,15 @@ class _ClosingServer(ThreadingHTTPServer):
     connections. shutdown() only stops accepting new ones: each open one
     has its own handler thread, which would go on answering its member
     (the app, the browser extension, Kodi) after the Kodi host stopped
-    hosting the party."""
+    hosting the party.
+
+    request_queue_size: connections waiting to be accepted. socketserver's
+    default is 5, and when many members connect at once (everyone
+    reconnecting after a relay restart) the rest were reset: a load test
+    with 1000 members joining together lost 687 of them.
+    """
     daemon_threads = True
+    request_queue_size = 512
 
     def __init__(self, *args, **kwargs):
         self._open = set()
