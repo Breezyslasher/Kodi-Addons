@@ -576,7 +576,7 @@ class AddonPathFallbackTest(unittest.TestCase):
         eng = self._engine()
         engine.xbmc.getInfoLabel = lambda label: self.PICKED if label == 'ListItem.FileNameAndPath' else ''
         engine.xbmc.getCondVisibility = lambda cond: False
-        eng.note_local_open(engine._started_plugin_path(self._player(eng)))
+        eng.note_local_open(*engine._started_item(self._player(eng)))
         engine._active_player_id = lambda: 1
         engine._json_rpc = lambda method, params=None: (
             {'item': {'file': self.PROXY, 'type': 'movie', 'title': 'Dune', 'year': 2021}}
@@ -597,7 +597,7 @@ class AddonPathFallbackTest(unittest.TestCase):
         eng = self._engine()
         engine.xbmc.getInfoLabel = lambda label: 'smb://nas/movies/Dune.mkv'
         engine.xbmc.getCondVisibility = lambda cond: False
-        eng.note_local_open(engine._started_plugin_path(self._player(eng)))
+        eng.note_local_open(*engine._started_item(self._player(eng)))
         self.assertEqual(eng.started_plugin(), '')
         eng._started_plugin = (self.PICKED, time.time() - 120)
         self.assertEqual(eng.started_plugin(), '')
@@ -628,17 +628,67 @@ class StartedPathTest(unittest.TestCase):
     def test_the_players_path_first(self):
         engine.xbmc.getInfoLabel = lambda label: self.SEASON
         engine.xbmc.getCondVisibility = lambda cond: True
-        self.assertEqual(engine._started_plugin_path(self.player(self.EPISODE)), self.EPISODE)
+        self.assertEqual(engine._started_item(self.player(self.EPISODE))[0], self.EPISODE)
 
     def test_a_focused_folder_is_not_what_started(self):
         engine.xbmc.getInfoLabel = lambda label: self.SEASON
         engine.xbmc.getCondVisibility = lambda cond: cond == 'ListItem.IsFolder'
-        self.assertEqual(engine._started_plugin_path(self.player('http://127.0.0.1:8095/x.mpd')), '')
+        self.assertEqual(engine._started_item(self.player('http://127.0.0.1:8095/x.mpd'))[0], '')
 
     def test_a_focused_playable_item_when_the_player_has_none(self):
         engine.xbmc.getInfoLabel = lambda label: self.EPISODE
         engine.xbmc.getCondVisibility = lambda cond: False
-        self.assertEqual(engine._started_plugin_path(self.player(None)), self.EPISODE)
+        self.assertEqual(engine._started_item(self.player(None))[0], self.EPISODE)
+
+
+class StartedIdentityTest(unittest.TestCase):
+    """The Discovery+ addon's episode reaches the player with no details,
+    but its list item has them: shared when it's the item that started."""
+
+    PLAYED = 'plugin://slyguy.discovery.plus/?_=play&_play=1&edit_id=4f975d61-3f7f-4926-af3a-783be607e115'
+    LISTED = 'plugin://slyguy.discovery.plus/?_=play&edit_id=4f975d61-3f7f-4926-af3a-783be607e115'
+    LABELS = {'ListItem.FileNameAndPath': LISTED, 'ListItem.DBTYPE': 'episode',
+              'ListItem.Title': 'Moving Day', 'ListItem.TVShowTitle': 'House Hunters',
+              'ListItem.Season': '17', 'ListItem.Episode': '4'}
+
+    def setUp(self):
+        self.saved = (engine.xbmc.getInfoLabel, engine.xbmc.getCondVisibility,
+                      engine._active_player_id, engine._json_rpc)
+        engine.xbmc.getInfoLabel = lambda label: self.LABELS.get(label, '')
+        engine.xbmc.getCondVisibility = lambda cond: False
+
+    def tearDown(self):
+        (engine.xbmc.getInfoLabel, engine.xbmc.getCondVisibility,
+         engine._active_player_id, engine._json_rpc) = self.saved
+
+    def player(self, playing, eng=None):
+        class P:
+            engine = eng
+
+            def getPlayingFile(self):
+                return playing
+
+            def getTotalTime(self):
+                return 1290.0
+        return P()
+
+    def test_the_episode_is_shared_with_its_show_season_and_episode(self):
+        eng = engine.SyncEngine.__new__(engine.SyncEngine)
+        eng.note_local_open(*engine._started_item(self.player(self.PLAYED)))
+        engine._active_player_id = lambda: 1
+        engine._json_rpc = lambda method, params=None: (
+            {'item': {'file': 'http://127.0.0.1:8095/https://cf.dplus.us.prd.media.max.com/x/dash.mpd', 'type': 'unknown'}}
+            if method == 'Player.GetItem' else {})
+        item = engine._now_playing_item(self.player('http://127.0.0.1:8095/https://x/dash.mpd', eng))
+        self.assertEqual(item['plugin'], self.PLAYED)
+        self.assertEqual((item['type'], item['show'], item['season'], item['episode']),
+                         ('episode', 'House Hunters', 17, 4))
+
+    def test_another_focused_item_says_nothing_about_this_one(self):
+        self.LABELS = dict(self.LABELS, **{'ListItem.FileNameAndPath':
+                           'plugin://slyguy.discovery.plus/?_=play&edit_id=1ff45ee7-c040-4ff6-8345-59bee0075e88'})
+        path, info = engine._started_item(self.player(self.PLAYED))
+        self.assertEqual((path, info), (self.PLAYED, {}))
 
 
 if __name__ == '__main__':

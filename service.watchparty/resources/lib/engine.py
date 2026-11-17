@@ -225,27 +225,71 @@ def _identity(info):
     return out
 
 
-def _started_plugin_path(player):
-    """The addon path of what's starting, read as playback starts. Some
-    addons hand the player only their resolved stream — SlyGuy's
+def _same_addon_item(a, b):
+    """Two plugin:// paths for the same item: equal but for the addon's
+    _play=1 marker (SlyGuy adds it to the path it plays)."""
+    def norm(path):
+        base, _, query = path.partition('?')
+        parts = sorted(p for p in query.split('&') if p and p != '_play=1')
+        return base.rstrip('/') + '?' + '&'.join(parts)
+    return bool(a) and bool(b) and norm(a) == norm(b)
+
+
+def _focused_item_info():
+    """The focused list item's identity, in Player.GetItem's shape."""
+    label = xbmc.getInfoLabel
+
+    def number(name):
+        try:
+            return int(label(name))
+        except (TypeError, ValueError):
+            return None
+    info = {'type': label('ListItem.DBTYPE') or '',
+            'title': label('ListItem.Title') or '',
+            'showtitle': label('ListItem.TVShowTitle') or '',
+            'season': number('ListItem.Season'),
+            'episode': number('ListItem.Episode'),
+            'year': number('ListItem.Year')}
+    ids = {k: label('ListItem.UniqueID({})'.format(k)) for k in ('imdb', 'tmdb', 'tvdb')}
+    imdb = label('ListItem.IMDBNumber') or ''
+    if imdb.startswith('tt') and not ids['imdb']:
+        ids['imdb'] = imdb
+    info['uniqueid'] = {k: v for k, v in ids.items() if v}
+    return {k: v for k, v in info.items() if v not in (None, '', {})}
+
+
+def _started_item(player):
+    """(addon path, identity) of what's starting, read as playback starts.
+
+    Some addons hand the player only their resolved stream — SlyGuy's
     Discovery+ and HBO Max: http://127.0.0.1:8095/https://…/dash.mpd, a
-    proxy on this Kodi — and by AV start that's all Kodi reports, so the
-    item's own plugin:// path has to be caught here: from the player,
-    which still has it (VideoPlayer::OpenFile logs it), else the focused
-    list item if it's a playable one. Not a folder: the focused item was
-    once the season, not the episode that started (kodi.log, 2026-11-17)."""
+    proxy on this Kodi — with no title either ({"type":"unknown"}), so by
+    AV start that's all Kodi reports. The item's own plugin:// path is
+    still the player's here (VideoPlayer::OpenFile logs it), and the list
+    item it was started from still has the addon's details (show, season,
+    episode; title, year): taken only when that item is the one starting —
+    the focused item was once the season, not the episode that started
+    (kodi.log, 2026-11-17)."""
     try:
         path = player.getPlayingFile() or ''
     except Exception:
         path = ''
-    if path.startswith('plugin://'):
-        return path
+    if not path.startswith('plugin://'):
+        path = ''
     try:
-        path = xbmc.getInfoLabel('ListItem.FileNameAndPath') or ''
+        focused = xbmc.getInfoLabel('ListItem.FileNameAndPath') or ''
         folder = xbmc.getCondVisibility('ListItem.IsFolder')
     except Exception:
-        return ''
-    return path if path.startswith('plugin://') and not folder else ''
+        return path, {}
+    if not focused.startswith('plugin://') or folder:
+        return path, {}
+    if path and not _same_addon_item(path, focused):
+        return path, {}
+    try:
+        info = _focused_item_info()
+    except Exception:
+        info = {}
+    return path or focused, info
 
 
 def _now_playing_item(player):
@@ -297,14 +341,17 @@ def _now_playing_item(player):
         jfile = info.get('file') or ''
         if jfile.startswith('plugin://'):
             item['plugin'] = jfile
-        else:
+        engine = getattr(player, 'engine', None)
+        if not jfile.startswith('plugin://'):
             # the player has only the resolved stream: the path of the
             # addon item picked when this playback started, if any
-            engine = getattr(player, 'engine', None)
             picked = engine.started_plugin() if engine else ''
             if picked:
                 item['plugin'] = picked
         item.update(_identity(info))
+        if 'type' not in item and engine is not None:
+            # nothing about the title either: the started list item's
+            item.update(_identity(engine.started_info()))
         # a real title beats Kodi's filename fallback in labels/toasts
         if item.get('title'):
             item['label'] = item['title']
@@ -532,7 +579,7 @@ class _PartyPlayer(xbmc.Player):
         # Fires the moment an open is requested, long before the stream
         # is ready. Marks a local open in flight so the poll loop doesn't
         # fight the still-buffering player (stop/reopen/pause/seek).
-        self.engine.note_local_open(_started_plugin_path(self))
+        self.engine.note_local_open(*_started_item(self))
 
     def onAVStarted(self):
         item = _now_playing_item(self)
@@ -686,13 +733,20 @@ class SyncEngine:
 
     # -- auto-open bookkeeping ---------------------------------------------
 
-    def note_local_open(self, plugin=''):
+    def note_local_open(self, plugin='', info=None):
         """An open was requested locally (any source — user or engine);
         the stream isn't ready yet. The poll loop backs off until AV
         starts so it can't kill or hijack a buffering stream. [plugin]:
         the addon item that was picked, if it was one."""
         self._local_starting_until = time.time() + OPEN_GRACE
         self._started_plugin = (plugin, time.time()) if plugin else ('', 0.0)
+        self._started_info = (info or {}, time.time())
+
+    def started_info(self):
+        """The started list item's identity (Player.GetItem's shape), if
+        it was read within a minute, else {}."""
+        info, at = getattr(self, '_started_info', ({}, 0.0))
+        return info if info and time.time() - at < 60 else {}
 
     def started_plugin(self):
         """The addon item picked for the playback starting now (within a
