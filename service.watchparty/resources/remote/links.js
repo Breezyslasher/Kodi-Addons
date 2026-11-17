@@ -152,9 +152,15 @@ export function normalize(raw, { strip = true } = {}) {
  * The form of a room link to open in a browser. Starz's Android TV links
  * (starz.com/movies/<id>, starz.com/series/<id>/episodes/<id> — what TVs
  * share) become the website's /us/en/play/<id>, the form the Android app
- * gives phones (its MediaLink.alternatives). Others open as they are.
+ * gives phones (its MediaLink.alternatives). A Paramount+ movie
+ * (paramountplus.com/movies/<name>/<id>, /movies/video/<id>/ — JustWatch's
+ * link, which the TV app plays) is a page on the website, which plays the
+ * movie over it at /movies/video/<id>/#open (the address while playing,
+ * 2026-11-17). Others open as they are.
  */
 export function browserLink(link) {
+  const p = link.trim().match(/^https?:\/\/(?:www\.)?paramountplus\.com\/(?:[a-z]{2}\/)?movies\/(?:video\/|[^/?#]+\/)([A-Za-z0-9_-]+)\/?(?:[?#].*)?$/);
+  if (p) return `https://www.paramountplus.com/movies/video/${p[1]}/#open`;
   const m = link.trim().match(/^https?:\/\/(?:www\.)?starz\.com\/(movies|series)\/(\d+)(\/episodes\/(\d+))?(?:[/?#].*)?$/);
   if (m) {
     if (m[1] === 'movies') return `https://www.starz.com/us/en/play/${m[2]}`;
