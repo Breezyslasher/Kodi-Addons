@@ -9,6 +9,7 @@ party members can agree on "server time" positions.
 
 Pure standard library — no Kodi imports.
 """
+import gzip
 import http.client
 import json
 import ssl
@@ -36,6 +37,13 @@ class RelayError(Exception):
 # the relay, so that request is sent again once on a new connection.
 _STALE = (http.client.RemoteDisconnected, BrokenPipeError,
           ConnectionResetError, ConnectionAbortedError)
+
+
+def _decoded(headers, data):
+    """The body as sent, before any gzip."""
+    if (headers.get('Content-Encoding') or '').strip().lower() == 'gzip':
+        return gzip.decompress(data)
+    return data
 
 
 class RelayClient:
@@ -98,14 +106,17 @@ class RelayClient:
         connection. Network errors raise OSError / HTTPException."""
         headers = dict(headers or {})
         headers.setdefault('User-Agent', USER_AGENT)
+        # the relay gzips its replies for clients that ask: a poll's room
+        # state is ~1.2-2.3 KB of JSON and ~0.5 KB gzipped
+        headers.setdefault('Accept-Encoding', 'gzip')
         if self._use_urllib:
             req = urllib.request.Request(self.base + path, data=body,
                                          headers=headers, method=method)
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                    return r.status, r.read()
+                    return r.status, _decoded(r.headers, r.read())
             except urllib.error.HTTPError as e:
-                return e.code, e.read()
+                return e.code, _decoded(e.headers, e.read())
         while True:
             conn = self._connection()
             reused = self._local.used
@@ -125,7 +136,7 @@ class RelayClient:
             self._local.used = True
             if resp.will_close:
                 self.close()
-            return resp.status, data
+            return resp.status, _decoded(resp.headers, data)
 
     def _post(self, path, payload):
         payload = dict(payload)

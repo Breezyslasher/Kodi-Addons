@@ -21,6 +21,7 @@ Pure standard library — no Kodi imports — so it is unit-testable outside
 Kodi. This file lives in WatchParty (watchparty-relay/); the Kodi addon runs
 a copy (tools/vendor-kodi.sh) for the relay it hosts inside Kodi.
 """
+import gzip
 import json
 import os
 import re
@@ -957,13 +958,46 @@ class _Handler(BaseHTTPRequestHandler):
             return room
         return 'wrong room code'
 
-    def _send(self, code, obj):
-        body = json.dumps(obj).encode('utf-8')
+    # Replies worth compressing: a poll's room state is ~1.2-2.3 KB of JSON
+    # (mostly the member list) and gzips to ~0.45-0.55 KB. Clients that say
+    # Accept-Encoding: gzip get it compressed (the Android app's
+    # HttpURLConnection and browsers do by themselves; the Kodi addon asks);
+    # older clients get it as before.
+    COMPRESS_MIN = 256
+    COMPRESSIBLE = ('application/json', 'text/', 'application/javascript',
+                    'image/svg+xml')
+
+    def _accepts_gzip(self):
+        for part in (self.headers.get('Accept-Encoding') or '').split(','):
+            coding, _, params = part.strip().partition(';')
+            if coding.strip().lower() in ('gzip', '*'):
+                return params.replace(' ', '') not in ('q=0', 'q=0.0',
+                                                       'q=0.00', 'q=0.000')
+        return False
+
+    def _write(self, code, content_type, body, headers=()):
+        """Send a whole response, gzipped when it's worth it and the
+        client takes it."""
+        gzipped = (len(body) >= self.COMPRESS_MIN
+                   and content_type.startswith(self.COMPRESSIBLE)
+                   and self._accepts_gzip())
+        if gzipped:
+            body = gzip.compress(body, compresslevel=6)
         self.send_response(code)
-        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Type', content_type)
         self.send_header('Content-Length', str(len(body)))
+        if content_type.startswith(self.COMPRESSIBLE):
+            self.send_header('Vary', 'Accept-Encoding')
+        if gzipped:
+            self.send_header('Content-Encoding', 'gzip')
+        for name, value in headers:
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(body)
+
+    def _send(self, code, obj):
+        self._write(code, 'application/json',
+                    json.dumps(obj).encode('utf-8'))
 
     def _read_body(self):
         length = int(self.headers.get('Content-Length') or 0)
@@ -981,12 +1015,7 @@ class _Handler(BaseHTTPRequestHandler):
         except OSError:
             self._send(404, {'ok': False, 'error': 'not found'})
             return
-        self.send_response(200)
-        self.send_header('Content-Type', content_type)
-        self.send_header('Content-Length', str(len(body)))
-        self.send_header('Cache-Control', cache)
-        self.end_headers()
-        self.wfile.write(body)
+        self._write(200, content_type, body, [('Cache-Control', cache)])
 
     def _send_remote(self, path):
         """/remote and its files (no directory walking: a name, or one
@@ -1049,12 +1078,8 @@ class _Handler(BaseHTTPRequestHandler):
         elif path in ('/', '/status'):
             # the dashboard is the landing page: typing the relay's
             # address into a browser should show the party, not JSON
-            body = DASH_HTML.encode('utf-8')
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html; charset=utf-8')
-            self.send_header('Content-Length', str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._write(200, 'text/html; charset=utf-8',
+                        DASH_HTML.encode('utf-8'))
         elif path == '/status.json':
             self._send(200, {'ok': True,
                              'rooms': rooms_stats(self.iter_rooms(),
