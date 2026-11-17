@@ -691,5 +691,42 @@ class StartedIdentityTest(unittest.TestCase):
         self.assertEqual((path, info), (self.PLAYED, {}))
 
 
+class WbdEpisodeTest(unittest.TestCase):
+    """A one-id HBO Max episode link opens the episode found in the addon;
+    a movie's opens the addon's id route (Batman Begins played, 2026-11-17)."""
+
+    LINK = 'https://play.hbomax.com/video/watch/95b04291-15f3-4318-93d8-193ee1948559'
+
+    def setUp(self):
+        self.saved = (engine.xbmc.getCondVisibility, engine._json_rpc)
+        engine.xbmc.getCondVisibility = lambda cond: True
+
+    def tearDown(self):
+        engine.xbmc.getCondVisibility, engine._json_rpc = self.saved
+
+    def test_episode(self):
+        asked = []
+
+        def rpc(method, params=None):
+            asked.append(params['directory'])
+            if '_=search' in params['directory']:
+                return {'files': [{'file': 'plugin://slyguy.max/?_=series&id=abc', 'label': 'Gold Rush'}]}
+            return {'files': [{'file': 'plugin://slyguy.max/?_=play&edit_id=e1', 'season': 12, 'episode': 5}]}
+        engine._json_rpc = rpc
+        item = {'file': self.LINK, 'type': 'episode', 'show': 'Gold Rush', 'season': 12, 'episode': 5}
+        self.assertEqual(engine._addon_ref(item), {'file': 'plugin://slyguy.max/?_=play&edit_id=e1'})
+        self.assertEqual(asked[1], 'plugin://slyguy.max/?_=series&id=abc&season=12')
+
+    def test_episode_not_found_skips_the_addon(self):
+        engine._json_rpc = lambda method, params=None: {'files': []}
+        item = {'file': self.LINK, 'type': 'episode', 'show': 'Gold Rush', 'season': 12, 'episode': 5}
+        self.assertIsNone(engine._addon_ref(item))
+
+    def test_movie(self):
+        engine._json_rpc = lambda method, params=None: self.fail('no browsing for a movie')
+        ref = engine._addon_ref({'file': self.LINK, 'type': 'movie', 'title': 'Batman Begins'})
+        self.assertEqual(ref, {'file': 'plugin://slyguy.max/?_=play&id=95b04291-15f3-4318-93d8-193ee1948559'})
+
+
 if __name__ == '__main__':
     unittest.main()

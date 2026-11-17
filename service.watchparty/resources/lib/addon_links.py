@@ -26,9 +26,9 @@ addon's own source (2026-11-15):
   <edit> for a link copied while playing (/video/watch/<video>/<edit>); a link
   with one id (/video/watch/<id>, as JustWatch gives) goes to ?_=play&id=<id>,
   which the addon turns into an edit id with /content/videos/<id>/
-  activeVideoForShow (plugin.py play, api.py get_edit_id). That route is what
-  the addon's own movie items use; whether HBO Max answers it for every id
-  JustWatch gives is untested (2026-11-17).
+  activeVideoForShow (plugin.py play, api.py get_edit_id). That plays a movie
+  (Batman Begins, 2026-11-17) but not an episode, whose id isn't a show's:
+  the engine finds an episode in the addon instead (addon_search.py).
 - Prime Video, plugin.video.amazon-test (Sandmann79): ?asin=<id>&mode=
   PlayVideo — the asin= or gti= of watch.amazon.com/watch, or the asin in
   /gp/video/detail/<asin> and primevideo.com/detail/<asin>.
