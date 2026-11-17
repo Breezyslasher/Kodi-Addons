@@ -179,9 +179,17 @@ def show_status():
         lines.append('')
         lines.append(f"[B]In the party ({len(members)}):[/B]")
         for m in members:
-            pos = time.strftime('%H:%M:%S', time.gmtime(max(0, m.get('position') or 0)))
-            state = 'paused' if m.get('paused') else 'playing'
-            watching = ' — ' + f"{pos} ({state})" if m.get('file') else ''
+            # the relay sends members what the apps show: on the party's
+            # title or not, paused, loading, and drift from the party
+            if m.get('on_item'):
+                state = ('loading' if m.get('caching') else
+                         'paused' if m.get('paused') else 'playing')
+                drift = m.get('drift')
+                if isinstance(drift, (int, float)):
+                    state += f", {drift:+.1f}s"
+                watching = f" — {state}"
+            else:
+                watching = ''
             lines.append(f"  • {m.get('name')}{watching}")
     xbmcgui.Dialog().textviewer('Watch Party — status', '\n'.join(lines))
 

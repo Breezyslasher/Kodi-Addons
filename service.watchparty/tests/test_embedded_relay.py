@@ -120,5 +120,32 @@ class KeptAliveTest(unittest.TestCase):
                     os.environ[key] = value
 
 
+class FileOnlyWhenChangedTest(unittest.TestCase):
+    def test_polls_send_the_file_only_when_it_changes(self):
+        server = RelayServer(port=0, room_code='TEST')
+        server.start()
+        try:
+            c = RelayClient('127.0.0.1', server._httpd.server_address[1], 'TEST')
+            sent, post = [], c._post
+
+            def spy(path, payload):
+                if path == '/poll':
+                    sent.append(payload)
+                return post(path, payload)
+            c._post = spy
+            c.join('kodi')
+            for f in ('smb://nas/a.mkv', 'smb://nas/a.mkv', 'smb://nas/b.mkv', ''):
+                c.poll(1.23456, False, f)
+            c.join('kodi')      # rejoined: the relay forgot it
+            c.poll(1.0, False, '')
+            self.assertEqual([p.get('file') for p in sent],
+                             ['smb://nas/a.mkv', None, 'smb://nas/b.mkv', '', ''])
+            self.assertNotIn('file', sent[1])
+            self.assertEqual(sent[0]['position'], 1.235)
+            c.close()
+        finally:
+            server.stop()
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -39,6 +39,9 @@ export class RelayClient {
     this.memberId = null;
     this.clockOffsetSec = 0;
     this.offsetSamples = 0;
+    // the file last told to the relay: polls send it only when it changes
+    // (the relay keeps the last one). null = not yet told (after joining)
+    this.sentFile = null;
   }
 
   /** The relay's clock, in seconds. */
@@ -49,6 +52,7 @@ export class RelayClient {
   async join(name) {
     const data = await this.post('/join', { name });
     this.memberId = data.member_id;
+    this.sentFile = null;
     return this.parseState(data.state);
   }
 
@@ -63,10 +67,13 @@ export class RelayClient {
   }
 
   async poll({ positionSec, paused, file, caching, onItem, corrections }) {
-    const data = await this.post('/poll', {
-      member_id: this.memberId, position: positionSec, paused, file, caching,
-      on_item: onItem, corrections,
-    });
+    const body = {
+      member_id: this.memberId, position: Math.round((Number(positionSec) || 0) * 1000) / 1000,
+      paused, caching, on_item: onItem, corrections,
+    };
+    if (file !== this.sentFile) body.file = file;
+    const data = await this.post('/poll', body);
+    this.sentFile = file;
     return this.parseState(data.state);
   }
 

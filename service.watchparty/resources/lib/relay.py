@@ -930,9 +930,36 @@ class RoomState:
             }
 
 
+    # What members get back from /join, /poll and /command: only what the
+    # apps read. The dashboard keeps the full snapshot() (/status.json);
+    # this leaves out its fields (each member's file, position, age,
+    # corrections, owner/host flags; locks and holds by name, command and
+    # correction counts, art id), which made up most of a poll's reply.
+    # Times are rounded to 1 ms: random trailing digits don't compress.
+    CLIENT_MEMBER_KEYS = ('name', 'paused', 'caching', 'on_item', 'drift')
+
+
+def client_view(room):
+    snap = room.snapshot()
+    return {
+        'seq': snap['seq'],
+        'item': snap['item'],
+        'position': round(float(snap['position']), 3),
+        'paused': snap['paused'],
+        'speed': snap['speed'],
+        'set_at': round(float(snap['set_at']), 3),
+        'set_by': snap['set_by'],
+        'members': [{k: m[k] for k in RoomState.CLIENT_MEMBER_KEYS}
+                    for m in snap['members']],
+    }
+
+
 class _Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
-    server_version = 'WatchParty/1.0'
+    server_version = 'WatchParty'
+
+    def version_string(self):
+        return self.server_version   # not "WatchParty/1.0 Python/3.x.y"
 
     # the RelayServer sets this on the handler class
     room = None
@@ -996,6 +1023,8 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send(self, code, obj):
+        if isinstance(obj.get('server_time'), float):
+            obj = dict(obj, server_time=round(obj['server_time'], 3))
         self._write(code, 'application/json',
                     json.dumps(obj).encode('utf-8'))
 
@@ -1176,7 +1205,7 @@ class _Handler(BaseHTTPRequestHandler):
             member_id = room.join(str(data.get('name') or ''))
             self._send(200, {'ok': True, 'member_id': member_id,
                              'protocol': PROTOCOL_VERSION,
-                             'state': room.snapshot(), 'server_time': now})
+                             'state': client_view(room), 'server_time': now})
             return
 
         member_id = str(data.get('member_id') or '')
@@ -1194,7 +1223,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(400, {'ok': False, 'error': 'bad command',
                                  'server_time': now})
                 return
-            self._send(200, {'ok': True, 'state': room.snapshot(),
+            self._send(200, {'ok': True, 'state': client_view(room),
                              'server_time': now})
         elif self.path == '/poll':
             if not room.touch(member_id,
@@ -1208,7 +1237,7 @@ class _Handler(BaseHTTPRequestHandler):
                                  'server_time': now})
                 return
             room.buffer_check()
-            self._send(200, {'ok': True, 'state': room.snapshot(),
+            self._send(200, {'ok': True, 'state': client_view(room),
                              'server_time': now})
         else:
             self._send(404, {'ok': False, 'error': 'not found'})

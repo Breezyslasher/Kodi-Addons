@@ -77,6 +77,10 @@ class RelayClient:
             urllib.request.getproxies().get(url.scheme)
             and not urllib.request.proxy_bypass(url.hostname or ''))
         self._local = threading.local()
+        # the file last told to the relay: polls send it only when it
+        # changes (the relay keeps the last one), a URL every second
+        # otherwise. None = not yet told (after joining)
+        self._sent_file = None
 
     # -- transport ---------------------------------------------------------
 
@@ -205,6 +209,7 @@ class RelayClient:
     def join(self, name):
         data = self._post('/join', {'name': name})
         self.member_id = data['member_id']
+        self._sent_file = None
         self.relay_protocol = int(data.get('protocol') or 1)
         return data['state']
 
@@ -228,9 +233,12 @@ class RelayClient:
 
     def poll(self, position, paused, file, caching=False, on_item=False,
              corrections=0):
-        data = self._post('/poll', {'member_id': self.member_id,
-                                    'position': position, 'paused': paused,
-                                    'file': file, 'caching': caching,
-                                    'on_item': on_item,
-                                    'corrections': corrections})
+        payload = {'member_id': self.member_id,
+                   'position': round(float(position or 0.0), 3),
+                   'paused': paused, 'caching': caching,
+                   'on_item': on_item, 'corrections': corrections}
+        if file != self._sent_file:
+            payload['file'] = file
+        data = self._post('/poll', payload)
+        self._sent_file = file
         return data['state']
