@@ -537,5 +537,67 @@ class SuppressorTest(unittest.TestCase):
         self.assertFalse(sup.consume('pause'))
 
 
+class AddonPathFallbackTest(unittest.TestCase):
+    """An addon that hands the player only its resolved stream (SlyGuy's
+    HBO Max: a proxy on 127.0.0.1) still shares the addon path picked."""
+
+    PROXY = ('http://127.0.0.1:8095/https://cf.dplus.us.prd.media.max.com/gcs/x/dash.mpd'
+             '?sessionId=abc')
+    PICKED = 'plugin://slyguy.max/?_=play&slug=abc'
+
+    def setUp(self):
+        self.saved = (engine.xbmc.getInfoLabel, engine._active_player_id, engine._json_rpc)
+
+    def tearDown(self):
+        engine.xbmc.getInfoLabel, engine._active_player_id, engine._json_rpc = self.saved
+
+    def _player(self, eng):
+        test = self
+
+        class Player:
+            engine = eng
+
+            def getPlayingFile(self):
+                return test.PROXY
+
+            def getTotalTime(self):
+                return 2881.6
+        return Player()
+
+    def _engine(self):
+        eng = engine.SyncEngine.__new__(engine.SyncEngine)
+        eng._started_plugin = ('', 0.0)
+        eng._local_starting_until = 0.0
+        return eng
+
+    def test_the_picked_addon_item_is_shared(self):
+        eng = self._engine()
+        engine.xbmc.getInfoLabel = lambda label: self.PICKED if label == 'ListItem.FileNameAndPath' else ''
+        eng.note_local_open(engine._focused_plugin_path())
+        engine._active_player_id = lambda: 1
+        engine._json_rpc = lambda method, params=None: (
+            {'item': {'file': self.PROXY, 'type': 'movie', 'title': 'Dune', 'year': 2021}}
+            if method == 'Player.GetItem' else {})
+        item = engine._now_playing_item(self._player(eng))
+        self.assertEqual(item['plugin'], self.PICKED)
+        self.assertEqual(item['title'], 'Dune')
+
+    def test_a_real_plugin_path_from_the_player_wins(self):
+        eng = self._engine()
+        eng.note_local_open('plugin://other.addon/?x=1')
+        engine._active_player_id = lambda: 1
+        engine._json_rpc = lambda method, params=None: (
+            {'item': {'file': self.PICKED}} if method == 'Player.GetItem' else {})
+        self.assertEqual(engine._now_playing_item(self._player(eng))['plugin'], self.PICKED)
+
+    def test_nothing_picked_or_too_long_ago(self):
+        eng = self._engine()
+        engine.xbmc.getInfoLabel = lambda label: 'smb://nas/movies/Dune.mkv'
+        eng.note_local_open(engine._focused_plugin_path())
+        self.assertEqual(eng.started_plugin(), '')
+        eng._started_plugin = (self.PICKED, time.time() - 120)
+        self.assertEqual(eng.started_plugin(), '')
+
+
 if __name__ == '__main__':
     unittest.main()

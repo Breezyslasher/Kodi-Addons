@@ -225,6 +225,19 @@ def _identity(info):
     return out
 
 
+def _focused_plugin_path():
+    """The addon path of the list item the user picked, when playback
+    starts from an addon's menu. Some addons report only their resolved
+    stream to the player — SlyGuy's HBO Max: http://127.0.0.1:8095/https://
+    …max.com/…/dash.mpd, a proxy on this Kodi — so this is the only place
+    the item's own plugin:// path is still to be found."""
+    try:
+        path = xbmc.getInfoLabel('ListItem.FileNameAndPath') or ''
+    except Exception:
+        return ''
+    return path if path.startswith('plugin://') else ''
+
+
 def _now_playing_item(player):
     """Describe the playing item in a way other devices can act on.
 
@@ -274,6 +287,13 @@ def _now_playing_item(player):
         jfile = info.get('file') or ''
         if jfile.startswith('plugin://'):
             item['plugin'] = jfile
+        else:
+            # the player has only the resolved stream: the path of the
+            # addon item picked when this playback started, if any
+            engine = getattr(player, 'engine', None)
+            picked = engine.started_plugin() if engine else ''
+            if picked:
+                item['plugin'] = picked
         item.update(_identity(info))
         # a real title beats Kodi's filename fallback in labels/toasts
         if item.get('title'):
@@ -502,7 +522,7 @@ class _PartyPlayer(xbmc.Player):
         # Fires the moment an open is requested, long before the stream
         # is ready. Marks a local open in flight so the poll loop doesn't
         # fight the still-buffering player (stop/reopen/pause/seek).
-        self.engine.note_local_open()
+        self.engine.note_local_open(_focused_plugin_path())
 
     def onAVStarted(self):
         item = _now_playing_item(self)
@@ -598,6 +618,7 @@ class SyncEngine:
         self._local_key = ''      # key of whatever this device is playing
         self._last_party_key = ''  # key of the party's last shared item
         self._local_starting_until = 0.0  # local open still buffering
+        self._started_plugin = ('', 0.0)  # addon item picked for it
         self._failed_keys = set()  # items that would not play here
         self._member_names = None  # roster baseline for join/leave toasts
         self._open_fallbacks = []  # untried open refs for the current item
@@ -648,11 +669,19 @@ class SyncEngine:
 
     # -- auto-open bookkeeping ---------------------------------------------
 
-    def note_local_open(self):
+    def note_local_open(self, plugin=''):
         """An open was requested locally (any source — user or engine);
         the stream isn't ready yet. The poll loop backs off until AV
-        starts so it can't kill or hijack a buffering stream."""
+        starts so it can't kill or hijack a buffering stream. [plugin]:
+        the addon item that was picked, if it was one."""
         self._local_starting_until = time.time() + OPEN_GRACE
+        self._started_plugin = (plugin, time.time()) if plugin else ('', 0.0)
+
+    def started_plugin(self):
+        """The addon item picked for the playback starting now (within a
+        minute of it), else ''."""
+        path, at = getattr(self, '_started_plugin', ('', 0.0))
+        return path if path and time.time() - at < 60 else ''
 
     def note_stopped(self):
         """Local playback fully stopped — nothing is playing here now."""
