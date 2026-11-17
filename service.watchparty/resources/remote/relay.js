@@ -19,6 +19,25 @@ export function normalizeBase(raw) {
   return url;
 }
 
+/** A web address anyone can open: not a device's own (127.0.0.1, localhost)
+ *  or one on a home network. A Kodi addon playing through its local proxy
+ *  (SlyGuy's http://127.0.0.1:8095/…) shared that as the file; opened here
+ *  it was a dead tab. */
+export function isPublicWebLink(url) {
+  let u;
+  try { u = new URL(String(url || '')); } catch (e) { return false; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+  const h = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (h === 'localhost' || h.endsWith('.local') || h.endsWith('.lan') || h === '::1' || !h.includes('.') && !h.includes(':')) return false;
+  const v4 = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (v4) {
+    const [a, b2] = [Number(v4[1]), Number(v4[2])];
+    if (a === 127 || a === 10 || a === 0 || (a === 169 && b2 === 254) || (a === 192 && b2 === 168) || (a === 172 && b2 >= 16 && b2 <= 31) || (a === 100 && b2 >= 64 && b2 <= 127)) return false;
+  }
+  if (/^(fc|fd|fe80)/.test(h)) return false;
+  return true;
+}
+
 /** The relay's member list: name, paused, caching, on_item, drift (null off the item). */
 export function parseMembers(array) {
   if (!Array.isArray(array)) return [];
@@ -124,7 +143,7 @@ export class RelayClient {
       const file = String(it.file || '');
       // a Kodi addon's title: its path's web link (its file is Kodi's own
       // stream, e.g. on 127.0.0.1, never opened here)
-      const link = it.plugin ? pluginLink(String(it.plugin), it.type ? String(it.type) : '') : (/^https?:\/\//.test(file) ? file : null);
+      const link = it.plugin ? pluginLink(String(it.plugin), it.type ? String(it.type) : '') : (isPublicWebLink(file) ? file : null);
       item = { file, link, label: String(it.label || ''), service: link ? serviceOf(link) : null, identity: parseIdentity(it) };
     }
     return {
