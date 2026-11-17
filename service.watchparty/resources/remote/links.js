@@ -155,8 +155,8 @@ export function normalize(raw, { strip = true } = {}) {
  * gives phones (its MediaLink.alternatives). A Paramount+ movie
  * (paramountplus.com/movies/<name>/<id>, /movies/video/<id>/ — JustWatch's
  * link, which the TV app plays) is a page on the website, which plays the
- * movie over it at /movies/video/<id>/#open (the address while playing,
- * 2026-11-17). Others open as they are.
+ * movie over it at /movies/video/<id>/#open (the address while playing;
+ * opening it starts the movie, 2026-11-17). Others open as they are.
  */
 export function browserLink(link) {
   const p = link.trim().match(/^https?:\/\/(?:www\.)?paramountplus\.com\/(?:[a-z]{2}\/)?movies\/(?:video\/|[^/?#]+\/)([A-Za-z0-9_-]+)\/?(?:[?#].*)?$/);
