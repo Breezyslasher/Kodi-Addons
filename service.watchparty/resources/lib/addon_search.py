@@ -14,7 +14,9 @@ in both addons):
                                  paged: a last item adds &page=<n+1>
 
 and picks the episode by its season and episode number. list_dir(path) is
-Kodi's Files.GetDirectory, returning its 'files'.
+Kodi's Files.GetDirectory, returning its 'files'. Played on Kodi
+(2026-11-17): The Last of Us (HBO Max only, found by name, not its "(with
+ASL)" edition) and Gold Rush.
 
 A Discovery+ link from JustWatch's web offer names the show, so Watch Party's
 Android app and browser share "<show id>/s<N>/e<N>" as the item's ids.wbd
