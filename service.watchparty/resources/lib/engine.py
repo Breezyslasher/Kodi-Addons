@@ -485,7 +485,12 @@ def _find_in_library(item):
                                        'value': str(item['show'])},
                             'properties': ['uniqueid', 'year']})
                  or {}).get('tvshows') or []
-        for show in _same_show(shows, item):
+        picked = _same_show(shows, item)
+        common.log('library match for %s S%sE%s (year %s, ids %s): %s of %s' % (
+            item['show'], season, ep, item.get('year'), item.get('ids') or {},
+            ['%s (%s) %s' % (sh.get('label'), sh.get('year'), sh.get('uniqueid') or {}) for sh in picked],
+            ['%s (%s) %s' % (sh.get('label'), sh.get('year'), sh.get('uniqueid') or {}) for sh in shows]))
+        for show in picked:
             episodes = (_json_rpc('VideoLibrary.GetEpisodes',
                                   {'tvshowid': show['tvshowid'],
                                    'season': int(season),
