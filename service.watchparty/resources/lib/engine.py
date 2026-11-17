@@ -225,17 +225,27 @@ def _identity(info):
     return out
 
 
-def _focused_plugin_path():
-    """The addon path of the list item the user picked, when playback
-    starts from an addon's menu. Some addons report only their resolved
-    stream to the player — SlyGuy's HBO Max: http://127.0.0.1:8095/https://
-    …max.com/…/dash.mpd, a proxy on this Kodi — so this is the only place
-    the item's own plugin:// path is still to be found."""
+def _started_plugin_path(player):
+    """The addon path of what's starting, read as playback starts. Some
+    addons hand the player only their resolved stream — SlyGuy's
+    Discovery+ and HBO Max: http://127.0.0.1:8095/https://…/dash.mpd, a
+    proxy on this Kodi — and by AV start that's all Kodi reports, so the
+    item's own plugin:// path has to be caught here: from the player,
+    which still has it (VideoPlayer::OpenFile logs it), else the focused
+    list item if it's a playable one. Not a folder: the focused item was
+    once the season, not the episode that started (kodi.log, 2026-11-17)."""
+    try:
+        path = player.getPlayingFile() or ''
+    except Exception:
+        path = ''
+    if path.startswith('plugin://'):
+        return path
     try:
         path = xbmc.getInfoLabel('ListItem.FileNameAndPath') or ''
+        folder = xbmc.getCondVisibility('ListItem.IsFolder')
     except Exception:
         return ''
-    return path if path.startswith('plugin://') else ''
+    return path if path.startswith('plugin://') and not folder else ''
 
 
 def _now_playing_item(player):
@@ -522,7 +532,7 @@ class _PartyPlayer(xbmc.Player):
         # Fires the moment an open is requested, long before the stream
         # is ready. Marks a local open in flight so the poll loop doesn't
         # fight the still-buffering player (stop/reopen/pause/seek).
-        self.engine.note_local_open(_focused_plugin_path())
+        self.engine.note_local_open(_started_plugin_path(self))
 
     def onAVStarted(self):
         item = _now_playing_item(self)

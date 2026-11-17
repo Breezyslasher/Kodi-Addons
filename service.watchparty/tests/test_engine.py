@@ -546,10 +546,12 @@ class AddonPathFallbackTest(unittest.TestCase):
     PICKED = 'plugin://slyguy.max/?_=play&slug=abc'
 
     def setUp(self):
-        self.saved = (engine.xbmc.getInfoLabel, engine._active_player_id, engine._json_rpc)
+        self.saved = (engine.xbmc.getInfoLabel, engine.xbmc.getCondVisibility,
+                      engine._active_player_id, engine._json_rpc)
 
     def tearDown(self):
-        engine.xbmc.getInfoLabel, engine._active_player_id, engine._json_rpc = self.saved
+        (engine.xbmc.getInfoLabel, engine.xbmc.getCondVisibility,
+         engine._active_player_id, engine._json_rpc) = self.saved
 
     def _player(self, eng):
         test = self
@@ -573,7 +575,8 @@ class AddonPathFallbackTest(unittest.TestCase):
     def test_the_picked_addon_item_is_shared(self):
         eng = self._engine()
         engine.xbmc.getInfoLabel = lambda label: self.PICKED if label == 'ListItem.FileNameAndPath' else ''
-        eng.note_local_open(engine._focused_plugin_path())
+        engine.xbmc.getCondVisibility = lambda cond: False
+        eng.note_local_open(engine._started_plugin_path(self._player(eng)))
         engine._active_player_id = lambda: 1
         engine._json_rpc = lambda method, params=None: (
             {'item': {'file': self.PROXY, 'type': 'movie', 'title': 'Dune', 'year': 2021}}
@@ -593,10 +596,49 @@ class AddonPathFallbackTest(unittest.TestCase):
     def test_nothing_picked_or_too_long_ago(self):
         eng = self._engine()
         engine.xbmc.getInfoLabel = lambda label: 'smb://nas/movies/Dune.mkv'
-        eng.note_local_open(engine._focused_plugin_path())
+        engine.xbmc.getCondVisibility = lambda cond: False
+        eng.note_local_open(engine._started_plugin_path(self._player(eng)))
         self.assertEqual(eng.started_plugin(), '')
         eng._started_plugin = (self.PICKED, time.time() - 120)
         self.assertEqual(eng.started_plugin(), '')
+
+
+class StartedPathTest(unittest.TestCase):
+    """Where the starting item's addon path comes from (kodi.log,
+    2026-11-17: the player opened .../?_=play&_play=1&edit_id=4f97...,
+    the focused list item was the season)."""
+
+    EPISODE = 'plugin://slyguy.discovery.plus/?_=play&_play=1&edit_id=4f975d61-3f7f-4926-af3a-783be607e115'
+    SEASON = 'plugin://slyguy.discovery.plus/?_=series&id=eb26e00e-9582-4790-a61c-48d785926f58&season=17'
+
+    def setUp(self):
+        self.saved = (engine.xbmc.getInfoLabel, engine.xbmc.getCondVisibility)
+
+    def tearDown(self):
+        engine.xbmc.getInfoLabel, engine.xbmc.getCondVisibility = self.saved
+
+    def player(self, playing):
+        class P:
+            def getPlayingFile(self):
+                if playing is None:
+                    raise RuntimeError('not playing')
+                return playing
+        return P()
+
+    def test_the_players_path_first(self):
+        engine.xbmc.getInfoLabel = lambda label: self.SEASON
+        engine.xbmc.getCondVisibility = lambda cond: True
+        self.assertEqual(engine._started_plugin_path(self.player(self.EPISODE)), self.EPISODE)
+
+    def test_a_focused_folder_is_not_what_started(self):
+        engine.xbmc.getInfoLabel = lambda label: self.SEASON
+        engine.xbmc.getCondVisibility = lambda cond: cond == 'ListItem.IsFolder'
+        self.assertEqual(engine._started_plugin_path(self.player('http://127.0.0.1:8095/x.mpd')), '')
+
+    def test_a_focused_playable_item_when_the_player_has_none(self):
+        engine.xbmc.getInfoLabel = lambda label: self.EPISODE
+        engine.xbmc.getCondVisibility = lambda cond: False
+        self.assertEqual(engine._started_plugin_path(self.player(None)), self.EPISODE)
 
 
 if __name__ == '__main__':
