@@ -122,6 +122,27 @@ def has_downloads():
     return len(downloads) > 0
 
 
+def build_server_url(address, port):
+    """Server base URL. A full URL (e.g. https://abs.example.com) is used as-is."""
+    address = (address or '').strip().rstrip('/')
+    port = (port or '').strip()
+    if not address:
+        return ''
+    if '://' in address:
+        return address
+
+    host, sep, path = address.partition('/')
+    path = f'/{path}' if sep else ''
+    has_port = (']:' in host) if host.startswith('[') else (':' in host)
+    if has_port:
+        return f'http://{host}{path}'
+    if port == '443':
+        return f'https://{host}{path}'
+    if port and port != '80':
+        return f'http://{host}:{port}{path}'
+    return f'http://{host}{path}'
+
+
 def get_library_service():
     """Get authenticated library service with caching"""
     if not is_network_available():
@@ -131,15 +152,12 @@ def get_library_service():
         xbmcgui.Dialog().ok('No Network', 'No network connection available')
         return None, None, None, False
     
-    ip = get_setting('ipaddress')
-    port = get_setting('port', '13378')
-    
-    if not ip:
+    url = build_server_url(get_setting('ipaddress'), get_setting('port', '13378'))
+
+    if not url:
         xbmcgui.Dialog().ok('Setup Required', 'Please configure server settings')
         ADDON.openSettings()
         return None, None, None, False
-    
-    url = f"http://{ip}:{port}"
 
     # API key auth: an Audiobookshelf API key is a long-lived bearer token, so
     # when one is set we use it directly and skip the whole login/refresh/cache
