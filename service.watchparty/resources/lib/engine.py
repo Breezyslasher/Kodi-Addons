@@ -541,6 +541,13 @@ class _PartyPlayer(xbmc.Player):
             position = self.getTime()
         except RuntimeError:
             position = 0.0
+        # what the others get to find it with (not the stream: it can be
+        # long and is no use elsewhere) — for checking an addon's items
+        common.log('sharing: ' + ', '.join(
+            f"{k}={item[k]!r}" for k in ('label', 'plugin', 'type', 'title',
+                                          'year', 'show', 'season',
+                                          'episode', 'ids')
+            if item.get(k) not in (None, '', {})))
         self._push('open', position=position, item=item)
 
     def onPlayBackPaused(self):
