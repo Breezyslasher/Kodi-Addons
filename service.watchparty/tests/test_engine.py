@@ -504,5 +504,38 @@ class MemberNotifyTest(unittest.TestCase):
         self.assertEqual(common.notifications, [])  # no change, no spam
 
 
+class SuppressorTest(unittest.TestCase):
+    """The engine marks its own seek with where it seeked to: only a seek
+    event that lands there is its own; the user's goes to the party."""
+
+    def test_our_seek_is_ours(self):
+        sup = engine._Suppressor()
+        sup.arm('seek', target=110.0)
+        self.assertTrue(sup.consume('seek', position=110.4))
+        # used up: a later seek is the user's
+        self.assertFalse(sup.consume('seek', position=111.0))
+
+    def test_the_users_seek_before_ours_lands_is_theirs(self):
+        sup = engine._Suppressor()
+        sup.arm('seek', target=110.0)
+        # Kodi never reported ours (refused), and the user skips ahead
+        self.assertFalse(sup.consume('seek', position=1343.0))
+        # ours, if it does come, is still recognised
+        self.assertTrue(sup.consume('seek', position=109.0))
+
+    def test_tokens_expire(self):
+        sup = engine._Suppressor()
+        sup.arm('seek', target=10.0)
+        sup._tokens['seek'] = (time.time() - 1, 10.0)
+        self.assertFalse(sup.consume('seek', position=10.0))
+        self.assertNotIn('seek', sup._tokens)
+
+    def test_other_actions_need_no_position(self):
+        sup = engine._Suppressor()
+        sup.arm('pause')
+        self.assertTrue(sup.consume('pause'))
+        self.assertFalse(sup.consume('pause'))
+
+
 if __name__ == '__main__':
     unittest.main()

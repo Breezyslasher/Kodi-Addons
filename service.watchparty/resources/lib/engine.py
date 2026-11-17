@@ -33,6 +33,7 @@ from relay import redact_url
 
 POLL_INTERVAL = 1.0
 SUPPRESS_TTL = 3.0       # seconds a suppress token stays valid
+SEEK_MATCH = 5.0         # a seek event this close to our own seek's target is ours
 CORRECTION_COOLDOWN = 4.0  # min seconds between drift-correcting seeks
 OPEN_GRACE = 20.0        # seconds to let a newly opened file start up
                          # (addon streams can take a while to resolve)
@@ -457,20 +458,34 @@ def _local_entry_ref(entry):
 
 
 class _Suppressor:
-    """Short-lived tokens marking actions the engine itself triggered."""
+    """Short-lived tokens marking actions the engine itself triggered.
+
+    A seek token carries where the engine seeked to: only a seek event that
+    lands there is ours. Without it, a seek Kodi never reported (refused,
+    or merged into the user's) left the token armed, and the user's own
+    seek within SUPPRESS_TTL was taken for the engine's, never sent to the
+    party, and corrected back by the next poll.
+    """
 
     def __init__(self):
         self._tokens = {}
         self._lock = threading.Lock()
 
-    def arm(self, action):
+    def arm(self, action, target=None):
         with self._lock:
-            self._tokens[action] = time.time() + SUPPRESS_TTL
+            self._tokens[action] = (time.time() + SUPPRESS_TTL, target)
 
-    def consume(self, action):
+    def consume(self, action, position=None):
         with self._lock:
-            expiry = self._tokens.pop(action, 0)
-            return expiry >= time.time()
+            expiry, target = self._tokens.get(action, (0, None))
+            if expiry < time.time():
+                self._tokens.pop(action, None)
+                return False
+            if (target is not None and position is not None
+                    and abs(position - target) > SEEK_MATCH):
+                return False   # someone else's seek; ours may still come
+            self._tokens.pop(action, None)
+            return True
 
 
 class _PartyPlayer(xbmc.Player):
@@ -519,7 +534,7 @@ class _PartyPlayer(xbmc.Player):
         self._push('play', position=self.engine.safe_time())
 
     def onPlayBackSeek(self, seek_time, seek_offset):
-        if self.engine.suppress.consume('seek'):
+        if self.engine.suppress.consume('seek', position=seek_time / 1000.0):
             return
         self._push('seek', position=seek_time / 1000.0)
 
@@ -754,7 +769,7 @@ class SyncEngine:
                   {'playerid': player_id, 'play': not paused})
 
     def _seek(self, position):
-        self.suppress.arm('seek')
+        self.suppress.arm('seek', target=max(0.0, position))
         try:
             self.player.seekTime(max(0.0, position))
         except RuntimeError:
