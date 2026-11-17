@@ -85,5 +85,23 @@ class FindEpisodeTest(unittest.TestCase):
         self.assertIsNone(addon_search.find_episode('slyguy.netflix', 'Gold Rush', 3, 1, addon))
 
 
+
+class FindByShowTest(unittest.TestCase):
+    WBD = 'EB26E00E-9582-4790-a61c-48d785926f58/s2/e1'
+    SHOW_ID = 'eb26e00e-9582-4790-a61c-48d785926f58'
+
+    def test_opens_the_season_by_the_shows_id(self):
+        addon = Addon([], {(self.SHOW_ID, 2): [[ep(1, season=2)]]})
+        self.assertEqual(addon_search.find_by_show('slyguy.discovery.plus', self.WBD, addon), ep(1, season=2)['file'])
+        self.assertEqual([args(p) for p in addon.asked], [{'_': 'series', 'id': self.SHOW_ID, 'season': '2'}])
+
+    def test_nothing_without_a_usable_value(self):
+        addon = Addon([], {})
+        for value in (None, '', 'abc/s1/e1', self.SHOW_ID):
+            self.assertIsNone(addon_search.find_by_show('slyguy.max', value, addon))
+        self.assertIsNone(addon_search.find_by_show('plugin.video.netflix', self.WBD, addon))
+        self.assertEqual(addon.asked, [])
+
+
 if __name__ == '__main__':
     unittest.main()

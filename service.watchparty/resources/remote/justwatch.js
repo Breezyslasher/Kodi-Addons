@@ -215,6 +215,26 @@ export function parseEpisodes(response) {
   }));
 }
 
+const WBD_SHOW = /(?:discoveryplus|hbomax|max)\.com\/show\/([0-9a-f-]{36})\/s(\d+)\/e(\d+)-/;
+const WBD_SHOWS = /(?:discoveryplus|hbomax|max)\.com\/shows\/[^/]+\/s(\d+)\/([0-9a-f-]{36})\/e(\d+)-/;
+
+/**
+ * Discovery+'s web link for an episode names its show and its own season and
+ * episode (JustWatch, 2026-11-17: Gold Rush's www.discoveryplus.com/show/
+ * <show>/s1/e1-<name>/<video> and /shows/gold-rush/s2/<show>/e1-<name>/<video>);
+ * the play link doesn't. "<show>/s<N>/e<N>", shared in the item's ids as
+ * "wbd": Kodi's SlyGuy addon opens that season by the show's id instead of
+ * searching for the show. The Android app's JustWatch.wbdEpisode.
+ */
+export function wbdEpisode(webLink) {
+  if (!webLink) return null;
+  let m = WBD_SHOW.exec(webLink);
+  if (m) return `${m[1]}/s${Number(m[2])}/e${Number(m[3])}`;
+  m = WBD_SHOWS.exec(webLink);
+  if (m) return `${m[2]}/s${Number(m[1])}/e${Number(m[3])}`;
+  return null;
+}
+
 /**
  * One offer per service from a node's web and atv lists (streaming only, no
  * rent or buy), each with the link that starts it on a TV — the Android
@@ -235,9 +255,12 @@ export function parseOffers(node) {
     const link = linkFor(tech, w && text(w.deeplinkURL), a && text(a.deeplinkURL), w && text(w.standardWebURL));
     if (!link) continue;
     const icon = text(((w || a).package || {}).icon);
+    const wbd = wbdEpisode(w && text(w.deeplinkURL)) || wbdEpisode(w && text(w.standardWebURL));
     // "Netflix" and "Netflix Standard with Ads" are the same app and link
     if (!out.some(o => o.link === link)) {
-      out.push({ technicalName: tech, clearName: clear, link, icon: icon && icon.startsWith('/') ? IMAGES + icon : icon });
+      const offer = { technicalName: tech, clearName: clear, link, icon: icon && icon.startsWith('/') ? IMAGES + icon : icon };
+      if (wbd) offer.wbd = wbd;
+      out.push(offer);
     }
   }
   return out;

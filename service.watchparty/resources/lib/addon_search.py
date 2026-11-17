@@ -15,6 +15,13 @@ in both addons):
 
 and picks the episode by its season and episode number. list_dir(path) is
 Kodi's Files.GetDirectory, returning its 'files'.
+
+A Discovery+ link from JustWatch's web offer names the show, so Watch Party's
+Android app and browser share "<show id>/s<N>/e<N>" as the item's ids.wbd
+(their wbdEpisode, from www.discoveryplus.com/show/<show>/s<N>/e<N>-<name>/
+<video>): find_by_show() opens that season directly, with the service's own
+numbers. HBO Max and Discovery+ share one catalog, so the show id is tried
+in both addons; whether slyguy.max takes Discovery+'s show ids is untested.
 """
 import re
 from urllib.parse import parse_qs, urlencode, urlsplit
@@ -49,6 +56,38 @@ def _is_episode(entry, season, episode):
             and _int(entry.get('episode')) == episode)
 
 
+_WBD = re.compile(r'^([0-9a-fA-F-]{36})/s(\d+)/e(\d+)$')
+
+
+def parse_wbd(value):
+    """ids.wbd "<show id>/s<N>/e<N>" -> (show id, N, N), or None."""
+    m = _WBD.match(str(value or '').strip())
+    return (m.group(1).lower(), int(m.group(2)), int(m.group(3))) if m else None
+
+
+def _in_season(addon, show_id, season, episode, list_dir):
+    path = _url(addon, _='series', id=show_id, season=season)
+    for _page in range(MAX_PAGES):
+        entries = list_dir(path) or []
+        for entry in entries:
+            if _is_episode(entry, season, episode):
+                return entry['file']
+        more = [e['file'] for e in entries
+                if _args(e.get('file')).get('_') == 'series' and _args(e.get('file')).get('page')]
+        if not more:
+            break
+        path = more[0]
+    return None
+
+
+def find_by_show(addon, wbd, list_dir):
+    """The addon's path for ids.wbd's show / season / episode, or None."""
+    parsed = parse_wbd(wbd)
+    if addon not in WBD_ADDONS or not parsed:
+        return None
+    return _in_season(addon, parsed[0], parsed[1], parsed[2], list_dir)
+
+
 def find_episode(addon, show, season, episode, list_dir):
     """The addon's plugin path that plays `show` season/episode, or None."""
     season, episode = _int(season), _int(episode)
@@ -71,15 +110,7 @@ def find_episode(addon, show, season, episode, list_dir):
         ids = close[:1] if len(close) == 1 else []
 
     for show_id in ids:
-        path = _url(addon, _='series', id=show_id, season=season)
-        for _page in range(MAX_PAGES):
-            entries = list_dir(path) or []
-            for entry in entries:
-                if _is_episode(entry, season, episode):
-                    return entry['file']
-            more = [e['file'] for e in entries
-                    if _args(e.get('file')).get('_') == 'series' and _args(e.get('file')).get('page')]
-            if not more:
-                break
-            path = more[0]
+        found = _in_season(addon, show_id, season, episode, list_dir)
+        if found:
+            return found
     return None

@@ -325,9 +325,13 @@ export function titleScreen(app, t) {
     fill(dialog, t.title, sub, e.offers, showLevel, { season: s.number, episode: e.number });
   }
 
+  // the episode's show and numbers on HBO Max / Discovery+ (wbdEpisode), for Kodi
+  let wbd = null;
+
   function fill(d, title, sub, offers, showLevel = new Set(), episode = null) {
     // a Discovery+ movie page becomes its play link when HBO Max has the title
     offers = discoveryPlayLinks(offers);
+    wbd = (offers.find(o => o.wbd) || {}).wbd || null;
     if (!offers.length) {
       d.setServices([]);
       d.hint(`No streaming service has this in ${app.country}.`);
@@ -368,7 +372,8 @@ export function titleScreen(app, t) {
     try {
       // the title's identity, so Kodi members play their library copy
       const identity = show
-        ? { type: 'episode', show: t.title, season: episode && episode.season, episode: episode && episode.episode, ids: {} }
+        ? { type: 'episode', show: t.title, season: episode && episode.season, episode: episode && episode.episode,
+          ids: wbd ? { wbd } : {} }
         : { type: 'movie', title: t.title, year: t.year || null, ids: Object.fromEntries(
           [['tmdb', t.tmdbId], ['imdb', t.imdbId]].filter(([, v]) => v)) };
       await app.start(link, label, { title, sub, service: serviceName(o), image: t.poster }, identity);

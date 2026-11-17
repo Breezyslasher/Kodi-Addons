@@ -27,7 +27,7 @@ import xbmc
 
 import common
 from addon_links import addon_path
-from addon_search import WBD_ADDONS, find_episode
+from addon_search import WBD_ADDONS, find_by_show, find_episode
 from client import PROTOCOL_VERSION, RelayClient, RelayError
 from relay import redact_url
 
@@ -424,9 +424,11 @@ def _addon_ref(item):
     if not addon or not xbmc.getCondVisibility('System.HasAddon(%s)' % addon):
         return None
     if addon in WBD_ADDONS and item.get('type') == 'episode' and 'edit_id=' not in path:
-        # the addon plays a one-id link only for a movie: find the episode
-        found = find_episode(addon, item.get('show'), item.get('season'),
-                             item.get('episode'), _list_dir)
+        # the addon plays a one-id link only for a movie: find the episode,
+        # by the show's id when the link's sender knew it, else by its name
+        found = (find_by_show(addon, (item.get('ids') or {}).get('wbd'), _list_dir)
+                 or find_episode(addon, item.get('show'), item.get('season'),
+                                 item.get('episode'), _list_dir))
         common.log('%s episode %s: %s' % (addon, item.get('file'), found or 'not found'))
         return {'file': found} if found else None
     return {'file': path}

@@ -717,6 +717,32 @@ class WbdEpisodeTest(unittest.TestCase):
         self.assertEqual(engine._addon_ref(item), {'file': 'plugin://slyguy.max/?_=play&edit_id=e1'})
         self.assertEqual(asked[1], 'plugin://slyguy.max/?_=series&id=abc&season=12')
 
+    def test_episode_by_the_shows_id(self):
+        asked = []
+
+        def rpc(method, params=None):
+            asked.append(params['directory'])
+            if 'id=eb26e00e-9582-4790-a61c-48d785926f58&season=2' in params['directory']:
+                return {'files': [{'file': 'plugin://slyguy.max/?_=play&edit_id=e2', 'season': 2, 'episode': 1}]}
+            return {'files': []}
+        engine._json_rpc = rpc
+        item = {'file': self.LINK, 'type': 'episode', 'show': 'Gold Rush', 'season': 2, 'episode': 1,
+                'ids': {'wbd': 'eb26e00e-9582-4790-a61c-48d785926f58/s2/e1'}}
+        self.assertEqual(engine._addon_ref(item), {'file': 'plugin://slyguy.max/?_=play&edit_id=e2'})
+        self.assertEqual(len(asked), 1)   # no search
+
+    def test_a_wrong_show_id_falls_back_to_the_search(self):
+        def rpc(method, params=None):
+            if '_=search' in params['directory']:
+                return {'files': [{'file': 'plugin://slyguy.max/?_=series&id=abc', 'label': 'Gold Rush'}]}
+            if 'id=abc' in params['directory']:
+                return {'files': [{'file': 'plugin://slyguy.max/?_=play&edit_id=e3', 'season': 2, 'episode': 1}]}
+            return {'files': []}
+        engine._json_rpc = rpc
+        item = {'file': self.LINK, 'type': 'episode', 'show': 'Gold Rush', 'season': 2, 'episode': 1,
+                'ids': {'wbd': 'eb26e00e-9582-4790-a61c-48d785926f58/s2/e1'}}
+        self.assertEqual(engine._addon_ref(item), {'file': 'plugin://slyguy.max/?_=play&edit_id=e3'})
+
     def test_episode_not_found_skips_the_addon(self):
         engine._json_rpc = lambda method, params=None: {'files': []}
         item = {'file': self.LINK, 'type': 'episode', 'show': 'Gold Rush', 'season': 12, 'episode': 5}
