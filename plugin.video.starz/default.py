@@ -634,32 +634,21 @@ def show_channel(api, code, day):
             xbmcplugin.addDirectoryItem(HANDLE, url(action="live", channel=code), li, False)
         add_dir(L(32112), "channel", code=code, day=1)
     for el in elements:
-        airing = el.get("startMs", 0) <= now < el.get("endMs", 0)
+        content = dict(el)
+        content["runtime"] = (el["endMs"] - el["startMs"]) // 1000
+        item = to_item(content) or {"id": str(el.get("contentId")), "type": "movie"}
+        item["title"] = el.get("title", "")
         label = "%s  %s" % (_clock(el["startMs"]), el.get("title", ""))
+        if el.get("startMs", 0) <= now < el.get("endMs", 0):
+            label = "[B]%s[/B]" % label
         li = xbmcgui.ListItem(label)
-        # Guide text only: no movie/episode media type, so skins draw no
-        # watched/playable markers on programmes that are not on now.
-        tag = li.getVideoInfoTag()
-        tag.setTitle(el.get("title", ""))
-        tag.setPlot(el.get("logLine", ""))
-        tag.setDuration(int((el["endMs"] - el["startMs"]) // 1000))
-        if el.get("contentId"):
-            li.setArt({"thumb": "https://stz1.imgix.net/Web/contentId/%s/type/KEY/"
-                                "dimension/2560x1440/lang/en-US?fit=max&auto=format,"
-                                "compress&w=640" % el["contentId"]})
-        if airing and el.get("availableOnOtt") and el.get("contentId"):
-            # Only what is on now plays, and it tunes in like On now.
-            li.setLabel("[B]%s[/B]" % label)
+        _apply_info(li, item)
+        if el.get("availableOnOtt") and el.get("contentId"):
             li.setProperty("IsPlayable", "true")
-            target = url(action="live", channel=code)
+            target = url(action="play", content_id=el["contentId"])
         else:
             li.setLabel("[COLOR grey]%s[/COLOR]" % label)
-            li.setProperty("IsPlayable", "false")
             target = url(action="noop")
-            if el.get("availableOnOtt") and el.get("contentId"):
-                # Not on now, but on Starz: play it from the start on request.
-                li.addContextMenuItems([(L(32125), "PlayMedia(%s)" % url(
-                    action="play", content_id=el["contentId"]))])
         xbmcplugin.addDirectoryItem(HANDLE, target, li, False)
     xbmcplugin.setContent(HANDLE, "videos")
     xbmcplugin.endOfDirectory(HANDLE)
