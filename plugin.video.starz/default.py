@@ -50,6 +50,8 @@ def _apply_info(li, item):
             tag.setSeason(int(item["season"]))
         if item.get("episode") is not None:
             tag.setEpisode(int(item["episode"]))
+        if item.get("playcount"):
+            tag.setPlaycount(int(item["playcount"]))
         if item.get("resume") and item.get("duration"):
             tag.setResumePoint(float(item["resume"]), float(item["duration"]))
     except (TypeError, ValueError):

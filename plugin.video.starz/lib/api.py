@@ -129,6 +129,31 @@ def to_item(content, series=None):
     return item
 
 
+def is_watched(entry):
+    """Starz says so, or playback reached the credits (creditTimeIn), which
+    is where Starz's own apps move on to the next episode."""
+    if entry.get("isCompleted"):
+        return True
+    credits, resume = entry.get("creditTimeIn"), entry.get("resumeSeconds")
+    return bool(credits and resume and resume >= credits)
+
+
+def apply_history(items, history):
+    """Watched mark or resume point on each movie/episode from User/history
+    entries keyed by contentId. Items with no entry are left alone."""
+    for item in items:
+        entry = history.get(item.get("id"))
+        if not entry or item.get("type") not in ("movie", "episode"):
+            continue
+        if is_watched(entry):
+            item["playcount"] = 1
+            item.pop("resume", None)
+        elif entry.get("resumeSeconds"):
+            item["resume"] = entry["resumeSeconds"]
+            item.setdefault("duration", entry.get("runTime"))
+    return items
+
+
 class StarzApi(object):
 
     def __init__(self, auth):
@@ -228,7 +253,27 @@ class StarzApi(object):
         if any(s.get("blockType") in ID_ROWS for s in subs):
             return self._rows(subs), []
         items = [to_item(c) for c in self.contents(self._row_ids(block))]
-        return [], [i for i in items if i]
+        return [], apply_history([i for i in items if i], self.history())
+
+    def history(self, series_id=None):
+        """User/history as {contentId: entry} (sign-in HAR #304; series HAR
+        ?topContentId=). Empty when signed out or if Starz fails: watched
+        marks are a nicety and must never break a listing."""
+        if not self.auth.signed_in:
+            return {}
+        key = str(series_id or "")
+        cache = self.__dict__.setdefault("_history", {})
+        if key not in cache:
+            params = {"topContentId": series_id} if series_id else None
+            try:
+                entries = self.auth.request("GET", AUTH_API + "User/history",
+                                            params=params).json() or []
+            except Exception as exc:
+                kodiutils.log_error("User/history: %s" % exc)
+                entries = []
+            cache[key] = {str(e.get("contentId")): e for e in entries
+                          if isinstance(e, dict)}
+        return cache[key]
 
     def continue_watching(self):
         entries = self.auth.request("GET", AUTH_API + "User/continue").json() or []
@@ -268,7 +313,8 @@ class StarzApi(object):
             if str(season.get("contentId")) == str(season_id):
                 eps = sorted(season.get("childContent") or [],
                              key=lambda e: e.get("order") or 0)
-                return [i for i in (to_item(e, series) for e in eps) if i]
+                items = [i for i in (to_item(e, series) for e in eps) if i]
+                return apply_history(items, self.history(series_id))
         return []
 
     def search(self, query):
@@ -279,7 +325,8 @@ class StarzApi(object):
                                      "searchString": query, "limit": 1000})
         ids = [c.get("contentId") for c in
                (data.get("playContentArray") or {}).get("playContents") or []]
-        return [i for i in (to_item(c) for c in self.contents(ids)) if i]
+        items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
+        return apply_history(items, self.history())
 
     # -- play session reporting (service.py) ---------------------------------
 
@@ -298,7 +345,8 @@ class StarzApi(object):
         entries = self.auth.request("GET", AUTH_API + "User/Queue").json() or []
         entries.sort(key=lambda e: e.get("order") or 0)
         ids = [e.get("contentId") for e in entries]
-        return [i for i in (to_item(c) for c in self.contents(ids)) if i]
+        items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
+        return apply_history(items, self.history())
 
     def my_list_ids(self):
         try:
