@@ -55,6 +55,9 @@ SECRET_QUERY_PARAMS = SECRET_JSON_KEYS | {
 REDACTED = "REDACTED"
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 JWT_RE = re.compile(r"eyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]*")
+# IPv4 addresses, which turn up inside JSON-in-a-string values (cookie consent
+# records) where key-based redaction cannot see them.
+IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 
 
 def secret_header(name):
@@ -77,6 +80,7 @@ def redact_cookies(entry):
 
 def scrub_string(text):
     text = JWT_RE.sub(REDACTED, text)
+    text = IP_RE.sub(REDACTED, text)
     return EMAIL_RE.sub(REDACTED, text)
 
 

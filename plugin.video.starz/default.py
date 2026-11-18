@@ -272,6 +272,20 @@ def do_play(api, content_id):
 
 # -- router --------------------------------------------------------------
 
+def _after_account_action(auth):
+    """Finish an account action however it was started.
+
+    From the main menu it is opened as a folder (a real handle), so Kodi waits
+    for a listing: give it the refreshed main menu, or it logs "Error getting
+    plugin://...". From Settings it runs via RunPlugin (handle -1), where there
+    is no listing to end; refresh whatever is showing instead.
+    """
+    if HANDLE >= 0:
+        main_menu(auth)
+    else:
+        xbmc.executebuiltin("Container.Refresh")
+
+
 def router(paramstring):
     params = dict(parse_qsl(paramstring))
     action = params.get("action")
@@ -282,13 +296,13 @@ def router(paramstring):
     try:
         if action == "sign_in":
             do_sign_in(auth)
-            xbmc.executebuiltin("Container.Refresh")
+            _after_account_action(auth)
         elif action == "profile":
             pick_profile(auth)
-            xbmc.executebuiltin("Container.Refresh")
+            _after_account_action(auth)
         elif action == "sign_out":
             do_sign_out(auth)
-            xbmc.executebuiltin("Container.Refresh")
+            _after_account_action(auth)
         elif action == "continue":
             items = api.continue_watching()
             show_items(items, _content_for(items))

@@ -37,7 +37,7 @@ sharing it.
 | # | Unknown | Finding | HAR ref | Code |
 |---|---|---|---|---|
 | A | Auth mechanism | Starz's own account. App token: `AuthTokenAuthorization: PLAYAUTH1.0 x=…, apikey=…, signature_method=SHA256, requesttime=…, deviceid=<32 hex>, AllowAuthNOnly=true, platform…, signature=…`, minted per call by `GET www.starz.com/sapi/header/v1/starz/us/{deviceId}` (no auth cookies, raw text body). Sign-in: `GET auth.starz.com/api/v4/Activate/Code` → `{code (4 chars), activationUrl}`, then `POST /api/v4/User/login` JSON `{code, emailAddress, password, captchaResponse}` → `{subscriptionState}`. The session binds to the device id; no cookie or token is returned. **reCAPTCHA Enterprise** token in the web login: **[VERIFY] whether Starz accepts a login without it.** | sign-in #75, #257, #263 | `StarzAuth.sign_in` |
-| A2 | Activation-code flow (fallback) | Same 4-char code + `starz.com/activate`. **[VERIFY]** that `GET Token` returns a session for the device once the code is entered elsewhere. Not captured. | #257 | `StarzAuth.poll_activation` |
+| A2 | **Captcha-free sign-in (used)** | First Kodi test: `User/login` without captcha → HTTP 400, empty body. Token before linking → **412 `{"errorDetails": "Not registered"}`**. starz.com/activate (activation HAR): `GET /api/v4/Activate/{code}` → `{code, hideSignUpButton, authId}`, then `POST /api/v4/Activate/Login` JSON `{code, emailAddress, password, preLoginEmailAddress}` (app token only, **no captcha**) → `{subscriptionState}`. Kodi links its **own** code this way, then calls `Token`. | activation HAR #264, #331 | `StarzAuth.sign_in` |
 | B | Session | `GET /api/v4/Token` (app token) → `{playSessionToken: "PLAYSESSION1.0 x=…", accountStatus, residencyCountry}`; afterwards sent as `SessionTokenAuthorization` (no app token) on `User`, `User/profiles`, `User/continue`, etc. Lifetime **[VERIFY]**; we re-issue via `Token` on 401. | #266, #268–#272 | `StarzAuth.refresh/request` |
 | B2 | Profiles | `GET /User/profiles` → `[{id, name, isAdmin, profileIcon}]`; `POST /User/profiles/{id}/select` → 204. | #271, #417; profiles HAR #391 | `select_profile` |
 | C | Catalogue | **Public, no auth headers.** `GET playdata.starz.com/metadata-service/play/partner/Web/v8/blocks?playContents=map&lang=en-US&pages=BROWSE,HOME,…&includes=…` → `PAGE` blocks → rows (`SWIM_LANE` etc. with `contentIds`) + one `PLAY_CONTENTS.playContentsById` map (551 titles). `v8/content?contentIds=…` for the rest. Types: `Movie`, `Series with Season`, `Episode`. Art: `stz1.imgix.net/Web/contentId/{id}/type/KEY/dimension/2560x1440/lang/en-US`. Resume: `auth…/User/continue`. **Missing: series → seasons → episodes, search.** | #285, #325, #305 | `lib/api.py` |
@@ -54,7 +54,6 @@ sharing it.
 
 1. **Series drill-down + search**: open a series, switch seasons, then search for a title.
 2. **Playback**: press play, let it run 30 s (rows D–K).
-3. (Only if password sign-in fails in Kodi) **activation**: start "Activation code" sign-in in Kodi, then capture entering the code at starz.com/activate.
 
 ## Open questions (answer first)
 

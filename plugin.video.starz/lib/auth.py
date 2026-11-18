@@ -12,11 +12,13 @@ Read from the sign-in HAR (docs/recon.md rows A, B):
 * GET Token (with a fresh auth token) -> {"playSessionToken": "PLAYSESSION1.0
   x=..."}. Every signed-in call then sends it as ``SessionTokenAuthorization``.
 
-[VERIFY] The web login sends a reCAPTCHA Enterprise token, which Kodi cannot
-produce. We send the login without it; whether Starz accepts that is what the
-first Kodi test answers. The fallback is the activation-code flow: the code
-from Activate/Code is entered at starz.com/activate, and the device polls
-Token. That second half is not in any capture yet, so it is also [VERIFY].
+The web login sends a reCAPTCHA Enterprise token Kodi cannot produce, and
+Starz refused it without one (HTTP 400). Activation is the way in (activation
+HAR): starz.com/activate checks a code with GET Activate/{code} and links it
+with POST Activate/Login {code, emailAddress, password, preLoginEmailAddress}
+-- no captcha. Until a device's code is linked, Token answers 412 "Not
+registered". Kodi either links its own code with the user's credentials
+(sign_in) or shows the code to be entered on another device (poll_activation).
 """
 
 import time
@@ -42,6 +44,8 @@ SESSION_FILE = "session.json"
 DEVICE_FILE = "device.json"
 
 TIMEOUT = 20
+REGISTER_WAIT_TRIES = 3
+REGISTER_WAIT_SECS = 2
 
 
 class NotReadyError(Exception):
@@ -182,31 +186,41 @@ class StarzAuth(object):
         return data.get("code"), data.get("activationUrl") or WEB + "/activate"
 
     def sign_in(self, username, password):
-        """Email/password sign-in, as the web client does it minus reCAPTCHA."""
+        """Email/password sign-in through the activation endpoint.
+
+        The web login (User/login) needs a reCAPTCHA token Kodi cannot make;
+        it returned HTTP 400 in the first Kodi test. starz.com/activate instead
+        links a device's activation code to an account with POST Activate/Login
+        {code, emailAddress, password, preLoginEmailAddress} and no captcha
+        (activation HAR #331). Kodi does both halves itself: it asks for its
+        own code, links it with the credentials, then fetches the session for
+        its now-registered device.
+        """
         email = normalise_username(username)
         code, _url = self.activation_code()
-        body = {"code": code, "emailAddress": email, "password": password}
-        resp = self.http.post(AUTH_API + "User/login", json=body,
+        body = {"code": code, "emailAddress": email, "password": password,
+                "preLoginEmailAddress": email}
+        resp = self.http.post(AUTH_API + "Activate/Login", json=body,
                               headers=self.app_headers(), timeout=TIMEOUT)
-        kodiutils.log("User/login without captcha -> HTTP %d" % resp.status_code)
-        if resp.status_code == 400:
-            log_response("User/login without captcha", resp)
-            # A 400 may only mean the field is required. One retry, no more:
-            # repeated failed logins can lock an account.
-            body["captchaResponse"] = ""
-            resp = self.http.post(AUTH_API + "User/login", json=body,
-                                  headers=self.app_headers(), timeout=TIMEOUT)
-            kodiutils.log("User/login with empty captcha -> HTTP %d"
-                          % resp.status_code)
+        kodiutils.log("Activate/Login -> HTTP %d" % resp.status_code)
         if resp.status_code != 200:
-            log_response("User/login", resp)
+            log_response("Activate/Login", resp)
             raise StarzAuthError(_error_text(resp))
         try:
             state = resp.json().get("subscriptionState", "")
         except ValueError:
             state = ""
-        kodiutils.log("Signed in, subscriptionState=%s" % state)
-        self.refresh()
+        kodiutils.log("Device linked, subscriptionState=%s" % state)
+        # Token answered 412 "Not registered" before linking; allow the
+        # registration a moment to land before giving up.
+        for attempt in range(REGISTER_WAIT_TRIES):
+            try:
+                self.refresh()
+                break
+            except StarzAuthError:
+                if attempt == REGISTER_WAIT_TRIES - 1:
+                    raise
+                time.sleep(REGISTER_WAIT_SECS)
         self._save(username=email, subscription_state=state)
 
     def poll_activation(self):

@@ -13,8 +13,8 @@ repository.
 
 Settings → Account → Sign in offers two methods:
 
-- **Email and password.** The Starz website protects this with a captcha that
-  Kodi cannot show; if Starz refuses the sign-in, the error it returns is shown.
+- **Email and password.** Kodi links itself the way starz.com/activate does,
+  which needs no captcha. If Starz refuses, the error it returns is shown.
 - **Activation code.** Kodi shows a 4-character code; enter it at
   starz.com/activate on a phone or computer.
 

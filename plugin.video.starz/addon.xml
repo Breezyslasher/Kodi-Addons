@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.18.1" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.18.2" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -22,12 +22,16 @@ On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect 
 		<platform>all</platform>
 		<license>GPL-3.0-only</license>
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
-		<news>v2026.11.18.1
+		<news>v2026.11.18.2
+- Email/password sign-in now links Kodi through Starz's activation endpoint, which needs no captcha
+- Fix "Error getting directory" after signing in from the main menu
+
+v2026.11.18.1
 - Log the full reason when Starz refuses a sign-in step
 - Retry password sign-in once with an empty captcha field on HTTP 400
 
 v2026.11.18
-- Sign in with email/password or an activation code (test build: password sign-in may be refused by Starz's captcha)
+- Sign in with email/password or an activation code 
 - Profile picker
 - Browse Home, Series, Movies and Browse rows; Continue Watching
 - Not yet: series seasons/episodes, search, playback</news>
