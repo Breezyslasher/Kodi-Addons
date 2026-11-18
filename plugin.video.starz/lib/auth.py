@@ -60,12 +60,29 @@ def normalise_username(username):
     return username
 
 
+def _play_headers(resp):
+    """Starz's X-Play-* response headers (correlation id, subscription state,
+    user type...): the only detail some errors carry."""
+    return {k: v for k, v in resp.headers.items() if k.lower().startswith("x-play-")}
+
+
+def log_response(label, resp):
+    """Log a failed call in full enough detail to diagnose from a Kodi log.
+    Called only on responses, never with request bodies, so no password."""
+    kodiutils.log_error("%s -> HTTP %d, content-type=%s, x-play=%s, body=%r" % (
+        label, resp.status_code, resp.headers.get("Content-Type", ""),
+        _play_headers(resp), (resp.text or "")[:800]))
+
+
 def _error_text(resp):
     """The most useful human-readable error out of a Starz response."""
     try:
         data = resp.json()
     except ValueError:
-        return "HTTP %d: %s" % (resp.status_code, (resp.text or "")[:300])
+        text = (resp.text or "").strip()[:300]
+        if not text:
+            text = "(empty response) %s" % (_play_headers(resp) or "")
+        return "HTTP %d: %s" % (resp.status_code, text)
     if isinstance(data, dict):
         for key in ("message", "Message", "error_description", "error",
                     "errorMessage", "description", "title"):
@@ -158,8 +175,10 @@ class StarzAuth(object):
         resp = self.http.get(AUTH_API + "Activate/Code",
                              headers=self.app_headers(), timeout=TIMEOUT)
         if resp.status_code != 200:
+            log_response("Activate/Code", resp)
             raise StarzAuthError(_error_text(resp))
         data = resp.json()
+        kodiutils.log("Activation code issued, url=%s" % data.get("activationUrl"))
         return data.get("code"), data.get("activationUrl") or WEB + "/activate"
 
     def sign_in(self, username, password):
@@ -170,8 +189,9 @@ class StarzAuth(object):
         resp = self.http.post(AUTH_API + "User/login", json=body,
                               headers=self.app_headers(), timeout=TIMEOUT)
         kodiutils.log("User/login without captcha -> HTTP %d" % resp.status_code)
-        if resp.status_code != 200 and "captcha" in resp.text.lower():
-            # Some backends only want the field present. One retry, no more:
+        if resp.status_code == 400:
+            log_response("User/login without captcha", resp)
+            # A 400 may only mean the field is required. One retry, no more:
             # repeated failed logins can lock an account.
             body["captchaResponse"] = ""
             resp = self.http.post(AUTH_API + "User/login", json=body,
@@ -179,6 +199,7 @@ class StarzAuth(object):
             kodiutils.log("User/login with empty captcha -> HTTP %d"
                           % resp.status_code)
         if resp.status_code != 200:
+            log_response("User/login", resp)
             raise StarzAuthError(_error_text(resp))
         try:
             state = resp.json().get("subscriptionState", "")
@@ -210,14 +231,21 @@ class StarzAuth(object):
         resp = self.http.get(AUTH_API + "Token", headers=self.app_headers(),
                              timeout=TIMEOUT)
         if resp.status_code != 200:
+            log_response("Token", resp)
             raise StarzAuthError(_error_text(resp))
-        token = (resp.json() or {}).get("playSessionToken")
+        data = resp.json() or {}
+        token = data.get("playSessionToken")
+        # Status fields only, never the token itself.
+        kodiutils.log("Token -> session=%s accountStatus=%s country=%s" % (
+            "yes" if token else "no", data.get("accountStatus"),
+            data.get("residencyCountry")))
         if not token:
             raise StarzAuthError("No session token: %s" % _error_text(resp))
         headers = self._base_headers()
         headers["SessionTokenAuthorization"] = token
         user = self.http.get(AUTH_API + "User", headers=headers, timeout=TIMEOUT)
         if user.status_code != 200:
+            log_response("User", user)
             raise StarzAuthError(_error_text(user))
         account = (user.json() or {}).get("userAccount") or {}
         if not account.get("userID"):
