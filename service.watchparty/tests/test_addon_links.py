@@ -27,6 +27,15 @@ class AddonPathTest(unittest.TestCase):
         # but not its show's page
         self.assertEqual(addon_links.addon_path('https://www.netflix.com/title/80057281', 'episode'), (None, None))
 
+    def test_crunchyroll(self):
+        # One Piece Film Red (the link the Android app and extension share)
+        for link in ('https://www.crunchyroll.com/watch/GZ7UV2MZK/one-piece-film-red',
+                     'https://www.crunchyroll.com/de/watch/GZ7UV2MZK/one-piece-film-red?t=12',
+                     'https://www.crunchyroll.com/watch/GZ7UV2MZK'):
+            self.assertEqual(addon_links.addon_path(link, 'episode'),
+                             ('plugin.video.crunchyroll', 'plugin://plugin.video.crunchyroll/video/GZ7UV2MZK/GZ7UV2MZK'))
+        self.assertEqual(addon_links.addon_path('https://www.crunchyroll.com/series/GRMG8ZQZR/one-piece'), (None, None))
+
     def test_youtube(self):
         for link in ('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=10', 'https://youtu.be/dQw4w9WgXcQ'):
             self.assertEqual(addon_links.addon_path(link)[1], 'plugin://plugin.video.youtube/play/?video_id=dQw4w9WgXcQ')

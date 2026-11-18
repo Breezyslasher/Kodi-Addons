@@ -52,6 +52,13 @@ addon's own source (2026-11-15):
   the addon's own client, 2026-11-16). Peacock's play deeplink
   (/deeplink?deeplinkData={"pvid":…}) can't be converted: the pvid alone
   finds nothing in the addon's catalogue lookup.
+- Crunchyroll, plugin.video.crunchyroll: /video/<episode id>/<stream id> (its
+  router's video_movie_play; episodes from its own lists add the series id
+  first) — the id in crunchyroll.com/watch/<id>/<name>. A link has no stream
+  id, but the addon doesn't need its value: the stream is fetched by
+  episode_id (videostream.py _get_stream_data_from_api) and stream_id only
+  has to be set (get_player_stream_data) and names the subtitle cache folder,
+  so the episode id goes in both places (read 2026-11-18, untested).
 
 SlyGuy's paths are built as SlyGuy's router builds them (route in "_",
 arguments sorted); the addons parse them the same way.
@@ -141,6 +148,11 @@ def addon_path(link, media_type=''):
         if m:
             return ('plugin.video.skyott', 'plugin://plugin.video.skyott/?' + urlencode(
                 [('action', 'play'), ('slug', m.group(1))]))
+    elif on('crunchyroll.com'):
+        m = re.match(r'^/(?:[a-z]{2}(?:-[a-z]{2})?/)?watch/([A-Z0-9]+)(?:/|$)', path)
+        if m:
+            return ('plugin.video.crunchyroll',
+                    'plugin://plugin.video.crunchyroll/video/%s/%s' % (m.group(1), m.group(1)))
     elif on('tubitv.com'):
         m = re.match(r'^/(?:movies|tv-shows)/(\d+)', path)
         if m:
