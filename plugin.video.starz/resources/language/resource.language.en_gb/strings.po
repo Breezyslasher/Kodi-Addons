@@ -102,3 +102,11 @@ msgstr ""
 msgctxt "#32061"
 msgid "Could not reach Starz"
 msgstr ""
+
+msgctxt "#32062"
+msgid "Switch profile [COLOR grey](%s)[/COLOR]"
+msgstr ""
+
+msgctxt "#32063"
+msgid "Sign out [COLOR grey](%s)[/COLOR]"
+msgstr ""

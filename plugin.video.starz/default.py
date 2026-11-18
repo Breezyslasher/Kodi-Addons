@@ -104,6 +104,9 @@ def main_menu(auth):
     add_dir(L(32053), "page", page="MOVIES")
     add_dir(L(32054), "page", page="BROWSE")
     add_dir(L(32013), "search")
+    if auth.signed_in:
+        add_dir(L(32062) % (auth.profile_name or "-"), "profile")
+        add_dir(L(32063) % (auth.username or "-"), "sign_out")
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
 
 
