@@ -200,7 +200,7 @@ def pick_profile(auth):
 
 def do_sign_out(auth):
     if xbmcgui.Dialog().yesno(kodiutils.ADDON_NAME, L(32030)):
-        auth.clear()
+        auth.sign_out()
 
 
 def do_search(api):

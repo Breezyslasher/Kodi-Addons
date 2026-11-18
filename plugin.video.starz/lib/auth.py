@@ -172,6 +172,28 @@ class StarzAuth(object):
         self._session = {}
         kodiutils.delete_file(SESSION_FILE)
 
+    def sign_out(self):
+        """End the session on Starz's side, then forget it locally.
+
+        The web client logs out with DELETE Token under the session token
+        (requiresSessionToken in its bundle; read from the logout HAR's JS,
+        the request itself was not captured). The local session is cleared
+        even if Starz cannot be reached, so Sign out always signs out.
+        [VERIFY] whether this also frees the device's slot in the account's
+        device limit.
+        """
+        if self.signed_in:
+            try:
+                resp = self.http.delete(AUTH_API + "Token",
+                                        headers=self.session_headers(),
+                                        timeout=TIMEOUT)
+                kodiutils.log("DELETE Token -> HTTP %d" % resp.status_code)
+                if resp.status_code >= 400:
+                    log_response("DELETE Token", resp)
+            except requests.RequestException as exc:
+                kodiutils.log_error("DELETE Token failed: %s" % exc)
+        self.clear()
+
     # -- sign-in -------------------------------------------------------------
 
     def activation_code(self):

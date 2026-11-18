@@ -24,6 +24,7 @@ On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect 
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
 		<news>v2026.11.18.3
 - Sign out and Switch profile in the main menu when signed in
+- Sign out now ends the session on Starz too (DELETE Token)
 
 v2026.11.18.2
 - Email/password sign-in now links Kodi through Starz's activation endpoint, which needs no captcha
