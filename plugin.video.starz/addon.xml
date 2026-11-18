@@ -30,7 +30,7 @@ On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect 
 			<banner>resources/banner.png</banner>
 		</assets>
 		<news>v2026.11.18.21
-- TV Schedule: only the programme on now is playable (it tunes in); the rest of the line-up is guide text
+- TV Schedule: only the programme on now is playable (it tunes in); the rest of the line-up is guide text, with Watch on demand in the context menu
 
 v2026.11.18.20
 - Trailers: Watch trailer in the context menu, and the Trailer button in Kodi's info dialog

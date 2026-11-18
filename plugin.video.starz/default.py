@@ -656,6 +656,10 @@ def show_channel(api, code, day):
             li.setLabel("[COLOR grey]%s[/COLOR]" % label)
             li.setProperty("IsPlayable", "false")
             target = url(action="noop")
+            if el.get("availableOnOtt") and el.get("contentId"):
+                # Not on now, but on Starz: play it from the start on request.
+                li.addContextMenuItems([(L(32125), "PlayMedia(%s)" % url(
+                    action="play", content_id=el["contentId"]))])
         xbmcplugin.addDirectoryItem(HANDLE, target, li, False)
     xbmcplugin.setContent(HANDLE, "videos")
     xbmcplugin.endOfDirectory(HANDLE)
