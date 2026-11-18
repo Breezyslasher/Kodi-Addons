@@ -28,6 +28,7 @@ import xbmc
 import common
 from addon_links import addon_path
 from addon_search import WBD_ADDONS, find_by_show, find_episode
+import pluto
 from client import PROTOCOL_VERSION, RelayClient, RelayError
 from relay import redact_url
 
@@ -453,6 +454,29 @@ def _addon_ref(item):
         common.log('%s episode %s: %s' % (addon, item.get('file'), found or 'not found'))
         return {'file': found} if found else None
     return {'file': path}
+
+
+def _pluto_ref(item):
+    """A Pluto TV link's stream, which Kodi plays itself (pluto.py: the
+    Pluto addon can't play on demand): {'file': url}, or None."""
+    link = item.get('file') or ''
+    if item.get('plugin') or not pluto.target(link):
+        return None
+    url = pluto.resolve(link, _fetch_text)
+    common.log('pluto %s: %s' % (link, 'stream found' if url else 'not found'))
+    return {'file': url} if url else None
+
+
+def _fetch_text(url):
+    import gzip
+    import urllib.request
+    req = urllib.request.Request(url, headers={
+        'User-Agent': 'WatchParty/1.0 (Kodi addon)', 'Accept-Encoding': 'gzip'})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        data = resp.read()
+        if resp.headers.get('Content-Encoding') == 'gzip':
+            data = gzip.decompress(data)
+    return data.decode('utf-8')
 
 
 def _list_dir(path):
@@ -1356,6 +1380,9 @@ class SyncEngine:
             addon_ref = _addon_ref(item)
             if addon_ref:
                 candidates.append(addon_ref)
+            pluto_ref = _pluto_ref(item)
+            if pluto_ref:
+                candidates.append(pluto_ref)
             plain = _playable_url(item)
             if plain and plain != item.get('plugin'):
                 candidates.append({'file': plain})
