@@ -142,3 +142,63 @@ msgstr ""
 msgctxt "#32071"
 msgid "Removed from Continue Watching"
 msgstr ""
+
+msgctxt "#32072"
+msgid "All Movies"
+msgstr ""
+
+msgctxt "#32073"
+msgid "All Series"
+msgstr ""
+
+msgctxt "#32074"
+msgid "Genres"
+msgstr ""
+
+msgctxt "#32075"
+msgid "Categories"
+msgstr ""
+
+msgctxt "#32076"
+msgid "A–Z"
+msgstr ""
+
+msgctxt "#32077"
+msgid "Popular"
+msgstr ""
+
+msgctxt "#32078"
+msgid "Release year"
+msgstr ""
+
+msgctxt "#32079"
+msgid "Movies & Series"
+msgstr ""
+
+msgctxt "#32080"
+msgid "[B]Filter & sort:[/B] %s · %s · %s"
+msgstr ""
+
+msgctxt "#32081"
+msgid "All genres"
+msgstr ""
+
+msgctxt "#32082"
+msgid "Show"
+msgstr ""
+
+msgctxt "#32083"
+msgid "Genre"
+msgstr ""
+
+msgctxt "#32084"
+msgid "Sort by"
+msgstr ""
+
+msgctxt "#32085"
+msgid "Recommended For You"
+msgstr ""
+
+msgctxt "#32086"
+msgid "Movies only"
+msgstr ""

@@ -34,6 +34,7 @@ from lib import kodiutils
 from lib.auth import AUTH_API, USER_AGENT, NotReadyError
 
 METADATA = "https://playdata.starz.com/metadata-service/play/partner/Web/v8/"
+RECOMMENDER = "https://recommender.starz.com/api/v3/recommendations/partner/Web/profile/"
 IMAGES = "https://stz1.imgix.net/Web/contentId/%s/type/%s/dimension/%s"
 LANG = "en-US"
 PAGES = "BROWSE,HOME,MOVIES,PLAYLIST,SEARCH,SEARCH RESULTS,SERIES"
@@ -230,6 +231,80 @@ class StarzApi(object):
             if block.get("blockType") == "PAGE" and block.get("pageKey") == page:
                 return self._rows(block.get("blocks") or [])
         return []
+
+    # -- full catalogue: All / Genres / filter & sort ---------------------
+    # The blocks map holds every title (sign-in HAR: all 449 movies, i.e.
+    # every ALL_MOVIES key, and 54 series), each with simplifiedGenres,
+    # popularity (higher = more popular: the site's Popular rows run in
+    # descending order) and release years. The website's filter dialog works
+    # on the same data client-side; there is no separate endpoint.
+
+    SORTS = ("az", "popular", "year")
+
+    def _catalogue(self, kind=None):
+        wanted = {"movie": ("Movie",), "series": ("Series with Season",)}.get(
+            kind, ("Movie", "Series with Season"))
+        return [c for c in self._content_map().values()
+                if c.get("contentType") in wanted]
+
+    def genres(self, kind=None):
+        """[(genre, count)] A-Z."""
+        counts = {}
+        for c in self._catalogue(kind):
+            for g in c.get("simplifiedGenres") or []:
+                counts[g] = counts.get(g, 0) + 1
+        return sorted(counts.items(), key=lambda gc: gc[0].lower())
+
+    @staticmethod
+    def _sort_title(c):
+        title = (c.get("properCaseTitle") or c.get("title") or "").lower()
+        return re.sub(r"^(the|a|an)\s+", "", title)
+
+    @staticmethod
+    def _year(c):
+        try:
+            return int(c.get("releaseYear") or c.get("maxReleaseYear")
+                       or c.get("minReleaseYear") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    def browse_all(self, kind=None, genre=None, sort="az"):
+        titles = self._catalogue(kind)
+        if genre:
+            titles = [c for c in titles if genre in (c.get("simplifiedGenres") or [])]
+        if sort == "popular":
+            titles.sort(key=lambda c: (-(c.get("popularity") or 0), self._sort_title(c)))
+        elif sort == "year":
+            titles.sort(key=lambda c: (-self._year(c), self._sort_title(c)))
+        else:
+            titles.sort(key=self._sort_title)
+        items = [i for i in (to_item(c) for c in titles) if i]
+        return apply_history(items, self.history())
+
+    def recommendations(self, kind=None):
+        """Personalised picks for the selected profile (recommender HARs:
+        GET recommender.starz.com/api/v3/recommendations/partner/Web/
+        profile/{profileId}[?type=Movies] -> {"ranks": [{contentId, ...}]},
+        signed with the app token, not the session)."""
+        profile = self.auth.profile_id
+        if not profile:
+            return []
+        params = {"type": "Movies"} if kind == "movie" else None
+        resp = self.http.get(RECOMMENDER + profile, params=params,
+                             headers=self.auth.app_headers(), timeout=TIMEOUT)
+        resp.raise_for_status()
+        ids = [r.get("contentId") for r in (resp.json() or {}).get("ranks") or []]
+        items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
+        return apply_history(items, self.history())
+
+    def categories_row_id(self):
+        """The Browse page's "Browse By" grid (CATEGORY_GRID)."""
+        for block in self.blocks():
+            if block.get("blockType") == "PAGE" and block.get("pageKey") == "BROWSE":
+                for sub in block.get("blocks") or []:
+                    if sub.get("blockType") == "CATEGORY_GRID":
+                        return str(sub["id"])
+        return None
 
     def _rows(self, blocks):
         rows = []

@@ -127,12 +127,16 @@ def main_menu(auth):
     if auth.signed_in:
         add_dir(L(32050), "continue")
         add_dir(L(32069), "my_list")
+        if auth.profile_id:
+            add_dir(L(32085), "recommended")
     else:
         add_dir(L(32014), "sign_in")
     add_dir(L(32051), "page", page="HOME")
     add_dir(L(32052), "page", page="SERIES")
     add_dir(L(32053), "page", page="MOVIES")
     add_dir(L(32054), "page", page="BROWSE")
+    add_dir(L(32074), "genres")
+    add_dir(L(32075), "categories")
     add_dir(L(32013), "search")
     if auth.signed_in:
         add_dir(L(32062) % (auth.profile_name or "-"), "profile")
@@ -141,6 +145,10 @@ def main_menu(auth):
 
 
 def show_page(api, page):
+    if page == "MOVIES":
+        add_dir(L(32072), "all", type="movie", sort="az")
+    elif page == "SERIES":
+        add_dir(L(32073), "all", type="series", sort="az")
     for row in api.page_rows(page):
         add_dir(row["title"], "row", row_id=row["id"])
     xbmcplugin.endOfDirectory(HANDLE)
@@ -253,6 +261,53 @@ def do_series(api, series_id):
         show_items(seasons, "seasons")
 
 
+SORT_LABELS = {"az": 32076, "popular": 32077, "year": 32078}
+TYPE_LABELS = {"": 32079, "movie": 32053, "series": 32052}
+
+
+def _filter_label(kind, genre, sort):
+    return L(32080) % (L(TYPE_LABELS.get(kind or "", 32079)),
+                       genre or L(32081), L(SORT_LABELS.get(sort, 32076)))
+
+
+def show_all(api, kind, genre, sort):
+    """The whole catalogue, filtered and sorted; the first entry opens the
+    filter & sort pickers (the website's filter dialog)."""
+    add_dir(_filter_label(kind, genre, sort), "filter",
+            type=kind or "", genre=genre or "", sort=sort)
+    items = api.browse_all(kind or None, genre or None, sort)
+    show_items(items, _content_for(items))
+
+
+def do_filter(api, kind, genre, sort):
+    dialog = xbmcgui.Dialog()
+    kinds = ["", "movie", "series"]
+    i = dialog.select(L(32082), [L(TYPE_LABELS[k]) for k in kinds],
+                      preselect=kinds.index(kind) if kind in kinds else 0)
+    if i >= 0:
+        kind = kinds[i]
+    genres = [None] + [g for g, _ in api.genres(kind or None)]
+    labels = [L(32081)] + ["%s (%d)" % gc for gc in api.genres(kind or None)]
+    i = dialog.select(L(32083), labels,
+                      preselect=genres.index(genre) if genre in genres else 0)
+    if i >= 0:
+        genre = genres[i]
+    sorts = list(api.SORTS)
+    i = dialog.select(L(32084), [L(SORT_LABELS[x]) for x in sorts],
+                      preselect=sorts.index(sort) if sort in sorts else 0)
+    if i >= 0:
+        sort = sorts[i]
+    xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+    xbmc.executebuiltin("Container.Update(%s,replace)" % url(
+        action="all", type=kind or "", genre=genre or "", sort=sort))
+
+
+def show_genres(api):
+    for genre, count in api.genres():
+        add_dir("%s (%d)" % (genre, count), "all", type="", genre=genre, sort="az")
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
 def do_list_change(api, content_id, add):
     if add:
         api.add_to_list(content_id)
@@ -363,7 +418,8 @@ def router(paramstring):
     auth = StarzAuth()
     api = StarzApi(auth)
     STATE["signed_in"] = auth.signed_in
-    if auth.signed_in and action in ("row", "series", "search", "my_list"):
+    if auth.signed_in and action in ("row", "series", "search", "my_list", "all",
+                                     "recommended"):
         STATE["my_list"] = api.my_list_ids()
 
     try:
@@ -387,6 +443,21 @@ def router(paramstring):
             xbmc.executebuiltin("Container.Refresh")
         elif action == "page":
             show_page(api, params.get("page", "HOME"))
+        elif action == "all":
+            show_all(api, params.get("type"), params.get("genre"),
+                     params.get("sort", "az"))
+        elif action == "filter":
+            do_filter(api, params.get("type"), params.get("genre") or None,
+                      params.get("sort", "az"))
+        elif action == "recommended":
+            if params.get("type") != "movie":
+                add_dir(L(32086), "recommended", type="movie")
+            items = api.recommendations(params.get("type"))
+            show_items(items, _content_for(items))
+        elif action == "genres":
+            show_genres(api)
+        elif action == "categories":
+            show_row(api, api.categories_row_id())
         elif action == "row":
             show_row(api, params.get("row_id"))
         elif action == "series":
