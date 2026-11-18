@@ -22,7 +22,14 @@ On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect 
 		<platform>all</platform>
 		<license>GPL-3.0-only</license>
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+			<clearlogo>resources/clearlogo.png</clearlogo>
+			<banner>resources/banner.png</banner>
+		</assets>
 		<news>v2026.11.18.10
+- Add-on icon, logo, banner and fanart
 - Fix: Filter &amp; sort now opens the filtered list
 
 v2026.11.18.9

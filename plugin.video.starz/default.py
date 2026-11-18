@@ -15,6 +15,9 @@ from lib.api import StarzApi, PLAYING_FILE
 from lib.license_relay import relay_url, LICENSE_FILE
 
 HANDLE = int(sys.argv[1])
+_ADDON_PATH = kodiutils.addon().getAddonInfo("path")
+ADDON_ART = {"icon": _ADDON_PATH + "/resources/icon.png",
+             "fanart": _ADDON_PATH + "/resources/fanart.jpg"}
 BASE_URL = sys.argv[0]
 
 # How long to wait for an activation code to be entered, and how often to ask.
@@ -34,6 +37,7 @@ def url(**kwargs):
 
 def add_dir(label, action, **params):
     li = xbmcgui.ListItem(label)
+    li.setArt({"icon": ADDON_ART["icon"], "fanart": ADDON_ART["fanart"]})
     xbmcplugin.addDirectoryItem(HANDLE, url(action=action, **params), li, True)
 
 
