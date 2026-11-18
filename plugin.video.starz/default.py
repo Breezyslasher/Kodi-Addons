@@ -85,6 +85,9 @@ def add_item(item):
     li = xbmcgui.ListItem(item.get("title", ""))
     _apply_info(li, item)
     menu = _list_menu(item)
+    if item.get("in_continue"):
+        menu.append((L(32070), "RunPlugin(%s)" % url(action="continue_hide",
+                                                     content_id=item["id"])))
     if menu:
         li.addContextMenuItems(menu)
     if item.get("type") == "series":
@@ -375,7 +378,13 @@ def router(paramstring):
             _after_account_action(auth)
         elif action == "continue":
             items = api.continue_watching()
+            for item in items:
+                item["in_continue"] = True
             show_items(items, _content_for(items))
+        elif action == "continue_hide":
+            api.hide_from_continue(params.get("content_id"))
+            kodiutils.notify(L(32071))
+            xbmc.executebuiltin("Container.Refresh")
         elif action == "page":
             show_page(api, params.get("page", "HOME"))
         elif action == "row":

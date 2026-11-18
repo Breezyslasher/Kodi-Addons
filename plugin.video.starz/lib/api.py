@@ -328,6 +328,13 @@ class StarzApi(object):
         items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
         return apply_history(items, self.history())
 
+    def hide_from_continue(self, content_id):
+        """PUT User/resumepoints/hide {"ids": [id]} -> 204 (hide HAR #20,
+        #33: both movies, ids = the title's own contentId). [VERIFY] for an
+        episode, which id Starz expects; the episode's own is sent."""
+        self.auth.request("PUT", AUTH_API + "User/resumepoints/hide",
+                          json={"ids": [int(content_id)]})
+
     # -- play session reporting (service.py) ---------------------------------
 
     def report_play(self, kind, content_id, session_id, position):

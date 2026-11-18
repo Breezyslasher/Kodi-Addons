@@ -134,3 +134,11 @@ msgstr ""
 msgctxt "#32069"
 msgid "My List"
 msgstr ""
+
+msgctxt "#32070"
+msgid "Remove from Continue Watching"
+msgstr ""
+
+msgctxt "#32071"
+msgid "Removed from Continue Watching"
+msgstr ""
