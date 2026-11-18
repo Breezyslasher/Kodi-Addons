@@ -58,7 +58,13 @@ addon's own source (2026-11-15):
   id, but the addon doesn't need its value: the stream is fetched by
   episode_id (videostream.py _get_stream_data_from_api) and stream_id only
   has to be set (get_player_stream_data) and names the subtitle cache folder,
-  so the episode id goes in both places (read 2026-11-18, untested).
+  so the episode id goes in both places (played on Kodi, 2026-11-18). The
+  addon plays that exact version: its language settings only pick versions
+  in its own lists. JustWatch's only Crunchyroll link for some shows is a
+  dub (My Hero Academia: watch/GE00337172PLPL, Polish; the Japanese/English
+  version is G31UXN249, which JustWatch doesn't have), so those play in
+  Polish everywhere. Left as is (2026-11-18); a fix on Kodi would find the
+  episode through the addon's search and season lists instead.
 
 SlyGuy's paths are built as SlyGuy's router builds them (route in "_",
 arguments sorted); the addons parse them the same way.
