@@ -104,11 +104,17 @@ def to_item(content, series=None):
             "art": _art(cid)}
     sid = (series or {}).get("contentId") or content.get("topContentId")
     if kind in ("season", "episode") and sid:
-        art = _art(sid)
+        parent = _art(sid)
+        # Parent art goes under tvshow.* as in Kodi's own library. A plain
+        # "poster" on an episode makes poster/wall views show the series
+        # poster instead of the episode still.
+        art = {"tvshow.%s" % k: v for k, v in parent.items()}
+        art["fanart"] = parent["fanart"]
         if kind == "episode":
             art["thumb"] = art["landscape"] = _image(cid, "STUDIO", "2560x1440", 1280)
         else:
             art["thumb"] = art["landscape"] = _image(cid, "KEY", "2560x1440", 1280)
+            art["poster"] = parent["poster"]   # seasons do have posters
         item["art"] = art
         item["series_id"] = str(sid)
         item["series_title"] = (series or {}).get("title") or content.get("seriesName", "")

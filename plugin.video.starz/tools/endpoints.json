@@ -1,0 +1,113 @@
+{
+  "name": "Starz (plugin.video.starz)",
+  "defaults": {
+    "timeout": 20,
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "Accept": "application/json, text/plain, */*",
+      "Origin": "https://www.starz.com",
+      "Referer": "https://www.starz.com/"
+    }
+  },
+  "vars": {"device_id": "{random_hex32}"},
+  "checks": [
+    {
+      "id": "mint_auth_token",
+      "helper": true,
+      "url": "https://www.starz.com/sapi/header/v1/starz/us/{device_id}",
+      "headers": {"Accept": "text/html; charset=utf-8", "Content-Type": "text/html; charset=utf-8",
+                  "Referer": "https://www.starz.com/us/en/login"},
+      "expect": {"text_prefix": "PLAYAUTH1.0"},
+      "save": {"auth_token": "text"}
+    },
+    {
+      "id": "auth_token",
+      "url": "https://www.starz.com/sapi/header/v1/starz/us/{device_id}",
+      "headers": {"Accept": "text/html; charset=utf-8", "Content-Type": "text/html; charset=utf-8",
+                  "Referer": "https://www.starz.com/us/en/login"},
+      "expect": {"text_prefix": "PLAYAUTH1.0"},
+      "note": "Every auth.starz.com call needs this token; sign-in is broken without it."
+    },
+    {
+      "id": "geolocation",
+      "uses": ["mint_auth_token"],
+      "url": "https://auth.starz.com/api/v4/User/geolocation",
+      "headers": {"AuthTokenAuthorization": "{auth_token}", "X-Client-Features": "DevicePlaybackLimitSupport"},
+      "expect": {"json_paths": ["isAllowedAccess"]},
+      "print": ["isAllowedAccess", "isAllowedCountry", "isKnownProxy", "country"],
+      "report_only": true,
+      "note": "Shows whether Starz treats the runner's IP as allowed; auth checks below may fail if not."
+    },
+    {
+      "id": "configuration",
+      "uses": ["mint_auth_token"],
+      "url": "https://auth.starz.com/api/v4/Configuration",
+      "headers": {"AuthTokenAuthorization": "{auth_token}", "X-Client-Features": "DevicePlaybackLimitSupport"},
+      "expect": {"json_paths": ["starzPlayApiEndpoint", "starzMetadataEndpoint",
+                                "customProperties.starzPlaybackEndpoint"]}
+    },
+    {
+      "id": "activate_code",
+      "uses": ["mint_auth_token"],
+      "url": "https://auth.starz.com/api/v4/Activate/Code",
+      "headers": {"AuthTokenAuthorization": "{auth_token}", "X-Client-Features": "DevicePlaybackLimitSupport"},
+      "expect": {"json_paths": ["code", "activationUrl"]},
+      "note": "Sign-in (both methods) starts here."
+    },
+    {
+      "id": "token_unlinked_device",
+      "uses": ["mint_auth_token"],
+      "url": "https://auth.starz.com/api/v4/Token",
+      "headers": {"AuthTokenAuthorization": "{auth_token}", "X-Client-Features": "DevicePlaybackLimitSupport"},
+      "expect": {"status": 412, "json_paths": ["errorDetails"]},
+      "note": "An unlinked device should get 412 'Not registered'; the addon relies on that to detect a removed device."
+    },
+    {
+      "id": "catalogue_blocks",
+      "url": "https://playdata.starz.com/metadata-service/play/partner/Web/v8/blocks",
+      "params": {"playContents": "map", "lang": "en-US",
+                 "pages": "BROWSE,HOME,MOVIES,PLAYLIST,SEARCH,SEARCH RESULTS,SERIES",
+                 "includes": "badgeKeys,categoryKeys,comingSoon,contentId,contentType,detail,episodeCount,firstEpisodeRuntime,free,icon,images,logLine,maxReleaseYear,message,minReleaseYear,newContent,original,popularity,previewContentId,product,properCaseTitle,releaseYear,runtime,seasonNumber,seriesName,templates,title,topContentId"},
+      "expect": {"json_paths": ["blocks[0].pageKey", "blocks[0].blocks[0].blockType"]}
+    },
+    {
+      "id": "series_tree",
+      "url": "https://playdata.starz.com/metadata-service/play/partner/Web/v8/content",
+      "params": {"lang": "en-US", "contentIds": "21220"},
+      "expect": {"json_paths": ["playContentArray.playContents[0].childContent[0].contentType",
+                                "playContentArray.playContents[0].childContent[0].childContent[0].contentId"]},
+      "save": {"season_id": "json:playContentArray.playContents[0].childContent[0].contentId",
+               "episode_id": "json:playContentArray.playContents[0].childContent[0].childContent[0].contentId"},
+      "note": "Series -> seasons -> episodes (Power, 21220)."
+    },
+    {
+      "id": "search",
+      "url": "https://playdata.starz.com/metadata-service/play/partner/Web/v8/content",
+      "params": {"include": "contentId", "contentType": ["Movie", "Series with Season"],
+                 "searchString": "power", "limit": "1000"},
+      "expect": {"json_paths": ["playContentArray.playContents[0].contentId"]}
+    },
+    {
+      "id": "image_series_key",
+      "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/2560x1440/lang/en-US?fit=max&auto=format,compress&w=1280",
+      "headers": {"Accept": "image/*,*/*"},
+      "expect": {"content_type": "image/"}
+    },
+    {
+      "id": "image_episode_still",
+      "url": "https://stz1.imgix.net/Web/contentId/{episode_id}/type/STUDIO/dimension/2560x1440/lang/en-US?fit=max&auto=format,compress&w=1280",
+      "headers": {"Accept": "image/*,*/*"},
+      "expect": {"content_type": "image/"},
+      "note": "Episode thumbnails in Kodi use this URL directly."
+    },
+    {
+      "id": "image_episode_still_proxy",
+      "url": "https://imageproxy.starz.com/",
+      "params": {"x-stz-url": "https://stz1.imgix.net/Web/contentId/{episode_id}/type/STUDIO/dimension/2560x1440/lang/en-US?fit=max&auto=format,compress&w=1280"},
+      "headers": {"Accept": "image/*,*/*"},
+      "expect": {"content_type": "image/"},
+      "report_only": true,
+      "note": "The website's own route for images; for comparison with the direct URL."
+    }
+  ]
+}
