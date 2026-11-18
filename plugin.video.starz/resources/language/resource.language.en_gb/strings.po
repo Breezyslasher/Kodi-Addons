@@ -1,0 +1,52 @@
+# Kodi Media Center language file
+# Addon Name: Starz
+# Addon id: plugin.video.starz
+# Addon Provider: Breezyslasher
+msgid ""
+msgstr ""
+"Project-Id-Version: plugin.video.starz\n"
+"Report-Msgid-Bugs-To: https://github.com/Breezyslasher/Kodi-Addons\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+
+msgctxt "#32000"
+msgid "Account"
+msgstr ""
+
+msgctxt "#32013"
+msgid "Search"
+msgstr ""
+
+msgctxt "#32014"
+msgid "Sign in"
+msgstr ""
+
+msgctxt "#32015"
+msgid "Sign out"
+msgstr ""
+
+msgctxt "#32020"
+msgid "Starz email"
+msgstr ""
+
+msgctxt "#32021"
+msgid "Password"
+msgstr ""
+
+msgctxt "#32023"
+msgid "Signed in"
+msgstr ""
+
+msgctxt "#32026"
+msgid "Search Starz"
+msgstr ""
+
+msgctxt "#32030"
+msgid "Sign out of Starz?"
+msgstr ""
+
+msgctxt "#32040"
+msgid "Not implemented yet"
+msgstr ""

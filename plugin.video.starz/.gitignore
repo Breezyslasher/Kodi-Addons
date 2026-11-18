@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+# Captures hold live tokens and account details: never commit them.
+*.har
+# Any client id/secret recovered during recon stays out of the repo.
+lib/secrets.py

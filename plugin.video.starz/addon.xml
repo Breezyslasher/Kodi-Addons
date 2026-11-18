@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.starz" name="Starz" version="2026.11.18" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<!-- No xbmc.service yet: service.py is registered only if recon shows a
+	     token-refresh daemon or a licence proxy is needed (docs/recon.md G). -->
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Starz client for Kodi (in development)</summary>
+		<description lang="en_GB">Sign in with your Starz account and play through InputStream Adaptive with Widevine DRM.
+
+IN DEVELOPMENT: this is a skeleton. Sign-in, browsing and playback are not wired up yet.
+
+On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect standard definition; HD needs a hardware Widevine L1 Android device.</description>
+		<disclaimer lang="en_GB">Unofficial. Not affiliated with or endorsed by Starz. Use only with your own subscription; third-party clients may be against the service's terms.</disclaimer>
+		<platform>all</platform>
+		<license>GPL-3.0-only</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<news>v2026.11.18
+- Initial skeleton: routing, settings, token storage, ISA/Widevine wiring. Starz sign-in, catalogue and playback await HAR recon.</news>
+	</extension>
+</addon>
