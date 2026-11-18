@@ -12,6 +12,7 @@ import xbmcplugin
 from lib import kodiutils
 from lib.auth import StarzAuth, StarzAuthError, NotReadyError
 from lib.api import StarzApi, PLAYING_FILE
+from lib.license_relay import relay_url, LICENSE_FILE
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
@@ -282,19 +283,28 @@ def _header_string(headers):
 def build_isa_listitem(playback):
     """A ListItem that plays a DASH/HLS + Widevine stream through ISA.
 
-    Uses ISA's 4-part license_key (url|headers|body|response) so ISA posts the
-    raw challenge (R{SSM}) straight to the licence server with no local proxy.
-    Only replace this with a proxy if recon row G proves the server needs a
-    wrapped body or a per-request computed header.
+    ISA's 4-part license_key (url|headers|body|response) with R{SSM}: the raw
+    challenge goes out, the raw licence comes back. The URL is the service's
+    localhost licence relay (lib/license_relay.py) when it is running, so the
+    long percent-encoded token never passes through Kodi's URL handling;
+    otherwise the direct Starz URL.
     """
     li = xbmcgui.ListItem(path=playback["manifest_url"])
     li.setProperty("inputstream", "inputstream.adaptive")
-    # Kodi 21 still reads manifest_type; Kodi 22 detects it and ignores this.
-    li.setProperty("inputstream.adaptive.manifest_type",
-                   playback.get("manifest_type", "mpd"))
+    # No manifest_type: ISA 21 (our minimum) detects it and warns that the
+    # property is deprecated; the MIME type below covers detection.
     li.setProperty("inputstream.adaptive.license_type", "com.widevine.alpha")
-    li.setProperty("inputstream.adaptive.license_key", "%s|%s|R{SSM}|" % (
-        playback["license_url"], _header_string(playback.get("license_headers"))))
+    relay = relay_url()
+    if relay:
+        kodiutils.write_json(LICENSE_FILE, {
+            "url": playback["license_url"],
+            "headers": playback.get("license_headers") or {}})
+        license_key = "%s||R{SSM}|" % relay
+    else:
+        kodiutils.log("Licence relay not running; licensing directly")
+        license_key = "%s|%s|R{SSM}|" % (
+            playback["license_url"], _header_string(playback.get("license_headers")))
+    li.setProperty("inputstream.adaptive.license_key", license_key)
     if playback.get("stream_headers"):
         li.setProperty("inputstream.adaptive.stream_headers",
                        _header_string(playback["stream_headers"]))

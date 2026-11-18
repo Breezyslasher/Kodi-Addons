@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.18.4" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.18.5" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -9,7 +9,7 @@
 	<extension point="xbmc.python.pluginsource" library="default.py">
 		<provides>video</provides>
 	</extension>
-	<!-- Reports play progress/stop to Starz; no licence proxy is needed. -->
+	<!-- Licence relay (localhost) and play progress/stop reporting. -->
 	<extension point="xbmc.service" library="service.py"/>
 	<extension point="xbmc.addon.metadata">
 		<summary lang="en_GB">Starz client for Kodi (in development)</summary>
@@ -22,7 +22,11 @@ On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect 
 		<platform>all</platform>
 		<license>GPL-3.0-only</license>
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
-		<news>v2026.11.18.4
+		<news>v2026.11.18.5
+- Licence requests go through a localhost relay, so the licence token reaches Starz unaltered; licence errors are logged
+- Drop the deprecated manifest_type property
+
+v2026.11.18.4
 - Playback: DASH + Widevine straight from Starz, with English/Spanish subtitles
 - Series seasons and episodes, search, and My List (add/remove from the context menu)
 - Report where you stopped watching back to Starz (Continue Watching on your other devices)

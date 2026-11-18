@@ -1,4 +1,6 @@
-"""Background service: tells Starz how a Kodi playback went.
+"""Background service: the licence relay, and telling Starz how a playback went.
+
+* lib/license_relay.py: localhost relay ISA sends licence requests to.
 
 The plugin process ends as soon as playback starts, so a service is the only
 place that can still talk to Starz while a title plays and when it stops:
@@ -19,6 +21,7 @@ import xbmc
 from lib import kodiutils
 from lib.api import StarzApi, PLAYING_FILE
 from lib.auth import StarzAuth
+from lib.license_relay import LicenseRelay
 
 # Report well inside the 600 s keep-alive Starz gives.
 UPDATE_SECS = 300
@@ -96,14 +99,19 @@ class Player(xbmc.Player):
 
 def run():
     monitor = xbmc.Monitor()
+    relay = LicenseRelay()
+    relay.start()
     player = Player()
     clock = 0.0
-    while not monitor.abortRequested():
-        if monitor.waitForAbort(POLL_SECS):
-            break
-        clock += POLL_SECS
-        player.tick(clock)
-    player._finish()
+    try:
+        while not monitor.abortRequested():
+            if monitor.waitForAbort(POLL_SECS):
+                break
+            clock += POLL_SECS
+            player.tick(clock)
+        player._finish()
+    finally:
+        relay.stop()
 
 
 if __name__ == "__main__":
