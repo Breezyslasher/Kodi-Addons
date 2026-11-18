@@ -274,3 +274,47 @@ msgstr ""
 msgctxt "#32106"
 msgid "Manage devices"
 msgstr ""
+
+msgctxt "#32110"
+msgid "TV Schedule"
+msgstr ""
+
+msgctxt "#32111"
+msgid "[B]On now:[/B] %s"
+msgstr ""
+
+msgctxt "#32112"
+msgid "Tomorrow"
+msgstr ""
+
+msgctxt "#32113"
+msgid "Nothing on this channel can be played right now"
+msgstr ""
+
+msgctxt "#32114"
+msgid "TV Guide"
+msgstr ""
+
+msgctxt "#32115"
+msgid "Add Starz channels to Kodi's TV guide (needs IPTV Manager)"
+msgstr ""
+
+msgctxt "#32116"
+msgid "(Coming soon)"
+msgstr ""
+
+msgctxt "#32117"
+msgid "Remind me"
+msgstr ""
+
+msgctxt "#32118"
+msgid "Cancel reminder"
+msgstr ""
+
+msgctxt "#32119"
+msgid "Reminder set"
+msgstr ""
+
+msgctxt "#32120"
+msgid "Reminder cancelled"
+msgstr ""

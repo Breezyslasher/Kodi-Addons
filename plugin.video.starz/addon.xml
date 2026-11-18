@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.18.17" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.18.18" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -28,7 +28,12 @@ On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect 
 			<clearlogo>resources/clearlogo.png</clearlogo>
 			<banner>resources/banner.png</banner>
 		</assets>
-		<news>v2026.11.18.17
+		<news>v2026.11.18.18
+- Coming Soon row on Home, and Remind me / Cancel reminder on coming-soon titles
+- TV Schedule: the 17 Starz, Encore and Plex channels with logos, today and tomorrow; On now tunes in to the scheduled title from where the channel has reached
+- IPTV Manager integration: Starz channels and a two-day guide in Kodi's TV guide
+
+v2026.11.18.17
 - Parental controls: titles with ratings switched off for the profile (on starz.com) are hidden
 - Manage devices: log out other devices from your Starz account (main menu and settings)
 - At the device limit, playback offers to log out other devices and tries again

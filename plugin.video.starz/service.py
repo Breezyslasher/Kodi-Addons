@@ -55,6 +55,13 @@ class Player(xbmc.Player):
         self._finish()   # a previous title that never reported stopping
         self.session = Session(info)
         kodiutils.log("Tracking Starz playback of %s" % info.get("content_id"))
+        if info.get("seek_to"):
+            # Tuning in to a channel: jump to where its schedule has reached.
+            try:
+                self.seekTime(float(info["seek_to"]))
+                kodiutils.log("Tuned in at %ds" % int(info["seek_to"]))
+            except RuntimeError as exc:
+                kodiutils.log_error("Seek failed: %s" % exc)
 
     def tick(self, now):
         """Called every POLL_SECS by the service loop while a session runs."""

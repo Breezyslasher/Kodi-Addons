@@ -24,6 +24,7 @@ Shapes returned to default.py:
               "license_headers", "stream_headers", "subtitles"}
 """
 
+import os
 import re
 import time
 from urllib.parse import quote
@@ -34,6 +35,7 @@ from lib import kodiutils
 from lib.auth import AUTH_API, USER_AGENT, NotReadyError
 
 METADATA = "https://playdata.starz.com/metadata-service/play/partner/Web/v8/"
+LINEAR = "https://playdata.starz.com/metadata-service/play/partner/Web/v6/content/linear"
 RECOMMENDER = "https://recommender.starz.com/api/v3/recommendations/partner/Web/profile/"
 IMAGES = "https://stz1.imgix.net/Web/contentId/%s/type/%s/dimension/%s"
 LANG = "en-US"
@@ -130,6 +132,8 @@ def to_item(content, series=None):
         item["episode"] = content.get("order") or content.get("episodeNumber")
     if content.get("resumeSeconds"):
         item["resume"] = content["resumeSeconds"]
+    if content.get("comingSoon"):
+        item["coming_soon"] = True
     _add_people(item, content)
     return item
 
@@ -451,6 +455,8 @@ class StarzApi(object):
                 rows.append({"id": str(block["id"]), "title": title, "kind": "folder"})
             elif self._row_ids(block) and (block.get("blockType") in ID_ROWS or subs):
                 rows.append({"id": str(block["id"]), "title": title, "kind": "items"})
+            elif block.get("blockType") == "COMING_SOON" and self._coming_soon_ids():
+                rows.append({"id": str(block["id"]), "title": title, "kind": "items"})
         return rows
 
     def row(self, row_id):
@@ -461,8 +467,16 @@ class StarzApi(object):
         subs = block.get("blocks") or []
         if any(s.get("blockType") in ID_ROWS for s in subs):
             return self._rows(subs), []
-        items = [to_item(c) for c in self.contents(self._row_ids(block))]
+        ids = (self._coming_soon_ids() if block.get("blockType") == "COMING_SOON"
+               else self._row_ids(block))
+        items = [to_item(c) for c in self.contents(ids)]
         return [], self._finish([i for i in items if i])
+
+    def _coming_soon_ids(self):
+        """The Home page's COMING_SOON block carries no contentIds; the
+        website lists the titles flagged comingSoon in the blocks map."""
+        return [k for k, c in self._content_map().items()
+                if c.get("comingSoon") and c.get("contentType") in TYPES]
 
     def _finish(self, items, series_id=None):
         """Every listing ends here: hide what the profile's parental controls
@@ -571,6 +585,53 @@ class StarzApi(object):
         items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
         return self._finish(items)
 
+    # -- linear schedule (schedule HAR) ---------------------------------------
+
+    @staticmethod
+    def _timezone():
+        """IANA zone for the schedule's day boundaries (the website sends the
+        browser's, e.g. America/New_York). Times in the reply are absolute
+        (startMs), so this only decides where "today" starts and ends."""
+        tz = os.environ.get("TZ", "")
+        if "/" in tz:
+            return tz.lstrip(":")
+        try:
+            with open("/etc/timezone") as fh:
+                tz = fh.read().strip()
+                if "/" in tz:
+                    return tz
+        except OSError:
+            pass
+        real = os.path.realpath("/etc/localtime")
+        if "zoneinfo/" in real:
+            return real.split("zoneinfo/", 1)[1]
+        return "America/New_York"
+
+    def schedule(self, code, day=0):
+        """One channel's line-up for a day (0 = today, 1 = tomorrow).
+        GET v6/content/linear?fromDay&toDay&tz&services={code}&templates=true
+        (public) -> {"linearSchedule": {"elements": [{contentType, title,
+        contentId, startMs, endMs, availableOnOtt, logLine, ratingName,
+        releaseYear, simplifiedGenres, ...}]}}. The reply runs from the
+        evening before into the night after; kept as Starz sends it, the
+        caller picks the window it wants."""
+        data = self._get_url(LINEAR, {"fromDay": str(day), "toDay": str(day),
+                                      "tz": self._timezone(),
+                                      "services": code.lower(), "templates": "true"})
+        return ((data.get("linearSchedule") or {}).get("elements")) or []
+
+    def on_now(self, code):
+        now = time.time() * 1000
+        for el in self.schedule(code, 0):
+            if (el.get("startMs") or 0) <= now < (el.get("endMs") or 0):
+                return el
+        return None
+
+    def _get_url(self, url, params):
+        resp = self.http.get(url, params=params, timeout=TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()
+
     # -- devices (device HARs) ---------------------------------------------
 
     def devices(self):
@@ -613,11 +674,19 @@ class StarzApi(object):
         return self._finish(items)
 
     def my_list_ids(self):
+        """{contentId: remindMe} for everything on My List."""
         try:
-            return {str(e.get("contentId")) for e in
+            return {str(e.get("contentId")): bool(e.get("remindMe")) for e in
                     self.auth.request("GET", AUTH_API + "User/Queue").json() or []}
         except Exception:
-            return set()
+            return {}
+
+    def set_reminder(self, content_id, on):
+        """Remind me on a Coming Soon title: the same PUT User/Queue/{id} as
+        Add to My List (series HAR #252, {"remindMe": false}) with the flag
+        set. [VERIFY] remindMe true, which no capture has shown yet."""
+        self.auth.request("PUT", AUTH_API + "User/Queue/%s" % content_id,
+                          json={"remindMe": bool(on)})
 
     def add_to_list(self, content_id):
         self.auth.request("PUT", AUTH_API + "User/Queue/%s" % content_id,

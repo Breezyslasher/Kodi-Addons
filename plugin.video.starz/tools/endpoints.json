@@ -257,6 +257,24 @@
         ]
       },
       "note": "If you like X (Power)."
+    },
+    {
+      "id": "tv_schedule",
+      "url": "https://playdata.starz.com/metadata-service/play/partner/Web/v6/content/linear",
+      "params": {
+        "fromDay": "0",
+        "toDay": "0",
+        "tz": "America/New_York",
+        "services": "stz1",
+        "templates": "true"
+      },
+      "expect": {
+        "json_paths": [
+          "linearSchedule.elements[0].contentId",
+          "linearSchedule.elements[0].startMs"
+        ]
+      },
+      "note": "TV Schedule and the IPTV Manager guide (STARZ channel, today)."
     }
   ]
 }

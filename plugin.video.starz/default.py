@@ -13,6 +13,9 @@ from lib import kodiutils
 from lib.auth import StarzAuth, StarzAuthError, NotReadyError
 from lib.api import StarzApi, PLAYING_FILE
 from lib.license_relay import relay_url, LICENSE_FILE
+from lib import iptv
+from lib.channels import CHANNELS, NAMES, logo
+from lib.api import to_item
 
 HANDLE = int(sys.argv[1])
 _ADDON_PATH = kodiutils.addon().getAddonInfo("path")
@@ -101,9 +104,15 @@ STATE = {"signed_in": False, "my_list": None}
 def _list_menu(item):
     if not STATE["signed_in"] or item.get("type") not in ("movie", "series"):
         return []
-    on_list = STATE["my_list"] is not None and item["id"] in STATE["my_list"]
+    mine = STATE["my_list"] or {}
+    on_list = item["id"] in mine
     action, label = ("list_remove", L(32066)) if on_list else ("list_add", L(32065))
-    return [(label, "RunPlugin(%s)" % url(action=action, content_id=item["id"]))]
+    menu = [(label, "RunPlugin(%s)" % url(action=action, content_id=item["id"]))]
+    if item.get("coming_soon"):
+        reminding = bool(mine.get(item["id"]))
+        menu.append((L(32118) if reminding else L(32117), "RunPlugin(%s)" % url(
+            action="remind", content_id=item["id"], on="0" if reminding else "1")))
+    return menu
 
 
 def _people_menu(item):
@@ -151,6 +160,9 @@ def add_item(item):
     elif item.get("type") == "season":
         target, folder = url(action="season", series_id=item.get("series_id", ""),
                              season_id=item["id"]), True
+    elif item.get("coming_soon"):
+        li.setLabel("%s  [COLOR grey]%s[/COLOR]" % (li.getLabel(), L(32116)))
+        target, folder = url(action="noop"), False
     else:
         li.setProperty("IsPlayable", "true")
         target, folder = url(action="play", content_id=item["id"]), False
@@ -191,6 +203,7 @@ def main_menu(auth):
     add_dir(L(32052), "page", page="SERIES")
     add_dir(L(32053), "page", page="MOVIES")
     add_dir(L(32054), "page", page="BROWSE")
+    add_dir(L(32110), "channels")
     add_dir(L(32074), "genres")
     add_dir(L(32075), "categories")
     add_dir(L(32013), "search")
@@ -548,7 +561,7 @@ def do_manage_devices(api, auth):
     return True
 
 
-def do_play(api, content_id, auth=None):
+def do_play(api, content_id, auth=None, seek_to=None):
     if not ensure_widevine():
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
@@ -572,8 +585,76 @@ def do_play(api, content_id, auth=None):
     kodiutils.write_json(PLAYING_FILE, {
         "content_id": str(content_id), "session_id": playback.get("session_id"),
         "keep_alive": playback.get("keep_alive"),
-        "manifest_url": playback["manifest_url"]})
+        "manifest_url": playback["manifest_url"], "seek_to": seek_to})
     xbmcplugin.setResolvedUrl(HANDLE, True, build_isa_listitem(playback))
+
+
+# -- TV schedule -------------------------------------------------------------
+
+def _clock(ms):
+    fmt = (xbmc.getRegion("time") or "%H:%M").replace(":%S", "")
+    return time.strftime(fmt, time.localtime(ms / 1000.0)).lstrip("0")
+
+
+def show_channels():
+    for code, name, group in CHANNELS:
+        li = xbmcgui.ListItem(name)
+        icon = logo(_ADDON_PATH, code)
+        li.setArt({"icon": icon, "thumb": icon, "fanart": ADDON_ART["fanart"]})
+        li.getVideoInfoTag().setPlot(group)
+        xbmcplugin.addDirectoryItem(HANDLE, url(action="channel", code=code), li, True)
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def show_channel(api, code, day):
+    """A channel's line-up for one local day; today starts with On now."""
+    day = int(day or 0)
+    start = time.mktime(time.localtime()[:3] + (0, 0, 0, 0, 0, -1)) + day * 86400
+    lo, hi, now = start * 1000, (start + 86400) * 1000, time.time() * 1000
+    icon = logo(_ADDON_PATH, code)
+    xbmcplugin.setPluginCategory(HANDLE, NAMES.get(code, code))
+    elements = [e for e in api.schedule(code, day)
+                if e.get("endMs", 0) > lo and e.get("startMs", 0) < hi]
+    if day == 0:
+        current = [e for e in elements if e.get("startMs", 0) <= now < e.get("endMs", 0)]
+        if current:
+            li = xbmcgui.ListItem(L(32111) % current[0].get("title", ""))
+            li.setArt({"icon": icon, "thumb": icon})
+            li.setProperty("IsPlayable", "true")
+            xbmcplugin.addDirectoryItem(HANDLE, url(action="live", channel=code), li, False)
+        add_dir(L(32112), "channel", code=code, day=1)
+    for el in elements:
+        content = dict(el)
+        content["runtime"] = (el["endMs"] - el["startMs"]) // 1000
+        item = to_item(content) or {"id": str(el.get("contentId")), "type": "movie"}
+        item["title"] = el.get("title", "")
+        label = "%s  %s" % (_clock(el["startMs"]), el.get("title", ""))
+        if el.get("startMs", 0) <= now < el.get("endMs", 0):
+            label = "[B]%s[/B]" % label
+        li = xbmcgui.ListItem(label)
+        _apply_info(li, item)
+        if el.get("availableOnOtt") and el.get("contentId"):
+            li.setProperty("IsPlayable", "true")
+            target = url(action="play", content_id=el["contentId"])
+        else:
+            li.setLabel("[COLOR grey]%s[/COLOR]" % label)
+            target = url(action="noop")
+        xbmcplugin.addDirectoryItem(HANDLE, target, li, False)
+    xbmcplugin.setContent(HANDLE, "videos")
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def do_live(api, code, auth):
+    """Tune in: play what the channel is showing now, from where it is.
+    Starz has no live streams; this is the scheduled title on demand."""
+    el = api.on_now(code)
+    if not el or not el.get("availableOnOtt"):
+        kodiutils.notify(L(32113))
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    offset = max(0, int(time.time() - el["startMs"] / 1000.0))
+    kodiutils.log("Tuning in to %s: %s at %ds" % (code, el.get("title"), offset))
+    do_play(api, el["contentId"], auth, seek_to=offset if offset > 30 else None)
 
 
 # -- router --------------------------------------------------------------
@@ -652,6 +733,19 @@ def router(paramstring):
             do_manage_devices(api, auth)
             if HANDLE >= 0:
                 xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+        elif action == "channels":
+            show_channels()
+        elif action == "channel":
+            show_channel(api, params.get("code"), params.get("day"))
+        elif action == "live":
+            do_live(api, params.get("channel"), auth)
+        elif action == "noop":
+            pass
+        elif action == "remind":
+            on = params.get("on") == "1"
+            api.set_reminder(params.get("content_id"), on)
+            kodiutils.notify(L(32119) if on else L(32120))
+            xbmc.executebuiltin("Container.Refresh")
         elif action == "genres":
             show_genres(api)
         elif action == "categories":
@@ -688,4 +782,9 @@ def router(paramstring):
 
 
 if __name__ == "__main__":
-    router(sys.argv[2][1:])
+    # IPTV Manager calls /iptv/channels and /iptv/epg with ?port=N and wants
+    # the answer on that socket, not a directory listing.
+    _query = dict(parse_qsl(sys.argv[2][1:])) if len(sys.argv) > 2 else {}
+    if not iptv.handle(sys.argv[0], _query.get("port"),
+                       StarzApi(StarzAuth()), _ADDON_PATH):
+        router(sys.argv[2][1:])
