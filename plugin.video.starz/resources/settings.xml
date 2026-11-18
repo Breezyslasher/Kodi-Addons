@@ -6,6 +6,9 @@
         <setting id="devices" type="action" label="32106" action="RunPlugin(plugin://plugin.video.starz/?action=devices)" />
         <setting id="sign_out" type="action" label="32015" action="RunPlugin(plugin://plugin.video.starz/?action=sign_out)" />
     </category>
+    <category label="32121">
+        <setting id="autoplay_next" type="bool" label="32122" default="true" />
+    </category>
     <category label="32114">
         <setting id="iptv.enabled" type="bool" label="32115" default="true" />
         <setting id="iptv.channels_uri" type="text" default="plugin://plugin.video.starz/iptv/channels" visible="false" />

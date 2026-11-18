@@ -318,3 +318,11 @@ msgstr ""
 msgctxt "#32120"
 msgid "Reminder cancelled"
 msgstr ""
+
+msgctxt "#32121"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#32122"
+msgid "Play the next episode automatically (without the Up Next add-on)"
+msgstr ""

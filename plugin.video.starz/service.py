@@ -16,12 +16,16 @@ to PLAYING_FILE just before resolving the stream; the service only reports
 for a playing file that matches it, so other addons' playback is ignored.
 """
 
+import threading
+
 import xbmc
 
 from lib import kodiutils
 from lib.api import StarzApi, PLAYING_FILE
 from lib.auth import StarzAuth
 from lib.license_relay import LicenseRelay
+from lib import upnext
+from lib.api import to_item
 
 # Report well inside the 600 s keep-alive Starz gives.
 UPDATE_SECS = 300
@@ -33,6 +37,7 @@ class Session(object):
         self.info = info
         self.position = 0.0
         self.last_update = None   # set on the first tick: the start
+        self.next_id = None       # the next episode, once looked up
 
 
 class Player(xbmc.Player):
@@ -55,6 +60,8 @@ class Player(xbmc.Player):
         self._finish()   # a previous title that never reported stopping
         self.session = Session(info)
         kodiutils.log("Tracking Starz playback of %s" % info.get("content_id"))
+        # Off the callback thread: two metadata requests.
+        threading.Thread(target=self._prepare_next, args=(self.session,)).start()
         if info.get("seek_to"):
             # Tuning in to a channel: jump to where its schedule has reached.
             try:
@@ -97,8 +104,37 @@ class Player(xbmc.Player):
     def onPlayBackStopped(self):
         self._finish()
 
+    def _prepare_next(self, session):
+        """For an episode: find the next one, hand both to Up Next if it is
+        installed, and remember it for the built-in autoplay otherwise."""
+        try:
+            api = StarzApi(StarzAuth())
+            current = api.title_detail(session.info["content_id"])
+            if current.get("contentType") != "Episode" or not current.get("nextContentId"):
+                return
+            nxt = api.title_detail(current["nextContentId"])
+            cur_item, next_item = to_item(current), to_item(nxt)
+            if not cur_item or not next_item:
+                return
+            session.next_id = next_item["id"]
+            if upnext.installed():
+                upnext.signal(upnext.build(cur_item, current, next_item, nxt))
+                kodiutils.log("Up Next: next episode %s, pop-up at %ss" % (
+                    next_item["id"], current.get("creditTimeIn")))
+            else:
+                kodiutils.log("Next episode %s (autoplay %s)" % (
+                    next_item["id"], "on" if kodiutils.get_setting_bool("autoplay_next", True) else "off"))
+        except Exception as exc:
+            kodiutils.log_error("Next episode lookup failed: %s" % exc)
+
     def onPlayBackEnded(self):
+        next_id = self.session.next_id if self.session else None
         self._finish()
+        # Up Next plays the next episode itself; without it, do it here.
+        if next_id and not upnext.installed() and kodiutils.get_setting_bool("autoplay_next", True):
+            kodiutils.log("Autoplaying next episode %s" % next_id)
+            xbmc.executebuiltin("PlayMedia(plugin://plugin.video.starz/?action=play&content_id=%s)"
+                                % next_id)
 
     def onPlayBackError(self):
         self._finish()
