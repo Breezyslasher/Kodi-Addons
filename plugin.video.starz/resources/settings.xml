@@ -3,6 +3,7 @@
     <category label="32000">
         <setting id="sign_in" type="action" label="32014" action="RunPlugin(plugin://plugin.video.starz/?action=sign_in)" />
         <setting id="profile" type="action" label="32060" action="RunPlugin(plugin://plugin.video.starz/?action=profile)" />
+        <setting id="devices" type="action" label="32106" action="RunPlugin(plugin://plugin.video.starz/?action=devices)" />
         <setting id="sign_out" type="action" label="32015" action="RunPlugin(plugin://plugin.video.starz/?action=sign_out)" />
     </category>
 </settings>

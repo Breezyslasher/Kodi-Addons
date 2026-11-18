@@ -358,7 +358,7 @@ class StarzApi(object):
         elif sort == "az":
             titles.sort(key=self._sort_title)
         items = [i for i in (to_item(c) for c in titles) if i]
-        return apply_history(items, self.history())
+        return self._finish(items)
 
     def _recommended_contents(self):
         """Personalised picks for the selected profile (recommender HARs:
@@ -416,7 +416,7 @@ class StarzApi(object):
             r = [x for x in roles.get(item["id"], []) if x != "Actor"]
             if r:
                 item["label_extra"] = ", ".join(r)
-        return found.get("name", ""), apply_history(items, self.history())
+        return found.get("name", ""), self._finish(items)
 
     def similar(self, content_id):
         """"If you like X": GET recommender.../recommendations/partner/Web?
@@ -429,7 +429,7 @@ class StarzApi(object):
         ids = [r.get("contentId") for r in (resp.json() or {}).get("ranks") or []
                if str(r.get("contentId")) != str(content_id)]
         items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
-        return apply_history(items, self.history())
+        return self._finish(items)
 
     def categories_row_id(self):
         """The Browse page's "Browse By" grid (CATEGORY_GRID)."""
@@ -462,7 +462,41 @@ class StarzApi(object):
         if any(s.get("blockType") in ID_ROWS for s in subs):
             return self._rows(subs), []
         items = [to_item(c) for c in self.contents(self._row_ids(block))]
-        return [], apply_history([i for i in items if i], self.history())
+        return [], self._finish([i for i in items if i])
+
+    def _finish(self, items, series_id=None):
+        """Every listing ends here: hide what the profile's parental controls
+        block, then add watched marks and resume points."""
+        return apply_history(self.allowed(items), self.history(series_id))
+
+    def blocked_ratings(self):
+        """Ratings switched off for the selected profile.
+        GET ParentalControls/{profileId} -> {"parentalControls": [{rating,
+        type, enabled}]} (device HAR); edited on the website behind the
+        account PIN (parental HAR). The catalogue is not per profile, so the
+        website hides restricted titles itself, as this does. Empty when
+        signed out or if Starz fails."""
+        if "_blocked" not in self.__dict__:
+            blocked = set()
+            if self.auth.signed_in and self.auth.profile_id:
+                try:
+                    data = self.auth.request(
+                        "GET", AUTH_API + "ParentalControls/" + self.auth.profile_id).json()
+                    blocked = {c.get("rating") for c in (data or {}).get("parentalControls") or []
+                               if c.get("rating") and c.get("enabled") is False}
+                except Exception as exc:
+                    kodiutils.log_error("ParentalControls: %s" % exc)
+            self._blocked = blocked
+        return self._blocked
+
+    def allowed(self, items):
+        blocked = self.blocked_ratings()
+        if not blocked:
+            return items
+        kept = [i for i in items if i.get("mpaa") not in blocked]
+        if len(kept) != len(items):
+            kodiutils.log("Parental controls hid %d title(s)" % (len(items) - len(kept)))
+        return kept
 
     def history(self, series_id=None):
         """User/history as {contentId: entry} (sign-in HAR #304; series HAR
@@ -498,7 +532,7 @@ class StarzApi(object):
                     item["title"] = "%s - %s" % (entry["seriesTitle"],
                                                  entry.get("displayTitle") or item["title"])
                 items.append(item)
-        return items
+        return self.allowed(items)
 
     def series_tree(self, series_id):
         """The whole series: v8/content?contentIds={id} with no includes
@@ -523,7 +557,7 @@ class StarzApi(object):
                 eps = sorted(season.get("childContent") or [],
                              key=lambda e: e.get("order") or 0)
                 items = [i for i in (to_item(e, series) for e in eps) if i]
-                return apply_history(items, self.history(series_id))
+                return self._finish(items, series_id)
         return []
 
     def search(self, query):
@@ -535,7 +569,21 @@ class StarzApi(object):
         ids = [c.get("contentId") for c in
                (data.get("playContentArray") or {}).get("playContents") or []]
         items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
-        return apply_history(items, self.history())
+        return self._finish(items)
+
+    # -- devices (device HARs) ---------------------------------------------
+
+    def devices(self):
+        """GET User/devices -> [{deviceId, name, type, lastAccess, country,
+        countryRegion, city}], newest first as Starz returns them."""
+        return (self.auth.request("GET", AUTH_API + "User/devices").json()
+                or {}).get("devices") or []
+
+    def logout_devices(self, device_ids):
+        """POST User/devices/logout {"Devices": [deviceId, ...]} -> 204
+        (device HAR: the list went from 6 to 5, minus exactly the id sent)."""
+        self.auth.request("POST", AUTH_API + "User/devices/logout",
+                          json={"Devices": list(device_ids)})
 
     def hide_from_continue(self, content_id):
         """PUT User/resumepoints/hide {"ids": [id]} -> 204. A movie is hidden
@@ -562,7 +610,7 @@ class StarzApi(object):
         entries.sort(key=lambda e: e.get("order") or 0)
         ids = [e.get("contentId") for e in entries]
         items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
-        return apply_history(items, self.history())
+        return self._finish(items)
 
     def my_list_ids(self):
         try:

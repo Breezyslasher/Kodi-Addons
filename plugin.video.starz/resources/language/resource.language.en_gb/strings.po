@@ -246,3 +246,31 @@ msgstr ""
 msgctxt "#32097"
 msgid "If you like %s"
 msgstr ""
+
+msgctxt "#32100"
+msgid "Log out devices (%d on your account)"
+msgstr ""
+
+msgctxt "#32101"
+msgid "No devices found"
+msgstr ""
+
+msgctxt "#32102"
+msgid "last used"
+msgstr ""
+
+msgctxt "#32103"
+msgid "Log out %d device(s) from your Starz account?"
+msgstr ""
+
+msgctxt "#32104"
+msgid "Logged out %d device(s)"
+msgstr ""
+
+msgctxt "#32105"
+msgid "Log out other devices now?"
+msgstr ""
+
+msgctxt "#32106"
+msgid "Manage devices"
+msgstr ""

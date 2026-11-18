@@ -196,6 +196,7 @@ def main_menu(auth):
     add_dir(L(32013), "search")
     if auth.signed_in:
         add_dir(L(32062) % (auth.profile_name or "-"), "profile")
+        add_action(L(32106), "devices")
         add_dir(L(32063) % (auth.username or "-"), "sign_out")
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
 
@@ -517,12 +518,52 @@ def build_isa_listitem(playback):
     return li
 
 
-def do_play(api, content_id):
+DEVICE_LIMIT = 1305   # Starz errorCode: "The device limit is reached"
+
+
+def do_manage_devices(api, auth):
+    """Checklist of the account's devices; the ticked ones are logged out.
+    This Kodi is shown but not offered, so it cannot sign itself out here.
+    Returns True if any device was logged out."""
+    devices = api.devices()
+    if not devices:
+        kodiutils.ok_dialog(L(32101))
+        return False
+    mine = auth.device_id
+    others = [d for d in devices if d.get("deviceId") != mine]
+    labels = []
+    for d in others:
+        where = ", ".join(x for x in (d.get("city"), d.get("countryRegion")) if x)
+        labels.append("%s  [COLOR grey]%s · %s %s[/COLOR]" % (
+            d.get("name") or d.get("type") or "?", where, L(32102),
+            (d.get("lastAccess") or "")[:10]))
+    heading = L(32100) % len(devices)
+    picked = xbmcgui.Dialog().multiselect(heading, labels)
+    if not picked:
+        return False
+    if not xbmcgui.Dialog().yesno(kodiutils.ADDON_NAME, L(32103) % len(picked)):
+        return False
+    api.logout_devices([others[i]["deviceId"] for i in picked])
+    kodiutils.notify(L(32104) % len(picked))
+    return True
+
+
+def do_play(api, content_id, auth=None):
     if not ensure_widevine():
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     try:
-        playback = api.playback(content_id, kodiutils.subtitle_languages())
+        try:
+            playback = api.playback(content_id, kodiutils.subtitle_languages())
+        except StarzAuthError as exc:
+            # At the device limit, offer to free a slot here instead of a
+            # dead end, then try once more.
+            if exc.code != DEVICE_LIMIT or auth is None or not xbmcgui.Dialog().yesno(
+                    kodiutils.ADDON_NAME, "%s\n\n%s" % (exc, L(32105))):
+                raise
+            if not do_manage_devices(api, auth):
+                raise
+            playback = api.playback(content_id, kodiutils.subtitle_languages())
     except Exception:
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         raise
@@ -607,6 +648,10 @@ def router(paramstring):
             xbmcplugin.setPluginCategory(HANDLE, L(32097) % params.get("title", ""))
             items = api.similar(params.get("content_id"))
             show_items(items, _content_for(items))
+        elif action == "devices":
+            do_manage_devices(api, auth)
+            if HANDLE >= 0:
+                xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         elif action == "genres":
             show_genres(api)
         elif action == "categories":
@@ -628,7 +673,7 @@ def router(paramstring):
         elif action == "list_remove":
             do_list_change(api, params.get("content_id"), False)
         elif action == "play":
-            do_play(api, params.get("content_id"))
+            do_play(api, params.get("content_id"), auth)
         else:
             main_menu(auth)
     except NotReadyError as exc:
