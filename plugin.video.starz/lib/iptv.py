@@ -9,7 +9,8 @@ document: JSON-STREAMS for the channels, JSON-EPG for the guide.
 
 Starz has no live streams: a channel's stream tunes in to the title it is
 scheduled to show now, from the point the channel has reached (see
-default.py action=live). Guide entries carry their own on-demand stream.
+default.py action=live). Guide entries are text only, so the guide marks
+nothing as playable except the channel itself.
 """
 
 import json
@@ -77,8 +78,9 @@ def epg(api):
                     entry["image"] = ("https://stz1.imgix.net/Web/contentId/%s/type/KEY/"
                                       "dimension/2560x1440/lang/en-US?fit=max&auto=format,"
                                       "compress&w=640" % el["contentId"])
-                    if el.get("availableOnOtt"):
-                        entry["stream"] = PLUGIN + "?action=play&content_id=%s" % el["contentId"]
+                # No per-programme "stream": Kodi's guide marks every programme
+                # that has one as playable (catch-up dot). Only what is on now
+                # plays, through the channel's own stream (tune in).
                 programmes.append(entry)
         guide["starz.%s" % code] = sorted(programmes, key=lambda p: p["start"])
     return {"version": VERSION, "epg": guide}
