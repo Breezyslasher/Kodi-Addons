@@ -223,6 +223,40 @@
         ]
       },
       "note": "Movie/series cast in lists depends on includes=actors,directors."
+    },
+    {
+      "id": "artist",
+      "url": "https://playdata.starz.com/metadata-service/play/partner/Web/v8/artists",
+      "params": {
+        "artistId": "4401892",
+        "lang": "en-US"
+      },
+      "expect": {
+        "json_paths": [
+          "artists.artist[0].name",
+          "artists.artist[0].contents[0].id"
+        ]
+      },
+      "note": "Cast & crew -> a person's titles (Omari Hardwick)."
+    },
+    {
+      "id": "if_you_like",
+      "uses": [
+        "mint_auth_token"
+      ],
+      "url": "https://recommender.starz.com/api/v3/recommendations/partner/Web",
+      "params": {
+        "contentIdsCSV": "21220"
+      },
+      "headers": {
+        "AuthTokenAuthorization": "{auth_token}"
+      },
+      "expect": {
+        "json_paths": [
+          "ranks[0].contentId"
+        ]
+      },
+      "note": "If you like X (Power)."
     }
   ]
 }

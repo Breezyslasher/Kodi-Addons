@@ -238,3 +238,11 @@ msgstr ""
 msgctxt "#32095"
 msgid "[B]Filters:[/B] %s"
 msgstr ""
+
+msgctxt "#32096"
+msgid "Cast & crew"
+msgstr ""
+
+msgctxt "#32097"
+msgid "If you like %s"
+msgstr ""

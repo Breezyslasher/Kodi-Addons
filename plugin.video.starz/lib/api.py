@@ -375,6 +375,54 @@ class StarzApi(object):
         return [c for c in self.contents(ids)
                 if c.get("contentType") in ("Movie", "Series with Season")]
 
+    # -- people and "If you like" (actor HAR) --------------------------------
+
+    def title_detail(self, content_id):
+        """Full detail for one title (no includes): actors, directors and
+        credits for a movie, series or episode."""
+        data = self._get("content", {"lang": LANG, "contentIds": str(content_id)})
+        contents = (data.get("playContentArray") or {}).get("playContents") or []
+        return contents[0] if contents else {}
+
+    def people(self, content_id):
+        """[(artist_id, name, roles)] - cast in billing order, then the rest
+        of the credits (directors, writers, producers...)."""
+        c = self.title_detail(content_id)
+        out, seen = [], set()
+        for a in c.get("actors") or []:
+            if a.get("id") and a["id"] not in seen:
+                seen.add(a["id"])
+                out.append((a["id"], a.get("fullName", ""), ["Actor"]))
+        for cr in c.get("credits") or []:
+            if cr.get("id") and cr["id"] not in seen:
+                seen.add(cr["id"])
+                out.append((cr["id"], cr.get("name", ""),
+                            [r.get("name") for r in cr.get("keyedRoles") or [] if r.get("name")]))
+        return out
+
+    def artist(self, artist_id):
+        """(name, items): everything on Starz the person is in.
+        GET v8/artists?artistId={id}&lang -> {"artists": {"artist": [{id,
+        name, keyedRoles, contents: [{id, type}]}]}} (actor HAR #14; public)."""
+        data = self._get("artists", {"artistId": str(artist_id), "lang": LANG})
+        found = ((data.get("artists") or {}).get("artist") or [{}])[0]
+        ids = [c.get("id") for c in found.get("contents") or [] if c.get("id")]
+        items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
+        return found.get("name", ""), apply_history(items, self.history())
+
+    def similar(self, content_id):
+        """"If you like X": GET recommender.../recommendations/partner/Web?
+        contentIdsCSV={id} with the app token -> {"ranks": [...]} (actor HAR
+        #35; the website passes the series id on an episode page)."""
+        resp = self.http.get(RECOMMENDER.rsplit("/profile/", 1)[0],
+                             params={"contentIdsCSV": str(content_id)},
+                             headers=self.auth.app_headers(), timeout=TIMEOUT)
+        resp.raise_for_status()
+        ids = [r.get("contentId") for r in (resp.json() or {}).get("ranks") or []
+               if str(r.get("contentId")) != str(content_id)]
+        items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
+        return apply_history(items, self.history())
+
     def categories_row_id(self):
         """The Browse page's "Browse By" grid (CATEGORY_GRID)."""
         for block in self.blocks():

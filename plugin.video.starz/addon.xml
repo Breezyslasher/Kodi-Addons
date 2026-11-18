@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.18.13" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.18.14" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -28,7 +28,11 @@ On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect 
 			<clearlogo>resources/clearlogo.png</clearlogo>
 			<banner>resources/banner.png</banner>
 		</assets>
-		<news>v2026.11.18.13
+		<news>v2026.11.18.14
+- Cast &amp; crew: pick a person to see everything they are in on Starz
+- If you like X: similar movies and series (context menu, and at the top of a series)
+
+v2026.11.18.13
 - Cast, director, writer and studio in the info of episodes, seasons, series and movies
 
 v2026.11.18.12

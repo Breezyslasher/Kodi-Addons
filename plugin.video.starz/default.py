@@ -106,10 +106,33 @@ def _list_menu(item):
     return [(label, "RunPlugin(%s)" % url(action=action, content_id=item["id"]))]
 
 
+def _people_menu(item):
+    """Cast & crew, and If you like X (for an episode: its series, as the
+    website does)."""
+    if item.get("type") not in ("movie", "series", "episode"):
+        return []
+    like_id = item["id"]
+    like_title = item.get("title", "")
+    if item.get("type") == "episode" and item.get("series_id"):
+        like_id, like_title = item["series_id"], item.get("series_title") or like_title
+    return [
+        (L(32096), "Container.Update(%s)" % url(action="people", content_id=item["id"])),
+        (L(32097) % like_title, "Container.Update(%s)" % url(
+            action="similar", content_id=like_id, title=like_title)),
+    ]
+
+
+def show_people(api, content_id):
+    for artist_id, name, roles in api.people(content_id):
+        label = "%s  [COLOR grey]%s[/COLOR]" % (name, ", ".join(roles)) if roles else name
+        add_dir(label, "artist", artist_id=artist_id)
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
 def add_item(item):
     li = xbmcgui.ListItem(item.get("title", ""))
     _apply_info(li, item)
-    menu = _list_menu(item)
+    menu = _list_menu(item) + _people_menu(item)
     if item.get("in_continue"):
         menu.append((L(32070), "RunPlugin(%s)" % url(action="continue_hide",
                                                      content_id=item["id"])))
@@ -280,6 +303,9 @@ def do_search(api):
 def do_series(api, series_id):
     """Seasons, or straight to the episodes when there is only one."""
     series, seasons = api.seasons(series_id)
+    add_dir(L(32096), "people", content_id=series_id)
+    add_dir(L(32097) % series.get("title", ""), "similar", content_id=series_id,
+            title=series.get("title", ""))
     if len(seasons) == 1:
         show_items(api.episodes(series_id, seasons[0]["id"]), "episodes")
     else:
@@ -525,7 +551,7 @@ def router(paramstring):
     api = StarzApi(auth)
     STATE["signed_in"] = auth.signed_in
     if auth.signed_in and action in ("row", "series", "search", "my_list", "all",
-                                     "recommended", "browse"):
+                                     "recommended", "browse", "artist", "similar"):
         STATE["my_list"] = api.my_list_ids()
 
     try:
@@ -563,6 +589,16 @@ def router(paramstring):
             do_pick_sort(_state(params))
         elif action in ("pick_filters", "filter"):
             do_pick_filters(api, _state(params))
+        elif action == "people":
+            show_people(api, params.get("content_id"))
+        elif action == "artist":
+            name, items = api.artist(params.get("artist_id"))
+            xbmcplugin.setPluginCategory(HANDLE, name)
+            show_items(items, _content_for(items))
+        elif action == "similar":
+            xbmcplugin.setPluginCategory(HANDLE, L(32097) % params.get("title", ""))
+            items = api.similar(params.get("content_id"))
+            show_items(items, _content_for(items))
         elif action == "genres":
             show_genres(api)
         elif action == "categories":
