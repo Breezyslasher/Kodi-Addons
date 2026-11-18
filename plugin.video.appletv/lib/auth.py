@@ -177,6 +177,16 @@ class AppleAuth(object):
 
     def login(self, account_name, password):
         """Full SRP sign-in. Returns a STATUS_* constant."""
+        # Apple normalises the Apple ID to lowercase before computing its half of
+        # the SRP proof, and the account name is also hashed into the client
+        # proof, so the two strings must match exactly. An on-screen keyboard
+        # that auto-capitalises the first letter (or leaves a stray space) then
+        # yields a proof Apple rejects with -20101 ("check the account
+        # information you entered"), even with the right password -- seen on a TV
+        # where the identical credentials signed in fine on desktop. Normalise it
+        # here, the one place both the request body and SRPClient read from. The
+        # password is left exactly as typed: passwords are case-sensitive.
+        account_name = (account_name or "").strip().lower()
         try:
             # Start clean: stale idmsa cookies/session state from a previous
             # attempt can make Apple reject the new SRP flow.
