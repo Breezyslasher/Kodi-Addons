@@ -88,6 +88,9 @@ def _apply_info(li, item):
         tag.setWriters(item["writers"])
     if item.get("studio"):
         tag.setStudios([item["studio"]])
+    if item.get("trailer_id"):
+        # Kodi's info dialog shows a Trailer button for this.
+        tag.setTrailer(url(action="play", content_id=item["trailer_id"], trailer="1"))
     tag.setMediaType({"movie": "movie", "series": "tvshow", "season": "season",
                       "episode": "episode"}.get(item.get("type"), "video"))
     if item.get("series_title"):
@@ -116,15 +119,19 @@ def _list_menu(item):
 
 
 def _people_menu(item):
-    """Cast & crew, and If you like X (for an episode: its series, as the
-    website does)."""
+    """Watch trailer, Cast & crew, and If you like X (for an episode: its
+    series, as the website does)."""
     if item.get("type") not in ("movie", "series", "episode"):
         return []
+    trailer = []
+    if item.get("trailer_id"):
+        trailer = [(L(32123), "PlayMedia(%s)" % url(action="play", content_id=item["trailer_id"],
+                                                     trailer="1"))]
     like_id = item["id"]
     like_title = item.get("title", "")
     if item.get("type") == "episode" and item.get("series_id"):
         like_id, like_title = item["series_id"], item.get("series_title") or like_title
-    return [
+    return trailer + [
         (L(32096), "Container.Update(%s)" % url(action="people", content_id=item["id"])),
         (L(32097) % like_title, "Container.Update(%s)" % url(
             action="similar", content_id=like_id, title=like_title)),
@@ -325,6 +332,9 @@ def do_search(api):
 def do_series(api, series_id):
     """Seasons, or straight to the episodes when there is only one."""
     series, seasons = api.seasons(series_id)
+    if (series.get("previews") or series.get("spots")
+            or any(s.get("bonusMaterials") for s in series.get("childContent") or [])):
+        add_dir(L(32124), "extras", series_id=series_id)
     add_dir(L(32096), "people", content_id=series_id)
     add_dir(L(32097) % series.get("title", ""), "similar", content_id=series_id,
             title=series.get("title", ""))
@@ -733,6 +743,10 @@ def router(paramstring):
             do_manage_devices(api, auth)
             if HANDLE >= 0:
                 xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+        elif action == "extras":
+            series, items = api.extras(params.get("series_id"))
+            xbmcplugin.setPluginCategory(HANDLE, "%s - %s" % (series.get("title", ""), L(32124)))
+            show_items(items, "videos")
         elif action == "channels":
             show_channels()
         elif action == "channel":

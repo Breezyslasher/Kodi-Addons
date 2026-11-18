@@ -134,6 +134,8 @@ def to_item(content, series=None):
         item["resume"] = content["resumeSeconds"]
     if content.get("comingSoon"):
         item["coming_soon"] = True
+    if content.get("previewContentId") and kind in ("movie", "series"):
+        item["trailer_id"] = str(content["previewContentId"])
     _add_people(item, content)
     return item
 
@@ -557,6 +559,34 @@ class StarzApi(object):
         if not contents:
             raise NotReadyError("Starz returned nothing for series %s" % series_id)
         return contents[0]
+
+    def extras(self, series_id):
+        """A series' extras from its tree (series HAR): previews (trailers),
+        each season's bonusMaterials in order, then promo spots. They are
+        ordinary titles with a contentId and play through Play/start like
+        anything else [VERIFY: no capture of an extra playing yet]."""
+        series = self.series_tree(series_id)
+        out = []
+
+        def add(c, prefix=""):
+            cid = c.get("contentId")
+            if not cid:
+                return
+            title = c.get("properCaseTitle") or c.get("title") or ""
+            out.append({"id": str(cid), "type": "extra",
+                        "title": ("%s: %s" % (prefix, title)) if prefix else title,
+                        "plot": c.get("logLine", ""),
+                        "duration": self._int(c.get("runtime")),
+                        "art": _art(series.get("contentId") or series_id)})
+
+        for c in series.get("previews") or []:
+            add(c)
+        for season in sorted(series.get("childContent") or [], key=lambda x: self._int(x.get("order"))):
+            for c in sorted(season.get("bonusMaterials") or [], key=lambda x: self._int(x.get("order"))):
+                add(c, season.get("properCaseTitle") or season.get("title") or "")
+        for c in series.get("spots") or []:
+            add(c)
+        return series, out
 
     def seasons(self, series_id):
         series = self.series_tree(series_id)

@@ -326,3 +326,11 @@ msgstr ""
 msgctxt "#32122"
 msgid "Play the next episode automatically (without the Up Next add-on)"
 msgstr ""
+
+msgctxt "#32123"
+msgid "Watch trailer"
+msgstr ""
+
+msgctxt "#32124"
+msgid "Extras"
+msgstr ""
