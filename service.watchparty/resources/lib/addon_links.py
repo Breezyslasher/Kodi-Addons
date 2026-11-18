@@ -65,6 +65,12 @@ addon's own source (2026-11-15):
   version is G31UXN249, which JustWatch doesn't have), so those play in
   Polish everywhere. Left as is (2026-11-18); a fix on Kodi would find the
   episode through the addon's search and season lists instead.
+- Starz, plugin.video.starz (Breezyslasher's, Kodi-Addons branch starz):
+  ?action=play&content_id=<id> (its default.py do_play: api.playback by
+  Starz's contentId) — the id in starz.com/movies/<id> and
+  starz.com/series/<show>/episodes/<id> (what TVs get from JustWatch) and
+  starz.com/us/en/play/<id> (phones, and Kodi's own shares). A season page
+  (/us/en/series/<name>/season-<n>/<id>) isn't an episode (2026-11-18).
 
 SlyGuy's paths are built as SlyGuy's router builds them (route in "_",
 arguments sorted); the addons parse them the same way.
@@ -154,6 +160,12 @@ def addon_path(link, media_type=''):
         if m:
             return ('plugin.video.skyott', 'plugin://plugin.video.skyott/?' + urlencode(
                 [('action', 'play'), ('slug', m.group(1))]))
+    elif on('starz.com'):
+        m = re.match(r'^/(?:[a-z]{2}/[a-z]{2}/)?(?:play/(\d+)|movies/(?:[^/]+/)?(\d+)/?$|series/[^/]+/episodes/(\d+))', path)
+        if m:
+            cid = m.group(1) or m.group(2) or m.group(3)
+            return ('plugin.video.starz', 'plugin://plugin.video.starz/?' + urlencode(
+                [('action', 'play'), ('content_id', cid)]))
     elif on('crunchyroll.com'):
         m = re.match(r'^/(?:[a-z]{2}(?:-[a-z]{2})?/)?watch/([A-Z0-9]+)(?:/|$)', path)
         if m:

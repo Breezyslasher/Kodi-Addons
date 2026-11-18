@@ -27,6 +27,17 @@ class AddonPathTest(unittest.TestCase):
         # but not its show's page
         self.assertEqual(addon_links.addon_path('https://www.netflix.com/title/80057281', 'episode'), (None, None))
 
+    def test_starz(self):
+        play = 'plugin://plugin.video.starz/?action=play&content_id=%s'
+        for link, cid in (('https://starz.com/movies/71196', '71196'),
+                          ('https://www.starz.com/movies/gladiator/71196', '71196'),
+                          ('https://starz.com/series/18124/episodes/18334', '18334'),
+                          ('https://www.starz.com/us/en/play/18334', '18334')):
+            self.assertEqual(addon_links.addon_path(link), ('plugin.video.starz', play % cid))
+        # a season's page (JustWatch's web link for an episode) isn't one
+        self.assertEqual(addon_links.addon_path('https://www.starz.com/us/en/series/the-white-queen/season-1/18331'),
+                         (None, None))
+
     def test_crunchyroll(self):
         # One Piece Film Red (the link the Android app and extension share)
         for link in ('https://www.crunchyroll.com/watch/GZ7UV2MZK/one-piece-film-red',

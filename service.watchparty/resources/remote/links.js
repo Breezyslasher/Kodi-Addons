@@ -282,6 +282,11 @@ export function pluginLink(plugin, type) {
       const asin = arg('mode') === 'PlayVideo' && arg('asin');
       return asin ? `https://watch.amazon.com/watch?${asin.startsWith('amzn1.dv.gti') ? 'gti' : 'asin'}=${asin}` : null;
     }
+    case 'plugin.video.starz': {
+      // Breezyslasher's addon (Kodi-Addons branch starz): Starz's own content id
+      const id = arg('action') === 'play' ? arg('content_id') : null;
+      return id && /^\d+$/.test(id) ? `https://www.starz.com/us/en/play/${id}` : null;
+    }
     case 'plugin.video.tubitv': {
       const parts = arg('mode') === 'GV' ? (arg('url') || '').split('|') : [];
       if (!parts.length || !/^\d+$/.test(parts[0])) return null;
