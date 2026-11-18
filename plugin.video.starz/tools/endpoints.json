@@ -275,6 +275,22 @@
         ]
       },
       "note": "TV Schedule and the IPTV Manager guide (STARZ channel, today)."
+    },
+    {
+      "id": "episode_detail_up_next",
+      "url": "https://playdata.starz.com/metadata-service/play/partner/Web/v8/content",
+      "params": {
+        "lang": "en-US",
+        "contentIds": "21226"
+      },
+      "expect": {
+        "json_paths": [
+          "playContentArray.playContents[0].nextContentId",
+          "playContentArray.playContents[0].creditTimeIn",
+          "playContentArray.playContents[0].topContentId"
+        ]
+      },
+      "note": "Up Next: an episode's next episode and credits time (Power S1E1)."
     }
   ]
 }
