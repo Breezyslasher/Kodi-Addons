@@ -37,6 +37,16 @@ def add_dir(label, action, **params):
     xbmcplugin.addDirectoryItem(HANDLE, url(action=action, **params), li, True)
 
 
+def add_action(label, action, **params):
+    """A button-like entry: not a folder and not playable, so Kodi runs the
+    plugin as a script (handle -1) instead of loading a directory. Needed
+    when the action then navigates with Container.Update, which Kodi drops
+    while it is still loading a folder."""
+    li = xbmcgui.ListItem(label)
+    li.setProperty("IsPlayable", "false")
+    xbmcplugin.addDirectoryItem(HANDLE, url(action=action, **params), li, False)
+
+
 def _apply_info(li, item):
     tag = li.getVideoInfoTag()
     tag.setTitle(item.get("title", ""))
@@ -273,8 +283,8 @@ def _filter_label(kind, genre, sort):
 def show_all(api, kind, genre, sort):
     """The whole catalogue, filtered and sorted; the first entry opens the
     filter & sort pickers (the website's filter dialog)."""
-    add_dir(_filter_label(kind, genre, sort), "filter",
-            type=kind or "", genre=genre or "", sort=sort)
+    add_action(_filter_label(kind, genre, sort), "filter",
+               type=kind or "", genre=genre or "", sort=sort)
     items = api.browse_all(kind or None, genre or None, sort)
     show_items(items, _content_for(items))
 
@@ -297,7 +307,9 @@ def do_filter(api, kind, genre, sort):
                       preselect=sorts.index(sort) if sort in sorts else 0)
     if i >= 0:
         sort = sorts[i]
-    xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+    if HANDLE >= 0:
+        # Opened as a folder (e.g. from a list cached by an older build).
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
     xbmc.executebuiltin("Container.Update(%s,replace)" % url(
         action="all", type=kind or "", genre=genre or "", sort=sort))
 
