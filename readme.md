@@ -84,6 +84,24 @@ See the [addon README](service.watchparty/README.md) for setup and details.
 
 ---
 
+### [Starz](plugin.video.starz/) *(experimental)*
+Sign in with your Starz account and browse the full Starz catalogue in Kodi, with playback through InputStream Adaptive using Widevine DRM.
+
+**Highlights:**
+- Movies, series and episodes with English/Spanish audio and subtitles, trailers and extras
+- Continue Watching, My List, watched marks and resume points shared with Starz's own apps
+- Genres, categories, filters and sort, search, cast & crew pages and recommendations
+- TV Schedule for the STARZ, Encore and Plex channels, and Kodi's TV guide through IPTV Manager
+- Up Next support, profiles with parental controls, and device management for Starz's 6-device limit
+
+**Resolution:** standard definition (~576p) on desktop and LibreELEC, which use the software Widevine L3 CDM; HD needs a hardware Widevine L1 Android device.
+
+**Known limits:** Starz's private web endpoints may change without notice; a daily GitHub check watches them. See the [addon README](plugin.video.starz/README.md).
+
+**Requirements:** a Starz subscription (US), a Widevine CDM, and Kodi 21+
+
+---
+
 ### [TubiTV](plugin.video.tubitv/)
 Browse and watch Tubi — free, ad-supported films and TV shows — from inside Kodi. A fork of Lunatixz's addon, kept here so it can be maintained as Tubi changes its API.
 
