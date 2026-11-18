@@ -406,8 +406,16 @@ class StarzApi(object):
         name, keyedRoles, contents: [{id, type}]}]}} (actor HAR #14; public)."""
         data = self._get("artists", {"artistId": str(artist_id), "lang": LANG})
         found = ((data.get("artists") or {}).get("artist") or [{}])[0]
-        ids = [c.get("id") for c in found.get("contents") or [] if c.get("id")]
-        items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
+        roles = {str(c.get("id")): [r.get("name") for r in c.get("keyedRoles") or []
+                                    if r.get("name")]
+                 for c in found.get("contents") or [] if c.get("id")}
+        items = [i for i in (to_item(c) for c in self.contents(list(roles))) if i]
+        for item in items:
+            # Their role on each title (director/writer pages in the second
+            # actor HAR); shown when it is not simply acting.
+            r = [x for x in roles.get(item["id"], []) if x != "Actor"]
+            if r:
+                item["label_extra"] = ", ".join(r)
         return found.get("name", ""), apply_history(items, self.history())
 
     def similar(self, content_id):

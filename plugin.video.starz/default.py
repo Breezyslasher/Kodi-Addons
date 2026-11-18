@@ -130,7 +130,10 @@ def show_people(api, content_id):
 
 
 def add_item(item):
-    li = xbmcgui.ListItem(item.get("title", ""))
+    label = item.get("title", "")
+    if item.get("label_extra"):
+        label = "%s  [COLOR grey]%s[/COLOR]" % (label, item["label_extra"])
+    li = xbmcgui.ListItem(label)
     _apply_info(li, item)
     menu = _list_menu(item) + _people_menu(item)
     if item.get("in_continue"):
