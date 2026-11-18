@@ -41,7 +41,7 @@ sharing it.
 | B | Session | `GET /api/v4/Token` (app token) → `{playSessionToken: "PLAYSESSION1.0 x=…", accountStatus, residencyCountry}`; afterwards sent as `SessionTokenAuthorization` (no app token) on `User`, `User/profiles`, `User/continue`, etc. Lifetime **[VERIFY]**; we re-issue via `Token` on 401. | #266, #268–#272 | `StarzAuth.refresh/request` |
 | B2 | Profiles | `GET /User/profiles` → `[{id, name, isAdmin, profileIcon}]`; `POST /User/profiles/{id}/select` → 204. | #271, #417; profiles HAR #391 | `select_profile` |
 | C | Catalogue | **Public, no auth headers.** `GET playdata.starz.com/metadata-service/play/partner/Web/v8/blocks?playContents=map&lang=en-US&pages=BROWSE,HOME,…&includes=…` → `PAGE` blocks → rows (`SWIM_LANE` etc. with `contentIds`) + one `PLAY_CONTENTS.playContentsById` map (551 titles). `v8/content?contentIds=…` for the rest. Types: `Movie`, `Series with Season`, `Episode`. Art: `stz1.imgix.net/Web/contentId/{id}/type/KEY/dimension/2560x1440/lang/en-US`. Resume: `auth…/User/continue`. **Missing: series → seasons → episodes, search.** | #285, #325, #305 | `lib/api.py` |
-| D | Playback-info call | Not captured. `Configuration.customProperties.starzPlaybackEndpoint = https://playback.starz.com/` is a lead. | #101 | `StarzApi.playback` |
+| D | Playback-info call | Partly captured (play HAR, blocked by device limit): `GET auth.starz.com/api/v4/Play?contentId={id}` then `POST /api/v4/Play/start {"contentId": int, "mediaResumePointSeconds": null}`, both with `SessionTokenAuthorization`. Success response not seen yet: both returned **403 errorCode 1305** "device limit is reached, DeviceCount=8, DevicePlaybackLimit=6" (`properties.messageUrl = starz.com/settings/managedevices`). Web player is Bitmovin. `starzPlaybackEndpoint = https://playback.starz.com/` still unseen. | play HAR #6, #24 | `StarzApi.playback` |
 | E | Manifest type | Not captured | | |
 | F | DRM/licence | Not captured | | |
 | G | Proxy needed? | Not captured | | |
@@ -53,7 +53,7 @@ sharing it.
 ## Next captures needed
 
 1. **Series drill-down + search**: open a series, switch seasons, then search for a title.
-2. **Playback**: press play, let it run 30 s (rows D–K).
+2. **Playback**: first remove extra devices at starz.com/settings/managedevices (limit 6), then press play and let it run 30 s (rows D–K).
 
 ## Open questions (answer first)
 
