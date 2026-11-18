@@ -202,3 +202,39 @@ msgstr ""
 msgctxt "#32086"
 msgid "Movies only"
 msgstr ""
+
+msgctxt "#32087"
+msgid "Filters"
+msgstr ""
+
+msgctxt "#32088"
+msgid "Release year"
+msgstr ""
+
+msgctxt "#32089"
+msgid "Run time"
+msgstr ""
+
+msgctxt "#32090"
+msgid "Reset"
+msgstr ""
+
+msgctxt "#32091"
+msgid "Apply"
+msgstr ""
+
+msgctxt "#32092"
+msgid "All"
+msgstr ""
+
+msgctxt "#32093"
+msgid "Recommended order"
+msgstr ""
+
+msgctxt "#32094"
+msgid "[B]Sort:[/B] %s"
+msgstr ""
+
+msgctxt "#32095"
+msgid "[B]Filters:[/B] %s"
+msgstr ""

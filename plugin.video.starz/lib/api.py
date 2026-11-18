@@ -240,6 +240,12 @@ class StarzApi(object):
     # on the same data client-side; there is no separate endpoint.
 
     SORTS = ("az", "popular", "year")
+    # The website's Filters panel (screenshot of its view-all page): type
+    # (All / Movies / Series), Release Year by decade and Run Time buckets,
+    # each a set of checkboxes; Sort (A to Z / Popular / Release Year) is a
+    # separate bar. No request is made when either changes.
+    DECADES = ("2020", "2010", "2000", "1990", "1980", "1970", "1960", "pre1960")
+    RUNTIMES = ("lt20", "20-40", "40-60", "gt60")
 
     def _catalogue(self, kind=None):
         wanted = {"movie": ("Movie",), "series": ("Series with Season",)}.get(
@@ -261,41 +267,86 @@ class StarzApi(object):
         return re.sub(r"^(the|a|an)\s+", "", title)
 
     @staticmethod
-    def _year(c):
+    def _int(value):
         try:
-            return int(c.get("releaseYear") or c.get("maxReleaseYear")
-                       or c.get("minReleaseYear") or 0)
+            return int(value)
         except (TypeError, ValueError):
             return 0
 
-    def browse_all(self, kind=None, genre=None, sort="az"):
-        titles = self._catalogue(kind)
-        if genre:
-            titles = [c for c in titles if genre in (c.get("simplifiedGenres") or [])]
+    def _years(self, c):
+        """(first, last) release year; a series spans its seasons."""
+        if c.get("releaseYear"):
+            y = self._int(c["releaseYear"])
+            return y, y
+        lo = self._int(c.get("minReleaseYear"))
+        hi = self._int(c.get("maxReleaseYear")) or lo
+        return (lo or hi), hi
+
+    def _in_decades(self, c, decades):
+        lo, hi = self._years(c)
+        if not hi:
+            return False
+        for d in decades:
+            start, end = (0, 1959) if d == "pre1960" else (int(d), int(d) + 9)
+            if lo <= end and hi >= start:   # a series counts in every decade it ran
+                return True
+        return False
+
+    def _in_runtimes(self, c, buckets):
+        """Minutes: a movie's runtime, a series' first-episode runtime."""
+        mins = self._int(c.get("runtime") or c.get("firstEpisodeRuntime")) / 60.0
+        if not mins:
+            return False
+        return any((b == "lt20" and mins < 20) or (b == "20-40" and 20 <= mins < 40)
+                   or (b == "40-60" and 40 <= mins <= 60) or (b == "gt60" and mins > 60)
+                   for b in buckets)
+
+    def _source(self, source):
+        if source == "recommended":
+            return self._recommended_contents()
+        return self._catalogue()
+
+    def browse(self, source="all", kind=None, decades=(), runtimes=(), genres=(),
+               sort=""):
+        """A full list with the website's filters and sort applied. Empty
+        filters mean everything; no sort keeps the source's own order
+        (A-Z for the whole catalogue)."""
+        titles = self._source(source)
+        if kind:
+            want = "Movie" if kind == "movie" else "Series with Season"
+            titles = [c for c in titles if c.get("contentType") == want]
+        if decades:
+            titles = [c for c in titles if self._in_decades(c, decades)]
+        if runtimes:
+            titles = [c for c in titles if self._in_runtimes(c, runtimes)]
+        if genres:
+            titles = [c for c in titles
+                      if set(genres) & set(c.get("simplifiedGenres") or [])]
+        if not sort and source == "all":
+            sort = "az"
         if sort == "popular":
             titles.sort(key=lambda c: (-(c.get("popularity") or 0), self._sort_title(c)))
         elif sort == "year":
-            titles.sort(key=lambda c: (-self._year(c), self._sort_title(c)))
-        else:
+            titles.sort(key=lambda c: (-self._years(c)[1], self._sort_title(c)))
+        elif sort == "az":
             titles.sort(key=self._sort_title)
         items = [i for i in (to_item(c) for c in titles) if i]
         return apply_history(items, self.history())
 
-    def recommendations(self, kind=None):
+    def _recommended_contents(self):
         """Personalised picks for the selected profile (recommender HARs:
         GET recommender.starz.com/api/v3/recommendations/partner/Web/
-        profile/{profileId}[?type=Movies] -> {"ranks": [{contentId, ...}]},
-        signed with the app token, not the session)."""
+        profile/{profileId} -> {"ranks": [{contentId, ...}]}, signed with
+        the app token, not the session), in Starz's order."""
         profile = self.auth.profile_id
         if not profile:
             return []
-        params = {"type": "Movies"} if kind == "movie" else None
-        resp = self.http.get(RECOMMENDER + profile, params=params,
-                             headers=self.auth.app_headers(), timeout=TIMEOUT)
+        resp = self.http.get(RECOMMENDER + profile, headers=self.auth.app_headers(),
+                             timeout=TIMEOUT)
         resp.raise_for_status()
         ids = [r.get("contentId") for r in (resp.json() or {}).get("ranks") or []]
-        items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
-        return apply_history(items, self.history())
+        return [c for c in self.contents(ids)
+                if c.get("contentType") in ("Movie", "Series with Season")]
 
     def categories_row_id(self):
         """The Browse page's "Browse By" grid (CATEGORY_GRID)."""

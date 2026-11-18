@@ -162,9 +162,9 @@ def main_menu(auth):
 
 def show_page(api, page):
     if page == "MOVIES":
-        add_dir(L(32072), "all", type="movie", sort="az")
+        add_dir(L(32072), "browse", source="all", type="movie", sort="az")
     elif page == "SERIES":
-        add_dir(L(32073), "all", type="series", sort="az")
+        add_dir(L(32073), "browse", source="all", type="series", sort="az")
     for row in api.page_rows(page):
         add_dir(row["title"], "row", row_id=row["id"])
     xbmcplugin.endOfDirectory(HANDLE)
@@ -277,52 +277,131 @@ def do_series(api, series_id):
         show_items(seasons, "seasons")
 
 
-SORT_LABELS = {"az": 32076, "popular": 32077, "year": 32078}
-TYPE_LABELS = {"": 32079, "movie": 32053, "series": 32052}
+SORT_LABELS = {"az": 32076, "popular": 32077, "year": 32078, "": 32093}
+TYPE_LABELS = {"": 32092, "movie": 32053, "series": 32052}
+DECADE_LABELS = {"2020": "2020s", "2010": "2010s", "2000": "2000s",
+                 "1990": "1990s", "1980": "1980s", "1970": "1970s",
+                 "1960": "1960s", "pre1960": "< 1960s"}
+RUNTIME_LABELS = {"lt20": "< 20 mins", "20-40": "20 - 40 mins",
+                  "40-60": "40 - 60 mins", "gt60": "> 60 mins"}
+
+# Browse state lives in the URL, so Back and favourites keep a filtered list:
+# source (all | recommended), type, years, runtime, genre (comma lists), sort.
+BROWSE_KEYS = ("source", "type", "years", "runtime", "genre", "sort")
 
 
-def _filter_label(kind, genre, sort):
-    return L(32080) % (L(TYPE_LABELS.get(kind or "", 32079)),
-                       genre or L(32081), L(SORT_LABELS.get(sort, 32076)))
+def _csv(value):
+    return [v for v in (value or "").split(",") if v]
 
 
-def show_all(api, kind, genre, sort):
-    """The whole catalogue, filtered and sorted; the first entry opens the
-    filter & sort pickers (the website's filter dialog)."""
-    add_action(_filter_label(kind, genre, sort), "filter",
-               type=kind or "", genre=genre or "", sort=sort)
-    items = api.browse_all(kind or None, genre or None, sort)
+def _state(params):
+    return {k: params.get(k, "") for k in BROWSE_KEYS}
+
+
+def _filters_summary(st):
+    parts = [L(TYPE_LABELS.get(st["type"], 32092))]
+    if _csv(st["years"]):
+        parts.append(", ".join(DECADE_LABELS.get(d, d) for d in _csv(st["years"])))
+    if _csv(st["runtime"]):
+        parts.append(", ".join(RUNTIME_LABELS.get(r, r) for r in _csv(st["runtime"])))
+    if _csv(st["genre"]):
+        parts.append(", ".join(_csv(st["genre"])))
+    return " · ".join(parts)
+
+
+def show_browse(api, st):
+    """A full list (whole catalogue or recommendations) with the website's
+    view-all controls: a Sort entry and a separate Filters entry."""
+    add_action(L(32094) % L(SORT_LABELS.get(st["sort"], 32093)), "pick_sort", **st)
+    add_action(L(32095) % _filters_summary(st), "pick_filters", **st)
+    items = api.browse(st["source"] or "all", st["type"] or None,
+                       _csv(st["years"]), _csv(st["runtime"]), _csv(st["genre"]),
+                       st["sort"])
     show_items(items, _content_for(items))
 
 
-def do_filter(api, kind, genre, sort):
-    dialog = xbmcgui.Dialog()
-    kinds = ["", "movie", "series"]
-    i = dialog.select(L(32082), [L(TYPE_LABELS[k]) for k in kinds],
-                      preselect=kinds.index(kind) if kind in kinds else 0)
-    if i >= 0:
-        kind = kinds[i]
-    genres = [None] + [g for g, _ in api.genres(kind or None)]
-    labels = [L(32081)] + ["%s (%d)" % gc for gc in api.genres(kind or None)]
-    i = dialog.select(L(32083), labels,
-                      preselect=genres.index(genre) if genre in genres else 0)
-    if i >= 0:
-        genre = genres[i]
-    sorts = list(api.SORTS)
-    i = dialog.select(L(32084), [L(SORT_LABELS[x]) for x in sorts],
-                      preselect=sorts.index(sort) if sort in sorts else 0)
-    if i >= 0:
-        sort = sorts[i]
+def _go(st):
     if HANDLE >= 0:
         # Opened as a folder (e.g. from a list cached by an older build).
         xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
-    xbmc.executebuiltin("Container.Update(%s,replace)" % url(
-        action="all", type=kind or "", genre=genre or "", sort=sort))
+    xbmc.executebuiltin("Container.Update(%s,replace)" % url(action="browse", **st))
+
+
+def do_pick_sort(st):
+    sorts = list(StarzApi.SORTS)
+    if st["source"] == "recommended":
+        sorts = [""] + sorts          # Starz's own order
+    i = xbmcgui.Dialog().select(L(32084), [L(SORT_LABELS[x]) for x in sorts],
+                                preselect=sorts.index(st["sort"]) if st["sort"] in sorts else 0)
+    if i >= 0:
+        st["sort"] = sorts[i]
+        _go(st)
+    elif HANDLE >= 0:
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+
+
+def _multi(heading, keys, labels, chosen):
+    """Checkbox picker. Nothing or everything ticked means no filter, as
+    the website's all-ticked default does."""
+    pre = [i for i, k in enumerate(keys) if k in chosen] or list(range(len(keys)))
+    picked = xbmcgui.Dialog().multiselect(heading, labels, preselect=pre)
+    if picked is None:
+        return chosen
+    if not picked or len(picked) == len(keys):
+        return []
+    return [keys[i] for i in picked]
+
+
+def do_pick_filters(api, st):
+    """The website's Filters panel: Show, Release Year, Run Time (plus
+    Genre), then Reset / Apply. Back cancels without changing anything."""
+    st = dict(st)
+    years, runtime, genre = _csv(st["years"]), _csv(st["runtime"]), _csv(st["genre"])
+    dialog = xbmcgui.Dialog()
+    while True:
+        all_label = L(32092)
+        entries = [
+            "%s: %s" % (L(32082), L(TYPE_LABELS.get(st["type"], 32092))),
+            "%s: %s" % (L(32088), ", ".join(DECADE_LABELS[d] for d in years) or all_label),
+            "%s: %s" % (L(32089), ", ".join(RUNTIME_LABELS[r] for r in runtime) or all_label),
+            "%s: %s" % (L(32083), ", ".join(genre) or all_label),
+            "[B]%s[/B]" % L(32090),
+            "[B]%s[/B]" % L(32091),
+        ]
+        choice = dialog.select(L(32087), entries)
+        if choice < 0:
+            if HANDLE >= 0:
+                xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+            return
+        if choice == 0:
+            kinds = ["", "movie", "series"]
+            i = dialog.select(L(32082), [L(TYPE_LABELS[k]) for k in kinds],
+                              preselect=kinds.index(st["type"]) if st["type"] in kinds else 0)
+            if i >= 0:
+                st["type"] = kinds[i]
+        elif choice == 1:
+            keys = list(StarzApi.DECADES)
+            years = _multi(L(32088), keys, [DECADE_LABELS[k] for k in keys], years)
+        elif choice == 2:
+            keys = list(StarzApi.RUNTIMES)
+            runtime = _multi(L(32089), keys, [RUNTIME_LABELS[k] for k in keys], runtime)
+        elif choice == 3:
+            gcs = api.genres(st["type"] or None)
+            keys = [g for g, _ in gcs]
+            genre = _multi(L(32083), keys, ["%s (%d)" % gc for gc in gcs], genre)
+        elif choice == 4:
+            st["type"], years, runtime, genre = "", [], [], []
+        else:
+            st.update(years=",".join(years), runtime=",".join(runtime),
+                      genre=",".join(genre))
+            _go(st)
+            return
 
 
 def show_genres(api):
     for genre, count in api.genres():
-        add_dir("%s (%d)" % (genre, count), "all", type="", genre=genre, sort="az")
+        add_dir("%s (%d)" % (genre, count), "browse", source="all", genre=genre,
+                sort="az")
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -437,7 +516,7 @@ def router(paramstring):
     api = StarzApi(auth)
     STATE["signed_in"] = auth.signed_in
     if auth.signed_in and action in ("row", "series", "search", "my_list", "all",
-                                     "recommended"):
+                                     "recommended", "browse"):
         STATE["my_list"] = api.my_list_ids()
 
     try:
@@ -461,17 +540,20 @@ def router(paramstring):
             xbmc.executebuiltin("Container.Refresh")
         elif action == "page":
             show_page(api, params.get("page", "HOME"))
-        elif action == "all":
-            show_all(api, params.get("type"), params.get("genre"),
-                     params.get("sort", "az"))
-        elif action == "filter":
-            do_filter(api, params.get("type"), params.get("genre") or None,
-                      params.get("sort", "az"))
+        elif action == "browse":
+            show_browse(api, _state(params))
+        elif action == "all":            # links from earlier builds
+            st = _state(params)
+            st["source"] = "all"
+            show_browse(api, st)
         elif action == "recommended":
-            if params.get("type") != "movie":
-                add_dir(L(32086), "recommended", type="movie")
-            items = api.recommendations(params.get("type"))
-            show_items(items, _content_for(items))
+            st = _state(params)
+            st["source"] = "recommended"
+            show_browse(api, st)
+        elif action == "pick_sort":
+            do_pick_sort(_state(params))
+        elif action in ("pick_filters", "filter"):
+            do_pick_filters(api, _state(params))
         elif action == "genres":
             show_genres(api)
         elif action == "categories":
