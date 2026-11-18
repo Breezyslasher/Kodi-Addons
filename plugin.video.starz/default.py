@@ -11,7 +11,7 @@ import xbmcplugin
 
 from lib import kodiutils
 from lib.auth import StarzAuth, StarzAuthError, NotReadyError
-from lib.api import StarzApi
+from lib.api import StarzApi, PLAYING_FILE
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
@@ -57,17 +57,38 @@ def _apply_info(li, item):
         tag.setMpaa(item["mpaa"])
     if item.get("genres"):
         tag.setGenres(item["genres"])
-    tag.setMediaType({"movie": "movie", "series": "tvshow",
+    tag.setMediaType({"movie": "movie", "series": "tvshow", "season": "season",
                       "episode": "episode"}.get(item.get("type"), "video"))
+    if item.get("series_title"):
+        tag.setTvShowTitle(item["series_title"])
     if item.get("art"):
         li.setArt(item["art"])
+
+
+# Set by the router: My List context items only make sense when signed in,
+# and the ids already on the list decide Add vs Remove.
+STATE = {"signed_in": False, "my_list": None}
+
+
+def _list_menu(item):
+    if not STATE["signed_in"] or item.get("type") not in ("movie", "series"):
+        return []
+    on_list = STATE["my_list"] is not None and item["id"] in STATE["my_list"]
+    action, label = ("list_remove", L(32066)) if on_list else ("list_add", L(32065))
+    return [(label, "RunPlugin(%s)" % url(action=action, content_id=item["id"]))]
 
 
 def add_item(item):
     li = xbmcgui.ListItem(item.get("title", ""))
     _apply_info(li, item)
+    menu = _list_menu(item)
+    if menu:
+        li.addContextMenuItems(menu)
     if item.get("type") == "series":
         target, folder = url(action="series", series_id=item["id"]), True
+    elif item.get("type") == "season":
+        target, folder = url(action="season", series_id=item.get("series_id", ""),
+                             season_id=item["id"]), True
     else:
         li.setProperty("IsPlayable", "true")
         target, folder = url(action="play", content_id=item["id"]), False
@@ -87,6 +108,8 @@ def _content_for(items):
         return "movies"
     if kinds == {"series"}:
         return "tvshows"
+    if kinds == {"season"}:
+        return "seasons"
     if kinds == {"episode"}:
         return "episodes"
     return "videos"
@@ -97,6 +120,7 @@ def _content_for(items):
 def main_menu(auth):
     if auth.signed_in:
         add_dir(L(32050), "continue")
+        add_dir(L(32069), "my_list")
     else:
         add_dir(L(32014), "sign_in")
     add_dir(L(32051), "page", page="HOME")
@@ -208,7 +232,29 @@ def do_search(api):
     if not query:
         xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         return
-    show_items(api.search(query))
+    items = api.search(query)
+    if not items:
+        kodiutils.notify(L(32064))
+    show_items(items, _content_for(items))
+
+
+def do_series(api, series_id):
+    """Seasons, or straight to the episodes when there is only one."""
+    series, seasons = api.seasons(series_id)
+    if len(seasons) == 1:
+        show_items(api.episodes(series_id, seasons[0]["id"]), "episodes")
+    else:
+        show_items(seasons, "seasons")
+
+
+def do_list_change(api, content_id, add):
+    if add:
+        api.add_to_list(content_id)
+        kodiutils.notify(L(32067))
+    else:
+        api.remove_from_list(content_id)
+        kodiutils.notify(L(32068))
+    xbmc.executebuiltin("Container.Refresh")
 
 
 # -- playback ------------------------------------------------------------
@@ -270,6 +316,12 @@ def do_play(api, content_id):
     except Exception:
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         raise
+    # Hand the play session to service.py, which reports progress and the
+    # final position to Starz (Play/update, Play/stop) once this process ends.
+    kodiutils.write_json(PLAYING_FILE, {
+        "content_id": str(content_id), "session_id": playback.get("session_id"),
+        "keep_alive": playback.get("keep_alive"),
+        "manifest_url": playback["manifest_url"]})
     xbmcplugin.setResolvedUrl(HANDLE, True, build_isa_listitem(playback))
 
 
@@ -295,6 +347,9 @@ def router(paramstring):
 
     auth = StarzAuth()
     api = StarzApi(auth)
+    STATE["signed_in"] = auth.signed_in
+    if auth.signed_in and action in ("row", "series", "search", "my_list"):
+        STATE["my_list"] = api.my_list_ids()
 
     try:
         if action == "sign_in":
@@ -314,12 +369,19 @@ def router(paramstring):
         elif action == "row":
             show_row(api, params.get("row_id"))
         elif action == "series":
-            show_items(api.seasons(params.get("series_id")), "seasons")
+            do_series(api, params.get("series_id"))
         elif action == "season":
             show_items(api.episodes(params.get("series_id"),
                                     params.get("season_id")), "episodes")
         elif action == "search":
             do_search(api)
+        elif action == "my_list":
+            items = api.my_list()
+            show_items(items, _content_for(items))
+        elif action == "list_add":
+            do_list_change(api, params.get("content_id"), True)
+        elif action == "list_remove":
+            do_list_change(api, params.get("content_id"), False)
         elif action == "play":
             do_play(api, params.get("content_id"))
         else:

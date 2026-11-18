@@ -4,9 +4,9 @@ An unofficial Starz client for Kodi, playing through InputStream Adaptive with
 Widevine DRM.
 
 **Status: early test builds.** Sign-in, profiles, browsing (Home, Series,
-Movies, Browse, Continue Watching) and playback of movies and episodes are
-built from captures of the Starz web player; series seasons/episodes and
-search are not yet. See
+Movies, Browse, Continue Watching, series seasons and episodes), search, My
+List and playback are built from captures of the Starz web player. A small
+background service reports where you stopped watching back to Starz. See
 [docs/recon.md](docs/recon.md). Not yet published in the Breezyslasher
 repository.
 

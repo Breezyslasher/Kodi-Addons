@@ -9,13 +9,13 @@
 	<extension point="xbmc.python.pluginsource" library="default.py">
 		<provides>video</provides>
 	</extension>
-	<!-- No xbmc.service yet: service.py is registered only if recon shows a
-	     token-refresh daemon or a licence proxy is needed (docs/recon.md G). -->
+	<!-- Reports play progress/stop to Starz; no licence proxy is needed. -->
+	<extension point="xbmc.service" library="service.py"/>
 	<extension point="xbmc.addon.metadata">
 		<summary lang="en_GB">Starz client for Kodi (in development)</summary>
 		<description lang="en_GB">Sign in with your Starz account and play through InputStream Adaptive with Widevine DRM.
 
-IN DEVELOPMENT: sign-in, browsing and playback work in test builds; series seasons/episodes and search are not built yet.
+IN DEVELOPMENT: sign-in, browsing, search, My List and playback work in test builds.
 
 On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect standard definition; HD needs a hardware Widevine L1 Android device.</description>
 		<disclaimer lang="en_GB">Unofficial. Not affiliated with or endorsed by Starz. Use only with your own subscription; third-party clients may be against the service's terms.</disclaimer>
@@ -24,6 +24,8 @@ On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect 
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
 		<news>v2026.11.18.4
 - Playback: DASH + Widevine straight from Starz, with English/Spanish subtitles
+- Series seasons and episodes, search, and My List (add/remove from the context menu)
+- Report where you stopped watching back to Starz (Continue Watching on your other devices)
 - Clear messages for the device limit, a wrong password, and a device removed on Starz
 
 v2026.11.18.3

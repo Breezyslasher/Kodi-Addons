@@ -43,7 +43,7 @@ SECRET_JSON_KEYS = {
     "session", "sessionid", "session_id", "client_secret", "secret",
     "deviceid", "device_id", "license", "licence", "challenge", "code",
     "email", "username", "playbacktoken", "playback_token", "drmtoken",
-    "jwt", "assertion", "otp", "user_id", "userid", "deviceid", "authid",
+    "jwt", "assertion", "otp", "user_id", "userid", "deviceid", "authid", "view_id", "viewid",
 }
 
 SECRET_QUERY_PARAMS = SECRET_JSON_KEYS | {

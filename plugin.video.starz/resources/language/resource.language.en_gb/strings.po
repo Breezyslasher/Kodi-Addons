@@ -110,3 +110,27 @@ msgstr ""
 msgctxt "#32063"
 msgid "Sign out [COLOR grey](%s)[/COLOR]"
 msgstr ""
+
+msgctxt "#32064"
+msgid "No results"
+msgstr ""
+
+msgctxt "#32065"
+msgid "Add to My List"
+msgstr ""
+
+msgctxt "#32066"
+msgid "Remove from My List"
+msgstr ""
+
+msgctxt "#32067"
+msgid "Added to My List"
+msgstr ""
+
+msgctxt "#32068"
+msgid "Removed from My List"
+msgstr ""
+
+msgctxt "#32069"
+msgid "My List"
+msgstr ""

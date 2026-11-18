@@ -9,8 +9,10 @@ Read from the captures (docs/recon.md row C):
 * .../v8/content?contentIds=... fetches titles the map lacks.
 * auth.starz.com/api/v4/User/continue is the signed-in resume list.
 
-Playback is built from the play HAR (see playback()). Not captured yet:
-series -> seasons -> episodes and search (row C); those raise NotReadyError.
+* Series: v8/content?contentIds={id} (no includes) is the whole tree.
+* Search: v8/content?searchString=&contentType=... -> ids.
+* My List: GET/PUT/DELETE auth.starz.com/api/v4/User/Queue[/{id}].
+* Playback: see playback().
 
 Shapes returned to default.py:
 
@@ -43,6 +45,8 @@ INCLUDES = ("badgeKeys,categoryKeys,comingSoon,contentId,contentType,detail,"
             "runtime,seasonNumber,seriesName,templates,title,topContentId")
 
 BLOCKS_CACHE = "blocks.json"
+# The current play session, written by default.py and read by service.py.
+PLAYING_FILE = "playing.json"
 BLOCKS_TTL = 30 * 60
 
 # Rows whose titles are listed by id. Others (TRAILER_SWIM_LANE,
@@ -50,7 +54,8 @@ BLOCKS_TTL = 30 * 60
 # and are left out for now.
 ID_ROWS = {"SWIM_LANE", "POPULAR_SWIM_LANE", "TOP_CONTENT_SWIM_LANE",
            "SWIM_LANE_CATEGORY"}
-TYPES = {"Movie": "movie", "Series with Season": "series", "Episode": "episode"}
+TYPES = {"Movie": "movie", "Series with Season": "series", "Season": "season",
+         "Episode": "episode"}
 
 TIMEOUT = 20
 
@@ -69,23 +74,50 @@ def _art(content_id):
                          "?fit=max&auto=format,compress&w=400&trim=color" % content_id}
 
 
-def to_item(content):
+def _episode_title(content):
+    """"Not Exactly How We Planned" rather than "S1 E1 - Not Exactly...":
+    Kodi shows season/episode numbers itself."""
+    # Not titleBrief: in the series HAR that is a production code ("Power 101").
+    title = content.get("properCaseTitle") or content.get("title") or ""
+    return re.sub(r"^S\d+\s*E\d+\s*-\s*", "", title)
+
+
+def to_item(content, series=None):
+    """A Kodi-facing item. ``series`` is the parent series content, for the
+    art seasons and episodes borrow (series HAR: episodes have their own
+    STUDIO still, seasons their own KEY art; poster and logo are the
+    series')."""
     kind = TYPES.get(content.get("contentType"))
     if not kind:
         return None
     cid = content.get("contentId")
+    title = content.get("properCaseTitle") or content.get("title") or ""
+    if kind == "episode":
+        title = _episode_title(content)
     item = {"id": str(cid), "type": kind,
-            "title": content.get("properCaseTitle") or content.get("title") or "",
+            "title": title,
             "plot": content.get("logLine", ""),
             "year": content.get("releaseYear") or content.get("minReleaseYear"),
             "duration": content.get("runtime") or content.get("runTime"),
             "mpaa": content.get("ratingName", ""),
             "genres": content.get("simplifiedGenres") or [],
             "art": _art(cid)}
+    sid = (series or {}).get("contentId") or content.get("topContentId")
+    if kind in ("season", "episode") and sid:
+        art = _art(sid)
+        if kind == "episode":
+            art["thumb"] = art["landscape"] = _image(cid, "STUDIO", "2560x1440", 1280)
+        else:
+            art["thumb"] = art["landscape"] = _image(cid, "KEY", "2560x1440", 1280)
+        item["art"] = art
+        item["series_id"] = str(sid)
+        item["series_title"] = (series or {}).get("title") or content.get("seriesName", "")
+    if kind == "season":
+        item["season"] = content.get("order")
+        item["episode_count"] = content.get("episodeCount")
     if kind == "episode":
         item["season"] = content.get("seasonNumber") or content.get("season")
         item["episode"] = content.get("order") or content.get("episodeNumber")
-        item["series_id"] = str(content.get("topContentId") or "")
     if content.get("resumeSeconds"):
         item["resume"] = content["resumeSeconds"]
     return item
@@ -208,16 +240,73 @@ class StarzApi(object):
                 items.append(item)
         return items
 
+    def series_tree(self, series_id):
+        """The whole series: v8/content?contentIds={id} with no includes
+        returns it with childContent seasons, each with childContent
+        episodes (series HAR #513)."""
+        data = self._get("content", {"lang": LANG, "contentIds": str(series_id)})
+        contents = (data.get("playContentArray") or {}).get("playContents") or []
+        if not contents:
+            raise NotReadyError("Starz returned nothing for series %s" % series_id)
+        return contents[0]
+
     def seasons(self, series_id):
-        raise NotReadyError("Series drill-down not captured yet: open a series, "
-                            "pick a season, and save that HAR (recon row C).")
+        series = self.series_tree(series_id)
+        seasons = sorted(series.get("childContent") or [],
+                         key=lambda s: s.get("order") or 0)
+        return series, [i for i in (to_item(s, series) for s in seasons) if i]
 
     def episodes(self, series_id, season_id):
-        raise NotReadyError("Season drill-down not captured yet (recon row C).")
+        series = self.series_tree(series_id)
+        for season in series.get("childContent") or []:
+            if str(season.get("contentId")) == str(season_id):
+                eps = sorted(season.get("childContent") or [],
+                             key=lambda e: e.get("order") or 0)
+                return [i for i in (to_item(e, series) for e in eps) if i]
+        return []
 
     def search(self, query):
-        raise NotReadyError("Search not captured yet: run a search on the web "
-                            "player and save that HAR (recon row C).")
+        """Matching ids, then their metadata (series HAR #324, #326)."""
+        # The web client's exact query (no lang).
+        data = self._get("content", {"include": "contentId",
+                                     "contentType": ["Movie", "Series with Season"],
+                                     "searchString": query, "limit": 1000})
+        ids = [c.get("contentId") for c in
+               (data.get("playContentArray") or {}).get("playContents") or []]
+        return [i for i in (to_item(c) for c in self.contents(ids)) if i]
+
+    # -- play session reporting (service.py) ---------------------------------
+
+    def report_play(self, kind, content_id, session_id, position):
+        """Play/update or Play/stop. Stop's body is captured (episode HAR
+        #398: contentId as a string, playbackSessionId, an int position;
+        204). [VERIFY] update: the web bundle sends the same three fields."""
+        self.auth.request("POST", AUTH_API + "Play/%s" % kind,
+                          json={"contentId": str(content_id),
+                                "playbackSessionId": session_id,
+                                "mediaResumePointSeconds": int(position)})
+
+    # -- My List (User/Queue) ------------------------------------------------
+
+    def my_list(self):
+        entries = self.auth.request("GET", AUTH_API + "User/Queue").json() or []
+        entries.sort(key=lambda e: e.get("order") or 0)
+        ids = [e.get("contentId") for e in entries]
+        return [i for i in (to_item(c) for c in self.contents(ids)) if i]
+
+    def my_list_ids(self):
+        try:
+            return {str(e.get("contentId")) for e in
+                    self.auth.request("GET", AUTH_API + "User/Queue").json() or []}
+        except Exception:
+            return set()
+
+    def add_to_list(self, content_id):
+        self.auth.request("PUT", AUTH_API + "User/Queue/%s" % content_id,
+                          json={"remindMe": False})
+
+    def remove_from_list(self, content_id):
+        self.auth.request("DELETE", AUTH_API + "User/Queue/%s" % content_id)
 
     # -- playback ------------------------------------------------------------
 
