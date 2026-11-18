@@ -43,7 +43,10 @@ INCLUDES = ("badgeKeys,categoryKeys,comingSoon,contentId,contentType,detail,"
             "episodeCount,firstEpisodeRuntime,free,icon,images,logLine,"
             "maxReleaseYear,message,minReleaseYear,newContent,original,"
             "popularity,previewContentId,product,properCaseTitle,releaseYear,"
-            "runtime,seasonNumber,seriesName,templates,title,topContentId")
+            "runtime,seasonNumber,seriesName,templates,title,topContentId,"
+            # Cast for movies/series in every list; accepted by v8/content
+            # (endpoint check probe_movie_cast_includes).
+            "actors,directors,studio")
 
 BLOCKS_CACHE = "blocks.json"
 # The current play session, written by default.py and read by service.py.
@@ -127,7 +130,31 @@ def to_item(content, series=None):
         item["episode"] = content.get("order") or content.get("episodeNumber")
     if content.get("resumeSeconds"):
         item["resume"] = content["resumeSeconds"]
+    _add_people(item, content)
     return item
+
+
+def _add_people(item, content):
+    """Cast, directors, writers and studio when the content carries them
+    (the series tree does for series, seasons and episodes: actors and
+    directors as [{id, fullName}], credits with keyedRoles, W = writer)."""
+    actors = content.get("actors") or []
+    if actors:
+        # No photos: Configuration's starzHeadshotImageUrlTemplate answers
+        # 403 to anyone but the website (endpoint check, 2026-11-18).
+        item["cast"] = [{"name": a.get("fullName", ""), "order": n}
+                        for n, a in enumerate(actors) if a.get("fullName")]
+    directors = [d.get("fullName") for d in content.get("directors") or []
+                 if d.get("fullName")]
+    if directors:
+        item["directors"] = directors
+    writers = [c.get("name") for c in content.get("credits") or []
+               if any(r.get("key") == "W" for r in c.get("keyedRoles") or [])]
+    if writers:
+        item["writers"] = writers
+    studio = re.sub(r"^©\s*\d{4}\s*", "", content.get("studio") or "").strip()
+    if studio:
+        item["studio"] = studio
 
 
 def is_watched(entry):

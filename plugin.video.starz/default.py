@@ -76,6 +76,15 @@ def _apply_info(li, item):
         tag.setMpaa(item["mpaa"])
     if item.get("genres"):
         tag.setGenres(item["genres"])
+    if item.get("cast"):
+        tag.setCast([xbmc.Actor(c["name"], "", c["order"])
+                     for c in item["cast"]])
+    if item.get("directors"):
+        tag.setDirectors(item["directors"])
+    if item.get("writers"):
+        tag.setWriters(item["writers"])
+    if item.get("studio"):
+        tag.setStudios([item["studio"]])
     tag.setMediaType({"movie": "movie", "series": "tvshow", "season": "season",
                       "episode": "episode"}.get(item.get("type"), "video"))
     if item.get("series_title"):

@@ -127,7 +127,7 @@
         "playContents": "map",
         "lang": "en-US",
         "pages": "BROWSE,HOME,MOVIES,PLAYLIST,SEARCH,SEARCH RESULTS,SERIES",
-        "includes": "badgeKeys,categoryKeys,comingSoon,contentId,contentType,detail,episodeCount,firstEpisodeRuntime,free,icon,images,logLine,maxReleaseYear,message,minReleaseYear,newContent,original,popularity,previewContentId,product,properCaseTitle,releaseYear,runtime,seasonNumber,seriesName,templates,title,topContentId"
+        "includes": "badgeKeys,categoryKeys,comingSoon,contentId,contentType,detail,episodeCount,firstEpisodeRuntime,free,icon,images,logLine,maxReleaseYear,message,minReleaseYear,newContent,original,popularity,previewContentId,product,properCaseTitle,releaseYear,runtime,seasonNumber,seriesName,templates,title,topContentId,actors,directors,studio"
       },
       "expect": {
         "json_paths": [
@@ -210,7 +210,7 @@
       "note": "The website's own route for images; for comparison with the direct URL."
     },
     {
-      "id": "probe_movie_cast_includes",
+      "id": "movie_cast",
       "url": "https://playdata.starz.com/metadata-service/play/partner/Web/v8/content",
       "params": {
         "lang": "en-US",
@@ -222,39 +222,7 @@
           "playContentArray.playContents[0].actors[0].fullName"
         ]
       },
-      "save": {
-        "actor_id": "json:playContentArray.playContents[0].actors[0].id"
-      },
-      "report_only": true,
-      "note": "Probe: does includes= accept actors/directors for a movie?"
-    },
-    {
-      "id": "probe_movie_detail_noincludes",
-      "url": "https://playdata.starz.com/metadata-service/play/partner/Web/v8/content",
-      "params": {
-        "lang": "en-US",
-        "contentIds": "45206"
-      },
-      "expect": {
-        "json_paths": [
-          "playContentArray.playContents[0].actors[0].fullName",
-          "playContentArray.playContents[0].directors[0].fullName"
-        ]
-      },
-      "report_only": true,
-      "note": "Probe: full detail (no includes) for a movie, as for series."
-    },
-    {
-      "id": "probe_headshot",
-      "url": "https://starz-favs.imgix.net/{actor_id}_1080x1440.jpg",
-      "headers": {
-        "Accept": "image/*,*/*"
-      },
-      "expect": {
-        "content_type": "image/"
-      },
-      "report_only": true,
-      "note": "Probe: Configuration's starzHeadshotImageUrlTemplate for a cast photo."
+      "note": "Movie/series cast in lists depends on includes=actors,directors."
     }
   ]
 }
