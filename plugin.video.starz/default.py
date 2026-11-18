@@ -37,7 +37,9 @@ def url(**kwargs):
 
 def add_dir(label, action, **params):
     li = xbmcgui.ListItem(label)
-    li.setArt({"icon": ADDON_ART["icon"], "fanart": ADDON_ART["fanart"]})
+    # Background only: the default folder icon stays, so menus don't repeat
+    # the add-on icon on every entry.
+    li.setArt({"fanart": ADDON_ART["fanart"]})
     xbmcplugin.addDirectoryItem(HANDLE, url(action=action, **params), li, True)
 
 
