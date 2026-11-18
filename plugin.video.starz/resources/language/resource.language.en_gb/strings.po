@@ -28,7 +28,7 @@ msgid "Sign out"
 msgstr ""
 
 msgctxt "#32020"
-msgid "Starz email"
+msgid "Starz email address"
 msgstr ""
 
 msgctxt "#32021"
@@ -49,4 +49,56 @@ msgstr ""
 
 msgctxt "#32040"
 msgid "Not implemented yet"
+msgstr ""
+
+msgctxt "#32024"
+msgid "Sign-in failed"
+msgstr ""
+
+msgctxt "#32050"
+msgid "Continue Watching"
+msgstr ""
+
+msgctxt "#32051"
+msgid "Home"
+msgstr ""
+
+msgctxt "#32052"
+msgid "Series"
+msgstr ""
+
+msgctxt "#32053"
+msgid "Movies"
+msgstr ""
+
+msgctxt "#32054"
+msgid "Browse"
+msgstr ""
+
+msgctxt "#32055"
+msgid "Email and password"
+msgstr ""
+
+msgctxt "#32056"
+msgid "Activation code (enter it on another device)"
+msgstr ""
+
+msgctxt "#32057"
+msgid "On a phone or computer, go to[CR][B]%s[/B][CR]and enter the code [B]%s[/B]"
+msgstr ""
+
+msgctxt "#32058"
+msgid "The activation code expired. Try again."
+msgstr ""
+
+msgctxt "#32059"
+msgid "Choose a profile"
+msgstr ""
+
+msgctxt "#32060"
+msgid "Switch profile"
+msgstr ""
+
+msgctxt "#32061"
+msgid "Could not reach Starz"
 msgstr ""

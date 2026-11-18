@@ -1,108 +1,252 @@
-"""Starz sign-in and token handling.
+"""Starz sign-in and session handling.
 
-The generic parts are real: username normalisation, token storage in the
-profile dir, expiry checks. The Starz-specific parts -- which endpoint, which
-grant, which headers -- are deliberately unimplemented until they are read out
-of a sign-in HAR (docs/recon.md rows A and B). Nothing here is guessed.
+Read from the sign-in HAR (docs/recon.md rows A, B):
+
+* Every auth.starz.com call before sign-in carries an ``AuthTokenAuthorization``
+  header: a ``PLAYAUTH1.0 ...`` string signed by Starz's own server and
+  minted, fresh per call, by GET www.starz.com/sapi/header/v1/starz/us/{deviceId}.
+  It needs no cookies, only a device id (32 hex chars) the client chooses.
+* Sign-in: GET Activate/Code -> {"code"} (4 chars), then POST User/login with
+  {"code", "emailAddress", "password", "captchaResponse"}. The session is bound
+  to the device id; no cookie or token comes back, only {"subscriptionState"}.
+* GET Token (with a fresh auth token) -> {"playSessionToken": "PLAYSESSION1.0
+  x=..."}. Every signed-in call then sends it as ``SessionTokenAuthorization``.
+
+[VERIFY] The web login sends a reCAPTCHA Enterprise token, which Kodi cannot
+produce. We send the login without it; whether Starz accepts that is what the
+first Kodi test answers. The fallback is the activation-code flow: the code
+from Activate/Code is entered at starz.com/activate, and the device polls
+Token. That second half is not in any capture yet, so it is also [VERIFY].
 """
 
 import time
+import uuid
+
+import requests
 
 from lib import kodiutils
 
-TOKEN_FILE = "token.json"
+WEB = "https://www.starz.com"
+AUTH_API = "https://auth.starz.com/api/v4/"
+# Country segment of the header-minting path; the capture is from the US site.
+COUNTRY = "us"
 
-# Refresh this many seconds before the stated expiry, so a token never runs
-# out halfway through a request or a long browse session.
-EXPIRY_SKEW_SECS = 120
+# The browser the captures came from. The minted token records platform fields
+# Starz derives server-side, so keep the request looking like that browser.
+USER_AGENT = ("Mozilla/5.0 (X11; Linux x86_64; rv:158.0) "
+              "Gecko/20100101 Firefox/158.0")
+
+SESSION_FILE = "session.json"
+# Kept across sign-outs: the account tracks devices (the web client advertises
+# DevicePlaybackLimitSupport), so a new id per sign-in would use up slots.
+DEVICE_FILE = "device.json"
+
+TIMEOUT = 20
 
 
 class NotReadyError(Exception):
     """A Starz-specific step that has not been built from a capture yet."""
 
 
-def normalise_username(username):
-    """Trim and lowercase an email login.
+class StarzAuthError(Exception):
+    """Starz refused a sign-in step; the message is what Starz said."""
 
-    TV on-screen keyboards readily add a capital first letter or a trailing
-    space; an email address is case-insensitive in practice, so normalising
-    costs nothing and avoids a confusing "wrong password". (The same fix was
-    needed in the Apple TV addon.) Non-email usernames are only trimmed.
-    """
+
+def normalise_username(username):
+    """Trim and lowercase an email login (TV keyboards add capitals/spaces)."""
     username = (username or "").strip()
     if "@" in username:
         username = username.lower()
     return username
 
 
+def _error_text(resp):
+    """The most useful human-readable error out of a Starz response."""
+    try:
+        data = resp.json()
+    except ValueError:
+        return "HTTP %d: %s" % (resp.status_code, (resp.text or "")[:300])
+    if isinstance(data, dict):
+        for key in ("message", "Message", "error_description", "error",
+                    "errorMessage", "description", "title"):
+            if data.get(key):
+                return "HTTP %d: %s" % (resp.status_code, data[key])
+    return "HTTP %d: %s" % (resp.status_code, str(data)[:300])
+
+
 class StarzAuth(object):
 
     def __init__(self):
-        self._token = kodiutils.read_json(TOKEN_FILE, default=None) or {}
+        self.http = requests.Session()
+        self.http.headers["User-Agent"] = USER_AGENT
+        self._session = kodiutils.read_json(SESSION_FILE, default=None) or {}
 
-    # -- state -----------------------------------------------------------
+    # -- device + tokens ---------------------------------------------------
+
+    @property
+    def device_id(self):
+        device = kodiutils.read_json(DEVICE_FILE, default=None) or {}
+        if not device.get("id"):
+            device = {"id": uuid.uuid4().hex}
+            kodiutils.write_json(DEVICE_FILE, device)
+        return device["id"]
+
+    def auth_token(self):
+        """A freshly minted PLAYAUTH token. The web client mints one per call,
+        so do the same rather than guess at its lifetime."""
+        resp = self.http.get(
+            "%s/sapi/header/v1/starz/%s/%s" % (WEB, COUNTRY, self.device_id),
+            headers={"Accept": "text/html; charset=utf-8",
+                     "Content-Type": "text/html; charset=utf-8",
+                     "Referer": WEB + "/us/en/login"},
+            timeout=TIMEOUT)
+        resp.raise_for_status()
+        token = resp.text.strip().strip('"')
+        if not token.startswith("PLAYAUTH"):
+            raise StarzAuthError("Unexpected auth token response: %s"
+                                 % _error_text(resp))
+        return token
+
+    def _base_headers(self):
+        return {"Accept": "application/json, text/plain, */*",
+                "Origin": WEB, "Referer": WEB + "/",
+                "X-Client-Features": "DevicePlaybackLimitSupport"}
+
+    def app_headers(self):
+        headers = self._base_headers()
+        headers["AuthTokenAuthorization"] = self.auth_token()
+        return headers
+
+    def session_headers(self):
+        token = self._session.get("session_token")
+        if not token:
+            raise StarzAuthError("Not signed in")
+        headers = self._base_headers()
+        headers["SessionTokenAuthorization"] = token
+        return headers
+
+    # -- state -------------------------------------------------------------
 
     @property
     def signed_in(self):
-        return bool(self._token.get("access_token") or
-                    self._token.get("refresh_token"))
+        return bool(self._session.get("session_token"))
 
     @property
     def username(self):
-        return self._token.get("username", "")
+        return self._session.get("username", "")
 
-    def _expired(self):
-        expires_at = self._token.get("expires_at")
-        if not expires_at:
-            # Unknown expiry: treat as valid and let a 401 trigger a refresh.
-            return False
-        return time.time() >= float(expires_at) - EXPIRY_SKEW_SECS
+    @property
+    def profile_id(self):
+        return self._session.get("profile_id", "")
 
-    def _store(self, access_token, refresh_token=None, expires_in=None,
-               username=None, extra=None):
-        token = {
-            "access_token": access_token,
-            "refresh_token": refresh_token or self._token.get("refresh_token"),
-            "expires_at": (time.time() + float(expires_in)) if expires_in else None,
-            "username": username or self._token.get("username", ""),
-        }
-        if extra:
-            token["extra"] = extra
-        self._token = token
-        kodiutils.write_json(TOKEN_FILE, token)
+    @property
+    def profile_name(self):
+        return self._session.get("profile_name", "")
+
+    def _save(self, **changes):
+        self._session.update(changes)
+        kodiutils.write_json(SESSION_FILE, self._session)
 
     def clear(self):
-        self._token = {}
-        kodiutils.delete_file(TOKEN_FILE)
+        self._session = {}
+        kodiutils.delete_file(SESSION_FILE)
 
-    # -- public ----------------------------------------------------------
+    # -- sign-in -------------------------------------------------------------
 
-    def access_token(self):
-        """A usable access token, refreshing first if it has expired."""
-        if not self.signed_in:
-            return None
-        if self._expired():
-            self.refresh()
-        return self._token.get("access_token")
+    def activation_code(self):
+        """GET Activate/Code -> (code, activation_url)."""
+        resp = self.http.get(AUTH_API + "Activate/Code",
+                             headers=self.app_headers(), timeout=TIMEOUT)
+        if resp.status_code != 200:
+            raise StarzAuthError(_error_text(resp))
+        data = resp.json()
+        return data.get("code"), data.get("activationUrl") or WEB + "/activate"
 
     def sign_in(self, username, password):
-        """Exchange credentials for tokens and persist them.
+        """Email/password sign-in, as the web client does it minus reCAPTCHA."""
+        email = normalise_username(username)
+        code, _url = self.activation_code()
+        body = {"code": code, "emailAddress": email, "password": password}
+        resp = self.http.post(AUTH_API + "User/login", json=body,
+                              headers=self.app_headers(), timeout=TIMEOUT)
+        kodiutils.log("User/login without captcha -> HTTP %d" % resp.status_code)
+        if resp.status_code != 200 and "captcha" in resp.text.lower():
+            # Some backends only want the field present. One retry, no more:
+            # repeated failed logins can lock an account.
+            body["captchaResponse"] = ""
+            resp = self.http.post(AUTH_API + "User/login", json=body,
+                                  headers=self.app_headers(), timeout=TIMEOUT)
+            kodiutils.log("User/login with empty captcha -> HTTP %d"
+                          % resp.status_code)
+        if resp.status_code != 200:
+            raise StarzAuthError(_error_text(resp))
+        try:
+            state = resp.json().get("subscriptionState", "")
+        except ValueError:
+            state = ""
+        kodiutils.log("Signed in, subscriptionState=%s" % state)
+        self.refresh()
+        self._save(username=email, subscription_state=state)
 
-        TODO(recon A): from the sign-in HAR, record the token endpoint, the
-        request body shape (form vs JSON, grant_type, client id), required
-        headers, and the response fields. Then call self._store(...).
-        Also check: standalone Starz account vs TV-provider/app-store SSO --
-        the latter is a different flow entirely.
+    def poll_activation(self):
+        """One poll of the activation-code flow: True once the device is linked.
+
+        [VERIFY] Assumes GET Token starts returning a signed-in session for
+        this device once its code has been entered at starz.com/activate.
         """
-        normalise_username(username)
-        raise NotReadyError("Starz sign-in has not been built yet "
-                            "(needs the sign-in HAR, recon row A).")
+        try:
+            self.refresh()
+        except StarzAuthError as exc:
+            kodiutils.log("Activation poll: %s" % exc)
+            return False
+        return True
 
     def refresh(self):
-        """Renew the access token from the stored refresh token.
+        """GET Token -> playSessionToken, then confirm it is a real account.
 
-        TODO(recon B): refresh endpoint/grant, lifetime, and whether the
-        refresh token rotates.
+        Also the refresh path: the session lives on the device id, so a fresh
+        auth token re-issues it. [VERIFY] the session token's lifetime.
         """
-        raise NotReadyError("Token refresh has not been built yet "
-                            "(recon row B).")
+        resp = self.http.get(AUTH_API + "Token", headers=self.app_headers(),
+                             timeout=TIMEOUT)
+        if resp.status_code != 200:
+            raise StarzAuthError(_error_text(resp))
+        token = (resp.json() or {}).get("playSessionToken")
+        if not token:
+            raise StarzAuthError("No session token: %s" % _error_text(resp))
+        headers = self._base_headers()
+        headers["SessionTokenAuthorization"] = token
+        user = self.http.get(AUTH_API + "User", headers=headers, timeout=TIMEOUT)
+        if user.status_code != 200:
+            raise StarzAuthError(_error_text(user))
+        account = (user.json() or {}).get("userAccount") or {}
+        if not account.get("userID"):
+            raise StarzAuthError("Session is not signed in to an account")
+        self._save(session_token=token,
+                   username=self.username or normalise_username(
+                       account.get("emailAddress", "")))
+
+    # -- profiles --------------------------------------------------------------
+
+    def profiles(self):
+        resp = self.request("GET", AUTH_API + "User/profiles")
+        return resp.json() or []
+
+    def select_profile(self, profile):
+        self.request("POST", AUTH_API + "User/profiles/%s/select" % profile["id"])
+        self._save(profile_id=profile["id"], profile_name=profile.get("name", ""))
+
+    # -- signed-in requests -------------------------------------------------
+
+    def request(self, method, url, **kwargs):
+        """A SessionTokenAuthorization call, re-issuing the session once on 401."""
+        resp = self.http.request(method, url, headers=self.session_headers(),
+                                 timeout=TIMEOUT, **kwargs)
+        if resp.status_code == 401:
+            kodiutils.log("401 from %s, re-issuing session" % url)
+            self.refresh()
+            resp = self.http.request(method, url, headers=self.session_headers(),
+                                     timeout=TIMEOUT, **kwargs)
+        if resp.status_code >= 400:
+            raise StarzAuthError(_error_text(resp))
+        return resp

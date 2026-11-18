@@ -15,7 +15,7 @@
 		<summary lang="en_GB">Starz client for Kodi (in development)</summary>
 		<description lang="en_GB">Sign in with your Starz account and play through InputStream Adaptive with Widevine DRM.
 
-IN DEVELOPMENT: this is a skeleton. Sign-in, browsing and playback are not wired up yet.
+IN DEVELOPMENT: sign-in and browsing work in test builds; seasons/episodes, search and playback are not built yet.
 
 On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect standard definition; HD needs a hardware Widevine L1 Android device.</description>
 		<disclaimer lang="en_GB">Unofficial. Not affiliated with or endorsed by Starz. Use only with your own subscription; third-party clients may be against the service's terms.</disclaimer>
@@ -23,6 +23,9 @@ On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect 
 		<license>GPL-3.0-only</license>
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
 		<news>v2026.11.18
-- Initial skeleton: routing, settings, token storage, ISA/Widevine wiring. Starz sign-in, catalogue and playback await HAR recon.</news>
+- Sign in with email/password or an activation code (test build: password sign-in may be refused by Starz's captcha)
+- Profile picker
+- Browse Home, Series, Movies and Browse rows; Continue Watching
+- Not yet: series seasons/episodes, search, playback</news>
 	</extension>
 </addon>

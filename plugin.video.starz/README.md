@@ -3,10 +3,20 @@
 An unofficial Starz client for Kodi, playing through InputStream Adaptive with
 Widevine DRM.
 
-**Status: skeleton.** The add-on installs and shows a menu, but sign-in,
-browsing and playback are not built yet. They are being built from captures of
-the Starz web player; see [docs/recon.md](docs/recon.md). This add-on is not
-yet published in the Breezyslasher repository.
+**Status: early test builds.** Sign-in, profiles and browsing (Home, Series,
+Movies, Browse, Continue Watching) are built from captures of the Starz web
+player; series seasons/episodes, search and playback are not yet. See
+[docs/recon.md](docs/recon.md). Not yet published in the Breezyslasher
+repository.
+
+## Signing in
+
+Settings → Account → Sign in offers two methods:
+
+- **Email and password.** The Starz website protects this with a captcha that
+  Kodi cannot show; if Starz refuses the sign-in, the error it returns is shown.
+- **Activation code.** Kodi shows a 4-character code; enter it at
+  starz.com/activate on a phone or computer.
 
 ## Resolution: what to expect
 

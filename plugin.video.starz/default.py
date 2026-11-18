@@ -1,17 +1,24 @@
 """Starz addon entry point and router."""
 
 import sys
+import time
 from urllib.parse import urlencode, parse_qsl, quote
 
+import requests
+import xbmc
 import xbmcgui
 import xbmcplugin
 
 from lib import kodiutils
-from lib.auth import StarzAuth, NotReadyError, normalise_username
+from lib.auth import StarzAuth, StarzAuthError, NotReadyError
 from lib.api import StarzApi
 
 HANDLE = int(sys.argv[1])
 BASE_URL = sys.argv[0]
+
+# How long to wait for an activation code to be entered, and how often to ask.
+ACTIVATION_TIMEOUT_SECS = 10 * 60
+ACTIVATION_POLL_SECS = 5
 
 
 def L(string_id):
@@ -33,30 +40,34 @@ def _apply_info(li, item):
     tag = li.getVideoInfoTag()
     tag.setTitle(item.get("title", ""))
     tag.setPlot(item.get("plot", ""))
-    if item.get("year"):
-        tag.setYear(int(item["year"]))
-    if item.get("duration"):
-        tag.setDuration(int(item["duration"]))
-    kind = item.get("type")
+    try:
+        if item.get("year"):
+            tag.setYear(int(item["year"]))
+        if item.get("duration"):
+            tag.setDuration(int(item["duration"]))
+        if item.get("season") is not None:
+            tag.setSeason(int(item["season"]))
+        if item.get("episode") is not None:
+            tag.setEpisode(int(item["episode"]))
+        if item.get("resume") and item.get("duration"):
+            tag.setResumePoint(float(item["resume"]), float(item["duration"]))
+    except (TypeError, ValueError):
+        pass
+    if item.get("mpaa"):
+        tag.setMpaa(item["mpaa"])
+    if item.get("genres"):
+        tag.setGenres(item["genres"])
     tag.setMediaType({"movie": "movie", "series": "tvshow",
-                      "season": "season", "episode": "episode"}.get(kind, "video"))
-    if item.get("season") is not None:
-        tag.setSeason(int(item["season"]))
-    if item.get("episode") is not None:
-        tag.setEpisode(int(item["episode"]))
+                      "episode": "episode"}.get(item.get("type"), "video"))
     if item.get("art"):
         li.setArt(item["art"])
 
 
 def add_item(item):
-    kind = item.get("type")
     li = xbmcgui.ListItem(item.get("title", ""))
     _apply_info(li, item)
-    if kind == "series":
+    if item.get("type") == "series":
         target, folder = url(action="series", series_id=item["id"]), True
-    elif kind == "season":
-        target, folder = url(action="season", series_id=item.get("series_id", ""),
-                             season_id=item["id"]), True
     else:
         li.setProperty("IsPlayable", "true")
         target, folder = url(action="play", content_id=item["id"]), False
@@ -70,30 +81,118 @@ def show_items(items, content="videos"):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
+def _content_for(items):
+    kinds = {i.get("type") for i in items}
+    if kinds == {"movie"}:
+        return "movies"
+    if kinds == {"series"}:
+        return "tvshows"
+    if kinds == {"episode"}:
+        return "episodes"
+    return "videos"
+
+
 # -- views -------------------------------------------------------------------
 
-def main_menu(auth, api):
-    if not auth.signed_in:
-        add_dir(L(32014), "sign_in")
+def main_menu(auth):
+    if auth.signed_in:
+        add_dir(L(32050), "continue")
     else:
-        try:
-            for row in api.home_rows():
-                add_dir(row.get("title", ""), "row", row_id=row["id"])
-        except NotReadyError as exc:
-            kodiutils.log(str(exc))
-        add_dir(L(32013), "search")
+        add_dir(L(32014), "sign_in")
+    add_dir(L(32051), "page", page="HOME")
+    add_dir(L(32052), "page", page="SERIES")
+    add_dir(L(32053), "page", page="MOVIES")
+    add_dir(L(32054), "page", page="BROWSE")
+    add_dir(L(32013), "search")
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
 
 
+def show_page(api, page):
+    for row in api.page_rows(page):
+        add_dir(row["title"], "row", row_id=row["id"])
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def show_row(api, row_id):
+    rows, items = api.row(row_id)
+    if rows:
+        for row in rows:
+            add_dir(row["title"], "row", row_id=row["id"])
+        xbmcplugin.endOfDirectory(HANDLE)
+    else:
+        show_items(items, _content_for(items))
+
+
+# -- account -----------------------------------------------------------------
+
 def do_sign_in(auth):
+    choice = xbmcgui.Dialog().select(L(32014), [L(32055), L(32056)])
+    if choice == 0:
+        _sign_in_password(auth)
+    elif choice == 1:
+        _sign_in_code(auth)
+    else:
+        return
+    if auth.signed_in:
+        pick_profile(auth)
+        kodiutils.notify(L(32023) + (": " + auth.username if auth.username else ""))
+
+
+def _sign_in_password(auth):
     username = kodiutils.input_text(L(32020))
     if not username:
         return
     password = kodiutils.input_text(L(32021), hidden=True)
     if not password:
         return
-    auth.sign_in(normalise_username(username), password)
-    kodiutils.notify(L(32023))
+    try:
+        auth.sign_in(username, password)
+    except StarzAuthError as exc:
+        kodiutils.log_error("Sign-in failed: %s" % exc)
+        kodiutils.ok_dialog("%s\n\n%s" % (L(32024), exc))
+
+
+def _sign_in_code(auth):
+    try:
+        code, link = auth.activation_code()
+    except StarzAuthError as exc:
+        kodiutils.ok_dialog("%s\n\n%s" % (L(32024), exc))
+        return
+    progress = xbmcgui.DialogProgress()
+    progress.create(kodiutils.ADDON_NAME, L(32057) % (link, code))
+    monitor = xbmc.Monitor()
+    started = time.time()
+    try:
+        while time.time() - started < ACTIVATION_TIMEOUT_SECS:
+            if progress.iscanceled() or monitor.waitForAbort(ACTIVATION_POLL_SECS):
+                return
+            elapsed = time.time() - started
+            progress.update(int(100 * elapsed / ACTIVATION_TIMEOUT_SECS))
+            if auth.poll_activation():
+                return
+        kodiutils.ok_dialog(L(32058))
+    finally:
+        progress.close()
+
+
+def pick_profile(auth):
+    try:
+        profiles = auth.profiles()
+    except StarzAuthError as exc:
+        kodiutils.log_error("Profiles: %s" % exc)
+        return
+    if not profiles:
+        return
+    if len(profiles) == 1:
+        index = 0
+    else:
+        index = xbmcgui.Dialog().select(L(32059), [p.get("name", "?") for p in profiles])
+        if index < 0:
+            return
+    try:
+        auth.select_profile(profiles[index])
+    except StarzAuthError as exc:
+        kodiutils.log_error("Profile select: %s" % exc)
 
 
 def do_sign_out(auth):
@@ -183,12 +282,20 @@ def router(paramstring):
     try:
         if action == "sign_in":
             do_sign_in(auth)
-            main_menu(auth, api)
+            xbmc.executebuiltin("Container.Refresh")
+        elif action == "profile":
+            pick_profile(auth)
+            xbmc.executebuiltin("Container.Refresh")
         elif action == "sign_out":
             do_sign_out(auth)
-            main_menu(auth, api)
+            xbmc.executebuiltin("Container.Refresh")
+        elif action == "continue":
+            items = api.continue_watching()
+            show_items(items, _content_for(items))
+        elif action == "page":
+            show_page(api, params.get("page", "HOME"))
         elif action == "row":
-            show_items(api.row_items(params.get("row_id")))
+            show_row(api, params.get("row_id"))
         elif action == "series":
             show_items(api.seasons(params.get("series_id")), "seasons")
         elif action == "season":
@@ -199,10 +306,16 @@ def router(paramstring):
         elif action == "play":
             do_play(api, params.get("content_id"))
         else:
-            main_menu(auth, api)
+            main_menu(auth)
     except NotReadyError as exc:
         kodiutils.log(str(exc))
         kodiutils.ok_dialog("%s\n\n%s" % (L(32040), exc))
+    except StarzAuthError as exc:
+        kodiutils.log_error(str(exc))
+        kodiutils.ok_dialog(str(exc))
+    except requests.RequestException as exc:
+        kodiutils.log_error("Network error: %s" % exc)
+        kodiutils.ok_dialog("%s\n\n%s" % (L(32061), exc))
 
 
 if __name__ == "__main__":

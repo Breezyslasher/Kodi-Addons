@@ -94,10 +94,21 @@ def scrub_url(url):
     return scrub_string(base) + "?" + "&".join(parts)
 
 
+# Any JSON key containing one of these is secret too (playSessionToken,
+# captchaResponse, emailAddress, ...): exact-name lists miss service-specific
+# spellings.
+SECRET_KEY_HINTS = ("token", "password", "secret", "captcha", "email",
+                    "signature", "apikey", "session")
+
+
+def secret_key(key):
+    key = key.lower()
+    return key in SECRET_JSON_KEYS or any(h in key for h in SECRET_KEY_HINTS)
+
+
 def redact_json_values(obj):
     if isinstance(obj, dict):
-        return {k: (REDACTED if k.lower() in SECRET_JSON_KEYS
-                    else redact_json_values(v))
+        return {k: (REDACTED if secret_key(k) else redact_json_values(v))
                 for k, v in obj.items()}
     if isinstance(obj, list):
         return [redact_json_values(v) for v in obj]
@@ -182,7 +193,7 @@ def sanitize(entry):
             else:
                 post["text"] = redact_text(text, post.get("mimeType", ""))
         for p in post.get("params", []) or []:
-            if p.get("name", "").lower() in SECRET_JSON_KEYS:
+            if secret_key(p.get("name", "")):
                 p["value"] = REDACTED
             else:
                 p["value"] = scrub_string(p.get("value", ""))
