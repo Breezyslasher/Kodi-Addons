@@ -9,8 +9,8 @@ Read from the captures (docs/recon.md row C):
 * .../v8/content?contentIds=... fetches titles the map lacks.
 * auth.starz.com/api/v4/User/continue is the signed-in resume list.
 
-Not captured yet: series -> seasons -> episodes, search, and playback (rows
-C, D-K). Those raise NotReadyError.
+Playback is built from the play HAR (see playback()). Not captured yet:
+series -> seasons -> episodes and search (row C); those raise NotReadyError.
 
 Shapes returned to default.py:
 
@@ -22,7 +22,9 @@ Shapes returned to default.py:
               "license_headers", "stream_headers", "subtitles"}
 """
 
+import re
 import time
+from urllib.parse import quote
 
 import requests
 
@@ -219,6 +221,59 @@ class StarzApi(object):
 
     # -- playback ------------------------------------------------------------
 
-    def playback(self, content_id):
-        raise NotReadyError("Playback not captured yet: press play on a title, "
-                            "let it run 30 seconds, and save that HAR (rows D-K).")
+    def playback(self, content_id, subtitle_langs=("en",)):
+        """Resolve a title to a playback dict (play HAR, recon rows D-K).
+
+        GET Play?contentId= is the entitlement/device check (204 when fine;
+        403 errorCode 1305 at the device limit). POST Play/start returns the
+        DASH manifest (mediaUrl), the licence endpoint and a per-play licence
+        token, and WebVTT captions. The licence URL is
+        mediaDrmEndpoint/{default_KID}?token={token percent-encoded}; the
+        server takes the raw Widevine challenge with no auth headers, so ISA
+        posts to it directly. Segments need no cookies or signed URLs.
+        The clear preroll the web player shows first is skipped.
+        """
+        cid = int(content_id)
+        self.auth.request("GET", AUTH_API + "Play", params={"contentId": cid})
+        info = self.auth.request("POST", AUTH_API + "Play/start",
+                                 json={"contentId": cid,
+                                       "mediaResumePointSeconds": None}).json()
+        manifest_url = info["mediaUrl"]
+        kid = self._default_kid(manifest_url)
+        license_url = "%s/%s?token=%s" % (info["mediaDrmEndpoint"].rstrip("/"),
+                                          kid, quote(info["mediaLicenseToken"], safe=""))
+        kodiutils.log("Play/start ok: content=%s kid=%s keepAlive=%ss" % (
+            cid, kid, info.get("keepAliveSeconds")))
+        web = {"User-Agent": USER_AGENT, "Origin": "https://www.starz.com",
+               "Referer": "https://www.starz.com/"}
+        return {"manifest_url": manifest_url, "manifest_type": "mpd",
+                "license_url": license_url,
+                # Exactly what the browser sent: no Content-Type, no auth.
+                "license_headers": web,
+                "stream_headers": web,
+                "subtitles": self._captions(info.get("captions") or [], subtitle_langs),
+                "session_id": info.get("playbackSessionId"),
+                "keep_alive": info.get("keepAliveSeconds")}
+
+    def _default_kid(self, manifest_url):
+        """The manifest's cenc:default_KID, which names the licence URL.
+        The captured manifest carries exactly one, shared by every track."""
+        resp = self.http.get(manifest_url, timeout=TIMEOUT)
+        resp.raise_for_status()
+        kids = re.findall(r'default_KID="([0-9a-fA-F-]{32,36})"', resp.text)
+        if not kids:
+            raise NotReadyError("No default_KID in the manifest; this title is "
+                                "packaged differently from the captured one.")
+        if len(set(k.lower() for k in kids)) > 1:
+            kodiutils.log("Manifest has %d key ids; licensing with the first"
+                          % len(set(kids)))
+        return kids[0].lower()
+
+    @staticmethod
+    def _captions(captions, langs):
+        """WebVTT caption URLs, preferred languages first (en-US -> en)."""
+        def rank(c):
+            lang = (c.get("language") or "").split("-")[0].lower()
+            return langs.index(lang) if lang in langs else len(langs)
+        return [c["url"] for c in sorted(captions, key=rank)
+                if c.get("url") and (c.get("type") or "VTT").upper() == "VTT"]

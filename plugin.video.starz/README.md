@@ -3,9 +3,10 @@
 An unofficial Starz client for Kodi, playing through InputStream Adaptive with
 Widevine DRM.
 
-**Status: early test builds.** Sign-in, profiles and browsing (Home, Series,
-Movies, Browse, Continue Watching) are built from captures of the Starz web
-player; series seasons/episodes, search and playback are not yet. See
+**Status: early test builds.** Sign-in, profiles, browsing (Home, Series,
+Movies, Browse, Continue Watching) and playback of movies and episodes are
+built from captures of the Starz web player; series seasons/episodes and
+search are not yet. See
 [docs/recon.md](docs/recon.md). Not yet published in the Breezyslasher
 repository.
 
@@ -24,6 +25,9 @@ Settings → Account → Sign in offers two methods:
   Kodi uses the software Widevine **L3** CDM, and streaming services reserve HD
   for hardware-protected playback. This is a DRM limit, not a bug in the
   add-on.
+- Starz limits an account to **6 active devices**; Kodi counts as one. At the
+  limit, playback shows Starz's "Maximum Devices Reached" message: log out
+  old devices at starz.com/settings/managedevices.
 - **Android with hardware Widevine L1** (most phones, Nvidia Shield, certified
   Android TV boxes): HD may be available. Not yet confirmed for Starz.
 

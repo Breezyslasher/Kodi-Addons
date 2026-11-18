@@ -266,7 +266,7 @@ def do_play(api, content_id):
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     try:
-        playback = api.playback(content_id)
+        playback = api.playback(content_id, kodiutils.subtitle_languages())
     except Exception:
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         raise

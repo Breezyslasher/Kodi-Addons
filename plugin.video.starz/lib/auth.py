@@ -53,7 +53,27 @@ class NotReadyError(Exception):
 
 
 class StarzAuthError(Exception):
-    """Starz refused a sign-in step; the message is what Starz said."""
+    """Starz refused a call; the message is what Starz said.
+
+    ``code`` is Starz's errorCode when it gave one (1305 device limit, 1409
+    login failed), else the HTTP status.
+    """
+
+    def __init__(self, message, code=None, status=None):
+        Exception.__init__(self, message)
+        self.code = code
+        self.status = status
+
+
+class DeviceSignedOutError(StarzAuthError):
+    """Token answered 412 "Not registered": this device is no longer linked
+    (removed at starz.com/settings/managedevices, or signed out elsewhere)."""
+
+
+# Starz errorCodes with a clearer message than its errorDetails.
+FRIENDLY_ERRORS = {
+    1409: "Wrong email or password.",
+}
 
 
 def normalise_username(username):
@@ -78,6 +98,19 @@ def log_response(label, resp):
         _play_headers(resp), (resp.text or "")[:800]))
 
 
+def _error(resp, cls=None):
+    """A StarzAuthError (or ``cls``) carrying Starz's message and codes."""
+    code = None
+    try:
+        data = resp.json()
+        if isinstance(data, dict):
+            code = data.get("errorCode")
+    except ValueError:
+        pass
+    return (cls or StarzAuthError)(_error_text(resp), code=code,
+                                   status=resp.status_code)
+
+
 def _error_text(resp):
     """The most useful human-readable error out of a Starz response."""
     try:
@@ -88,6 +121,17 @@ def _error_text(resp):
             text = "(empty response) %s" % (_play_headers(resp) or "")
         return "HTTP %d: %s" % (resp.status_code, text)
     if isinstance(data, dict):
+        # Starz's shape: {"errorDetails", "errorCode", "properties": {...}}.
+        if data.get("errorCode") in FRIENDLY_ERRORS:
+            return FRIENDLY_ERRORS[data["errorCode"]]
+        props = data.get("properties") or {}
+        if props.get("messageTitle"):
+            desc = (props.get("messageDescriptionNoSignup") or
+                    props.get("messageDescriptionSignup") or "")
+            desc = desc.replace("{MESSAGEURL}", props.get("messageUrl", ""))
+            return "%s\n%s" % (props["messageTitle"], desc)
+        if data.get("errorDetails"):
+            return "HTTP %d: %s" % (resp.status_code, data["errorDetails"])
         for key in ("message", "Message", "error_description", "error",
                     "errorMessage", "description", "title"):
             if data.get(key):
@@ -227,7 +271,7 @@ class StarzAuth(object):
         kodiutils.log("Activate/Login -> HTTP %d" % resp.status_code)
         if resp.status_code != 200:
             log_response("Activate/Login", resp)
-            raise StarzAuthError(_error_text(resp))
+            raise _error(resp)
         try:
             state = resp.json().get("subscriptionState", "")
         except ValueError:
@@ -268,7 +312,8 @@ class StarzAuth(object):
                              timeout=TIMEOUT)
         if resp.status_code != 200:
             log_response("Token", resp)
-            raise StarzAuthError(_error_text(resp))
+            raise _error(resp, DeviceSignedOutError
+                         if resp.status_code == 412 else None)
         data = resp.json() or {}
         token = data.get("playSessionToken")
         # Status fields only, never the token itself.
@@ -308,9 +353,18 @@ class StarzAuth(object):
                                  timeout=TIMEOUT, **kwargs)
         if resp.status_code == 401:
             kodiutils.log("401 from %s, re-issuing session" % url)
-            self.refresh()
+            try:
+                self.refresh()
+            except DeviceSignedOutError:
+                # The device was unlinked on Starz's side; the stored session
+                # is dead for good. Forget it so the menu offers Sign in.
+                self.clear()
+                raise DeviceSignedOutError(
+                    "Starz has signed this Kodi out (it was removed from the "
+                    "account's devices). Please sign in again.", status=412)
             resp = self.http.request(method, url, headers=self.session_headers(),
                                      timeout=TIMEOUT, **kwargs)
         if resp.status_code >= 400:
-            raise StarzAuthError(_error_text(resp))
+            log_response("%s %s" % (method, url.split("?")[0]), resp)
+            raise _error(resp)
         return resp

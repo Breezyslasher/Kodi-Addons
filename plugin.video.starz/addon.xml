@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.18.3" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.18.4" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -15,14 +15,18 @@
 		<summary lang="en_GB">Starz client for Kodi (in development)</summary>
 		<description lang="en_GB">Sign in with your Starz account and play through InputStream Adaptive with Widevine DRM.
 
-IN DEVELOPMENT: sign-in and browsing work in test builds; seasons/episodes, search and playback are not built yet.
+IN DEVELOPMENT: sign-in, browsing and playback work in test builds; series seasons/episodes and search are not built yet.
 
 On a software Widevine L3 CDM (every desktop, LibreELEC, and L3 Android) expect standard definition; HD needs a hardware Widevine L1 Android device.</description>
 		<disclaimer lang="en_GB">Unofficial. Not affiliated with or endorsed by Starz. Use only with your own subscription; third-party clients may be against the service's terms.</disclaimer>
 		<platform>all</platform>
 		<license>GPL-3.0-only</license>
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
-		<news>v2026.11.18.3
+		<news>v2026.11.18.4
+- Playback: DASH + Widevine straight from Starz, with English/Spanish subtitles
+- Clear messages for the device limit, a wrong password, and a device removed on Starz
+
+v2026.11.18.3
 - Sign out and Switch profile in the main menu when signed in
 - Sign out now ends the session on Starz too (DELETE Token)
 
