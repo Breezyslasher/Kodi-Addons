@@ -137,8 +137,13 @@ def add_item(item):
     _apply_info(li, item)
     menu = _list_menu(item) + _people_menu(item)
     if item.get("in_continue"):
+        # Starz hides an episode by its series id (episode hide HAR: the
+        # Power S1E1 entry was removed with {"ids": [21220]}, the series).
+        hide_id = item["id"]
+        if item.get("type") == "episode" and item.get("series_id"):
+            hide_id = item["series_id"]
         menu.append((L(32070), "RunPlugin(%s)" % url(action="continue_hide",
-                                                     content_id=item["id"])))
+                                                     content_id=hide_id)))
     if menu:
         li.addContextMenuItems(menu)
     if item.get("type") == "series":

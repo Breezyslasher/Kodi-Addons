@@ -538,9 +538,9 @@ class StarzApi(object):
         return apply_history(items, self.history())
 
     def hide_from_continue(self, content_id):
-        """PUT User/resumepoints/hide {"ids": [id]} -> 204 (hide HAR #20,
-        #33: both movies, ids = the title's own contentId). [VERIFY] for an
-        episode, which id Starz expects; the episode's own is sent."""
+        """PUT User/resumepoints/hide {"ids": [id]} -> 204. A movie is hidden
+        by its own contentId (hide HAR #20, #33); an episode by its series'
+        (episode hide HAR: {"ids": [21220]} for a Power episode)."""
         self.auth.request("PUT", AUTH_API + "User/resumepoints/hide",
                           json={"ids": [int(content_id)]})
 
