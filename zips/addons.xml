@@ -115,6 +115,249 @@
   LICENSE renamed to LICENSE.txt; fanart added.</news>
 	</extension>
 </addon>
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.7.24" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0" />
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>audio</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Audiobookshelf client for Kodi</summary>
+		<description lang="en_GB">Stream audiobooks and podcasts from your Audiobookshelf server. Features include:
+
+* Stream audiobooks (M4B, MP3, multi-file)
+* Stream podcasts with episode management
+* Progress sync with server
+* Download for offline playback
+* Chapter navigation
+* Resume playback
+* Search and add new podcasts
+* Find new episodes (from RSS)
+* API Key or Username/Password authentication</description>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.7.9" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0" />
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>audio</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Audiobookshelf client for Kodi</summary>
+		<description lang="en_GB">Stream audiobooks and podcasts from your Audiobookshelf server. Features include:
+
+* Stream audiobooks (M4B, MP3, multi-file)
+* Stream podcasts with episode management
+* Progress sync with server
+* Download for offline playback
+* Chapter navigation
+* Resume playback
+* Search and add new podcasts
+* Find new episodes (from RSS)
+* API Key or Username/Password authentication</description>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.7.8" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.requests" version="2.31.0" />
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>audio</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Audiobookshelf client for Kodi</summary>
+		<description lang="en_GB">Stream audiobooks and podcasts from your Audiobookshelf server. Features include:
+
+* Stream audiobooks (M4B, MP3, multi-file)
+* Stream podcasts with episode management
+* Progress sync with server
+* Download for offline playback
+* Chapter navigation
+* Resume playback
+* Search and add new podcasts
+* Find new episodes (from RSS)
+* API Key or Username/Password authentication</description>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.7.6.3" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.requests" version="2.31.0" />
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>audio</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Audiobookshelf client for Kodi</summary>
+		<description lang="en_GB">Stream audiobooks and podcasts from your Audiobookshelf server. Features include:
+
+* Stream audiobooks (M4B, MP3, multi-file)
+* Stream podcasts with episode management
+* Progress sync with server
+* Download for offline playback
+* Chapter navigation
+* Resume playback
+* Search and add new podcasts
+* Find new episodes (from RSS)
+* API Key or Username/Password authentication</description>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/platzregen/audiobookshelf_simpleclient</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.7.6" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.requests" version="2.31.0" />
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>audio</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Audiobookshelf client for Kodi</summary>
+		<description lang="en_GB">Stream audiobooks and podcasts from your Audiobookshelf server. Features include:
+
+* Stream audiobooks (M4B, MP3, multi-file)
+* Stream podcasts with episode management
+* Progress sync with server
+* Download for offline playback
+* Chapter navigation
+* Resume playback
+* Search and add new podcasts
+* Find new episodes (from RSS)
+* API Key or Username/Password authentication</description>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/platzregen/audiobookshelf_simpleclient</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.5.28" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.requests" version="2.31.0" />
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>audio</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Audiobookshelf client for Kodi</summary>
+		<description lang="en_GB">Stream audiobooks and podcasts from your Audiobookshelf server. Features include:
+
+* Stream audiobooks (M4B, MP3, multi-file)
+* Stream podcasts with episode management
+* Progress sync with server
+* Download for offline playback
+* Chapter navigation
+* Resume playback
+* Search and add new podcasts
+* Find new episodes (from RSS)
+* API Key or Username/Password authentication</description>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/platzregen/audiobookshelf_simpleclient</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2026.5.27" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.requests" version="2.31.0" />
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>audio</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Audiobookshelf client for Kodi</summary>
+		<description lang="en_GB">Stream audiobooks and podcasts from your Audiobookshelf server. Features include:
+
+* Stream audiobooks (M4B, MP3, multi-file)
+* Stream podcasts with episode management
+* Progress sync with server
+* Download for offline playback
+* Chapter navigation
+* Resume playback
+* Search and add new podcasts
+* Find new episodes (from RSS)
+* API Key or Username/Password authentication</description>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/platzregen/audiobookshelf_simpleclient</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.audio.audiobookshelf" name="Audiobookshelf" version="2025.12.13" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.requests" version="2.31.0" />
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>audio</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Audiobookshelf client for Kodi</summary>
+		<description lang="en_GB">Stream audiobooks and podcasts from your Audiobookshelf server. Features include:
+
+* Stream audiobooks (M4B, MP3, multi-file)
+* Stream podcasts with episode management
+* Progress sync with server
+* Download for offline playback
+* Chapter navigation
+* Resume playback
+* Search and add new podcasts
+* Find new episodes (from RSS)
+* API Key or Username/Password authentication</description>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/platzregen/audiobookshelf_simpleclient</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+		</assets>
+	</extension>
+</addon>
 <addon id="plugin.video.appletv" name="Apple TV" version="2026.11.18" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
@@ -611,6 +854,214 @@ Features:
 		</news>
 	</extension>
 </addon>
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.11.16" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, live sports and your iTunes movie and TV library, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). On a software Widevine L3 CDM -- every desktop, and L3 Android -- Apple's output-protected HD tiers are refused, so playback is standard definition (about 540p); a hardware Widevine L1 Android device (on Kodi 22) plays HD up to 1080p through the secure decoder. 4K and Dolby Vision need output protection Apple grants only its own clients. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+
+Features:
+* Apple ID sign-in with two-factor authentication
+* Browse Apple TV+ Originals (shows and movies)
+* Live sports: MLS, Formula 1 and MLB
+* Browse your iTunes purchased/rented movie and TV library
+* Search the Apple TV catalogue
+* Widevine playback via InputStream Adaptive</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.31" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, live sports and your iTunes movie and TV library, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). On a software Widevine L3 CDM -- every desktop, and L3 Android -- Apple's output-protected HD tiers are refused, so playback is standard definition (about 540p); a hardware Widevine L1 Android device (on Kodi 22) plays HD up to 1080p through the secure decoder. 4K and Dolby Vision need output protection Apple grants only its own clients. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+
+Features:
+* Apple ID sign-in with two-factor authentication
+* Browse Apple TV+ Originals (shows and movies)
+* Live sports: MLS, Formula 1 and MLB
+* Browse your iTunes purchased/rented movie and TV library
+* Search the Apple TV catalogue
+* Widevine playback via InputStream Adaptive</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.12" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, live sports and your iTunes movie and TV library, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+
+Features:
+* Apple ID sign-in with two-factor authentication
+* Browse Apple TV+ Originals (shows and movies)
+* Live sports: MLS, Formula 1 and MLB
+* Browse your iTunes purchased/rented movie and TV library
+* Search the Apple TV catalogue
+* Widevine playback via InputStream Adaptive</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.11.3" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="22.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, live sports and your iTunes movie and TV library, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+
+Features:
+* Apple ID sign-in with two-factor authentication
+* Browse Apple TV+ Originals (shows and movies)
+* Live sports: MLS, Formula 1 and MLB
+* Browse your iTunes purchased/rented movie and TV library
+* Search the Apple TV catalogue
+* Widevine playback via InputStream Adaptive</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.11" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="22.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, live sports and your iTunes movie and TV library, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+
+Features:
+* Apple ID sign-in with two-factor authentication
+* Browse Apple TV+ Originals (shows and movies)
+* Live sports: MLS, Formula 1 and MLB
+* Browse your iTunes purchased/rented movie and TV library
+* Search the Apple TV catalogue
+* Widevine playback via InputStream Adaptive</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.8.10" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="22.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Apple TV+ client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web client to receive Widevine-protected streams (the only DRM Kodi can decrypt). Because Kodi only ships the software Widevine L3 CDM, playback quality is limited to standard definition; HD/4K require the hardware DRM found only on Apple devices. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+
+Features:
+* Apple ID sign-in with two-factor authentication
+* Browse Apple TV+ Originals (shows and movies)
+* Search the Apple TV catalogue
+* Widevine playback via InputStream Adaptive</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
 <addon id="script.akl.heroic" name="Heroic Games Launcher plugin for AKL" version="2026.8.12.7" provider-name="Breezyslasher">
   <requires>
       <import addon="xbmc.python" version="3.0.0"/>
@@ -639,6 +1090,33 @@ No credentials or API keys needed.
     <news>Scraper now pulls year, genre, rating, store tags, poster/banner art and screenshots from Heroic-side caches (Epic metadata, Amazon details, PCGamingWiki scores).</news>
   </extension>
 </addon>
+<addon id="script.akl.heroic" name="Heroic Games Launcher plugin for AKL" version="2026.8.12.6" provider-name="Breezyslasher">
+  <requires>
+      <import addon="xbmc.python" version="3.0.0"/>
+      <import addon="script.module.akl" version="1.2.0"/>
+  </requires>
+  <extension point="xbmc.python.script" library="default.py">
+    <provides>game</provides>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Heroic Games Launcher scanner, scraper and launcher plugin for AKL.</summary>
+    <description lang="en_GB">
+    Advanced Kodi Launcher (AKL) plugin for the Heroic Games Launcher on Linux, Windows and macOS.
+It scans your Heroic library (Epic Games, GOG, Amazon Prime Gaming and sideloaded games) directly from
+Heroic's local store cache, launches games through Heroic (Flatpak, native Linux, Windows or macOS
+install) and scrapes titles, plots, developers and artwork from the data Heroic already keeps on disk.
+No credentials or API keys needed.
+    </description>
+    <platform>all</platform>
+    <license>GNU General Public License version 2</license>
+    <website>https://github.com/Breezyslasher/Kodi-Addons</website>
+    <source>https://github.com/Breezyslasher/Kodi-Addons/tree/main/script.akl.heroic</source>
+    <assets>
+      <icon>media/icon.png</icon>
+      <fanart>media/fanart.jpg</fanart>
+    </assets>
+  </extension>
+</addon>
 <addon id="script.webhook.runner" version="2026.7.13" name="Webhook Runner" provider-name="Breezyslasher">
   <requires>
     <import addon="xbmc.python" version="3.0.1"/>
@@ -656,6 +1134,110 @@ No credentials or API keys needed.
     <assets>
       <icon>resources/icon.png</icon>
     </assets>
+  </extension>
+</addon>
+<addon id="script.webhook.runner" version="2026.7.10" name="Webhook Runner" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Run Home Assistant webhooks from Kodi</summary>
+    <description lang="en_GB">Create webhooks and trigger them via Keymap Editor or Kodi events. Each webhook gets a unique ID that can be mapped to any button using Keymap Editor, or fired automatically on playback/system events (playback start/stop/pause, screensaver, Kodi start/stop).</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="script.webhook.runner" version="2026.7.9" name="Webhook Runner" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py" start="startup"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Run Home Assistant webhooks from Kodi</summary>
+    <description lang="en_GB">Create webhooks and trigger them via Keymap Editor or Kodi events. Each webhook gets a unique ID that can be mapped to any button using Keymap Editor, or fired automatically on playback/system events (playback start/stop/pause, screensaver, Kodi start/stop).</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="script.webhook.runner" version="2026.7.8" name="Webhook Runner" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py" start="login"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Run Home Assistant webhooks from Kodi</summary>
+    <description lang="en_GB">Create webhooks and trigger them via Keymap Editor or Kodi events. Each webhook gets a unique ID that can be mapped to any button using Keymap Editor, or fired automatically on playback/system events (playback start/stop/pause, screensaver, Kodi start/stop).</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="script.webhook.runner" version="2026.5.29" name="Webhook Runner" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py" start="login"/>
+  <extension point="xbmc.addon.metadata">
+    <summary>Run Home Assistant webhooks from Kodi</summary>
+    <description>Create webhooks and trigger them via Keymap Editor or Kodi events. Each webhook gets a unique ID that can be mapped to any button using Keymap Editor, or fired automatically on playback/system events (playback start/stop/pause, screensaver, Kodi start/stop).</description>
+    <platform>all</platform>
+    <assets>
+      <icon>webhook.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="script.webhook.runner" version="2026.5.28" name="Webhook Runner" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py" start="login"/>
+  <extension point="xbmc.addon.metadata">
+    <summary>Run Home Assistant webhooks from Kodi</summary>
+    <description>Create webhooks and trigger them via Keymap Editor or Kodi events. Each webhook gets a unique ID that can be mapped to any button using Keymap Editor, or fired automatically on playback/system events (playback start/stop/pause, screensaver, Kodi start/stop).</description>
+    <platform>all</platform>
+    <assets>
+      <icon>webhook.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="script.webhook.runner" version="2025.12.17" name="Webhook Runner" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.0"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.addon.metadata">
+    <summary>Run Home Assistant webhooks from Kodi</summary>
+    <description>Create webhooks and trigger them via Keymap Editor. Each webhook gets a unique ID that can be mapped to any button using Keymap Editor addon.</description>
+    <platform>all</platform>
   </extension>
 </addon>
 <addon id="script.scrcpy-launcher" name="scrcpy Launcher" version="2026.6.12" provider-name="Breezyslasher">
@@ -694,7 +1276,245 @@ v2026.6.12 - Samsung DeX + simpler menu
         </news>
     </extension>
 </addon>
+<addon id="script.scrcpy-launcher" name="scrcpy Launcher" version="2025.12.27" provider-name="Breezyslasher">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="xbmc.python.script" library="main.py">
+        <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.service" library="service.py" start="startup"/>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en_GB">Android USB device streaming with auto-detect</summary>
+        <description lang="en_GB">Stream your Android device screen on Kodi using scrcpy.Works with LibreELEC and desktop Linux.</description>
+        <platform>linux</platform>
+        <license>MIT</license>
+        <website>https://github.com/Schlumpf7/scrcpy-launcher-matrix-</website>
+        <source>https://github.com/Schlumpf7/scrcpy-launcher-matrix-</source>
+        <disclaimer>Requires USB debugging enabled on your Android device.</disclaimer>
+        <assets>
+            <icon>resources/Android_Robot.png</icon>
+        </assets>
+    </extension>
+</addon>
 <addon id="service.watchparty" version="2026.7.26" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Watch together across Kodi devices — a SyncLounge-style watch party, on the couch or over the internet</summary>
+    <description lang="en_GB">Real-time synchronized playback for Kodi. Host a party on one device or on the bundled standalone relay (VPS, Raspberry Pi or Docker — no port forwarding for anyone), friends join with a room code, and play, pause and seek stay mirrored everywhere with clock-offset compensation and automatic drift correction.
+
+Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every device resolves the stream with its own account. Library items match by IMDb/TVDb id or show/season/episode, so a friend with their own copy of the same movie follows without any shared source. The party auto-pauses while someone buffers, an optional host mode locks playback control to whoever started the item, and members joining or leaving show as notifications. A live web dashboard at /status shows rooms, members and positions on any relay, and the saved relay address and room code make rejoining a two-click affair.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.25" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Watch together across Kodi devices — a SyncLounge-style watch party, on the couch or over the internet</summary>
+    <description lang="en_GB">Real-time synchronized playback for Kodi. Host a party on one device or on the bundled standalone relay (VPS, Raspberry Pi or Docker — no port forwarding for anyone), friends join with a room code, and play, pause and seek stay mirrored everywhere with clock-offset compensation and automatic drift correction.
+
+Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every device resolves the stream with its own account. Library items match by IMDb/TVDb id or show/season/episode, so a friend with their own copy of the same movie follows without any shared source. The party auto-pauses while someone buffers, an optional host mode locks playback control to whoever started the item, and members joining or leaving show as notifications. A live web dashboard at /status shows rooms, members and positions on any relay, and the saved relay address and room code make rejoining a two-click affair.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.24.19" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Watch together across Kodi devices — a SyncLounge-style watch party, on the couch or over the internet</summary>
+    <description lang="en_GB">Real-time synchronized playback for Kodi. Host a party on one device or on the bundled standalone relay (VPS, Raspberry Pi or Docker — no port forwarding for anyone), friends join with a room code, and play, pause and seek stay mirrored everywhere with clock-offset compensation and automatic drift correction.
+
+Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every device resolves the stream with its own account. Library items match by IMDb/TVDb id or show/season/episode, so a friend with their own copy of the same movie follows without any shared source. The party auto-pauses while someone buffers, an optional host mode locks playback control to whoever started the item, and members joining or leaving show as notifications. A live web dashboard at /status shows rooms, members and positions on any relay, and the saved relay address and room code make rejoining a two-click affair.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.24.18" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Watch together across Kodi devices — a SyncLounge-style watch party, on the couch or over the internet</summary>
+    <description lang="en_GB">Real-time synchronized playback for Kodi. Host a party on one device or on the bundled standalone relay (VPS, Raspberry Pi or Docker — no port forwarding for anyone), friends join with a room code, and play, pause and seek stay mirrored everywhere with clock-offset compensation and automatic drift correction.
+
+Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every device resolves the stream with its own account. Library items match by IMDb/TVDb id or show/season/episode, so a friend with their own copy of the same movie follows without any shared source. The party auto-pauses while someone buffers, an optional host mode locks playback control to whoever started the item, and members joining or leaving show as notifications. A live web dashboard at /status shows rooms, members and positions on any relay, and the saved relay address and room code make rejoining a two-click affair.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.24.16" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Synchronized playback across Kodi devices — a SyncLounge-style watch party</summary>
+    <description lang="en_GB">Watch together in real time. One Kodi device hosts a party and others join with a room code; play, pause and seek are mirrored to everyone, with automatic drift correction so all players stay in sync. Works with library files, network shares and plugin streams that are resolvable on every device.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.24.15" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Synchronized playback across Kodi devices — a SyncLounge-style watch party</summary>
+    <description lang="en_GB">Watch together in real time. One Kodi device hosts a party and others join with a room code; play, pause and seek are mirrored to everyone, with automatic drift correction so all players stay in sync. Works with library files, network shares and plugin streams that are resolvable on every device.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.24.14" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Synchronized playback across Kodi devices — a SyncLounge-style watch party</summary>
+    <description lang="en_GB">Watch together in real time. One Kodi device hosts a party and others join with a room code; play, pause and seek are mirrored to everyone, with automatic drift correction so all players stay in sync. Works with library files, network shares and plugin streams that are resolvable on every device.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.24.13" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Synchronized playback across Kodi devices — a SyncLounge-style watch party</summary>
+    <description lang="en_GB">Watch together in real time. One Kodi device hosts a party and others join with a room code; play, pause and seek are mirrored to everyone, with automatic drift correction so all players stay in sync. Works with library files, network shares and plugin streams that are resolvable on every device.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.24.11" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Synchronized playback across Kodi devices — a SyncLounge-style watch party</summary>
+    <description lang="en_GB">Watch together in real time. One Kodi device hosts a party and others join with a room code; play, pause and seek are mirrored to everyone, with automatic drift correction so all players stay in sync. Works with library files, network shares and plugin streams that are resolvable on every device.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.24.8" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Synchronized playback across Kodi devices — a SyncLounge-style watch party</summary>
+    <description lang="en_GB">Watch together in real time. One Kodi device hosts a party and others join with a room code; play, pause and seek are mirrored to everyone, with automatic drift correction so all players stay in sync. Works with library files, network shares and plugin streams that are resolvable on every device.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.24.2" name="Watch Party" provider-name="Breezyslasher">
+  <requires>
+    <import addon="xbmc.python" version="3.0.1"/>
+  </requires>
+  <extension point="xbmc.python.script" library="resources/lib/default.py">
+    <provides>executable</provides>
+  </extension>
+  <extension point="xbmc.service" library="resources/lib/service.py"/>
+  <extension point="xbmc.addon.metadata">
+    <summary lang="en_GB">Synchronized playback across Kodi devices — a SyncLounge-style watch party</summary>
+    <description lang="en_GB">Watch together in real time. One Kodi device hosts a party and others join with a room code; play, pause and seek are mirrored to everyone, with automatic drift correction so all players stay in sync. Works with library files, network shares and plugin streams that are resolvable on every device.</description>
+    <platform>all</platform>
+    <license>MIT</license>
+    <source>https://github.com/Breezyslasher/Kodi-Addons</source>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
+  </extension>
+</addon>
+<addon id="service.watchparty" version="2026.7.24" name="Watch Party" provider-name="Breezyslasher">
   <requires>
     <import addon="xbmc.python" version="3.0.1"/>
   </requires>
@@ -954,6 +1774,111 @@ Streaming addons (YouTube, Disney+ and friends) follow by plugin path, so every 
 - FIXED: Translations are read again (moved to the Kodi 19+ language layout).
 - NEW: "Clear saved session" in settings for a clean sign-in.
 		</news>
+		<assets>
+			<icon>resources/images/icon.png</icon>
+			<fanart>resources/images/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.video.tubitv" name="TubiTV" version="2026.9.2" provider-name="Lunatixz, Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.t1mlib" version="4.0.9"/>
+		<import addon="script.module.requests" version="2.22.0"/>
+		<import addon="inputstream.adaptive" version="2.6.0"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Tubi TV</summary>
+		<description lang="en_GB">Tubi TV has the largest library of FREE videos of hit and cult TV shows and films.
+
+* Browse the Tubi categories, series and films
+* Home, My List and Continue Watching from your account
+* Live TV, with IPTV Manager integration for the Kodi TV guide
+* Search the Tubi catalogue
+* Add films and shows to the Kodi library as .strm files
+* Optional Tubi account sign-in
+* PseudoTV Live support</description>
+		<disclaimer lang="en_GB">Feel free to use this script. For information visit the wiki.</disclaimer>
+		<platform>all</platform>
+		<language>en</language>
+		<license>GPL-2.0-or-later</license>
+		<forum>http://forum.kodi.tv/showthread.php?tid=</forum>
+		<website>http://www.tubitv.com/</website>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/images/icon.png</icon>
+			<fanart>resources/images/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.video.tubitv" name="TubiTV" version="2026.9.1" provider-name="Lunatixz, Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.t1mlib" version="4.0.9"/>
+		<import addon="script.module.requests" version="2.22.0"/>
+		<import addon="inputstream.adaptive" version="2.6.0"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Tubi TV</summary>
+		<description lang="en_GB">Tubi TV has the largest library of FREE videos of hit and cult TV shows and films.
+
+* Browse the Tubi categories, series and films
+* Home, My List and Continue Watching from your account
+* Live TV, with IPTV Manager integration for the Kodi TV guide
+* Search the Tubi catalogue
+* Add films and shows to the Kodi library as .strm files
+* Optional Tubi account sign-in
+* PseudoTV Live support</description>
+		<disclaimer lang="en_GB">Feel free to use this script. For information visit the wiki.</disclaimer>
+		<platform>all</platform>
+		<language>en</language>
+		<license>GPL-2.0-or-later</license>
+		<forum>http://forum.kodi.tv/showthread.php?tid=</forum>
+		<website>http://www.tubitv.com/</website>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/images/icon.png</icon>
+			<fanart>resources/images/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.video.tubitv" name="TubiTV" version="2026.8.31" provider-name="Lunatixz, Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.0"/>
+		<import addon="script.module.t1mlib" version="4.0.9"/>
+		<import addon="script.module.requests" version="2.22.0"/>
+		<import addon="inputstream.adaptive" version="2.6.0"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Tubi TV</summary>
+		<description lang="en_GB">Tubi TV has the largest library of FREE videos of hit and cult TV shows and films.
+
+* Browse the Tubi categories, series and films
+* Home, My List and Continue Watching from your account
+* Live TV, with IPTV Manager integration for the Kodi TV guide
+* Search the Tubi catalogue
+* Add films and shows to the Kodi library as .strm files
+* Optional Tubi account sign-in
+* PseudoTV Live support</description>
+		<disclaimer lang="en_GB">Feel free to use this script. For information visit the wiki.</disclaimer>
+		<platform>all</platform>
+		<language>en</language>
+		<license>GPL-2.0-or-later</license>
+		<forum>http://forum.kodi.tv/showthread.php?tid=</forum>
+		<website>http://www.tubitv.com/</website>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
 		<assets>
 			<icon>resources/images/icon.png</icon>
 			<fanart>resources/images/fanart.jpg</fanart>
