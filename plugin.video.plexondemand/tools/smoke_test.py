@@ -91,6 +91,9 @@ except Exception as exc:
     check("PIN poll (same client id)", False, exc)
 SETTINGS.pop("client_id", None)  # a lost setting must not change the id
 check("client id stable across lost setting", _bh()["X-Plex-Client-Identifier"] == _h["X-Plex-Client-Identifier"])
+from lib import auth as _auth
+_auth._save_account(plex_token="")
+check("account store round-trip", _auth._account().get("anon_token") == tok and not api.auth.signed_in())
 hubs = api.hubs()
 check("hubs", len(hubs) > 10, len(hubs))
 items, total = api.hub_items(hubs[0]["key"])

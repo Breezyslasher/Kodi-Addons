@@ -11,6 +11,7 @@ from lib import kodiutils
 from lib.api import PlexVodApi, PlexApiError, PAGE_SIZE, TYPE_MOVIE, TYPE_SHOW
 from lib import playback
 from lib.listing import art as _art, info as _info
+from lib.auth import account_name
 
 HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].lstrip("-").isdigit() else -1
 BASE_URL = sys.argv[0]
@@ -101,7 +102,7 @@ def root():
     folder(L("shows"), {"action": "genres", "type": TYPE_SHOW})
     folder(L("search"), {"action": "search"})
     if api.auth.signed_in():
-        name = kodiutils.get_setting("account_name") or "Plex"
+        name = account_name() or "Plex"
         item = xbmcgui.ListItem(L("signed_in_as") % name)
         xbmcplugin.addDirectoryItem(HANDLE, url(action="sign_out"), item, False)
     else:
@@ -171,7 +172,16 @@ def play(rk):
     xbmcplugin.setResolvedUrl(HANDLE, True, item)
 
 
+def _close_settings():
+    """Run from the Settings dialog, close it first so it cannot write its
+    stale values back over what the sign-in/out just stored."""
+    if xbmc.getCondVisibility("Window.IsActive(addonsettings)"):
+        xbmc.executebuiltin("Dialog.Close(addonsettings,true)")
+        xbmc.sleep(300)
+
+
 def sign_in():
+    _close_settings()
     api = PlexVodApi()
     dlg = xbmcgui.DialogProgress()
     dlg.create(L("link_heading"), "")
@@ -194,6 +204,7 @@ def sign_in():
 
 
 def sign_out():
+    _close_settings()
     if xbmcgui.Dialog().yesno(kodiutils.ADDON_NAME, L("confirm_sign_out")):
         PlexVodApi().auth.sign_out()
         xbmc.executebuiltin("Container.Refresh")

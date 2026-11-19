@@ -70,6 +70,34 @@ def base_headers():
     }
 
 
+ACCOUNT_FILE = "account.json"
+
+
+def _account():
+    """Tokens and account name live in the profile, not in settings.
+
+    A plugin that calls setSetting while Kodi's Settings dialog is open (the
+    Sign in / Sign out actions run from there) cannot read the value back,
+    and the dialog writes its own stale copy over it when closed with OK,
+    wiping the token. A profile file has neither problem.
+    """
+    data = kodiutils.read_json(ACCOUNT_FILE, None)
+    if data is None:  # migrate from the settings an older build used
+        data = {k: kodiutils.get_setting(k) for k in ("plex_token", "anon_token", "account_name")}
+        kodiutils.write_json(ACCOUNT_FILE, data)
+    return data
+
+
+def _save_account(**changes):
+    data = _account()
+    data.update(changes)
+    kodiutils.write_json(ACCOUNT_FILE, data)
+
+
+def account_name():
+    return _account().get("account_name") or ""
+
+
 class PinExpired(Exception):
     pass
 
@@ -77,14 +105,15 @@ class PinExpired(Exception):
 class PlexAuth(object):
 
     def signed_in(self):
-        return bool(kodiutils.get_setting("plex_token"))
+        return bool(_account().get("plex_token"))
 
     def token(self):
         """The user's token if signed in, else a (cached) anonymous one."""
-        tok = kodiutils.get_setting("plex_token")
+        acct = _account()
+        tok = acct.get("plex_token")
         if tok:
             return tok
-        tok = kodiutils.get_setting("anon_token")
+        tok = acct.get("anon_token")
         if tok:
             return tok
         return self.new_anonymous_token()
@@ -93,14 +122,14 @@ class PlexAuth(object):
         resp = requests.post(PLEX_TV + "/users/anonymous", headers=base_headers(), timeout=TIMEOUT)
         resp.raise_for_status()
         tok = resp.json().get("authToken") or ""
-        kodiutils.set_setting("anon_token", tok)
+        _save_account(anon_token=tok)
         return tok
 
     def invalidate(self):
         """Drop a token the provider rejected (401) so the next call re-mints."""
         if self.signed_in():
             return False
-        kodiutils.set_setting("anon_token", "")
+        _save_account(anon_token="")
         return True
 
     # ---- PIN link flow
@@ -140,10 +169,10 @@ class PlexAuth(object):
                 return None
             tok = self.check_pin(pin["id"], headers)
             if tok:
-                kodiutils.set_setting("plex_token", tok)
+                _save_account(plex_token=tok)
                 try:
                     user = self.account(tok)
-                    kodiutils.set_setting("account_name", user.get("username") or user.get("title") or "")
+                    _save_account(account_name=user.get("username") or user.get("title") or "")
                 except Exception as exc:
                     kodiutils.log_error("account lookup failed: %s" % exc)
                 return tok
@@ -155,7 +184,8 @@ class PlexAuth(object):
 
     def sign_out(self):
         global _CLIENT_ID
+        kodiutils.delete_file(ACCOUNT_FILE)
+        kodiutils.delete_file(CLIENT_FILE)
         for key in ("plex_token", "account_name", "anon_token", "client_id"):
             kodiutils.set_setting(key, "")
-        kodiutils.delete_file(CLIENT_FILE)
         _CLIENT_ID = None
