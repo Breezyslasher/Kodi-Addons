@@ -786,6 +786,76 @@ def round8():
     return 0
 
 
+def round9():
+    """Marker survey: which marker types the free VOD catalogue carries, how often."""
+    from collections import Counter
+    from concurrent.futures import ThreadPoolExecutor
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    movies, shows = {}, {}
+    _, hubs = req_json("GET", base + "/hubs", headers=T)
+    for h in mc(hubs).get("Hub") or []:
+        _, d = req_json("GET", base + h["key"], headers=T, params={"count": 40})
+        for m in mc(d).get("Metadata") or []:
+            (movies if m.get("type") == "movie" else shows if m.get("type") == "show" else {})[m["ratingKey"]] = m.get("title")
+        if len(movies) >= 250 and len(shows) >= 60:
+            break
+    movies = dict(list(movies.items())[:250])
+    shows = dict(list(shows.items())[:60])
+    print(f"sample: {len(movies)} movies, {len(shows)} shows")
+
+    def episodes(srk):
+        out = []
+        _, ch = req_json("GET", base + f"/library/metadata/{srk}/children", headers=T)
+        for season in (mc(ch).get("Metadata") or [])[:2]:
+            _, eps = req_json("GET", base + f"/library/metadata/{season['ratingKey']}/children", headers=T)
+            for e in (mc(eps).get("Metadata") or [])[:4]:
+                out.append((e["ratingKey"], "%s S%sE%s" % (shows[srk], e.get("parentIndex"), e.get("index"))))
+        return out
+
+    with ThreadPoolExecutor(8) as ex:
+        eps = [e for lst in ex.map(episodes, shows) for e in lst]
+    print(f"episodes sampled: {len(eps)}")
+
+    def markers(item):
+        rk, title = item
+        _, md = req_json("GET", base + f"/library/metadata/{rk}", headers=T,
+                         params={"includeMarkers": 1, "includeChapters": 1})
+        it = (mc(md).get("Metadata") or [{}])[0]
+        return title, it.get("Marker") or [], bool(it.get("Chapter")), it.get("duration") or 0
+
+    for label, items in (("MOVIES", list(movies.items())), ("EPISODES", eps)):
+        with ThreadPoolExecutor(8) as ex:
+            res = list(ex.map(markers, items))
+        types, any_marker, chapters, examples = Counter(), 0, 0, {}
+        credit_pos = []
+        for title, mk, ch, dur in res:
+            if mk:
+                any_marker += 1
+            chapters += ch
+            seen = set()
+            for m in mk:
+                t = m.get("type")
+                seen.add(t)
+                examples.setdefault(t, (title, m))
+                if t == "credits" and dur:
+                    credit_pos.append((dur - m.get("startTimeOffset", 0)) / 1000.0)
+            for t in seen:
+                types[t] += 1
+        n = len(res)
+        print(f"\n===== {label}: {n} titles, with any marker {any_marker} ({100 * any_marker // max(1, n)}%), "
+              f"with chapters {chapters}")
+        for t, c in types.most_common():
+            print(f"  {t}: {c} titles ({100 * c // max(1, n)}%)  e.g. {examples[t][0]}: {json.dumps(examples[t][1])}")
+        if credit_pos:
+            credit_pos.sort()
+            print(f"  credits start before end (s): min {credit_pos[0]:.0f}, median {credit_pos[len(credit_pos) // 2]:.0f},"
+                  f" max {credit_pos[-1]:.0f}")
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -797,5 +867,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round8")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round9")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9}.get(mode, main)())
