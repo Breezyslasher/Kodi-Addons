@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.19.17" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.19.18" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,7 +35,10 @@ Features:
 			<clearlogo>resources/clearlogo.png</clearlogo>
 			<banner>resources/banner.png</banner>
 		</assets>
-		<news>v2026.11.19.17
+		<news>v2026.11.19.18
+- Search opens its results again (the keyboard came back with no results in .17)
+
+v2026.11.19.17
 - Search results no longer reopen the keyboard after My List or Remind me changes
 - Sign in, Switch profile, Sign out and Search are buttons: going back to the main menu no longer re-opens their dialogs
 
