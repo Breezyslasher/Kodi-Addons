@@ -358,12 +358,13 @@
 		</assets>
 	</extension>
 </addon>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.11.18" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.11.19" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
 		<import addon="inputstream.adaptive" version="21.0.0"/>
 		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+		<import addon="script.module.skipbuttons" version="1.0.1" optional="true"/>
 	</requires>
 	<extension point="xbmc.python.pluginsource" library="default.py">
 		<provides>video</provides>
@@ -392,6 +393,15 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.11.19 - Skip Intro/Recap, Next Episode, and smart resume
+- NEW: on-screen Skip Recap / Skip Intro buttons and a Next Episode button
+  near the end of an episode, driven by Apple's own skip markers. Needs the
+  script.module.skipbuttons helper add-on (optional -- without it playback is
+  unchanged).
+- NEW: the Apple ident bumper at the very start of a title is skipped
+  automatically, and playback can resume at Apple's own watched position
+  (toggle "Resume from Apple's watched position" in settings).
+
 2026.11.18 - Sign-in no longer breaks on a capitalised Apple ID
 - FIX: the Apple ID is now lower-cased and trimmed before sign-in. Apple
   normalises the account to lowercase when it checks the SRP proof, so an
@@ -852,6 +862,41 @@ Features:
   playback token) are still being reproduced; advanced settings accept
   pasted values to test playback meanwhile. SD only (Widevine L3).
 		</news>
+	</extension>
+</addon>
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.11.18" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Apple TV+ and iTunes client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Apple ID and browse Apple TV+ originals, live sports and your iTunes movie and TV library, playing back through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Apple provides no public API. This addon mimics the Apple TV web/Android client to receive Widevine-protected streams (the only DRM Kodi can decrypt). On a software Widevine L3 CDM -- every desktop, and L3 Android -- Apple's output-protected HD tiers are refused, so playback is standard definition (about 540p); a hardware Widevine L1 Android device (on Kodi 22) plays HD up to 1080p through the secure decoder. 4K and Dolby Vision need output protection Apple grants only its own clients. iTunes purchase playback additionally needs a device keybag Apple only issues to its own hardware. Apple ID sign-in, 2FA and the playback endpoints depend on Apple's private, undocumented services and may need updating whenever Apple changes them.
+
+Features:
+* Apple ID sign-in with two-factor authentication
+* Browse Apple TV+ Originals (shows and movies)
+* Live sports: MLS, Formula 1 and MLB
+* Browse your iTunes purchased/rented movie and TV library
+* Search the Apple TV catalogue
+* Widevine playback via InputStream Adaptive</description>
+		<disclaimer lang="en_GB">Not affiliated with or endorsed by Apple Inc. Apple, Apple TV and iTunes are trademarks of Apple Inc. Use with your own account and content only.</disclaimer>
+		<language></language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
 	</extension>
 </addon>
 <addon id="plugin.video.appletv" name="Apple TV" version="2026.11.16" provider-name="Breezyslasher">
