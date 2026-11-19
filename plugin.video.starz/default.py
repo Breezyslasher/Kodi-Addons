@@ -195,16 +195,15 @@ def _tagged_art(art, text):
         box_h = int(size * 1.3) + pad
         edge = str(max(width // 60, 6))
         align = "top,right" if top10 else "top,left"
-        label = "https://stz1.imgix.net/~text?" + urlencode({
-            "txt": text, "txt-size": str(size), "txt-color": TAG_TEXT,
-            "txt-font": "Helvetica Neue,Bold", "txt-pad": str(pad),
-            "txt-align": "middle,center", "w": str(box_w), "h": str(box_h),
-            "bg": "00FFFFFF"})
+        # The text goes straight onto the image (txt=, probe badge_blend_txt):
+        # a ~text label stamped with mark= lost its text over the blend.
         out[key] = src + "&" + urlencode({
             "blend": TAG_IMAGES + ("top10.png" if top10 else "tag.png"),
             "blend-mode": "normal", "blend-w": str(box_w), "blend-h": str(box_h),
             "blend-align": align, "blend-pad": edge,
-            "mark": label, "mark-align": align, "mark-pad": edge})
+            "txt": text, "txt-size": str(size), "txt-color": TAG_TEXT,
+            "txt-font": "Helvetica Neue,Bold", "txt-align": align,
+            "txt-pad": str(int(edge) + pad)})
     return out
 
 

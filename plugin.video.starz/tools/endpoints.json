@@ -345,6 +345,52 @@
       },
       "report_only": true,
       "note": "Profile pictures with the initial drawn by imgix (txt=...)."
+    },
+    {
+      "id": "probe_badge_plain",
+      "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
+      "params": {
+        "fit": "max",
+        "auto": "format,compress",
+        "w": "600"
+      },
+      "headers": {
+        "Accept": "image/jpeg"
+      },
+      "expect": {
+        "content_type": "image/"
+      },
+      "report_only": true,
+      "note": "Probe: poster tag (plain)."
+    },
+    {
+      "id": "probe_badge_tag_blend_txt",
+      "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
+      "params": {
+        "fit": "max",
+        "auto": "format,compress",
+        "w": "600",
+        "blend": "https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/d991a7901db857b5a3986b2efa26f3290827a26d/plugin.video.starz/resources/tags/tag.png",
+        "blend-mode": "normal",
+        "blend-w": "185",
+        "blend-h": "44",
+        "blend-align": "top,left",
+        "blend-pad": "10",
+        "txt": "New Season",
+        "txt-size": "27",
+        "txt-color": "0B2B33",
+        "txt-font": "Helvetica Neue,Bold",
+        "txt-align": "top,left",
+        "txt-pad": "19"
+      },
+      "headers": {
+        "Accept": "image/jpeg"
+      },
+      "expect": {
+        "content_type": "image/"
+      },
+      "report_only": true,
+      "note": "Probe: poster tag (tag_blend_txt)."
     }
   ]
 }
