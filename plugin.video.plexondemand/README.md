@@ -22,6 +22,13 @@ your real Plex account.
 | Stream | `Media[].Part[].key` -> `/library/parts/<id>-hls.m3u8` and `-dash.mpd`; the manifest needs `X-Plex-Token`, segments on `vod-content.plexvideos.com` need nothing |
 | DRM | about half the titles (`Media.drm: true`): HLS is FairPlay, **DASH is Widevine**; licence `POST {vod}/library/parts/<id>-dash/license` with header **`X-Plex-DRM: widevine`** (else 400 "Missing DRM") |
 | Progress | `GET {vod}/timeline?ratingKey&key&state&time&duration` (POST/PUT 404) |
+| Resume / watched | `GET discover.provider.plex.tv/library/metadata/<rk>[,<rk>...]/userState` (batched; `/library/metadata` has no `viewOffset`) |
+| Continue Watching | `GET {vod}/hubs/continueWatching` |
+| Actions | `PUT {vod}/actions/scrobble`, `unscrobble`, `removeFromContinueWatching` `?ratingKey=` |
+| Trailers | `primaryExtraKey` -> `.../extras/<id>/parts/hls.m3u8` (redirects to open HLS) |
+| Subtitles | `Part.Stream[streamType=3].key` -> `/library/streams/<id>-<lang>?format=srt` (redirects to `vod-static.plex.tv`; works for DRM titles) |
+| Markers | `/library/metadata/<rk>?includeMarkers=1` -> `credits` only, not on every title |
+| Up next | `POST {vod}/playQueues?uri=provider://tv.plex.provider.vod/library/metadata/<rk>&type=video&continuous=1` |
 | Ads | `Metadata.Ad[]` = VMAP at `{vod}/vmap?...` (client-side VAST pods) |
 
 ## Known gaps
@@ -30,8 +37,9 @@ your real Plex account.
 - **451 "Playback is unavailable while using a VPN or proxy"**: some licensors block
   datacenter/VPN IPs per title. The add-on shows that message.
 - Region-limited catalogue (mainly US).
-- DRM titles: no external subtitles yet (the HLS master, which carries them, is FairPlay).
-  Widevine L3 devices may be limited to SD.
+- Widevine L3 devices may be limited to SD on DRM titles.
+- Plex has no intro markers for these titles, so there is no Skip intro; the Next episode
+  countdown uses the credits marker, or the last 25 seconds when there is none.
 
 ## Dev tools (not shipped in the zip)
 - `tools/smoke_test.py`: runs `lib/` against the live service with Kodi stubbed.
