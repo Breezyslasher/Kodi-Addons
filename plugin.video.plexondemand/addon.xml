@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.19.1" provider-name="Breezyslasher">
+<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.19.2" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -28,7 +28,10 @@ Unofficial; not affiliated with or endorsed by Plex, Inc.</description>
 			<icon>resources/icon.png</icon>
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
-		<news>v2026.11.19.1
+		<news>v2026.11.19.2
+- Next episode countdown only at a real Plex credits marker; otherwise the next episode autoplays at the end
+
+v2026.11.19.1
 - Next episode now also autoplays at the end after "Watch credits" or a dismissed countdown
 - Skip Buttons is installed with the add-on (no longer optional)
 - Search: New search opens its results directly and survives coming back from a video

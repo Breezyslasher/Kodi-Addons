@@ -22,7 +22,6 @@ from lib.api import PlexVodApi
 PROP = "plexondemand.playing"
 INTERVAL = 30
 WATCHED_AT = 0.90       # past this share of the runtime, a stop counts as watched
-CREDITS_FALLBACK = 25   # seconds before the end, when an episode has no marker
 
 try:
     from skipbuttons import SkipController
@@ -101,10 +100,10 @@ class Player(xbmc.Player):
         self._report("playing")
         if self.skip:
             marks = {}
+            # Only Plex's own credits marker starts the countdown (user's choice:
+            # no guessed fallback). Without one, the next episode autoplays at
+            # the end instead (onPlayBackEnded).
             credits = self.current.get("credits")
-            duration = (self.current.get("duration") or 0) / 1000.0
-            if not credits and self.current.get("next") and duration > CREDITS_FALLBACK * 4:
-                credits = duration - CREDITS_FALLBACK
             if credits:
                 marks["credits"] = credits
             if self.current.get("intro"):

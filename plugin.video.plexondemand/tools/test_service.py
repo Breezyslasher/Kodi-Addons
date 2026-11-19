@@ -155,12 +155,14 @@ p.onPlayBackEnded()
 check("B3 autoplay off: no countdown, no play", p.skip.dialog is None and not plays())
 SETTINGS.pop("autoplay_next")
 
-# C. no marker: countdown CREDITS_FALLBACK s before the end
+# C. no marker: no countdown at all, the next episode autoplays at the end
 start(p, duration=2000000, credits=None, next="EP2")
-p.skip.tick(2000 - service.CREDITS_FALLBACK - 1, 0)
-check("C no button before the fallback", p.skip.dialog is None)
-p.skip.tick(2000 - service.CREDITS_FALLBACK, 1)
-check("C fallback countdown at duration - %ds" % service.CREDITS_FALLBACK, p.skip.segment == "credits")
+for t in (1900, 1975, 1999):
+    p.skip.tick(t, t)
+check("C no marker: no countdown near the end", p.skip.dialog is None)
+p.pos = 2000
+p.onPlayBackEnded()
+check("C no marker: next episode autoplays at the end once", len(plays()) == 1, plays())
 
 # D. intro marker: Skip intro, seeks to its end
 start(p, duration=2000000, intro=[100.0, 190.0], next=None)

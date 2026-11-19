@@ -38,8 +38,9 @@ your real Plex account.
   datacenter/VPN IPs per title. The add-on shows that message.
 - Region-limited catalogue (mainly US).
 - Widevine L3 devices may be limited to SD on DRM titles.
-- Plex has no intro markers for these titles, so there is no Skip intro. Episodes have no
-  credits markers either, so the Next episode countdown starts 25 seconds before the end.
+- Plex has no intro markers for these titles, so there is no Skip intro. The Next episode
+  countdown appears only at a real Plex credits marker, which episodes almost never have;
+  otherwise the next episode simply autoplays when the episode ends (setting: Autoplay).
   On movies with a credits marker, reaching the credits marks the movie watched.
 
 ## Skip Buttons
