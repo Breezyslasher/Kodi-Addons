@@ -28,7 +28,8 @@ Markers are seconds into the video; any of them may be missing:
 * "credits": start       -> Next episode, counting down; Watch credits
 
 Skip buttons hide themselves after SKIP_SHOW_SECS so Kodi's own controls
-stay reachable; Back hides any button. At the credits the countdown calls
+stay reachable; Back, or a click anywhere but the buttons, hides any
+button. At the credits the countdown calls
 play_next() unless the viewer chooses Watch credits.
 """
 
@@ -37,7 +38,7 @@ import xbmcaddon
 import xbmcgui
 import xbmcvfs
 
-PRIMARY, SECONDARY = 3001, 3002
+PRIMARY, SECONDARY, ELSEWHERE = 3001, 3002, 3000
 BACK = (xbmcgui.ACTION_NAV_BACK, xbmcgui.ACTION_PREVIOUS_MENU)
 SKIP_SHOW_SECS = 10     # a skip button hides itself after this long
 NEXT_DELAY_SECS = 10    # the countdown before the next episode starts
@@ -84,7 +85,8 @@ class SkipDialog(xbmcgui.WindowXMLDialog):
             pass                    # not initialised yet: onInit sets it
 
     def onClick(self, control_id):
-        self.choice = "primary" if control_id == PRIMARY else "secondary"
+        # A click outside the buttons lands on ELSEWHERE: same as Back.
+        self.choice = {PRIMARY: "primary", SECONDARY: "secondary"}.get(control_id, "back")
         self.close()
 
     def onAction(self, action):

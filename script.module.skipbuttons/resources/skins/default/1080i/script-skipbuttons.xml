@@ -5,6 +5,18 @@
 <window>
     <defaultcontrol always="true">3001</defaultcontrol>
     <controls>
+        <!-- Invisible, full screen, behind the buttons: a mouse click or tap
+             anywhere else dismisses the pop-up. The remote never focuses it
+             (no navigation leads here). -->
+        <control type="button" id="3000">
+            <left>0</left>
+            <top>0</top>
+            <width>1920</width>
+            <height>1080</height>
+            <texturefocus />
+            <texturenofocus />
+            <label />
+        </control>
         <control type="group">
             <right>70</right>
             <bottom>130</bottom>

@@ -6,7 +6,8 @@ a video are:
 
 - **Skip recap** and **Skip intro** in the bottom-right corner while they
   play; they jump to the end of that part, and hide themselves after 10
-  seconds (or on Back) so Kodi's own controls stay reachable.
+  seconds (or on Back, or a click anywhere else) so Kodi's own controls
+  stay reachable.
 - At the credits, **Next episode** counting down from 10, and **Watch
   credits** to stay.
 
