@@ -71,6 +71,7 @@ addon's own source (2026-11-15):
   starz.com/series/<show>/episodes/<id> (what TVs get from JustWatch) and
   starz.com/us/en/play/<id> (phones, and Kodi's own shares). A season page
   (/us/en/series/<name>/season-<n>/<id>) isn't an episode (2026-11-18).
+  Movies played on Kodi and on an Android phone (2026-11-19).
 
 SlyGuy's paths are built as SlyGuy's router builds them (route in "_",
 arguments sorted); the addons parse them the same way.
