@@ -854,13 +854,20 @@ class StarzApi(object):
     # -- play session reporting (service.py) ---------------------------------
 
     def report_play(self, kind, content_id, session_id, position):
-        """Play/update or Play/stop. Stop's body is captured (episode HAR
-        #398: contentId as a string, playbackSessionId, an int position;
-        204). [VERIFY] update: the web bundle sends the same three fields."""
-        self.auth.request("POST", AUTH_API + "Play/%s" % kind,
-                          json={"contentId": str(content_id),
-                                "playbackSessionId": session_id,
-                                "mediaResumePointSeconds": int(position)})
+        """Play/update (keep-alive HAR: every 20-30 s, contentId as a number,
+        200 with {..., "bypassSave": false}) or Play/stop (episode HAR #398:
+        contentId as a string, 204). Both under the session token, with the
+        playbackSessionId from Play/start and an int position."""
+        resp = self.auth.request("POST", AUTH_API + "Play/%s" % kind, json={
+            "contentId": int(content_id) if kind == "update" else str(content_id),
+            "playbackSessionId": session_id,
+            "mediaResumePointSeconds": int(position)})
+        if kind == "update":
+            try:
+                if (resp.json() or {}).get("bypassSave"):
+                    kodiutils.log("Play/update: Starz did not save this position (bypassSave)")
+            except ValueError:
+                pass
 
     # -- My List (User/Queue) ------------------------------------------------
 

@@ -5,8 +5,8 @@
 The plugin process ends as soon as playback starts, so a service is the only
 place that can still talk to Starz while a title plays and when it stops:
 
-* Play/update every few minutes, inside Starz's keepAliveSeconds (600 in the
-  captures), with the current position. [VERIFY] the update body.
+* Play/update every 30 s, as the website does (keep-alive HAR), with the
+  current position.
 * Play/stop with the final position when playback ends -- this is what puts
   the resume point into Continue Watching on Starz's own apps, and closes the
   session rather than leaving it to look like it is still playing.
@@ -27,8 +27,9 @@ from lib.license_relay import LicenseRelay
 from lib import upnext
 from lib.api import to_item
 
-# Report well inside the 600 s keep-alive Starz gives.
-UPDATE_SECS = 300
+# The website reports every 20-30 s (keep-alive HAR), well inside the 600 s
+# keep-alive Starz gives; doing the same keeps the resume point current.
+UPDATE_SECS = 30
 POLL_SECS = 1
 
 
