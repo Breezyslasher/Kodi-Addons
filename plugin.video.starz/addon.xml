@@ -36,6 +36,7 @@ Features:
 			<banner>resources/banner.png</banner>
 		</assets>
 		<news>v2026.11.19
+- Sign-in: the activation code is the way in for Google and Apple accounts
 - Featured For You, Recommended For You and Your Playlist rows on Home, Movies and Series
 - Badges on titles: New Season, New Episode, Top 10, Leaving Soon, Free...
 - Profile pictures in the profile picker and menu

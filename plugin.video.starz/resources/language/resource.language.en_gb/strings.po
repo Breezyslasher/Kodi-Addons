@@ -80,7 +80,7 @@ msgid "Email and password"
 msgstr ""
 
 msgctxt "#32056"
-msgid "Activation code (enter it on another device)"
+msgid "Activation code (for Google or Apple accounts too: sign in on another device)"
 msgstr ""
 
 msgctxt "#32057"

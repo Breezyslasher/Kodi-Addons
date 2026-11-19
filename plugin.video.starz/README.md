@@ -57,7 +57,13 @@ Settings → Account → Sign in, or *Sign in* in the add-on's main menu, offers
 - **Email and password.** Kodi links itself the way starz.com/activate does,
   which needs no captcha.
 - **Activation code.** Kodi shows a 4-character code; enter it at
-  starz.com/activate on a phone or computer.
+  starz.com/activate on a phone or computer. Use this if your Starz account
+  signs in with **Google or Apple**: sign in on the website the usual way,
+  then enter the code.
+
+TV-provider (cable/satellite) sign-in is not supported: the Starz website
+code captured so far has no TV-provider flow, only Google and Apple sign-in
+(`Auth/{Google|Apple}/connect`), which the activation code already covers.
 
 ## Resolution: what to expect
 
