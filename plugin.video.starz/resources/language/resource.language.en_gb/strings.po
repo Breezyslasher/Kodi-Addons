@@ -475,6 +475,10 @@ msgctxt "#32168"
 msgid "Show Starz tags (Top 10, New Season, Leaving Soon...) on posters"
 msgstr ""
 
+msgctxt "#32169"
+msgid "Next episode in %d s: %s"
+msgstr ""
+
 msgctxt "#32171"
 msgid "Live"
 msgstr ""

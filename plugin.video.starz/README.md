@@ -19,7 +19,8 @@ calls and opens an issue when one changes.
 - Resume points and Continue Watching shared with Starz's own apps
 - Next episode: works with the [Up Next](https://github.com/im85288/service.upnext)
   add-on (its pop-up appears when the credits start); without it, the next
-  episode plays automatically (Settings → Playback)
+  episode starts when the credits begin, after a 10-second notice
+  (Settings → Playback)
 - Trailers (context menu, and the Trailer button in Kodi's info dialog) and
   each series' Extras: previews, behind-the-scenes and promos
 
