@@ -1,0 +1,132 @@
+# Kodi Media Center language file
+# Addon Name: Plex On Demand
+# Addon id: plugin.video.plexondemand
+# Addon Provider: Breezyslasher
+msgid ""
+msgstr ""
+"Project-Id-Version: plugin.video.plexondemand\n"
+"Report-Msgid-Bugs-To: https://github.com/Breezyslasher/Kodi-Addons\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+
+msgctxt "#32000"
+msgid "Account"
+msgstr ""
+
+msgctxt "#32001"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#32002"
+msgid "Advanced"
+msgstr ""
+
+msgctxt "#32010"
+msgid "Featured"
+msgstr ""
+
+msgctxt "#32011"
+msgid "Movies"
+msgstr ""
+
+msgctxt "#32012"
+msgid "TV Shows"
+msgstr ""
+
+msgctxt "#32013"
+msgid "Search"
+msgstr ""
+
+msgctxt "#32014"
+msgid "Sign in with plex.tv/link (optional)"
+msgstr ""
+
+msgctxt "#32015"
+msgid "Sign out"
+msgstr ""
+
+msgctxt "#32016"
+msgid "Signed in as %s"
+msgstr ""
+
+msgctxt "#32017"
+msgid "Link your Plex account"
+msgstr ""
+
+msgctxt "#32018"
+msgid "Go to plex.tv/link and enter the code:[CR][B]%s[/B][CR]Signing in is optional; free titles play without an account."
+msgstr ""
+
+msgctxt "#32019"
+msgid "Signed in to Plex"
+msgstr ""
+
+msgctxt "#32020"
+msgid "Sign in did not complete"
+msgstr ""
+
+msgctxt "#32021"
+msgid "Sign out of your Plex account?"
+msgstr ""
+
+msgctxt "#32022"
+msgid "No free titles found"
+msgstr ""
+
+msgctxt "#32023"
+msgid "Playback failed - see the Kodi log"
+msgstr ""
+
+msgctxt "#32024"
+msgid "Next page"
+msgstr ""
+
+msgctxt "#32025"
+msgid "Plex error"
+msgstr ""
+
+msgctxt "#32026"
+msgid "This title needs Widevine DRM, which is not available on this device."
+msgstr ""
+
+msgctxt "#32027"
+msgid "Season %s"
+msgstr ""
+
+msgctxt "#32028"
+msgid "Plex blocks this title while it thinks you are on a VPN or proxy. Disable the VPN and try again."
+msgstr ""
+
+msgctxt "#32030"
+msgid "Account"
+msgstr ""
+
+msgctxt "#32031"
+msgid "Maximum resolution (0 = no limit)"
+msgstr ""
+
+msgctxt "#32032"
+msgid "Load subtitles"
+msgstr ""
+
+msgctxt "#32033"
+msgid "Report watch progress to Plex"
+msgstr ""
+
+msgctxt "#32034"
+msgid "VOD provider URL override (debug)"
+msgstr ""
+
+msgctxt "#32035"
+msgid "Plex token"
+msgstr ""
+
+msgctxt "#32036"
+msgid "Anonymous token"
+msgstr ""
+
+msgctxt "#32037"
+msgid "Client identifier"
+msgstr ""

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="32000">
+        <setting id="sign_in" type="action" label="32014" action="RunPlugin(plugin://plugin.video.plexondemand/?action=sign_in)" />
+        <setting id="sign_out" type="action" label="32015" action="RunPlugin(plugin://plugin.video.plexondemand/?action=sign_out)" />
+        <setting id="account_name" type="text" label="32030" default="" enable="false" />
+    </category>
+    <category label="32001">
+        <setting id="max_height" type="select" label="32031" values="0|480|720|1080" default="0" />
+        <setting id="subtitles" type="bool" label="32032" default="true" />
+        <setting id="report_progress" type="bool" label="32033" default="true" />
+    </category>
+    <category label="32002">
+        <setting id="base_url_override" type="text" label="32034" default="" />
+        <setting id="plex_token" type="text" label="32035" option="hidden" default="" visible="false" />
+        <setting id="anon_token" type="text" label="32036" option="hidden" default="" visible="false" />
+        <setting id="client_id" type="text" label="32037" default="" visible="false" />
+    </category>
+</settings>

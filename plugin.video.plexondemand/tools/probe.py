@@ -615,5 +615,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "logo")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "full")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main}.get(mode, main)())

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.19" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Plex's free, ad-supported Movies &amp; Shows catalogue (unofficial)</summary>
+		<description lang="en_GB">Browse and play the free on-demand movies and TV shows Plex streams from its own cloud. No Plex Media Server and no account needed; signing in with plex.tv/link is optional and only syncs watch progress to your Plex account.
+
+Clear titles play as HLS; Widevine-protected titles play as DASH through InputStream Adaptive (SD on most L3 devices).
+
+The catalogue is region-limited (mainly the US). Plex refuses some titles from VPN or datacenter addresses. This add-on does not play Plex's ads.
+
+Unofficial; not affiliated with or endorsed by Plex, Inc.</description>
+		<disclaimer lang="en_GB">Unofficial client. Plex is a trademark of Plex, Inc. Content availability is decided by Plex and its licensors.</disclaimer>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>v2026.11.19
+- First release: Plex's free Movies &amp; Shows catalogue without a Plex server or account
+- Featured rows, Movies and TV Shows by genre, search
+- Clear HLS playback with subtitles; Widevine DASH for DRM titles
+- Optional plex.tv/link sign-in; watch progress reported to Plex</news>
+	</extension>
+</addon>
