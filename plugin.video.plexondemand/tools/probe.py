@@ -1004,6 +1004,45 @@ def round11():
     return 0
 
 
+def round12():
+    """/actions/rate and add/removeFromDislikes: parameters and where the state shows up."""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    disc = "https://discover.provider.plex.tv"
+    rk = "5d9f3cb89dd5f4001e84c9e8"
+    _, root = req_json("GET", base + "/", headers=T)
+    for f in (mc(root).get("MediaProvider") or {}).get("Feature") or []:
+        if f.get("type") == "actions":
+            print("actions:", json.dumps(f.get("Action")))
+
+    def state(label):
+        _, d = req_json("GET", disc + f"/library/metadata/{rk}/userState", headers=T)
+        us = (mc(d).get("UserState") or [{}])[0]
+        _, m = req_json("GET", base + f"/library/metadata/{rk}", headers=T)
+        it = (mc(m).get("Metadata") or [{}])[0]
+        print(f"   [{label}] userState={us} meta.userRating={it.get('userRating')} meta.userState={it.get('userState')}")
+
+    state("before")
+    for params in ({"ratingKey": rk, "rating": 8}, {"key": rk, "rating": 6, "identifier": "tv.plex.provider.vod"},
+                   {"ratingKey": rk, "rating": 10, "ratedAt": 1}, {"ratingKey": rk, "rating": -1}):
+        for host, h in (("vod", base), ("disc", disc)):
+            st, ct, body, _ = req("PUT", h + "/actions/rate", headers=T, params=params)
+            print(f"== {host} PUT rate {params} -> {st} {mask(body[:150].decode('utf-8', 'replace'))}")
+            state(f"after {host} rate {params.get('rating')}")
+    for name in ("addToDislikes", "removeFromDislikes"):
+        for host, h in (("vod", base), ("disc", disc)):
+            st, ct, body, _ = req("PUT", h + f"/actions/{name}", headers=T, params={"ratingKey": rk})
+            print(f"== {host} PUT {name} -> {st} {mask(body[:150].decode('utf-8', 'replace'))}")
+            state(f"after {host} {name}")
+    # where are dislikes listed / do disliked titles drop out of hubs?
+    for u in (disc + "/library/sections/dislikes/all", disc + "/library/sections/watchlist/all?includeDislikes=1"):
+        st, ct, body, _ = req("GET", u, headers=T)
+        print(f"== GET {u.split('plex.tv')[1]} -> {st} {mask(body[:200].decode('utf-8', 'replace'))}")
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -1015,5 +1054,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round11")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round12")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12}.get(mode, main)())
