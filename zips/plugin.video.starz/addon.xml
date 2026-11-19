@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.starz" name="Starz" version="2026.11.19" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="script.module.skipbuttons" version="1.0.1"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+		<import addon="service.upnext" version="1.1.0" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<!-- Licence relay (localhost) and play progress/stop reporting. -->
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Starz client for Kodi (experimental)</summary>
+		<description lang="en_GB">Sign in with your Starz account, browse the full catalogue and play movies and series through InputStream Adaptive with Widevine DRM.
+
+EXPERIMENTAL: Starz provides no public API; this add-on uses the same calls as the Starz website and may need updating when Starz changes them. Movies and series play up to 1080p, also with the software Widevine L3 CDM on desktop (InputStream Adaptive caps the stream at the screen's size); live STARZ is up to 576p.
+
+Features:
+* Movies, series, episodes, trailers and extras; English and Spanish audio and subtitles
+* Continue Watching, My List, resume points and watched marks shared with Starz's apps
+* Genres, categories, filters and sort; search; cast and crew; recommendations
+* TV Schedule for the STARZ, Encore and Plex channels, and Kodi's TV guide through IPTV Manager
+* Up Next support and next-episode autoplay
+* Profiles with parental-control limits; manage devices</description>
+		<disclaimer lang="en_GB">Unofficial. Not affiliated with or endorsed by Starz. Use only with your own subscription; third-party clients may be against the service's terms.</disclaimer>
+		<platform>all</platform>
+		<license>GPL-3.0-only</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+			<clearlogo>resources/clearlogo.png</clearlogo>
+			<banner>resources/banner.png</banner>
+		</assets>
+		<news>v2026.11.19
+- First release: sign in with email and password or an activation code
+- Movies and series in Widevine DRM with English and Spanish audio and subtitles, trailers and extras
+- Home, Series, Movies, Browse, Genres and Categories with sort and filters, search, cast &amp; crew, "If you like"
+- Continue Watching, My List, watched marks and resume points shared with Starz's apps
+- Skip recap, Skip intro and Next episode buttons; Up Next support
+- TV Schedule with live STARZ, and Kodi's TV guide through IPTV Manager
+- Profiles, parental controls with the PIN asked at play time, and device management</news>
+	</extension>
+</addon>
