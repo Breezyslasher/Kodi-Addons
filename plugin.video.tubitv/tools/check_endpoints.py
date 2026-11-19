@@ -25,6 +25,7 @@ Anonymous only. My List, Continue Watching, ratings and progress reporting all
 need a signed-in account, so they are not checked here - there are no
 credentials in CI and there should not be.
 """
+import collections
 import os
 import sys
 import tempfile
@@ -32,9 +33,13 @@ import types
 
 ADDON = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# How much of a list is worth printing, and the longest line of detail.
+# How much of a list is worth printing, and how wide a check's name column is.
 SAMPLE = 3
 WIDTH = 26
+# How far to look for a film and a series before giving up: categories to walk,
+# and titles to actually ask Tubi about across them.
+CONTAINERS = 4
+CANDIDATES = 12
 
 
 def stand_in_for_kodi(profile):
@@ -141,18 +146,13 @@ def main():
     # ---------------------------------------------------------------- browse
     def browse_list():
         containers = need(api.browseList(), 'containers')
-        found['container_id'] = str(containers[0].get('id'))
+        found['container_ids'] = [str(c.get('id')) for c in containers if c.get('id')]
         return '%d categories: %s' % (len(containers), titles(containers))
 
     def container():
-        items, cursor = api.container(found['container_id'])
+        items, cursor = api.container(found['container_ids'][0])
         need(items, 'contents in the container')
-        # A film and a series to carry into the title checks below, rather
-        # than ids written down here that go stale when a title leaves.
-        for item in items:
-            key = 'series_id' if item.get('type') == SERIES else 'film_id'
-            found.setdefault(key, str(item.get('id')))
-            found.setdefault(key.replace('_id', '_title'), item.get('title') or '')
+        found['film_title'] = next((i.get('title') for i in items if i.get('title')), None)
         return '%d titles, next cursor %s: %s' % (len(items), cursor, titles(items))
 
     def homescreen():
@@ -179,7 +179,7 @@ def main():
         return '%r: %d results: %s' % (query, len(results), titles(results))
 
     checks.run('browse_list', 'The category list - the addon\'s front page.', browse_list)
-    if found.get('container_id'):
+    if found.get('container_ids'):
         checks.run('container', 'A category\'s contents. Every category listing goes through it.',
                    container)
     checks.run('homescreen', 'Tubi\'s own personalised rows, the Home entry.', homescreen)
@@ -188,26 +188,70 @@ def main():
     checks.run('search', 'Catalogue search.', search)
 
     # ---------------------------------------------------------------- titles
+    def find_titles():
+        """A film and a series out of the live catalogue, each one tried.
+
+        Not every id a category lists is a title /api/v3/content serves: the
+        Featured row carries live sports fixtures, and asking for one of
+        those answers 404 (measured 2026-11-19: "Eagles vs. Cowboys",
+        500011050). A candidate is therefore asked for rather than assumed
+        playable, and the types seen are printed so this can be narrowed
+        once Tubi's vocabulary here is known rather than guessed at.
+        """
+        kinds = collections.Counter()
+        tried = 0
+        for containerId in found['container_ids'][:CONTAINERS]:
+            if 'film' in found and 'series' in found:
+                break
+            try:
+                items, _ = api.container(containerId)
+            except tubi_api.TubiApiError:
+                continue
+            for item in items:
+                contentId, kind = str(item.get('id')), str(item.get('type'))
+                kinds[kind] += 1
+                if tried >= CANDIDATES:
+                    break
+                try:
+                    if kind == SERIES and 'series' not in found:
+                        tried += 1
+                        seasons = [s for s in api.seasons(contentId) if s.get('episodes')]
+                        if seasons:
+                            found['series'], found['seasons'] = contentId, seasons
+                    elif kind != SERIES and 'film' not in found:
+                        tried += 1
+                        data = api.content(contentId)
+                        if data.get('video_resources'):
+                            found['film'], found['film_data'] = contentId, data
+                except tubi_api.TubiApiError:
+                    continue        # not a title of that kind; try the next
+                if 'film' in found and 'series' in found:
+                    break
+        seen = ', '.join('%s x%d' % (k, n) for k, n in kinds.most_common())
+        need(found.get('film'), 'any film with playable streams in %d tried (types: %s)'
+             % (tried, seen))
+        need(found.get('series'), 'any series with seasons in %d tried (types: %s)'
+             % (tried, seen))
+        return 'film %s, series %s, of %d tried (types: %s)' % (
+            found['film'], found['series'], tried, seen)
+
     def content():
-        film = need(found.get('film_id'), 'a film id from the browse call')
-        data = api.content(film)
-        resources = need(data.get('video_resources'), 'video_resources on %s' % film)
+        data = need(found.get('film_data'), 'the film payload')
+        resources = need(data.get('video_resources'), 'video_resources on %s' % found['film'])
         urls = [r for r in resources if (r.get('manifest') or {}).get('url')]
         need(urls, 'a manifest url in any of the %d resources' % len(resources))
         return '%s: %d playable of %d, types %s' % (
             data.get('title'), len(urls), len(resources), tubi_api.offeredTypes(data))
 
     def series_episodes():
-        series = need(found.get('series_id'), 'a series id from the browse call')
-        seasons = need(api.seasons(series), 'episodes_by_season on %s' % series)
-        numbered = [s for s in seasons if s.get('episodes')]
-        need(numbered, 'a season with episodes')
-        found['season'] = numbered[0].get('season')
-        return '%s: %d seasons, first is season %s with %d episodes' % (
-            series, len(seasons), found['season'], len(numbered[0].get('episodes') or []))
+        seasons = need(found.get('seasons'), 'episodes_by_season on %s' % found.get('series'))
+        found['season'] = seasons[0].get('season')
+        return '%s: %d seasons with episodes, first is season %s with %d' % (
+            found['series'], len(seasons), found['season'],
+            len(seasons[0].get('episodes') or []))
 
     def episodes():
-        episodes = need(api.episodes(found['series_id'], found['season']),
+        episodes = need(api.episodes(found['series'], found['season']),
                         'episodes in season %s' % found['season'])
         need([e for e in episodes if e.get('id')], 'an episode with an id')
         found['episode'] = episodes[0]
@@ -227,18 +271,25 @@ def main():
                            {k: v for k, v in cues.items() if v})
 
     def related():
-        film = need(found.get('film_id'), 'a film id from the browse call')
+        film = need(found.get('film'), 'a film to ask about')
         items = need(api.related(film), 'related titles for %s' % film)
         return '%d titles: %s' % (len(items), titles(items))
 
-    checks.run('content', 'A title and its playable streams. Nothing plays without it.', content)
-    checks.run('series_episodes', 'A series\' seasons.', series_episodes)
-    if found.get('season') is not None:
+    # Both the film and the series are asked for here, so a content endpoint
+    # that has moved shows up as this check rather than the two below it.
+    checks.run('title_ids', 'A film and a series out of the live catalogue. Asking for a title '
+               'or a series\' seasons is what this does, so either of those moving fails it.',
+               find_titles)
+    if found.get('film'):
+        checks.run('content', 'A title and its playable streams. Nothing plays without it.',
+                   content)
+        checks.run('related', '"Related titles" on a film or series.', related)
+    if found.get('series'):
+        checks.run('series_episodes', 'A series\' seasons.', series_episodes)
         checks.run('episodes', 'One season\'s episodes, which is what an episode plays from.',
                    episodes)
         checks.run('credit_cuepoints', 'Where the intro and credits are. Only the skip buttons '
                    'use it, so the rest of the addon is unaffected.', cuepoints, fatal=False)
-    checks.run('related', '"Related titles" on a film or series.', related)
 
     # -------------------------------------------------------------- live tv
     def live_channels():
