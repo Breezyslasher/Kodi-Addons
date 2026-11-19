@@ -221,16 +221,36 @@ class StarzAuth(object):
         kodiutils.delete_file(SESSION_FILE)
 
     def sign_out(self):
-        """End the session on Starz's side, then forget it locally.
+        """Sign out on Starz's side too, then forget the session locally.
 
-        The web client logs out with DELETE Token under the session token
-        (requiresSessionToken in its bundle; read from the logout HAR's JS,
-        the request itself was not captured). The local session is cleared
-        even if Starz cannot be reached, so Sign out always signs out.
-        [VERIFY] whether this also frees the device's slot in the account's
-        device limit.
+        1. Free this device's place in the account's 6-device limit: find
+           this device id in GET User/devices and log it out with POST
+           User/devices/logout {"Devices": [id]} (device HAR). Only ever this
+           device's own id, and only when Starz lists it.
+        2. End the session: DELETE Token under the session token (the web
+           client's logout, from its JS).
+        The local session is cleared even if Starz cannot be reached, so
+        Sign out always signs out.
         """
         if self.signed_in:
+            try:
+                headers = self.session_headers()
+                listed = self.http.get(AUTH_API + "User/devices", headers=headers,
+                                       timeout=TIMEOUT)
+                ids = [d.get("deviceId") for d in
+                       ((listed.json() or {}).get("devices") or [])] if listed.status_code == 200 else []
+                if self.device_id in ids:
+                    resp = self.http.post(AUTH_API + "User/devices/logout",
+                                          json={"Devices": [self.device_id]},
+                                          headers=headers, timeout=TIMEOUT)
+                    kodiutils.log("Device logout -> HTTP %d" % resp.status_code)
+                    if resp.status_code >= 400:
+                        log_response("User/devices/logout", resp)
+                else:
+                    kodiutils.log("Sign out: this device is not in the account's "
+                                  "device list (%d listed)" % len(ids))
+            except (requests.RequestException, ValueError) as exc:
+                kodiutils.log_error("Device logout failed: %s" % exc)
             try:
                 resp = self.http.delete(AUTH_API + "Token",
                                         headers=self.session_headers(),

@@ -51,7 +51,8 @@ calls and opens an issue when one changes.
 - Not in Kodi: changing your email, password or PIN (use starz.com)
 - **Manage devices**: log out other devices. Starz allows 6; at the limit,
   playback offers to log one out and tries again.
-- Sign out (also ends the session on Starz)
+- Sign out: ends the session on Starz and removes this Kodi from your Starz
+  devices, freeing its place in the 6-device limit
 
 ## Signing in
 

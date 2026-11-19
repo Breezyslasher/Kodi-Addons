@@ -44,7 +44,7 @@ msgid "Search Starz"
 msgstr ""
 
 msgctxt "#32030"
-msgid "Sign out of Starz?"
+msgid "Sign out of Starz? This Kodi is also removed from your Starz devices."
 msgstr ""
 
 msgctxt "#32040"
