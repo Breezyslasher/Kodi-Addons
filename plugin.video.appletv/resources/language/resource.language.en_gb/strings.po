@@ -186,6 +186,14 @@ msgctxt "#32114"
 msgid "Rentals"
 msgstr ""
 
+msgctxt "#32115"
+msgid "Play the next episode automatically (and show the Next Episode button)"
+msgstr ""
+
+msgctxt "#32116"
+msgid "Resume from Apple's watched position"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""
