@@ -40,6 +40,12 @@ WIDTH = 26
 # and titles to actually ask Tubi about across them.
 CONTAINERS = 4
 CANDIDATES = 12
+# The letter a content payload marks a series with. NOT tubi_api.SERIES, which
+# is the word Tubi's watch history uses for the same thing - scraper.py defines
+# its own for exactly this reason, and importing the wrong one is why the
+# second live run tried 2 candidates out of 166. Measured on 2026-11-19 across
+# four categories: v x132 films, s x33 series, se x1.
+SERIES_TYPE = 's'
 
 
 def stand_in_for_kodi(profile):
@@ -114,7 +120,6 @@ def main():
     addon = stand_in_for_kodi(tempfile.mkdtemp())
     sys.path.insert(0, os.path.join(ADDON, 'resources', 'lib'))
     import tubi_api
-    from tubi_api import SERIES
     from tubi_auth import TubiAuth
 
     print('Tubi endpoint check (anonymous, driving the addon\'s own code)')
@@ -213,12 +218,12 @@ def main():
                 if tried >= CANDIDATES:
                     break
                 try:
-                    if kind == SERIES and 'series' not in found:
+                    if kind == SERIES_TYPE and 'series' not in found:
                         tried += 1
                         seasons = [s for s in api.seasons(contentId) if s.get('episodes')]
                         if seasons:
                             found['series'], found['seasons'] = contentId, seasons
-                    elif kind != SERIES and 'film' not in found:
+                    elif kind != SERIES_TYPE and 'film' not in found:
                         tried += 1
                         data = api.content(contentId)
                         if data.get('video_resources'):
