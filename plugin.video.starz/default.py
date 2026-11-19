@@ -677,6 +677,9 @@ def _apply_play_info(li, api, content_id):
         _apply_info(li, item)
 
 
+MAX_PROFILES = 5            # Starz's limit per account
+MAX_PROFILES_ERROR = 2006   # POST User/profiles: "Maximum profiles exceeded"
+
 # The PIN, once accepted, is kept for the rest of this Kodi session (in
 # memory, like the website's sessionStorage "playBack"/"pinCode"), so the
 # next episode does not ask again.
@@ -781,12 +784,18 @@ def show_profiles(api, auth):
             if icon:
                 li.setArt({"icon": icon, "thumb": icon})
             items.append(li)
-        items.append(xbmcgui.ListItem(L(32141)))
+        # Starz allows MAX_PROFILES (User/profiles answers 409 errorCode
+        # 2006 "Maximum profiles exceeded" beyond it).
+        full = len(profiles) >= MAX_PROFILES
+        items.append(xbmcgui.ListItem(L(32178) % MAX_PROFILES if full else L(32141)))
         i = xbmcgui.Dialog().select(L(32158), items, useDetails=True)
         if i < 0:
             return
         if i == len(profiles):
-            do_profile_add(api)
+            if full:
+                kodiutils.ok_dialog(L(32179) % MAX_PROFILES)
+            else:
+                do_profile_add(api)
         else:
             do_profile_menu(api, auth, profiles[i].get("id"))
 
@@ -811,7 +820,13 @@ def do_profile_add(api):
     icon = _pick_icon(api, L(32144))
     if icon is None:
         return
-    api.create_profile(name.strip(), icon)
+    try:
+        api.create_profile(name.strip(), icon)
+    except StarzAuthError as exc:
+        if exc.code != MAX_PROFILES_ERROR:
+            raise
+        kodiutils.ok_dialog(L(32179) % MAX_PROFILES)
+        return
     kodiutils.notify(L(32145) % name.strip())
     xbmc.executebuiltin("Container.Refresh")
 

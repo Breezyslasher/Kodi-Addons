@@ -490,3 +490,11 @@ msgstr ""
 msgctxt "#32177"
 msgid "This title is above the profile's parental-control limits"
 msgstr ""
+
+msgctxt "#32178"
+msgid "[COLOR grey]Add profile (Starz allows %d)[/COLOR]"
+msgstr ""
+
+msgctxt "#32179"
+msgid "Starz allows up to %d profiles per account. Delete one to add another."
+msgstr ""

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.19.30" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.19.31" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -36,7 +36,10 @@ Features:
 			<clearlogo>resources/clearlogo.png</clearlogo>
 			<banner>resources/banner.png</banner>
 		</assets>
-		<news>v2026.11.19.30
+		<news>v2026.11.19.31
+- Manage profiles shows Starz's limit of 5 profiles instead of failing to add a sixth
+
+v2026.11.19.30
 - Parental controls work like the website: every title is listed, and one above the profile's limits asks for the account PIN when played (remembered until Kodi restarts)
 
 v2026.11.19.28
