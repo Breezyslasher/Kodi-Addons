@@ -36,11 +36,9 @@ calls and opens an issue when one changes.
 - Cast, director, writer and studio in Kodi's info dialog
 
 **TV**
-- **Live TV**: Starz's live broadcast, as on starz.com/livetv (the website
-  labels it "Live broadcast" without a channel name).
 - **TV Schedule**: the 17 STARZ, STARZ Encore and Plex channels with today's
-  and tomorrow's line-ups. STARZ plays live; the other channels have no live
-  stream, so their *On now* plays the scheduled title on demand from the
+  and tomorrow's line-ups. **STARZ is live** (marked Live; the same broadcast
+  as starz.com/livetv); the other channels have no live stream, so their *On now* plays the scheduled title on demand from the
   point the channel has reached.
 - The same channels and a two-day guide in **Kodi's TV guide** through
   [IPTV Manager](https://github.com/add-ons/service.iptv.manager)

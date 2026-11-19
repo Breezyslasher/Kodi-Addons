@@ -451,6 +451,6 @@ msgctxt "#32162"
 msgid "Profile %s updated"
 msgstr ""
 
-msgctxt "#32170"
-msgid "Live TV"
+msgctxt "#32171"
+msgid "Live"
 msgstr ""

@@ -234,11 +234,6 @@ def main_menu(auth):
     add_dir(L(32052), "page", page="SERIES")
     add_dir(L(32053), "page", page="MOVIES")
     add_dir(L(32054), "page", page="BROWSE")
-    li = xbmcgui.ListItem(L(32170))
-    li.setArt({"icon": logo(_ADDON_PATH, LIVE_CHANNEL), "thumb": logo(_ADDON_PATH, LIVE_CHANNEL),
-               "fanart": ADDON_ART["fanart"]})
-    li.setProperty("IsPlayable", "true")
-    xbmcplugin.addDirectoryItem(HANDLE, url(action="live", channel=LIVE_CHANNEL), li, False)
     add_dir(L(32110), "channels")
     add_dir(L(32074), "genres")
     add_dir(L(32075), "categories")
@@ -777,7 +772,9 @@ def _clock(ms):
 
 def show_channels():
     for code, name, group in CHANNELS:
-        li = xbmcgui.ListItem(name)
+        # The one channel Starz streams live (STZ1); the rest tune in on demand.
+        li = xbmcgui.ListItem(name if code != LIVE_CHANNEL
+                              else "%s  [COLOR grey]%s[/COLOR]" % (name, L(32171)))
         icon = logo(_ADDON_PATH, code)
         li.setArt({"icon": icon, "thumb": icon, "fanart": ADDON_ART["fanart"]})
         li.getVideoInfoTag().setPlot(group)
