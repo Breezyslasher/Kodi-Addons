@@ -23,8 +23,11 @@ from . import kodiutils
 
 PLEX_TV = "https://plex.tv/api/v2"
 LINK_URL = "https://plex.tv/link"
-PRODUCT = "Plex On Demand for Kodi"
-VERSION = "1.0"
+# Plex only issues anonymous accounts to client products it knows: with a
+# made-up X-Plex-Product, POST /users/anonymous answers 404 (seen in the smoke
+# test). These are the Plex Web values every capture succeeded with.
+PRODUCT = "Plex Web"
+VERSION = "4.145.1"
 TIMEOUT = 20
 
 
@@ -42,8 +45,9 @@ def base_headers():
         "X-Plex-Client-Identifier": client_id(),
         "X-Plex-Product": PRODUCT,
         "X-Plex-Version": VERSION,
-        "X-Plex-Platform": "Kodi",
-        "X-Plex-Device": "Kodi",
+        "X-Plex-Platform": "Chrome",
+        "X-Plex-Platform-Version": "131.0",
+        "X-Plex-Device": "Linux",
         "X-Plex-Device-Name": "Kodi",
         "X-Plex-Language": "en",
     }
