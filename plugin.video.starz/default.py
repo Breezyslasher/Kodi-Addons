@@ -203,14 +203,17 @@ def add_item(item):
     # Starz's badges (New Season, New Episode, Top 10, Leaving Soon...); Coming
     # Soon has its own marker below.
     keys = [k for k in item.get("badge_keys") or []
-            if k != "cs" and k in (STATE.get("badges") or {})]
+            if k in (STATE.get("badges") or {})]
+    if item.get("coming_soon") and "cs" not in keys:
+        keys.insert(0, "cs")   # comingSoon flag without the badge key
     drawn = next((k for k in keys if k in TAG_SIZES), None)
     if drawn and STATE.get("poster_tags") and item.get("art"):
         # Drawn in the image's corner, as on the website; any others (rare)
         # stay in the label.
         item = dict(item, art=_tagged_art(item["art"], drawn))
         keys.remove(drawn)
-    tags = [STATE["badges"][k] for k in keys]
+    # Coming Soon has its own "(Coming soon)" marker below.
+    tags = [STATE["badges"][k] for k in keys if k != "cs" and k in STATE["badges"]]
     extras += tags
     if extras:
         label = "%s  [COLOR grey]%s[/COLOR]" % (label, " · ".join(extras))
