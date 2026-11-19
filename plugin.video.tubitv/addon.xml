@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.tubitv" name="TubiTV" version="2026.11.15" provider-name="Lunatixz, Breezyslasher">
+<addon id="plugin.video.tubitv" name="TubiTV" version="2026.11.19" provider-name="Lunatixz, Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 		<import addon="script.module.t1mlib" version="4.0.9"/>
 		<import addon="script.module.requests" version="2.22.0"/>
+		<import addon="script.module.skipbuttons" version="1.0.1"/>
 		<import addon="inputstream.adaptive" version="2.6.0"/>
 	</requires>
 	<extension point="xbmc.python.pluginsource" library="default.py">
@@ -29,6 +30,23 @@
 		<website>http://www.tubitv.com/</website>
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
 		<news>
+2026.11.19 - Skip intro, and the next episode at the credits
+- NEW: Skip recap and Skip intro appear while those parts play, and at
+  the credits Next episode counts down from ten - the buttons Tubi's own
+  apps have. Tubi publishes the times in the title itself, so nothing
+  extra is asked for and nothing is estimated: a title Tubi gives no
+  times for gets no buttons.
+- NEW: "Play the next episode when the credits start", on by default,
+  which is what the countdown obeys. A season's last episode leads to
+  the first episode of the next season.
+- CHANGED: The service looks at the player every second while one of this
+  addon's videos plays, instead of every five, so the buttons appear and
+  go on time. It is back to every five seconds otherwise, and PseudoTV
+  Live is registered on the same schedule as before either way.
+- FIXED: With "Tell Tubi where you stopped watching" off, the service was
+  told nothing at all about what was playing. What is playing and where
+  to report it are now two separate things.
+
 2026.11.15 - An episode played by its own id reports as an episode
 - FIXED: Whether a play was an episode was decided from the plugin url
   rather than from the title. An episode opened by its own id - which

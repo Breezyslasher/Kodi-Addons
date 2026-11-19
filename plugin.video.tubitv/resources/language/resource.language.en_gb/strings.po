@@ -161,6 +161,10 @@ msgctxt "#30040"
 msgid "Tell Tubi where you stopped watching (needs sign-in)"
 msgstr ""
 
+msgctxt "#30056"
+msgid "Play the next episode when the credits start"
+msgstr ""
+
 # --- Messages ---
 msgctxt "#30018"
 msgid "This video requires you to sign in - please see the addon settings"

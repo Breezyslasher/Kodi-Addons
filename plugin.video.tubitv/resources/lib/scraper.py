@@ -57,6 +57,51 @@ def asInt(value):
         return None
 
 
+# What a marker shorter than this is: noise, not something worth a button.
+MIN_MARKER = 5
+# A credits time within this of the end is the very end, not the credits.
+CREDITS_TAIL = 5
+
+
+def skipMarkers(content):
+    """Where the recap, intro and credits are, for script.module.skipbuttons.
+
+    Tubi puts them in `credit_cuepoints` on an episode and on a film, in
+    seconds, in both the content payload and the season payload - so they
+    are in hand wherever a title is played from, at no extra request.
+    Measured 2026-11-19 with the anonymous token (Forensic Files S1 E1,
+    438034): intro_start 82.98, intro_end 111.90, postlude 1333.65 of 1369.
+
+    Every key is always present and an absent marker reads 0.0 rather than
+    going missing, so zero has to mean "none" - otherwise every film takes
+    a 0 to 0 intro. `earlycredits_start` / `earlycredits_end` are there too
+    and were 0.0 on everything measured; nothing is done with them until
+    something is seen using them.
+    """
+    cues = content.get('credit_cuepoints') or {}
+    if not isinstance(cues, dict):
+        return {}
+
+    def seconds(key):
+        try:
+            value = float(cues.get(key) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+        return value if value > 0 else 0.0
+
+    marks = {}
+    for name, first, last in (('recap', 'recap_start', 'recap_end'),
+                              ('intro', 'intro_start', 'intro_end')):
+        start, end = seconds(first), seconds(last)
+        if end - start >= MIN_MARKER:
+            marks[name] = (start, end)
+    credits = seconds('postlude')
+    duration = asInt(content.get('duration')) or 0
+    if credits and (not duration or credits < duration - CREDITS_TAIL):
+        marks['credits'] = credits
+    return marks
+
+
 def inputstreamMajor():
     """Major version of the installed inputstream.adaptive, 0 if unknown."""
     try:
@@ -700,27 +745,41 @@ class myAddon(t1mAddon):
         return {}
 
     def rememberPlaying(self, url, content):
-        """Leave the service what it needs to report progress on stop.
+        """Leave the service what it needs while this title plays.
+
+        Two things want it: progress reporting on stop, and the skip
+        buttons. Progress reporting is a setting, the buttons are not, so
+        this is written either way and `report` says which is wanted - the
+        service knew nothing at all while the setting was off. Trailers
+        leave nothing: neither applies to them.
 
         A film reports as itself. An episode reports as itself too, with its
-        series named as the parent. Trailers report nothing.
+        series named as the parent.
         """
         window = xbmcgui.Window(10000)
         window.clearProperty(PLAYING)
         parts = uqp(url).split('|')
-        if parts[0] == 'trailer' or self.addon.getSetting('report_progress') != 'true':
+        if parts[0] == 'trailer':
             return
         contentId = asInt(content.get('id'))
         if contentId is None:
             return
         playing = {'content_id': contentId,
                    'content_type': HISTORY_MOVIE,
-                   'duration': content.get('duration')}
+                   'duration': content.get('duration'),
+                   'report': self.addon.getSetting('report_progress') == 'true',
+                   'markers': skipMarkers(content)}
         parentId = self.seriesOf(url, content)
         if parentId is not None:
             playing['content_type'] = HISTORY_EPISODE
             # Tubi's history wants the parent as a string, the content as a number
             playing['parent_id'] = str(parentId)
+            playing['series_id'] = str(parentId)
+            # Which season this is comes from the url: the content payload
+            # names the episode number and the series, but no season.
+            if len(parts) >= 3:
+                playing['season'] = parts[2]
+            playing['episode_number'] = content.get('episode_number')
         window.setProperty(PLAYING, json.dumps(playing))
 
     @staticmethod
