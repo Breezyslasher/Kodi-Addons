@@ -76,6 +76,8 @@ TYPES = {"Movie": "movie", "Series with Season": "series", "Season": "season",
          "Episode": "episode"}
 
 TIMEOUT = 20
+PARENTAL_PIN_NEEDED = 1501
+PARENTAL_PIN_WRONG = 1500
 
 
 def _image(content_id, kind, dimension, width):
@@ -644,7 +646,6 @@ class StarzApi(object):
         self.auth.request("PUT", AUTH_API + "ParentalControls",
                           json={"parentalControlPin": pin, "parentalControls": out,
                                 "profileId": profile_id})
-        self.__dict__.pop("_blocked", None)
 
     # -- activate another device --------------------------------------------
 
@@ -664,39 +665,11 @@ class StarzApi(object):
                 if c.get("comingSoon") and c.get("contentType") in TYPES]
 
     def _finish(self, items, series_id=None):
-        """Every listing ends here: hide what the profile's parental controls
-        block, then add watched marks and resume points."""
-        return apply_history(self.allowed(items), self.history(series_id))
-
-    def blocked_ratings(self):
-        """Ratings switched off for the selected profile.
-        GET ParentalControls/{profileId} -> {"parentalControls": [{rating,
-        type, enabled}]} (device HAR); edited on the website behind the
-        account PIN (parental HAR). The catalogue is not per profile, so the
-        website hides restricted titles itself, as this does. Empty when
-        signed out or if Starz fails."""
-        if "_blocked" not in self.__dict__:
-            blocked = set()
-            if self.auth.signed_in and self.auth.profile_id:
-                try:
-                    data = self.auth.request(
-                        "GET", AUTH_API + "ParentalControls/" + self.auth.profile_id).json()
-                    blocked = {c.get("rating") for c in (data or {}).get("parentalControls") or []
-                               if c.get("rating") and c.get("enabled") is False}
-                except Exception as exc:
-                    kodiutils.log_error("ParentalControls: %s" % exc)
-            self._blocked = blocked
-        return self._blocked
-
-    def allowed(self, items):
-        blocked = self.blocked_ratings()
-        if not blocked:
-            return items
-        kept = [i for i in items if i.get("mpaa") not in blocked]
-        self.hidden = getattr(self, "hidden", 0) + len(items) - len(kept)
-        if len(kept) != len(items):
-            kodiutils.log("Parental controls hid %d title(s)" % (len(items) - len(kept)))
-        return kept
+        """Every listing ends here: add watched marks and resume points.
+        Parental controls hide nothing: as on the website, every title is
+        listed and one above the profile's limits asks for the account PIN
+        when played (parental-PIN HAR: Play 403 errorCode 1501)."""
+        return apply_history(items, self.history(series_id))
 
     def history(self, series_id=None):
         """User/history as {contentId: entry} (sign-in HAR #304; series HAR
@@ -732,7 +705,7 @@ class StarzApi(object):
                     item["title"] = "%s - %s" % (entry["seriesTitle"],
                                                  entry.get("displayTitle") or item["title"])
                 items.append(item)
-        return self.allowed(items)
+        return items
 
     def series_tree(self, series_id):
         """The whole series: v8/content?contentIds={id} with no includes
@@ -922,7 +895,7 @@ class StarzApi(object):
 
     # -- playback ------------------------------------------------------------
 
-    def playback(self, content_id, subtitle_langs=("en",)):
+    def playback(self, content_id, subtitle_langs=("en",), pin=None):
         """Resolve a title to a playback dict (play HAR, recon rows D-K).
 
         GET Play?contentId= is the entitlement/device check (204 when fine;
@@ -937,10 +910,18 @@ class StarzApi(object):
         live = str(content_id) == LIVE_ID
         # The live stream's id is a string (live HAR); titles' are numbers.
         cid = LIVE_ID if live else int(content_id)
-        self.auth.request("GET", AUTH_API + "Play", params={"contentId": cid})
-        info = self.auth.request("POST", AUTH_API + "Play/start",
-                                 json={"contentId": cid,
-                                       "mediaResumePointSeconds": None}).json()
+        # Above the profile's parental limits, Play answers 403 errorCode
+        # 1501 (PARENTAL_PIN_NEEDED); the website then asks for the account
+        # PIN and sends it as &pin= here and as parentalControlPin to
+        # Play/start (parental-PIN HAR). A wrong PIN is 1500.
+        params = {"contentId": cid}
+        start = {"contentId": cid}
+        if pin:
+            params["pin"] = pin
+            start["parentalControlPin"] = pin
+        start["mediaResumePointSeconds"] = None
+        self.auth.request("GET", AUTH_API + "Play", params=params)
+        info = self.auth.request("POST", AUTH_API + "Play/start", json=start).json()
         manifest_url = info["mediaUrl"]
         # The live manifest has no default_KID; the website then licenses
         # with an empty key id (.../ghostlocker/?token=..., live HAR #211).

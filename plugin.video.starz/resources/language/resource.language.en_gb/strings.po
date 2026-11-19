@@ -484,5 +484,9 @@ msgid "Live"
 msgstr ""
 
 msgctxt "#32176"
-msgid "[COLOR grey]Nothing to show: %d title(s) here are above this profile's parental-control limits[/COLOR]"
+msgid "Above this profile's parental limits: Starz parental-control PIN"
+msgstr ""
+
+msgctxt "#32177"
+msgid "This title is above the profile's parental-control limits"
 msgstr ""

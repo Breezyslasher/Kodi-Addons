@@ -12,7 +12,8 @@ import xbmcplugin
 
 from lib import kodiutils
 from lib.auth import StarzAuth, StarzAuthError, NotReadyError
-from lib.api import StarzApi, PLAYING_FILE, LIVE_ID, LIVE_CHANNEL
+from lib.api import (StarzApi, PLAYING_FILE, LIVE_ID, LIVE_CHANNEL,
+                     PARENTAL_PIN_NEEDED, PARENTAL_PIN_WRONG)
 from lib.license_relay import relay_url, LICENSE_FILE
 from lib import iptv
 from lib.channels import CHANNELS, NAMES, logo
@@ -251,11 +252,7 @@ def show_items(items, content="videos"):
     for item in items:
         add_item(item)
     if not items:
-        # Say why, rather than an empty folder: everything here may be above
-        # this profile's parental-control limits.
-        api = STATE.get("api")
-        hidden = getattr(api, "hidden", 0) if api else 0
-        add_action(L(32176) % hidden if hidden else L(32064), "noop")
+        add_action(L(32064), "noop")    # "No results" rather than an empty folder
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -680,13 +677,45 @@ def _apply_play_info(li, api, content_id):
         _apply_info(li, item)
 
 
+# The PIN, once accepted, is kept for the rest of this Kodi session (in
+# memory, like the website's sessionStorage "playBack"/"pinCode"), so the
+# next episode does not ask again.
+PIN_PROPERTY = "plugin.video.starz.pin"
+
+
+def _playback_with_pin(api, content_id):
+    """api.playback, asking for the account PIN when the title is above the
+    profile's parental limits (Play 403 errorCode 1501), as the website
+    does; a wrong PIN (1500) asks again, up to three times."""
+    home = xbmcgui.Window(10000)
+    pin = home.getProperty(PIN_PROPERTY) or None
+    for _ in range(4):
+        try:
+            playback = api.playback(content_id, kodiutils.subtitle_languages(), pin=pin)
+        except StarzAuthError as exc:
+            if exc.code not in (PARENTAL_PIN_NEEDED, PARENTAL_PIN_WRONG):
+                raise
+            if pin:
+                home.clearProperty(PIN_PROPERTY)
+                if exc.code == PARENTAL_PIN_WRONG:
+                    kodiutils.notify(L(32153))
+            pin = xbmcgui.Dialog().numeric(0, L(32176), bHiddenInput=True)
+            if not pin:
+                raise StarzAuthError(L(32177), code=exc.code)
+            continue
+        if pin:
+            home.setProperty(PIN_PROPERTY, pin)
+        return playback
+    raise StarzAuthError(L(32153), code=PARENTAL_PIN_WRONG)
+
+
 def do_play(api, content_id, auth=None, seek_to=None, programme=None, channel=None):
     if not ensure_widevine():
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     try:
         try:
-            playback = api.playback(content_id, kodiutils.subtitle_languages())
+            playback = _playback_with_pin(api, content_id)
         except StarzAuthError as exc:
             # At the device limit, offer to free a slot here instead of a
             # dead end, then try once more.
@@ -695,10 +724,11 @@ def do_play(api, content_id, auth=None, seek_to=None, programme=None, channel=No
                 raise
             if not do_manage_devices(api, auth):
                 raise
-            playback = api.playback(content_id, kodiutils.subtitle_languages())
+            playback = _playback_with_pin(api, content_id)
     except Exception as exc:
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
-        if getattr(exc, "code", None) != DEVICE_LIMIT:
+        if getattr(exc, "code", None) not in (DEVICE_LIMIT, PARENTAL_PIN_NEEDED,
+                                              PARENTAL_PIN_WRONG):
             # Say why, when Starz's account checks know: location or access.
             problem = api.access_problem()
             if problem:
@@ -1004,7 +1034,6 @@ def router(paramstring):
 
     auth = StarzAuth()
     api = StarzApi(auth)
-    STATE["api"] = api
     STATE["signed_in"] = auth.signed_in
     if action in ("row", "page", "search", "my_list", "all", "browse", "recommended",
                   "artist", "similar", "continue"):

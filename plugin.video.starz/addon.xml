@@ -37,7 +37,7 @@ Features:
 			<banner>resources/banner.png</banner>
 		</assets>
 		<news>v2026.11.19.29
-- A list that parental controls empty says so instead of showing an empty folder
+- Parental controls work like the website: every title is listed, and one above the profile's limits asks for the account PIN when played (remembered until Kodi restarts)
 
 v2026.11.19.28
 - The skip buttons now come from the shared Skip Buttons module (script.module.skipbuttons)
