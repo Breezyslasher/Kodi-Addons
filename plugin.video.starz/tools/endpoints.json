@@ -306,6 +306,45 @@
         ]
       },
       "note": "Badges on titles (New Season, New Episode, Top 10)."
+    },
+    {
+      "id": "probe_avatar_plain",
+      "url": "https://profileimages-prod.imgix.net/profile/image/us/starz/canned/avatar-03.png",
+      "params": {
+        "w": "256",
+        "h": "256",
+        "fit": "crop"
+      },
+      "headers": {
+        "Accept": "image/png,image/*"
+      },
+      "expect": {
+        "content_type": "image/"
+      },
+      "report_only": true,
+      "note": "Probe: avatar without a letter (size to compare)."
+    },
+    {
+      "id": "probe_avatar_letter",
+      "url": "https://profileimages-prod.imgix.net/profile/image/us/starz/canned/avatar-03.png",
+      "params": {
+        "w": "256",
+        "h": "256",
+        "fit": "crop",
+        "txt": "P",
+        "txt-size": "128",
+        "txt-color": "FFFFFF",
+        "txt-align": "middle,center",
+        "txt-font": "Helvetica Neue,Bold"
+      },
+      "headers": {
+        "Accept": "image/png,image/*"
+      },
+      "expect": {
+        "content_type": "image/"
+      },
+      "report_only": true,
+      "note": "Probe: the same avatar with the profile's initial drawn by imgix (a different size means the letter was drawn)."
     }
   ]
 }
