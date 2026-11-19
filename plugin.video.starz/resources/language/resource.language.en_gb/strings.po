@@ -482,3 +482,7 @@ msgstr ""
 msgctxt "#32171"
 msgid "Live"
 msgstr ""
+
+msgctxt "#32176"
+msgid "[COLOR grey]Nothing to show: %d title(s) here are above this profile's parental-control limits[/COLOR]"
+msgstr ""

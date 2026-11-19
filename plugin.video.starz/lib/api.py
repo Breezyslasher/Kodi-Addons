@@ -693,6 +693,7 @@ class StarzApi(object):
         if not blocked:
             return items
         kept = [i for i in items if i.get("mpaa") not in blocked]
+        self.hidden = getattr(self, "hidden", 0) + len(items) - len(kept)
         if len(kept) != len(items):
             kodiutils.log("Parental controls hid %d title(s)" % (len(items) - len(kept)))
         return kept

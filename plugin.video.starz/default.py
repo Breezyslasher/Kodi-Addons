@@ -250,6 +250,12 @@ def show_items(items, content="videos"):
     xbmcplugin.setContent(HANDLE, content)
     for item in items:
         add_item(item)
+    if not items:
+        # Say why, rather than an empty folder: everything here may be above
+        # this profile's parental-control limits.
+        api = STATE.get("api")
+        hidden = getattr(api, "hidden", 0) if api else 0
+        add_action(L(32176) % hidden if hidden else L(32064), "noop")
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -998,6 +1004,7 @@ def router(paramstring):
 
     auth = StarzAuth()
     api = StarzApi(auth)
+    STATE["api"] = api
     STATE["signed_in"] = auth.signed_in
     if action in ("row", "page", "search", "my_list", "all", "browse", "recommended",
                   "artist", "similar", "continue"):

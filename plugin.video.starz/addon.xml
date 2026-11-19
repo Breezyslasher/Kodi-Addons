@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.19.28" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.19.29" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -36,7 +36,10 @@ Features:
 			<clearlogo>resources/clearlogo.png</clearlogo>
 			<banner>resources/banner.png</banner>
 		</assets>
-		<news>v2026.11.19.28
+		<news>v2026.11.19.29
+- A list that parental controls empty says so instead of showing an empty folder
+
+v2026.11.19.28
 - The skip buttons now come from the shared Skip Buttons module (script.module.skipbuttons)
 
 v2026.11.19.27
