@@ -87,6 +87,10 @@ def input_numeric(heading):
 _PROFILE_DIR = []
 
 
+def addon_path():
+    return xbmcvfs.translatePath(addon().getAddonInfo("path"))
+
+
 def profile_dir():
     # Remembered: when an update replaces the add-on, Kodi unregisters it
     # before stopping the old service, and Addon() then raises "Unknown

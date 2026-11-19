@@ -26,6 +26,7 @@ from lib.api import StarzApi, PLAYING_FILE
 from lib.auth import StarzAuth
 from lib.license_relay import LicenseRelay
 from lib import upnext
+from lib import skip
 from lib import programme
 from lib.channels import NAMES
 from lib.api import to_item
@@ -34,7 +35,6 @@ from lib.api import to_item
 # keep-alive Starz gives; doing the same keeps the resume point current.
 UPDATE_SECS = 30
 LIVE_DELAY_SECS = 25
-NEXT_DELAY_SECS = 10
 POLL_SECS = 1
 
 
@@ -44,9 +44,6 @@ class Session(object):
         self.position = 0.0
         self.last_update = None   # set on the first tick: the start
         self.next_id = None       # the next episode, once looked up
-        self.next_title = ""
-        self.credits_at = None    # Starz's creditTimeIn: where credits start
-        self.countdown = None     # clock tick when the "Next episode" notice showed
 
 
 class Player(xbmc.Player):
@@ -54,6 +51,21 @@ class Player(xbmc.Player):
     def __init__(self):
         xbmc.Player.__init__(self)
         self.session = None
+        L = kodiutils.localize
+        self.skip = skip.SkipController(
+            self, self._play_next,
+            {"next": L(32172), "credits": L(32173), "recap": L(32174), "intro": L(32175)},
+            kodiutils.addon_path(),
+            autoplay=lambda: kodiutils.get_setting_bool("autoplay_next", True))
+
+    def _play_next(self):
+        next_id = self.session.next_id if self.session else None
+        if not next_id:
+            return
+        self._finish()            # Play/stop for this episode first
+        kodiutils.log("Playing next episode %s" % next_id)
+        xbmc.executebuiltin("PlayMedia(plugin://plugin.video.starz/?action=play&content_id=%s)"
+                            % next_id)
 
     def onAVStarted(self):
         info = kodiutils.read_json(PLAYING_FILE, default=None)
@@ -106,30 +118,8 @@ class Player(xbmc.Player):
             self._report("update")
             self.session.last_update = now
         self._follow_schedule()
-        self._credits_autoplay(now)
-
-    def _credits_autoplay(self, now):
-        """Without Up Next: at the credits (creditTimeIn), show a notice and
-        start the next episode NEXT_DELAY_SECS later, as Starz's own apps do.
-        Stopping during the notice cancels it."""
-        s = self.session
-        if (not s or not s.next_id or not s.credits_at or upnext.installed()
-                or not kodiutils.get_setting_bool("autoplay_next", True)):
-            return
-        if s.position < s.credits_at:
-            s.countdown = None        # e.g. seeked back before the credits
-            return
-        if s.countdown is None:
-            s.countdown = now
-            kodiutils.notify(kodiutils.localize(32169) % (NEXT_DELAY_SECS, s.next_title),
-                             time_ms=NEXT_DELAY_SECS * 1000)
-            return
-        if now - s.countdown >= NEXT_DELAY_SECS:
-            next_id = s.next_id
-            self._finish()            # Play/stop for this episode first
-            kodiutils.log("Credits reached: playing next episode %s" % next_id)
-            xbmc.executebuiltin("PlayMedia(plugin://plugin.video.starz/?action=play&content_id=%s)"
-                                % next_id)
+        if not self.session.info.get("live"):
+            self.skip.tick(self.session.position, now)
 
     def _follow_schedule(self):
         """Live: when the airing programme ends, put the next one's title,
@@ -165,6 +155,7 @@ class Player(xbmc.Player):
             kodiutils.log_error("Play/%s failed: %s" % (kind, exc))
 
     def _finish(self):
+        self.skip.reset()
         if self.session and self.session.info.get("live"):
             self.session.position = 0     # the website stops live with 0
         if self.session:
@@ -180,22 +171,19 @@ class Player(xbmc.Player):
         try:
             api = StarzApi(StarzAuth())
             current = api.title_detail(session.info["content_id"])
-            if current.get("contentType") != "Episode" or not current.get("nextContentId"):
+            marks = skip.markers(current)
+            nxt = cur_item = next_item = None
+            if current.get("contentType") == "Episode" and current.get("nextContentId"):
+                nxt = api.title_detail(current["nextContentId"])
+                cur_item, next_item = to_item(current), to_item(nxt)
+            if session is not self.session:
+                return                # playback moved on meanwhile
+            session.next_id = next_item["id"] if cur_item and next_item else None
+            self.skip.reset(marks, has_next=bool(session.next_id),
+                            own_credits=not upnext.installed())
+            kodiutils.log("Markers %s, next episode %s" % (marks, session.next_id))
+            if not session.next_id:
                 return
-            nxt = api.title_detail(current["nextContentId"])
-            cur_item, next_item = to_item(current), to_item(nxt)
-            if not cur_item or not next_item:
-                return
-            session.next_id = next_item["id"]
-            session.next_title = next_item.get("title", "")
-            try:
-                credits = float(current.get("creditTimeIn") or 0)
-                runtime = float(current.get("runtime") or 0)
-                # Ignore a credits time at (or past) the very end.
-                if credits > 60 and (not runtime or credits < runtime - 5):
-                    session.credits_at = credits
-            except (TypeError, ValueError):
-                pass
             if upnext.installed():
                 upnext.signal(upnext.build(cur_item, current, next_item, nxt))
                 kodiutils.log("Up Next: next episode %s, pop-up at %ss" % (

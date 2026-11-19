@@ -17,10 +17,11 @@ calls and opens an issue when one changes.
 - Movies, series and episodes in Widevine DRM, with English and Spanish
   audio and subtitles where Starz has them
 - Resume points and Continue Watching shared with Starz's own apps
-- Next episode: works with the [Up Next](https://github.com/im85288/service.upnext)
-  add-on (its pop-up appears when the credits start); without it, the next
-  episode starts when the credits begin, after a 10-second notice
-  (Settings → Playback)
+- **Skip recap** and **Skip intro** buttons, and at the credits **Next
+  episode** (counts down from 10) or **Watch credits**, from Starz's own
+  markers. With the [Up Next](https://github.com/im85288/service.upnext)
+  add-on installed, Up Next's pop-up handles the credits instead
+  (autoplay: Settings → Playback)
 - Trailers (context menu, and the Trailer button in Kodi's info dialog) and
   each series' Extras: previews, behind-the-scenes and promos
 
