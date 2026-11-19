@@ -1,0 +1,156 @@
+{
+  "name": "Tubi (plugin.video.tubitv)",
+  "_comment": [
+    "PARTIAL BY DESIGN. Every Tubi content endpoint authenticates with a bearer,",
+    "and minting the anonymous device token needs a TUBI-HMAC-SHA256 request",
+    "signature (see resources/lib/tubi_auth.py) that this declarative engine",
+    "cannot compute. So this spec does two things:",
+    "  1. anonymous_signing_key -- a REAL check of the auth handshake entry",
+    "     point (the single point of failure: no signing key => no token =>",
+    "     the whole addon is dead). Analogous to Apple's developerToken check.",
+    "  2. *_reachable -- report-only probes that confirm each content host still",
+    "     exists and still answers (401/403 = up and auth-gated, as expected).",
+    "     They cannot verify response SHAPE without a real token.",
+    "For full shape-checks, Tubi needs either a bespoke checker script (like",
+    "Apple TV used to have) or an engine extended with the Tubi signer."
+  ],
+  "defaults": {
+    "timeout": 20,
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "Accept": "application/json, text/plain, */*",
+      "Origin": "https://tubitv.com",
+      "Referer": "https://tubitv.com/"
+    }
+  },
+  "vars": {
+    "device_id": "{random_hex32}"
+  },
+  "checks": [
+    {
+      "id": "anonymous_signing_key",
+      "method": "POST",
+      "url": "https://account.production-public.tubi.io/device/anonymous/signing_key",
+      "headers": {
+        "Content-Type": "application/json",
+        "Referer": "https://tubitv.com/login"
+      },
+      "json": {
+        "challenge": "E5iqOVQMUgJOzQrNBm4HO8KHGYAw9YPE3gluYyRH7ec=",
+        "version": "1.0.0",
+        "platform": "web",
+        "device_id": "{device_id}"
+      },
+      "expect": {
+        "json_paths": [
+          "id",
+          "key"
+        ]
+      },
+      "note": "The auth handshake's first step. Sign-in and every content call depend on it; a rename or shape change here breaks the whole addon. The challenge is a throwaway (the verifier is never submitted), so a signing key comes back without completing PKCE."
+    },
+    {
+      "id": "browse_list_reachable",
+      "url": "https://tensor-cdn.production-public.tubi.io/api/v1/browse_list",
+      "params": {
+        "is_kids_mode": "false"
+      },
+      "expect": {
+        "status": [
+          401,
+          403
+        ]
+      },
+      "report_only": true,
+      "note": "Category list host. Needs a bearer; 401/403 unauthenticated is expected. Anything else (404/5xx/connection error) means the host or path moved."
+    },
+    {
+      "id": "search_reachable",
+      "url": "https://search.production-public.tubi.io/api/v3/search",
+      "params": {
+        "search": "matrix",
+        "include_channels": "true",
+        "is_kids_mode": "false"
+      },
+      "expect": {
+        "status": [
+          401,
+          403
+        ]
+      },
+      "report_only": true,
+      "note": "Search host. Bearer required; 401/403 expected unauthenticated."
+    },
+    {
+      "id": "content_reachable",
+      "url": "https://content-cdn.production-public.tubi.io/api/v3/content",
+      "params": {
+        "app_id": "tubitv",
+        "platform": "web",
+        "content_id": "100004812",
+        "device_id": "{device_id}"
+      },
+      "expect": {
+        "status": [
+          401,
+          403
+        ]
+      },
+      "report_only": true,
+      "note": "Title + playables host (a single title and its video_resources). Bearer required; 401/403 expected."
+    },
+    {
+      "id": "series_episodes_reachable",
+      "url": "https://content-cdn.production-public.tubi.io/api/v3/series/300006201/episodes",
+      "params": {
+        "platform": "web"
+      },
+      "expect": {
+        "status": [
+          401,
+          403
+        ]
+      },
+      "report_only": true,
+      "note": "Series seasons/episodes host. Bearer required; 401/403 expected."
+    },
+    {
+      "id": "epg_reachable",
+      "url": "https://tensor-cdn.production-public.tubi.io/api/v2/epg",
+      "params": {
+        "mode": "tubitv_us_linear",
+        "platform": "web",
+        "device_id": "{device_id}"
+      },
+      "expect": {
+        "status": [
+          200,
+          401,
+          403
+        ]
+      },
+      "report_only": true,
+      "note": "Live channel line-up host. May answer 200 anonymously (live needs no account) or 401/403; either proves the host is up."
+    },
+    {
+      "id": "epg_programming_reachable",
+      "url": "https://epg-cdn.production-public.tubi.io/content/epg/programming",
+      "params": {
+        "platform": "web",
+        "device_id": "{device_id}",
+        "lookahead": "1",
+        "content_id": "0"
+      },
+      "expect": {
+        "status": [
+          200,
+          400,
+          401,
+          403
+        ]
+      },
+      "report_only": true,
+      "note": "Live programme-guide host. Reachability only."
+    }
+  ]
+}

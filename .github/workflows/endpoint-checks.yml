@@ -1,10 +1,12 @@
 name: Endpoint checks
 
-# One workflow checks every addon's private endpoints. Each addon's spec is
-# handed to the reusable engine (endpoint-check.yml); add an addon by adding a
-# line to the matrix below -- no new workflow file. Only the daily scheduled
-# run files an issue; pushes that touch a spec or the checker run too, so a
-# change can be tested from its branch without opening issues.
+# One workflow checks every addon's private endpoints. Each entry below is
+# handed to the reusable runner (endpoint-check.yml), either as a declarative
+# spec for the shared engine or as the addon's own checker script where a spec
+# cannot express the checks; add an addon by adding a line to the matrix --
+# no new workflow file. Only the daily scheduled run files an issue; pushes
+# that touch a spec or a checker run too, so a change can be tested from its
+# branch without opening issues.
 
 on:
   schedule:
@@ -18,6 +20,8 @@ on:
       - '.github/workflows/endpoint-checks.yml'
       - 'plugin.video.appletv/tools/endpoints.json'
       - 'plugin.video.starz/tools/endpoints.json'
+      - 'plugin.video.tubitv/tools/endpoints.json'
+      - 'plugin.video.tubitv/tools/check_endpoints.py'
 
 permissions:
   contents: read
@@ -31,13 +35,30 @@ jobs:
         include:
           - name: Apple TV
             spec: plugin.video.appletv/tools/endpoints.json
+            script: ''
             issue_label: appletv-endpoint
           - name: Starz
             spec: plugin.video.starz/tools/endpoints.json
+            script: ''
             issue_label: starz-endpoint
+          # Tubi twice over, into the one rolling issue. The spec is the
+          # cheap canary: it checks the auth handshake's first call, which
+          # the whole addon hangs off, and that each content host still
+          # answers. The script is the real coverage - it mints a signed
+          # device token, which no spec can, and then drives the addon's own
+          # code against every endpoint it depends on.
+          - name: Tubi (auth)
+            spec: plugin.video.tubitv/tools/endpoints.json
+            script: ''
+            issue_label: tubi-endpoint
+          - name: Tubi
+            spec: ''
+            script: plugin.video.tubitv/tools/check_endpoints.py
+            issue_label: tubi-endpoint
     uses: ./.github/workflows/endpoint-check.yml
     with:
       name: ${{ matrix.name }}
       spec: ${{ matrix.spec }}
+      script: ${{ matrix.script }}
       issue_label: ${{ matrix.issue_label }}
       open_issue: ${{ github.event_name == 'schedule' }}
