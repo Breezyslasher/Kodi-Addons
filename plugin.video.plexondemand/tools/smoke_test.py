@@ -165,8 +165,20 @@ api.action("scrobble", rk)
 check("scrobble marks watched", (api.user_state(rk) or {}).get("viewCount") == 1)
 api.action("unscrobble", rk)
 check("unscrobble", (api.user_state(rk) or {}).get("viewCount") == 0)
-tr = api.trailer(api.metadata(rk))
-check("trailer resolves to open HLS", bool(tr) and tr[1].startswith("https://"), tr and tr[1].split("/")[2])
+# Not every title has a trailer (the add-on then says so); test one that does.
+with_trailer = None
+for h in hubs[:15]:
+    for m in api.hub_items(h["key"])[0]:
+        if m.get("type") == "movie":
+            full = api.metadata(m["ratingKey"])
+            if full.get("primaryExtraKey"):
+                with_trailer = full
+                break
+    if with_trailer:
+        break
+tr = api.trailer(with_trailer) if with_trailer else None
+check("trailer resolves to open HLS", bool(tr) and tr[1].startswith("https://"),
+      "%s -> %s" % ((with_trailer or {}).get("title"), tr and tr[1].split("/")[2]))
 if drm:
     part = [x for x in api.metadata(drm["ratingKey"])["Media"] if x.get("protocol") == "dash"][0]["Part"][0]
     subs = playback._stream_subtitles(api, part)
