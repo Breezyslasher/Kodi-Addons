@@ -94,7 +94,7 @@ Sign in with your Starz account and browse the full Starz catalogue in Kodi, wit
 - TV Schedule for the STARZ, Encore and Plex channels, and Kodi's TV guide through IPTV Manager
 - Skip recap, Skip intro and Next episode buttons, Up Next support, profiles with parental controls, and device management for Starz's 6-device limit
 
-**Resolution:** standard definition (~576p) on desktop and LibreELEC, which use the software Widevine L3 CDM; HD needs a hardware Widevine L1 Android device.
+**Resolution:** movies and series up to 1080p, desktop included: Starz encrypts every resolution with one key, so the software Widevine L3 CDM can play HD (InputStream Adaptive caps the stream at your screen's size). Live STARZ tops out at 576p.
 
 **Known limits:** Starz's private web endpoints may change without notice; a daily GitHub check watches them. See the [addon README](plugin.video.starz/README.md).
 

@@ -78,12 +78,16 @@ code captured so far has no TV-provider flow, only Google and Apple sign-in
 
 ## Resolution: what to expect
 
-- **Desktop (Windows, macOS, Linux) and LibreELEC: standard definition**
-  (about 576p). Kodi uses the software Widevine **L3** CDM, and Starz keeps HD
-  for hardware-protected playback. This is a DRM limit, not a bug.
-- **Android with hardware Widevine L1** (Nvidia Shield, certified Android TV
-  boxes, most phones): the manifest offers up to 1080p. Not yet confirmed on
-  such a device.
+- **Movies and series: up to 1080p, on desktop too.** Starz's manifests
+  offer 202p to 1080p, and every resolution uses the same key, so the
+  licence Kodi gets with the software Widevine (L3) CDM unlocks 1080p as
+  well. Not yet confirmed on a 1080p screen.
+- **InputStream Adaptive caps the stream at your screen's size** by default.
+  On a smaller monitor you get less (e.g. 1280x952 on a 1280x1024 screen).
+  To change it: InputStream Adaptive's settings → *Stream selection* /
+  *maximum resolution*.
+- **Live STARZ: up to 576p.** The live channel's manifest offers nothing
+  higher.
 
 ## Requirements
 
