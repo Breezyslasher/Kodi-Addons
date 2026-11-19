@@ -81,3 +81,8 @@ def info(item, m):
         tag.setResumePoint(int(m["viewOffset"]) / 1000.0, int(m["duration"]) / 1000.0)
     if m.get("viewCount"):
         tag.setPlaycount(int(m["viewCount"]))
+    if m.get("userRating") is not None:
+        try:
+            tag.setUserRating(int(round(float(m["userRating"]))))
+        except (TypeError, ValueError):
+            pass

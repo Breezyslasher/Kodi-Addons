@@ -227,3 +227,23 @@ msgctxt "#32062"
 msgid "More from this cast & crew"
 msgstr ""
 
+msgctxt "#32063"
+msgid "Rate…"
+msgstr ""
+
+msgctxt "#32064"
+msgid "%g stars"
+msgstr ""
+
+msgctxt "#32065"
+msgid "Clear rating"
+msgstr ""
+
+msgctxt "#32066"
+msgid "Not interested"
+msgstr ""
+
+msgctxt "#32067"
+msgid "Undo Not interested"
+msgstr ""
+

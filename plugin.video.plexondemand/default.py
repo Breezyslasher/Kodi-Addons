@@ -51,6 +51,11 @@ S = {
     "region_notice": 32053,
     "related": 32054,
     "more_cast": 32062,
+    "rate": 32063,
+    "stars": 32064,
+    "clear_rating": 32065,
+    "not_interested": 32066,
+    "undo_not_interested": 32067,
     "remove_search": 32047,
 }
 
@@ -82,14 +87,14 @@ def _apply_user_state(api, items):
     none, so fetch them for the whole page in one batched userState call."""
     if not kodiutils.get_setting_bool("report_progress", True):
         return
-    keys = [m.get("ratingKey") for m in items if m.get("type") in ("movie", "episode")]
+    keys = [m.get("ratingKey") for m in items if m.get("type") in ("movie", "episode", "show")]
     if not keys:
         return
     states = api.user_states(keys)
     for m in items:
         st = states.get(m.get("ratingKey"))
         if st:
-            for field in ("viewOffset", "viewCount"):
+            for field in ("viewOffset", "viewCount", "userRating"):
                 if m.get(field) is None:
                     m[field] = st.get(field)
 
@@ -106,6 +111,8 @@ def _menu(m, in_cw=False, in_wl=False):
                 action="mark", rk=rk, how="addToWatchlist", quiet=1)))
     if m.get("type") in ("movie", "show"):
         entries.append((L("related"), "Container.Update(%s)" % url(action="related", rk=rk)))
+    if m.get("type") in ("movie", "show", "episode"):
+        entries.append((L("rate"), "RunPlugin(%s)" % url(action="rate", rk=rk)))
     if m.get("type") in ("movie", "show"):
         entries.append((L("trailer"), "RunPlugin(%s)" % url(action="trailer", rk=rk)))
     if m.get("type") in ("movie", "episode"):
@@ -330,6 +337,35 @@ def trailer(rk):
     xbmc.Player().play(stream, li)
 
 
+def rate(rk):
+    """Rate 1-5 stars (Plex stores 0-10), clear, or mark Not interested.
+    Plex keeps dislikes write-only, so only the rating can be shown back."""
+    api = PlexVodApi()
+    current = api.user_state(rk).get("userRating")
+    heading = L("rate")
+    if current is not None:
+        heading = "%s (%s)" % (heading, L("stars") % (float(current) / 2))
+    options = [(L("stars") % n, ("rate", n * 2)) for n in range(5, 0, -1)]
+    options += [(L("clear_rating"), ("rate", -1)), (L("not_interested"), ("addToDislikes", None)),
+                (L("undo_not_interested"), ("removeFromDislikes", None))]
+    pick = xbmcgui.Dialog().select(heading, [o[0] for o in options])
+    if pick < 0:
+        return
+    how, value = options[pick][1]
+    try:
+        if how == "rate":
+            api.rate(rk, value)
+        else:
+            api.action(how, rk)
+    except PlexApiError as exc:
+        kodiutils.log_error("%s %s: %s" % (how, rk, exc))
+        kodiutils.notify("%s: %s" % (L("error"), exc), icon=xbmcgui.NOTIFICATION_ERROR)
+        return
+    kodiutils.notify(options[pick][0])
+    if how == "rate":
+        xbmc.executebuiltin("Container.Refresh")
+
+
 def mark(rk, how, quiet=False):
     try:
         PlexVodApi().action(how, rk)
@@ -413,6 +449,8 @@ def router(paramstring):
             trailer(p["rk"])
         elif action == "mark":
             mark(p["rk"], p.get("how", "scrobble"), bool(p.get("quiet")))
+        elif action == "rate":
+            rate(p["rk"])
         elif action == "watchlist":
             watchlist(int(p.get("start", 0)))
         elif action == "related":

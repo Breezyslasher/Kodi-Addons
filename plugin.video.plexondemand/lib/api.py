@@ -39,6 +39,10 @@ Actions, US region, anonymous token):
                   the show in order (Metadata[])
   Actions         PUT {vod}/actions/scrobble|unscrobble|removeFromContinueWatching
                   |addToWatchlist|removeFromWatchlist ?ratingKey=<rk>
+  Rating          PUT {vod}/actions/rate?ratingKey=<rk>&rating=0..10 (-1 clears);
+                  shows up as userState.userRating
+  Dislikes        PUT {vod}/actions/addToDislikes|removeFromDislikes?ratingKey=
+                  -> 200, but write-only: no list, not in userState/metadata
   Watchlist       GET discover.provider.plex.tv/library/sections/watchlist/all
                   (paged; works for the anonymous account too)
   Sort            genre listings take sort=titleSort|titleSort:desc|
@@ -206,8 +210,14 @@ class PlexVodApi(object):
         resp.close()
         return resp.url if resp.status_code == 200 else None
 
-    def action(self, name, rating_key):
-        return self._get("/actions/%s" % name, {"ratingKey": rating_key}, method="PUT")
+    def action(self, name, rating_key, **extra):
+        params = {"ratingKey": rating_key}
+        params.update(extra)
+        return self._get("/actions/%s" % name, params, method="PUT")
+
+    def rate(self, rating_key, rating):
+        """rating 0..10 (Plex scale), or -1 to clear."""
+        return self.action("rate", rating_key, rating=int(rating))
 
     # ---- extras / up next
     def trailer(self, item):

@@ -213,6 +213,13 @@ check("genre sort A-Z vs Z-A differ", az and za and az[0].get("ratingKey") != za
 many = api.search("love")
 check("search returns more than 30", len(many) > 30, len(many))
 check("region lookup", api.region() == "US", api.region())
+api.rate(rk, 8)
+check("rate shows in userState", (api.user_state(rk) or {}).get("userRating") == 8, api.user_state(rk))
+api.rate(rk, -1)
+check("clear rating", (api.user_state(rk) or {}).get("userRating") is None)
+api.action("addToDislikes", rk)
+api.action("removeFromDislikes", rk)
+check("dislike / undo accepted", True)
 
 print("\n%d failure(s)" % len(FAIL))
 sys.exit(1 if FAIL else 0)
