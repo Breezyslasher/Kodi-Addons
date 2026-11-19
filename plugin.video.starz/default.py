@@ -679,7 +679,8 @@ def do_profile_menu(api, auth, profile_id):
     p = profiles.get(profile_id)
     if not p:
         return
-    options = [(L(32146), "switch"), (L(32147), "parental")]
+    options = [(L(32146), "switch"), (L(32160), "rename"), (L(32161), "picture"),
+               (L(32147), "parental")]
     if not p.get("isAdmin"):
         options.append((L(32148), "delete"))   # the account owner's stays
     i = xbmcgui.Dialog().select(p.get("name", ""), [o[0] for o in options])
@@ -689,6 +690,21 @@ def do_profile_menu(api, auth, profile_id):
     if what == "switch":
         auth.select_profile(p)
         kodiutils.notify(L(32149) % p.get("name", ""))
+        xbmc.executebuiltin("Container.Refresh")
+    elif what in ("rename", "picture"):
+        if what == "rename":
+            name = kodiutils.input_text(L(32143))
+            if not name or not name.strip():
+                return
+            updated = api.update_profile(p, name=name.strip())
+        else:
+            icon = _pick_icon(api, L(32144))
+            if not icon:
+                return
+            updated = api.update_profile(p, icon_url=icon)
+        if profile_id == auth.profile_id and updated:
+            auth.select_profile(updated)   # keeps the menu's name and picture current
+        kodiutils.notify(L(32162) % (updated or p).get("name", ""))
         xbmc.executebuiltin("Container.Refresh")
     elif what == "delete":
         if xbmcgui.Dialog().yesno(kodiutils.ADDON_NAME, L(32150) % p.get("name", "")):

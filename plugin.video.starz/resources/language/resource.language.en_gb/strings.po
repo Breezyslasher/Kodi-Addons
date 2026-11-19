@@ -438,3 +438,15 @@ msgstr ""
 msgctxt "#32158"
 msgid "Manage profiles"
 msgstr ""
+
+msgctxt "#32160"
+msgid "Rename"
+msgstr ""
+
+msgctxt "#32161"
+msgid "Change picture"
+msgstr ""
+
+msgctxt "#32162"
+msgid "Profile %s updated"
+msgstr ""

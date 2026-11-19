@@ -579,6 +579,18 @@ class StarzApi(object):
         return self.auth.request("POST", AUTH_API + "User/profiles",
                                  json={"name": name, "iconUrl": icon_url}).json()
 
+    def update_profile(self, profile, name=None, icon_url=None):
+        """Rename a profile or change its picture. PUT User/profiles with the
+        profile as GET User/profiles returns it (name, profileIcon, id,
+        isAdmin), the new name in "name" and the picture to use in a
+        top-level "iconUrl"; profileIcon stays the old one (profile-edit
+        HAR #90, #304). Returns the updated profile."""
+        body = {"name": name or profile.get("name", ""),
+                "profileIcon": profile.get("profileIcon") or {},
+                "id": profile["id"], "isAdmin": bool(profile.get("isAdmin")),
+                "iconUrl": icon_url or (profile.get("profileIcon") or {}).get("iconUrl", "")}
+        return self.auth.request("PUT", AUTH_API + "User/profiles", json=body).json()
+
     def delete_profile(self, profile_id):
         """DELETE User/profiles/{id} -> 204."""
         self.auth.request("DELETE", AUTH_API + "User/profiles/%s" % profile_id)
