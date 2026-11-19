@@ -230,7 +230,7 @@ def main_menu(auth):
         if auth.profile_id:
             add_dir(L(32085), "recommended")
     else:
-        add_dir(L(32014), "sign_in")
+        add_action(L(32014), "sign_in")
     add_dir(L(32051), "page", page="HOME")
     add_dir(L(32052), "page", page="SERIES")
     add_dir(L(32053), "page", page="MOVIES")
@@ -238,16 +238,17 @@ def main_menu(auth):
     add_dir(L(32110), "channels")
     add_dir(L(32074), "genres")
     add_dir(L(32075), "categories")
-    add_dir(L(32013), "search")
+    add_action(L(32013), "search")
     if auth.signed_in:
         li = xbmcgui.ListItem(L(32062) % (auth.profile_name or "-"))
         if auth.profile_icon:
             pic = avatar(auth.profile_icon, auth.profile_name)
             li.setArt({"icon": pic, "thumb": pic, "fanart": ADDON_ART["fanart"]})
-        xbmcplugin.addDirectoryItem(HANDLE, url(action="profile"), li, True)
+        li.setProperty("IsPlayable", "false")
+        xbmcplugin.addDirectoryItem(HANDLE, url(action="profile"), li, False)
         # Manage profiles, Manage devices and Activate a TV or device live in
         # Settings > Account: one-off account tasks, not browsing.
-        add_dir(L(32063) % (auth.username or "-"), "sign_out")
+        add_action(L(32063) % (auth.username or "-"), "sign_out")
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
 
 
@@ -361,8 +362,10 @@ def do_search(api, query=None):
     """Results live at a URL that carries the query, so a refresh (after
     My List or Remind me) reloads them instead of asking again."""
     if not query:
+        # A button (handle -1): ask, then open the results at their own URL.
         query = kodiutils.input_text(L(32026))
-        xbmcplugin.endOfDirectory(HANDLE, succeeded=False, cacheToDisc=False)
+        if HANDLE >= 0:
+            xbmcplugin.endOfDirectory(HANDLE, succeeded=False, cacheToDisc=False)
         if query and query.strip():
             xbmc.executebuiltin("Container.Update(%s)" % url(action="search", query=query.strip()))
         return

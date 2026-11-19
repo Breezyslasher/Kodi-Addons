@@ -37,6 +37,7 @@ Features:
 		</assets>
 		<news>v2026.11.19.17
 - Search results no longer reopen the keyboard after My List or Remind me changes
+- Sign in, Switch profile, Sign out and Search are buttons: going back to the main menu no longer re-opens their dialogs
 
 v2026.11.19.16
 - The next episode (Up Next or autoplay) now shows its title, plot and artwork
