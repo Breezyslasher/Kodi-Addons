@@ -1,0 +1,43 @@
+name: Endpoint checks
+
+# One workflow checks every addon's private endpoints. Each addon's spec is
+# handed to the reusable engine (endpoint-check.yml); add an addon by adding a
+# line to the matrix below -- no new workflow file. Only the daily scheduled
+# run files an issue; pushes that touch a spec or the checker run too, so a
+# change can be tested from its branch without opening issues.
+
+on:
+  schedule:
+    # Daily, at a quiet minute rather than on the hour.
+    - cron: '37 6 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/endpoint-check/**'
+      - '.github/workflows/endpoint-check.yml'
+      - '.github/workflows/endpoint-checks.yml'
+      - 'plugin.video.appletv/tools/endpoints.json'
+      - 'plugin.video.starz/tools/endpoints.json'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Apple TV
+            spec: plugin.video.appletv/tools/endpoints.json
+            issue_label: appletv-endpoint
+          - name: Starz
+            spec: plugin.video.starz/tools/endpoints.json
+            issue_label: starz-endpoint
+    uses: ./.github/workflows/endpoint-check.yml
+    with:
+      name: ${{ matrix.name }}
+      spec: ${{ matrix.spec }}
+      issue_label: ${{ matrix.issue_label }}
+      open_issue: ${{ github.event_name == 'schedule' }}

@@ -30,7 +30,8 @@ Spec format:
         "text_prefix": "PLAYAUTH",
         "json_paths": ["a.b[0].c"]          # must exist and be non-null
       },
-      "save": {"auth_token": "text", "ep": "json:a.b[0].id"},
+      "save": {"auth_token": "text", "ep": "json:a.b[0].id",
+               "bearer": "regex:\"token\":\"([^\"]+)\""},  # 1st capture group
       "print": ["isAllowedAccess"],         # non-secret JSON fields to show
       "report_only": false                  # true: never fails the run
     }
@@ -147,8 +148,17 @@ def run_check(check, spec, env, by_id, depth=0):
             return False, "%s (missing %s)" % (summary, path)
     for name, source in (check.get("save") or {}).items():
         try:
-            value = (text.strip().strip('"') if source == "text"
-                     else json_path(data, source[5:]))
+            if source == "text":
+                value = text.strip().strip('"')
+            elif source.startswith("regex:"):
+                # Pull a value straight out of the body (e.g. a token read from
+                # page markup). First capture group; a non-match is a failure.
+                match = re.search(source[6:], text)
+                if not match:
+                    raise KeyError(source)
+                value = match.group(1)
+            else:
+                value = json_path(data, source[5:])
         except (KeyError, IndexError, TypeError):
             return False, "%s (cannot save %s from %s)" % (summary, name, source)
         env[name] = value
