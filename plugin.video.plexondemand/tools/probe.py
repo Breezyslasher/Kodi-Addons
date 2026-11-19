@@ -1043,6 +1043,43 @@ def round12():
     return 0
 
 
+def round13():
+    """Store (rentals): what an un-rented title returns, so the addon can tell
+    'not rented' from a real failure. Anonymous token, no purchase."""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    st, d = req_json("GET", base + "/hubs/sections/store", headers=T, params={"count": 3})
+    print("== store hubs ->", st, [(h.get("title"), h.get("key")) for h in (mc(d).get("Hub") or [])[:4]])
+    st, d = req_json("GET", base + "/hubs/sections/store/myRentalsAndPurchases", headers=T)
+    print("== myRentalsAndPurchases (anon) ->", st, "total", mc(d).get("totalSize"))
+    st, d = req_json("GET", base + "/hubs/sections/store/newRentals", headers=T, params={"count": 3})
+    items = mc(d).get("Metadata") or []
+    print("== newRentals ->", st, [(m.get("title"), m.get("rentalPrice"), m.get("userState")) for m in items])
+    m = items[0]
+    _, md = req_json("GET", base + f"/library/metadata/{m['ratingKey']}", headers=T)
+    it = (mc(md).get("Metadata") or [{}])[0]
+    print("   metadata keys:", sorted(k for k in it if not isinstance(it[k], (dict, list))))
+    print("   publicPagesURL:", it.get("publicPagesURL"), "| availabilityId:", it.get("availabilityId"))
+    part = [x for x in it.get("Media") or [] if x.get("protocol") == "dash"][0]["Part"][0]
+    st, ct, body, _ = req("GET", base + part["key"], headers=T)
+    print(f"== manifest (not rented) -> {st} {ct} {mask(body[:250].decode('utf-8', 'replace'))}")
+    r = urllib.request.Request(base + part["license"], data=b"\x08\x04", method="POST",
+                               headers=dict(HEADERS, **T, **{"X-Plex-DRM": "widevine", "Content-Type": "application/octet-stream"}))
+    try:
+        with urllib.request.urlopen(r, timeout=20) as resp:
+            print("== licence cert request (not rented) ->", resp.status, resp.read()[:20])
+    except urllib.error.HTTPError as e:
+        print("== licence cert request (not rented) ->", e.code, mask(e.read()[:250].decode("utf-8", "replace")))
+    uri = f"provider://tv.plex.provider.vod/library/metadata/{m['ratingKey']}"
+    st, ct, body, _ = req("POST", base + "/playQueues", headers=T, params={"uri": uri, "type": "video", "continuous": 0})
+    print(f"== playQueue (not rented) -> {st} {mask(body[:250].decode('utf-8', 'replace'))}")
+    st, d = req_json("GET", "https://discover.provider.plex.tv" + f"/library/metadata/{m['ratingKey']}/userState", headers=T)
+    print("== userState:", (mc(d).get("UserState") or [{}])[0])
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -1054,5 +1091,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round12")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round13")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13}.get(mode, main)())
