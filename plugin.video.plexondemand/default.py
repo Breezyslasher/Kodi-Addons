@@ -212,11 +212,18 @@ def search_new():
     reloads that URL (not this one) when you come back from a video, so the
     keyboard does not reopen."""
     query = kodiutils.input_text(L("search"))
+    as_folder = HANDLE >= 0  # opened from a listing an older build made, where this was a folder
     if not query:
+        if as_folder:
+            xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         return
     query = query.strip()
     history = [q for q in (kodiutils.read_json(HISTORY_FILE, []) or []) if q.lower() != query.lower()]
     kodiutils.write_json(HISTORY_FILE, [query] + history[:HISTORY_MAX - 1])
+    if as_folder:
+        # Kodi expects a listing here; give it the results rather than fail.
+        search(query)
+        return
     xbmc.executebuiltin("Container.Update(%s)" % url(action="search", query=query))
 
 
