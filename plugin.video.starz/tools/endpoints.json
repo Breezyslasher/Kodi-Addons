@@ -325,7 +325,7 @@
       "note": "Probe: avatar without a letter (size to compare)."
     },
     {
-      "id": "probe_avatar_letter",
+      "id": "avatar_with_initial",
       "url": "https://profileimages-prod.imgix.net/profile/image/us/starz/canned/avatar-03.png",
       "params": {
         "w": "256",
@@ -344,7 +344,7 @@
         "content_type": "image/"
       },
       "report_only": true,
-      "note": "Probe: the same avatar with the profile's initial drawn by imgix (a different size means the letter was drawn)."
+      "note": "Profile pictures with the initial drawn by imgix (txt=...)."
     }
   ]
 }

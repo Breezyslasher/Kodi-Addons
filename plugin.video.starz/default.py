@@ -36,6 +36,25 @@ def url(**kwargs):
     return BASE_URL + "?" + urlencode(kwargs)
 
 
+# -- profile pictures with initials ------------------------------------------
+
+def avatar(icon_url, name):
+    """A profile picture with the profile's initial on it, as the website
+    shows it. Starz's avatars carry no letter (the site draws it on top);
+    imgix, which serves them, draws it into the image instead: txt=...
+    (endpoint check: the same avatar comes back changed with the text
+    parameters). Non-imgix pictures are returned as they are."""
+    if not icon_url:
+        return ""
+    initial = next((ch.upper() for ch in (name or "") if ch.isalnum()), "")
+    if "imgix.net" not in icon_url or not initial:
+        return icon_url
+    return "%s%s%s" % (icon_url, "&" if "?" in icon_url else "?", urlencode({
+        "w": 256, "h": 256, "fit": "crop", "txt": initial, "txt-size": 128,
+        "txt-color": "FFFFFF", "txt-align": "middle,center",
+        "txt-font": "Helvetica Neue,Bold"}))
+
+
 # -- listing helpers -------------------------------------------------------
 
 def add_dir(label, action, **params):
@@ -222,8 +241,8 @@ def main_menu(auth):
     if auth.signed_in:
         li = xbmcgui.ListItem(L(32062) % (auth.profile_name or "-"))
         if auth.profile_icon:
-            li.setArt({"icon": auth.profile_icon, "thumb": auth.profile_icon,
-                       "fanart": ADDON_ART["fanart"]})
+            pic = avatar(auth.profile_icon, auth.profile_name)
+            li.setArt({"icon": pic, "thumb": pic, "fanart": ADDON_ART["fanart"]})
         xbmcplugin.addDirectoryItem(HANDLE, url(action="profile"), li, True)
         add_dir(L(32158), "profiles")
         add_action(L(32131), "activate_device")
@@ -318,7 +337,7 @@ def pick_profile(auth):
         entries = []
         for p in profiles:
             li = xbmcgui.ListItem(p.get("name", "?"), L(32130) if p.get("isAdmin") else "")
-            icon = (p.get("profileIcon") or {}).get("iconUrl")
+            icon = avatar((p.get("profileIcon") or {}).get("iconUrl"), p.get("name"))
             if icon:
                 li.setArt({"icon": icon, "thumb": icon})
             entries.append(li)
@@ -639,7 +658,7 @@ def show_profiles(auth):
         elif p.get("isAdmin"):
             label = "%s  [COLOR grey]%s[/COLOR]" % (label, L(32130))
         li = xbmcgui.ListItem(label)
-        icon = (p.get("profileIcon") or {}).get("iconUrl")
+        icon = avatar((p.get("profileIcon") or {}).get("iconUrl"), p.get("name"))
         if icon:
             li.setArt({"icon": icon, "thumb": icon})
         li.setProperty("IsPlayable", "false")
