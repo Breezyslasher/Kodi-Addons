@@ -856,6 +856,128 @@ def round9():
     return 0
 
 
+def round10():
+    """Watchlist, image transcoder, sort/filter, related, people, search paging, languages."""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    disc = "https://discover.provider.plex.tv"
+    rk = "5d9f3cb89dd5f4001e84c9e8"  # Rabid Dogs
+    _, md = req_json("GET", base + f"/library/metadata/{rk}", headers=T)
+    item = (mc(md).get("Metadata") or [{}])[0]
+
+    def brief(label, url, params=None, method="GET"):
+        st, ct, body, fin = req(method, url, headers=T, params=params)
+        txt = body[:2000].decode("utf-8", "replace")
+        info = ""
+        try:
+            c = mc(json.loads(txt if len(body) <= 2000 else body.decode("utf-8", "replace")))
+            ms = c.get("Metadata") or c.get("Directory") or c.get("Hub") or []
+            info = f"size={c.get('size')} total={c.get('totalSize')} offset={c.get('offset')} first={[ (m.get('type'), m.get('title'), m.get('key') or m.get('hubKey')) for m in ms[:4]]}"
+        except Exception:
+            info = mask(txt[:200]).replace("\n", " ")
+        print(f"== {label}: {method} -> {st} {info}")
+        return st, body
+
+    # ---- watchlist
+    print("\n######## watchlist")
+    brief("add (vod action)", base + "/actions/addToWatchlist", {"ratingKey": rk}, "PUT")
+    brief("add (discover action)", disc + "/actions/addToWatchlist", {"ratingKey": rk}, "PUT")
+    for u in (disc + "/library/sections/watchlist/all", disc + "/library/sections/watchlist/all?includeMeta=1",
+              base + "/library/sections/watchlist/all", "https://metadata.provider.plex.tv/library/sections/watchlist/all",
+              disc + "/hubs/sections/watchlist", disc + "/library/sections/watchlist"):
+        brief("list " + u.split("plex.tv")[1], u)
+    brief("remove (vod action)", base + "/actions/removeFromWatchlist", {"ratingKey": rk}, "PUT")
+    brief("list after remove", disc + "/library/sections/watchlist/all")
+    _, d = req_json("GET", disc + f"/library/metadata/{rk}/userState", headers=T)
+    print("   userState watchlisted?", (mc(d).get("UserState") or [{}])[0])
+
+    # ---- image transcoder
+    print("\n######## images")
+    src = item.get("thumb")
+    st, ct, body, _ = req("GET", src, headers={})
+    print(f"== original {src.split('/')[2]} -> {st} {ct} {len(body)} bytes")
+    for q in ({"url": src, "width": 300, "height": 450}, {"url": src, "width": 300, "height": 450, "minSize": 1, "upscale": 1},
+              {"url": src, "width": 1920, "height": 1080, "format": "jpg", "quality": 80}):
+        st, ct, body, fin = req("GET", "https://images.plex.tv/photo", headers={}, params=q)
+        print(f"== photo {dict((k, v) for k, v in q.items() if k != 'url')} -> {st} {ct} {len(body)} bytes (no token)")
+
+    # ---- sort / filter
+    print("\n######## sort/filter")
+    _, g = req_json("GET", base + "/library/sections/movies/genre", headers=T, params={"type": 1})
+    gk = (mc(g).get("Directory") or [{}])[0].get("key")
+    for sort in ("titleSort", "titleSort:desc", "year:desc", "originallyAvailableAt:desc", "addedAt:desc",
+                 "rating:desc", "audienceRating:desc", "random"):
+        _, d = req_json("GET", base + gk, headers=T, params={"sort": sort, "X-Plex-Container-Size": 3})
+        print(f"== sort {sort}: {[(m.get('title'), m.get('year'), m.get('addedAt'), m.get('audienceRating')) for m in mc(d).get('Metadata') or []]}")
+    for f in ({"year": 2019}, {"decade": 1990}, {"contentRating": "R"}, {"year>": 2020}):
+        _, d = req_json("GET", base + gk, headers=T, params=dict(f, **{"X-Plex-Container-Size": 3}))
+        c = mc(d)
+        print(f"== filter {f}: total={c.get('totalSize')} {[(m.get('title'), m.get('year'), m.get('contentRating')) for m in c.get('Metadata') or []]}")
+    for path in ("/library/sections/movies/year", "/library/sections/movies/decade", "/library/sections/movies/contentRating",
+                 "/library/sections/movies/sorts", "/library/sections/movies/filters", "/library/sections/movies/studio"):
+        brief(path, base + path, {"type": 1})
+
+    # ---- related
+    print("\n######## related")
+    for u in (base + f"/library/metadata/{rk}/related", base + f"/hubs/metadata/{rk}/related",
+              disc + f"/library/metadata/{rk}/related", disc + f"/hubs/metadata/{rk}/related",
+              base + f"/hubs/metadata/{rk}", disc + f"/hubs/metadata/{rk}"):
+        st, body = brief(u.replace(base, "{vod}").replace(disc, "{disc}"), u)
+        if st == 200:
+            try:
+                c = mc(json.loads(body))
+                for h in (c.get("Hub") or [])[:6]:
+                    print("    hub:", h.get("title"), h.get("hubIdentifier"), h.get("key"), "size", h.get("size"),
+                          [(m.get("title"), m.get("source") or "") for m in (h.get("Metadata") or [])[:2]])
+            except Exception:
+                pass
+
+    # ---- people
+    print("\n######## people")
+    roles = item.get("Role") or []
+    print("   Role[0]:", json.dumps(roles[:1])[:500])
+    r0 = roles[0] if roles else {}
+    for u in [disc + (r0.get("key") or "")] if r0.get("key") else []:
+        brief("role key", u)
+    for k in ("id", "tagKey", "slug"):
+        if r0.get(k):
+            for u in (disc + f"/library/people/{r0[k]}", disc + f"/library/people/{r0[k]}/media",
+                      base + f"/library/people/{r0[k]}/media"):
+                brief(f"people by {k}", u)
+    if r0.get("tag"):
+        brief("search by actor name", disc + "/library/search",
+              {"query": r0["tag"], "searchTypes": "people", "searchProviders": "discover", "includeMetadata": 1, "limit": 3})
+
+    # ---- search paging
+    print("\n######## search paging")
+    for q in ({"limit": 30}, {"limit": 100}, {"limit": 30, "offset": 30}):
+        _, d = req_json("GET", disc + "/library/search", headers=T, params=dict(q, query="love", searchTypes="movies,tv",
+                        searchProviders="discover,plexAVOD", includeMetadata=1))
+        for sec in mc(d).get("SearchResults") or []:
+            if sec.get("id") == "plex":
+                res = sec.get("SearchResult") or []
+                print(f"== search {q}: size={sec.get('size')} first={[(r.get('Metadata') or {}).get('title') for r in res[:3]]}")
+
+    # ---- languages
+    print("\n######## languages")
+    _, d = req_json("GET", base + "/hubs/sections/movies/en-espanol-us", headers=T, params={"count": 5})
+    for m in (mc(d).get("Metadata") or [])[:3]:
+        _, md = req_json("GET", base + f"/library/metadata/{m['ratingKey']}", headers=T)
+        it = (mc(md).get("Metadata") or [{}])[0]
+        streams = [(s.get("streamType"), s.get("languageCode"), s.get("displayTitle"))
+                   for me in it.get("Media") or [] if me.get("protocol") == "hls"
+                   for pa in me.get("Part") or [] for s in pa.get("Stream") or []]
+        print("== ", it.get("title"), "drm" if any(x.get("drm") for x in it.get("Media") or []) else "clear", streams)
+        hls = [pa["key"] for me in it.get("Media") or [] if me.get("protocol") == "hls" and not me.get("drm")
+               for pa in me.get("Part") or []]
+        if hls:
+            st, ct, body, _ = req("GET", base + hls[0], headers=T)
+            print("    master renditions:", [l[:140] for l in body.decode("utf-8", "replace").splitlines() if "EXT-X-MEDIA" in l][:6])
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -867,5 +989,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round9")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round10")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10}.get(mode, main)())
