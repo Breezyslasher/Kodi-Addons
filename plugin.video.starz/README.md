@@ -44,12 +44,12 @@ calls and opens an issue when one changes.
   (Settings → TV Guide).
 
 **Account**
-- Profiles with their pictures, and **Manage profiles**: add a profile (name
+- Profiles with their pictures, and **Manage profiles** (Settings → Account): add a profile (name
   and picture), rename it or change its picture, delete one, and set its parental controls (highest TV and
   movie rating) with your Starz parental-control PIN. Each profile's limits
   are applied: titles with a blocked rating are hidden.
 - Not in Kodi: changing your email, password or PIN (use starz.com)
-- **Manage devices**: log out other devices. Starz allows 6; at the limit,
+- **Manage devices** (Settings → Account): log out other devices. Starz allows 6; at the limit,
   playback offers to log one out and tries again.
 - Sign out: ends the session on Starz and removes this Kodi from your Starz
   devices, freeing its place in the 6-device limit

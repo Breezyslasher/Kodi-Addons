@@ -244,9 +244,8 @@ def main_menu(auth):
             pic = avatar(auth.profile_icon, auth.profile_name)
             li.setArt({"icon": pic, "thumb": pic, "fanart": ADDON_ART["fanart"]})
         xbmcplugin.addDirectoryItem(HANDLE, url(action="profile"), li, True)
-        add_dir(L(32158), "profiles")
-        add_action(L(32131), "activate_device")
-        add_action(L(32106), "devices")
+        # Manage profiles, Manage devices and Activate a TV or device live in
+        # Settings > Account: one-off account tasks, not browsing.
         add_dir(L(32063) % (auth.username or "-"), "sign_out")
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
 
