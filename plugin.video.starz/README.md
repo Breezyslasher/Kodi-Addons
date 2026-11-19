@@ -34,6 +34,7 @@ calls and opens an issue when one changes.
 - Watched marks from your Starz viewing history; Coming Soon with
   **Remind me**
 - Cast, director, writer and studio in Kodi's info dialog
+- Starz's corner tags on posters (Top 10, New Season, New Movie, Leaving Soon…), drawn into the image like on the website (Settings → Playback to turn off)
 
 **TV**
 - **TV Schedule**: the 17 STARZ, STARZ Encore and Plex channels with today's

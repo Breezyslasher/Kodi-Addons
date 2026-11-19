@@ -10,6 +10,7 @@
     </category>
     <category label="32121">
         <setting id="autoplay_next" type="bool" label="32122" default="true" />
+        <setting id="poster_tags" type="bool" label="32168" default="true" />
     </category>
     <category label="32114">
         <setting id="iptv.enabled" type="bool" label="32115" default="true" />

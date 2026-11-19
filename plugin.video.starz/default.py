@@ -1,5 +1,6 @@
 """Starz addon entry point and router."""
 
+import re
 import sys
 import time
 from urllib.parse import urlencode, parse_qsl, quote
@@ -165,13 +166,52 @@ def show_people(api, content_id):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
+# The website's corner tags: Top 10 in teal, the rest in its lime green.
+TAG_COLOURS = {"Top 10": "2FD3C9"}
+TAG_BG = "D4F04C"
+TAG_TEXT = "0B2B33"
+
+
+def _tag_mark(text, size):
+    """An imgix ~text label (endpoint check probe_badge_label_alone): the
+    tag with its own background, stamped on with mark= (probe_badge_mark;
+    imgix only accepts the absolute ~text URL there)."""
+    return "https://stz1.imgix.net/~text?" + urlencode({
+        "txt": text, "txt-size": str(size), "txt-color": TAG_TEXT,
+        "txt-font": "Helvetica Neue,Bold", "txt-pad": str(max(size // 3, 4)),
+        "bg": TAG_COLOURS.get(text, TAG_BG)})
+
+
+def _tagged_art(art, text):
+    """The title's own Starz images with ``text`` in the top-left corner;
+    the size follows each image's requested width (w=)."""
+    out = dict(art)
+    for key in ("poster", "thumb", "landscape"):
+        src = art.get(key) or ""
+        if not src.startswith("https://stz1.imgix.net/Web/"):
+            continue
+        width = re.search(r"[?&]w=(\d+)", src)
+        width = int(width.group(1)) if width else 600
+        size = max(int(width * (0.05 if key == "poster" else 0.03)), 14)
+        out[key] = src + "&" + urlencode({
+            "mark": _tag_mark(text, size), "mark-align": "top,left",
+            "mark-pad": str(max(width // 50, 6))})
+    return out
+
+
 def add_item(item):
     label = item.get("title", "")
     extras = [item["label_extra"]] if item.get("label_extra") else []
     # Starz's badges (New Season, New Episode, Top 10, Leaving Soon...); Coming
     # Soon has its own marker below.
-    extras += [STATE["badges"][k] for k in item.get("badge_keys") or []
-               if k != "cs" and k in (STATE.get("badges") or {})]
+    tags = [STATE["badges"][k] for k in item.get("badge_keys") or []
+            if k != "cs" and k in (STATE.get("badges") or {})]
+    if tags and STATE.get("poster_tags") and item.get("art"):
+        # Drawn in the poster's corner, as on the website; the rest (rare)
+        # stay in the label.
+        item = dict(item, art=_tagged_art(item["art"], tags[0]))
+        tags = tags[1:]
+    extras += tags
     if extras:
         label = "%s  [COLOR grey]%s[/COLOR]" % (label, " · ".join(extras))
     li = xbmcgui.ListItem(label)
@@ -957,6 +997,7 @@ def router(paramstring):
     if action in ("row", "page", "search", "my_list", "all", "browse", "recommended",
                   "artist", "similar", "continue"):
         STATE["badges"] = api.badge_labels()
+        STATE["poster_tags"] = kodiutils.get_setting_bool("poster_tags", True)
     if auth.signed_in and action in ("row", "series", "search", "my_list", "all",
                                      "recommended", "browse", "artist", "similar"):
         STATE["my_list"] = api.my_list_ids()
