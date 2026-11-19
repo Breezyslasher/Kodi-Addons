@@ -42,6 +42,8 @@ S = {
     "mark_watched": 32043,
     "mark_unwatched": 32044,
     "remove_cw": 32045,
+    "new_search": 32046,
+    "remove_search": 32047,
 }
 
 
@@ -186,12 +188,45 @@ def children(rk, start=0):
     end(content)
 
 
+HISTORY_FILE = "search_history.json"
+HISTORY_MAX = 20
+
+
+def search_menu():
+    """New search + recent searches. Nothing here opens the keyboard on its
+    own, so coming back to this folder never re-prompts."""
+    folder("[B]%s[/B]" % L("new_search"), {"action": "search_new"})
+    for q in kodiutils.read_json(HISTORY_FILE, []) or []:
+        item = xbmcgui.ListItem(q)
+        item.addContextMenuItems([(L("remove_search"), "RunPlugin(%s)" % url(action="search_forget", query=q))])
+        xbmcplugin.addDirectoryItem(HANDLE, url(action="search", query=q), item, True)
+    end("files", cache=False)
+
+
+def search_new():
+    """Ask once, then move to a results URL that carries the query: Kodi
+    reloads that URL (not this one) when you come back from a video, so the
+    keyboard does not reopen."""
+    query = kodiutils.input_text(L("search"))
+    xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+    if not query:
+        return
+    query = query.strip()
+    history = [q for q in (kodiutils.read_json(HISTORY_FILE, []) or []) if q.lower() != query.lower()]
+    kodiutils.write_json(HISTORY_FILE, [query] + history[:HISTORY_MAX - 1])
+    xbmc.executebuiltin("Container.Update(%s)" % url(action="search", query=query))
+
+
+def search_forget(query):
+    history = [q for q in (kodiutils.read_json(HISTORY_FILE, []) or []) if q != query]
+    kodiutils.write_json(HISTORY_FILE, history)
+    xbmc.executebuiltin("Container.Refresh")
+
+
 def search(query=None):
     if not query:
-        query = kodiutils.input_text(L("search"))
-        if not query:
-            xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
-            return
+        search_menu()
+        return
     api = PlexVodApi()
     items = api.search(query)
     if not items:
@@ -315,6 +350,10 @@ def router(paramstring):
             children(p["rk"], int(p.get("start", 0)))
         elif action == "search":
             search(p.get("query"))
+        elif action == "search_new":
+            search_new()
+        elif action == "search_forget":
+            search_forget(p.get("query", ""))
         elif action == "play":
             play(p["rk"])
         elif action == "sign_in":

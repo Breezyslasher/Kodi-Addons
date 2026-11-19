@@ -159,3 +159,11 @@ msgctxt "#32045"
 msgid "Remove from Continue Watching"
 msgstr ""
 
+msgctxt "#32046"
+msgid "New search"
+msgstr ""
+
+msgctxt "#32047"
+msgid "Remove from recent searches"
+msgstr ""
+
