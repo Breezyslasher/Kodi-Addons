@@ -887,11 +887,15 @@ class StarzApi(object):
             return {}
 
     def set_reminder(self, content_id, on):
-        """Remind me on a Coming Soon title: the same PUT User/Queue/{id} as
-        Add to My List (series HAR #252, {"remindMe": false}) with the flag
-        set. [VERIFY] remindMe true, which no capture has shown yet."""
-        self.auth.request("PUT", AUTH_API + "User/Queue/%s" % content_id,
-                          json={"remindMe": bool(on)})
+        """Remind me on a Coming Soon title, as the website does it (reminder
+        HAR, toggled 7 times): on = PUT User/Queue/{id} {"remindMe": true}
+        (it goes on My List flagged to remind); off = DELETE
+        User/Queue/{id}, which takes it off My List again."""
+        if on:
+            self.auth.request("PUT", AUTH_API + "User/Queue/%s" % content_id,
+                              json={"remindMe": True})
+        else:
+            self.auth.request("DELETE", AUTH_API + "User/Queue/%s" % content_id)
 
     def add_to_list(self, content_id):
         self.auth.request("PUT", AUTH_API + "User/Queue/%s" % content_id,
