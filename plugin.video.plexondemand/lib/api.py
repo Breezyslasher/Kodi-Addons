@@ -51,6 +51,12 @@ Actions, US region, anonymous token):
   Images          images.plex.tv/photo?url=<art>&width=&height= (no token);
                   a 920 KB poster comes back at ~29 KB for 300x450
   Search          limit=100 honoured, offset ignored
+  Store (TVOD)    GET {vod}/hubs/sections/store -> rows incl.
+                  /hubs/sections/store/myRentalsAndPurchases (the account's
+                  rentals); items carry rentalPrice, purchasePriceLabel,
+                  viewableDuration (h), publicPagesURL. Same Widevine DASH as
+                  free DRM titles; without an active order the manifest
+                  answers 404 "User has no active order for this rental".
   Related         GET {vod}/library/metadata/<rk>/similarTitles and
                   /more-from-credits -> 30 free titles each ("You Might Also
                   Like", "More From This Cast & Crew"). /library/people/<id>
@@ -113,6 +119,9 @@ class PlexVodApi(object):
     # ---- browse
     def hubs(self):
         return [h for h in self._get("/hubs").get("Hub") or [] if h.get("key")]
+
+    def store_hubs(self):
+        return [h for h in self._get("/hubs/sections/store").get("Hub") or [] if h.get("key")]
 
     def hub_items(self, key, start=0):
         c = self._get(key, self.page_params(start))

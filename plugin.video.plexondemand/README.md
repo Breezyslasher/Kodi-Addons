@@ -30,6 +30,7 @@ your real Plex account.
 | Markers | `/library/metadata/<rk>?includeMarkers=1` -> `credits` only. Survey of 250 movies / 407 episodes: credits on 22% of movies, on 0% of episodes; no `intro` markers and no chapters anywhere |
 | Rating | `PUT {vod}/actions/rate?ratingKey=&rating=0..10` (`-1` clears); read back as `userState.userRating` |
 | Not interested | `PUT {vod}/actions/addToDislikes` / `removeFromDislikes` `?ratingKey=`: accepted, but write-only (no list, not in userState) |
+| Store (rentals) | `GET {vod}/hubs/sections/store` (rows) and `/hubs/sections/store/myRentalsAndPurchases` (the account's); items carry `rentalPrice`, `purchasePriceLabel`, `viewableDuration`, `publicPagesURL`. Same Widevine DASH as free DRM titles; without a rental the manifest answers 404 "User has no active order for this rental" |
 | Watchlist | `PUT {vod}/actions/addToWatchlist`, `removeFromWatchlist` `?ratingKey=`; list `GET discover.provider.plex.tv/library/sections/watchlist/all` |
 | More like this | `GET {vod}/library/metadata/<rk>/similarTitles` and `/more-from-credits` (free titles; `/library/people/<id>` has no filmography) |
 | Artwork | `images.plex.tv/photo?url=&width=&height=` (no token; a 920 KB poster becomes about 29 KB) |
@@ -37,6 +38,13 @@ your real Plex account.
 | Search size | `limit=100` is honoured; `offset` is ignored |
 | Up next | `POST {vod}/playQueues?uri=provider://tv.plex.provider.vod/library/metadata/<rk>&type=video&continuous=1` |
 | Ads | `Metadata.Ad[]` = VMAP at `{vod}/vmap?...` (client-side VAST pods) |
+
+## Rentals
+Rentals and purchases are made in Plex's own apps or on watch.plex.tv; Kodi cannot rent. Once
+you sign in (plex.tv/link) with the same account, **Rentals → My Rentals & Purchases** lists
+them and they play like the free DRM titles. Playing a store title you have not rented shows its
+price and where to rent it. *Playback of an actual rental has not been tested yet* (no rental
+was available when this was written); the not-rented path is tested.
 
 ## Known gaps
 - **Ads are not played.** Plex inserts ads client-side (VMAP/VAST); this add-on plays

@@ -39,6 +39,15 @@ class Blocked(Exception):
     pass
 
 
+class NotRented(Exception):
+    """A store (TVOD) title with no active rental or purchase on this account.
+    The manifest answers 404 "User has no active order for this rental"."""
+
+    def __init__(self, item):
+        Exception.__init__(self, item.get("title") or "")
+        self.item = item
+
+
 def _pick(item):
     """(media, part, protocol, is_drm): prefer clear HLS, else Widevine DASH."""
     medias = item.get("Media") or []
@@ -94,14 +103,23 @@ def _stream_subtitles(api, part):
     return subs
 
 
-def _check(api, manifest_url, headers):
+def _check(api, manifest_url, headers, item=None):
     resp = api.session.get(manifest_url, headers=headers, timeout=20, stream=True)
     status = resp.status_code
+    message = ""
+    if status >= 400:
+        try:
+            message = ((resp.json() or {}).get("Error") or {}).get("message") or ""
+        except ValueError:
+            pass
     resp.close()
     if status == 451:
         raise Blocked("HTTP 451")
+    # Store titles: Plex checks the rental when the manifest is asked for.
+    if status == 404 and "no active order" in message.lower():
+        raise NotRented(item or {})
     if status >= 400:
-        raise Exception("manifest HTTP %s" % status)
+        raise Exception("manifest HTTP %s %s" % (status, message))
 
 
 def build(api, rating_key):
@@ -111,7 +129,7 @@ def build(api, rating_key):
         raise DrmUnavailable()
     manifest = _abs(api, part["key"])
     headers = api.headers()
-    _check(api, manifest, headers)
+    _check(api, manifest, headers, item_meta)
 
     li = xbmcgui.ListItem(path=manifest)
     li.setProperty("inputstream", "inputstream.adaptive")

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.19.4" provider-name="Breezyslasher">
+<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.19.5" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -17,7 +17,7 @@
 
 Clear titles play as HLS; Widevine-protected titles play as DASH through InputStream Adaptive (SD on most L3 devices).
 
-The catalogue is region-limited (mainly the US). Plex refuses some titles from VPN or datacenter addresses. This add-on does not play Plex's ads.
+The catalogue is region-limited (mainly the US). Plex refuses some titles from VPN or datacenter addresses. This add-on does not play Plex's ads. Rentals and purchases made on Plex's own apps or site play here once you sign in; renting is not possible from Kodi.
 
 Unofficial; not affiliated with or endorsed by Plex, Inc.</description>
 		<disclaimer lang="en_GB">Unofficial client. Plex is a trademark of Plex, Inc. Content availability is decided by Plex and its licensors.</disclaimer>
@@ -28,7 +28,10 @@ Unofficial; not affiliated with or endorsed by Plex, Inc.</description>
 			<icon>resources/icon.png</icon>
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
-		<news>v2026.11.19.4
+		<news>v2026.11.19.5
+- Rentals: My Rentals &amp; Purchases plays what your Plex account has rented or bought; the store rows show prices, and an un-rented title says where to rent it
+
+v2026.11.19.4
 - Rate… in the context menu: 1-5 stars (shown in lists as your rating), clear, or Not interested
 
 v2026.11.19.3

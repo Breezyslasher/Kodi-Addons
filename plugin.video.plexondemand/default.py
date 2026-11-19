@@ -52,6 +52,13 @@ S = {
     "related": 32054,
     "more_cast": 32062,
     "rate": 32063,
+    "rentals": 32068,
+    "my_rentals": 32069,
+    "no_rentals": 32070,
+    "not_rented": 32071,
+    "rent_price": 32072,
+    "buy_price": 32073,
+    "rent_where": 32074,
     "stars": 32064,
     "clear_rating": 32065,
     "not_interested": 32066,
@@ -126,7 +133,7 @@ def _menu(m, in_cw=False, in_wl=False):
     return entries
 
 
-def add_items(items, api=None, in_cw=False, in_wl=False):
+def add_items(items, api=None, in_cw=False, in_wl=False, in_store=False):
     content = "videos"
     if api is not None:
         _apply_user_state(api, items)
@@ -141,6 +148,8 @@ def add_items(items, api=None, in_cw=False, in_wl=False):
         item = xbmcgui.ListItem(label)
         item.setArt(_art(m))
         _info(item, m)
+        if in_store and m.get("rentalPrice"):
+            item.setLabel("%s  [COLOR gray]%s[/COLOR]" % (label, m["rentalPrice"]))
         if in_cw and kind == "episode" and m.get("grandparentTitle"):
             item.setLabel("%s - %s" % (m["grandparentTitle"], label))
         item.addContextMenuItems(_menu(m, in_cw, in_wl))
@@ -170,6 +179,7 @@ def root():
     _region_notice(api)
     folder(L("continue_watching"), {"action": "continue"})
     folder(L("watchlist"), {"action": "watchlist"})
+    folder(L("rentals"), {"action": "store"})
     folder(L("featured"), {"action": "hubs"})
     folder(L("movies"), {"action": "genres", "type": TYPE_MOVIE})
     folder(L("shows"), {"action": "genres", "type": TYPE_SHOW})
@@ -195,6 +205,20 @@ def _region_notice(api):
         kodiutils.notify(L("region_notice") % code, time_ms=8000)
 
 
+MY_RENTALS = "/hubs/sections/store/myRentalsAndPurchases"
+
+
+def store():
+    """Plex's rental store: the account's rentals first, then the store rows.
+    Renting happens on Plex's own apps or site; Kodi only plays."""
+    folder("[B]%s[/B]" % L("my_rentals"), {"action": "list", "key": MY_RENTALS, "store": 1})
+    for h in PlexVodApi().store_hubs():
+        if h["key"] == MY_RENTALS:
+            continue
+        folder(h.get("title") or h["key"], {"action": "list", "key": h["key"], "store": 1})
+    end("files")
+
+
 def hubs():
     for h in PlexVodApi().hubs():
         folder(h.get("title") or h["key"], {"action": "list", "key": h["key"], "title": h.get("title", "")})
@@ -215,11 +239,16 @@ def genres(media_type):
     end("files")
 
 
-def listing(key, start=0, sort=None):
+def listing(key, start=0, sort=None, in_store=False):
     api = PlexVodApi()
     items, total = api.listing(key, start, sort)
-    content = add_items(items, api)
+    if key == MY_RENTALS and not items and not start:
+        kodiutils.notify(L("no_rentals"))
+    # Prices only in the store rows, not in the account's own rentals.
+    content = add_items(items, api, in_store=in_store and key != MY_RENTALS)
     query = {"action": "list", "key": key}
+    if in_store:
+        query["store"] = 1
     if sort:
         query["sort"] = sort
     add_next(query, start, len(items), total)
@@ -383,6 +412,18 @@ def play(rk):
     api = PlexVodApi()
     try:
         item = playback.build(api, rk)
+    except playback.NotRented as nr:
+        m = nr.item
+        lines = [L("not_rented") % (m.get("title") or "")]
+        if m.get("rentalPrice"):
+            hours = m.get("viewableDuration")
+            lines.append(L("rent_price") % (m["rentalPrice"], hours or 48))
+        if m.get("purchasePriceLabel"):
+            lines.append(L("buy_price") % m["purchasePriceLabel"])
+        lines.append(L("rent_where") % (m.get("publicPagesURL") or "watch.plex.tv"))
+        kodiutils.ok_dialog("[CR]".join(lines))
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
     except playback.Blocked:
         kodiutils.ok_dialog(L("vpn_blocked"))
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -455,12 +496,14 @@ def router(paramstring):
             watchlist(int(p.get("start", 0)))
         elif action == "related":
             related(p["rk"], p.get("kind", "similarTitles"))
+        elif action == "store":
+            store()
         elif action == "hubs":
             hubs()
         elif action == "genres":
             genres(p.get("type", TYPE_MOVIE))
         elif action == "list":
-            listing(p["key"], int(p.get("start", 0)), p.get("sort"))
+            listing(p["key"], int(p.get("start", 0)), p.get("sort"), bool(p.get("store")))
         elif action == "children":
             children(p["rk"], int(p.get("start", 0)))
         elif action == "search":

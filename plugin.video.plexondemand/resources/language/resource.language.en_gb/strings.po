@@ -247,3 +247,31 @@ msgctxt "#32067"
 msgid "Undo Not interested"
 msgstr ""
 
+msgctxt "#32068"
+msgid "Rentals"
+msgstr ""
+
+msgctxt "#32069"
+msgid "My Rentals & Purchases"
+msgstr ""
+
+msgctxt "#32070"
+msgid "No rentals or purchases on this account (sign in to see yours)"
+msgstr ""
+
+msgctxt "#32071"
+msgid "\"%s\" is a rental and is not rented on this Plex account."
+msgstr ""
+
+msgctxt "#32072"
+msgid "Rent: %s (%s hours to watch once started)"
+msgstr ""
+
+msgctxt "#32073"
+msgid "Buy: %s"
+msgstr ""
+
+msgctxt "#32074"
+msgid "Rent or buy it on Plex at %s, then play it here (signed in with the same account)."
+msgstr ""
+

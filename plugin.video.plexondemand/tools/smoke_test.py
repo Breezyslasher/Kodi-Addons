@@ -226,5 +226,27 @@ api.action("addToDislikes", rk)
 api.action("removeFromDislikes", rk)
 check("dislike / undo accepted", True)
 
+# ---- store (rentals): browse, and a title nobody rented reports NotRented
+sh = api.store_hubs()
+check("store hubs", any(h["key"].endswith("/myRentalsAndPurchases") for h in sh), len(sh))
+mine, _ = api.listing("/hubs/sections/store/myRentalsAndPurchases")
+check("my rentals (anonymous: empty)", mine == [], len(mine))
+rentals = []
+for h in sh:
+    if not h["key"].endswith("/myRentalsAndPurchases"):
+        rentals = api.listing(h["key"])[0]
+        if rentals:
+            break
+check("store row has priced titles", bool(rentals) and bool(rentals[0].get("rentalPrice")),
+      rentals and (rentals[0].get("title"), rentals[0].get("rentalPrice")))
+try:
+    playback.build(api, rentals[0]["ratingKey"])
+    check("unrented title -> NotRented", False, "played without a rental?")
+except playback.NotRented as nr:
+    check("unrented title -> NotRented", nr.item.get("publicPagesURL", "").startswith("https://"),
+          nr.item.get("publicPagesURL"))
+except playback.Blocked:
+    print("SKIP unrented title: blocked from this IP (451 VPN/proxy)")
+
 print("\n%d failure(s)" % len(FAIL))
 sys.exit(1 if FAIL else 0)
