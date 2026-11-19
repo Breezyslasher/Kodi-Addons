@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.19.2" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.19.3" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,7 +35,10 @@ Features:
 			<clearlogo>resources/clearlogo.png</clearlogo>
 			<banner>resources/banner.png</banner>
 		</assets>
-		<news>v2026.11.19.2
+		<news>v2026.11.19.3
+- Activate a TV or device now works the way starz.com/activate does (code, then your email and password)
+
+v2026.11.19.2
 - Manage profiles: rename a profile or change its picture
 
 v2026.11.19.1

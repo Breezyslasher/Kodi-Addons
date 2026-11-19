@@ -293,6 +293,24 @@ class StarzAuth(object):
                 time.sleep(REGISTER_WAIT_SECS)
         self._save(username=email, subscription_state=state)
 
+    def link_code(self, code, email, password):
+        """Activate/{code} check, then Activate/Login for that code: links
+        whatever device is showing the code (see sign_in for this device)."""
+        check = self.http.get(AUTH_API + "Activate/%s" % code,
+                              headers=self.app_headers(), timeout=TIMEOUT)
+        if check.status_code != 200:
+            log_response("Activate/{code}", check)
+            raise _error(check)
+        email = normalise_username(email)
+        resp = self.http.post(AUTH_API + "Activate/Login",
+                              json={"code": code, "emailAddress": email, "password": password,
+                                    "preLoginEmailAddress": email},
+                              headers=self.app_headers(), timeout=TIMEOUT)
+        kodiutils.log("Activate/Login for another device -> HTTP %d" % resp.status_code)
+        if resp.status_code != 200:
+            log_response("Activate/Login", resp)
+            raise _error(resp)
+
     def poll_activation(self):
         """One poll of the activation-code flow: True once the device is linked.
 

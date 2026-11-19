@@ -633,12 +633,14 @@ class StarzApi(object):
 
     # -- activate another device --------------------------------------------
 
-    def activate_device(self, code):
-        """POST Activate/Device/{code} with the session: link another device
-        (a TV showing a code) to this account, as starz.com/activate does
-        for a signed-in user. From the site's JS bundle
-        (requiresSessionToken); [VERIFY] not captured."""
-        self.auth.request("POST", AUTH_API + "Activate/Device/%s" % code.strip().upper())
+    def activate_device(self, code, email, password):
+        """Link another device (a TV showing a code) to this account, the way
+        starz.com/activate does it even when signed in (activate HAR): check
+        the code with GET Activate/{code} (app token; 200 with {code,
+        authId}), then POST Activate/Login {code, emailAddress, password,
+        preLoginEmailAddress} -> {subscriptionState}. Not Activate/Device,
+        which the site's JS names but did not use."""
+        self.auth.link_code(code.strip().upper(), email, password)
 
     def _coming_soon_ids(self):
         """The Home page's COMING_SOON block carries no contentIds; the

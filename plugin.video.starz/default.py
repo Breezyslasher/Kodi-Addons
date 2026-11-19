@@ -896,8 +896,12 @@ def router(paramstring):
         elif action == "activate_device":
             code = kodiutils.input_text(L(32132))
             if code:
-                api.activate_device(code)
-                kodiutils.notify(L(32133))
+                # The website asks for the password again here too.
+                email = xbmcgui.Dialog().input(L(32020), defaultt=auth.username or "")
+                password = kodiutils.input_text(L(32021), hidden=True) if email else None
+                if email and password:
+                    api.activate_device(code, email, password)
+                    kodiutils.notify(L(32133))
             if HANDLE >= 0:
                 xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         elif action == "devices":
