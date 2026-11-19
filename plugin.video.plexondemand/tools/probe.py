@@ -546,6 +546,41 @@ def round5():
     return 0
 
 
+def round6():
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    st, ct, body, _ = req("GET", base + "/library/parts/62d04d8b700e44e586e47e68-dash.mpd", headers=T)
+    print("== 451 title ->", st, mask(body[:300].decode("utf-8", "replace")))
+    _, md = req_json("GET", base + "/library/metadata/5d9f356adfd12800208a1312", headers=T)
+    it = (mc(md).get("Metadata") or [{}])[0]
+    print("   451 title fields:", {k: it.get(k) for k in ("availabilityId", "expiresAt", "contentRating", "attribution")})
+    lic = base + "/library/parts/62be188e5e5872e950deb0db-dash/license"
+    challenge = b"\x08\x04"
+    tries = [
+        ("q drm=widevine", {"drm": "widevine"}, {}),
+        ("q X-Plex-DRM=widevine", {"X-Plex-DRM": "widevine"}, {}),
+        ("hdr X-Plex-DRM=widevine", {}, {"X-Plex-DRM": "widevine"}),
+        ("q type=widevine", {"type": "widevine"}, {}),
+        ("q drmType=widevine", {"drmType": "widevine"}, {}),
+        ("q scheme=widevine", {"scheme": "widevine"}, {}),
+        ("q drm=wv", {"drm": "wv"}, {}),
+        ("q X-Plex-Drm=widevine", {"X-Plex-Drm": "widevine"}, {}),
+        ("hdr X-Plex-Client-Platform-DRM", {}, {"X-Plex-DRM-Support": "widevine"}),
+    ]
+    for label, q, h in tries:
+        url = lic + "?" + urllib.parse.urlencode(q) if q else lic
+        r = urllib.request.Request(url, data=challenge, method="POST",
+                                   headers=dict(HEADERS, **T, **h, **{"Content-Type": "application/octet-stream"}))
+        try:
+            with urllib.request.urlopen(r, timeout=20) as resp:
+                print(f"== {label} -> {resp.status} {resp.read()[:200]!r}")
+        except urllib.error.HTTPError as e:
+            print(f"== {label} -> {e.code} {mask(e.read()[:250].decode('utf-8', 'replace'))}")
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -557,5 +592,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round5")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round6")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6}.get(mode, main)())
