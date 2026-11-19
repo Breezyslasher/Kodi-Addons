@@ -253,5 +253,117 @@ def main():
     return 0
 
 
+def round3():
+    """Compact checks: hub list, catalogue listing, token needs, VMAP, DRM ratio."""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    _, hubs = req_json("GET", base + "/hubs", headers=T)
+    print("===== hub list")
+    for h in mc(hubs).get("Hub") or []:
+        print(" ", h.get("hubIdentifier"), "|", h.get("title"), "|", h.get("key"), "|", h.get("style"),
+              "| types", h.get("availabilityTypes"))
+    for path, params in (("/library/sections/movies/all", {"type": 1}),
+                         ("/library/sections/movies/all", {"type": 2}),
+                         ("/library/sections/movies/genre", {"type": 2}),
+                         ("/library/sections/movies/all", {"type": 1, "sort": "titleSort"})):
+        params = dict(params, **{"X-Plex-Container-Size": 3, "X-Plex-Container-Start": 0})
+        st, d = req_json("GET", base + path, headers=T, params=params)
+        c = mc(d)
+        print(f"\n===== {path} {params} -> {st} totalSize={c.get('totalSize')} size={c.get('size')}")
+        print("  container keys:", sorted(k for k in c if not isinstance(c[k], list)))
+        for m in (c.get("Metadata") or c.get("Directory") or [])[:3]:
+            print("  ", m.get("type"), m.get("title"), m.get("ratingKey") or m.get("key"))
+    # DRM ratio + item for playback tests
+    drm = clear = 0
+    sample = None
+    for h in (mc(hubs).get("Hub") or [])[:25]:
+        st, d = req_json("GET", base + h["key"], headers=T, params={"count": 20})
+        for m in mc(d).get("Metadata") or []:
+            for media in m.get("Media") or []:
+                if media.get("protocol") != "hls":
+                    continue
+                if media.get("drm"):
+                    drm += 1
+                else:
+                    clear += 1
+                    if not sample and m.get("type") == "movie":
+                        sample = m
+    print(f"\n===== DRM ratio over hub items: clear={clear} drm={drm}")
+    if sample:
+        part = [mm for mm in sample["Media"] if mm.get("protocol") == "hls"][0]["Part"][0]["key"]
+        url = base + part
+        for label, h in (("with token", T), ("no token", {}), ("bare UA only", None)):
+            hdrs = h if h is not None else {}
+            if h is None:
+                r = urllib.request.Request(url, headers={"User-Agent": "Kodi/21"})
+                try:
+                    with urllib.request.urlopen(r, timeout=20) as resp:
+                        st, body = resp.status, resp.read()
+                except urllib.error.HTTPError as e:
+                    st, body = e.code, e.read()
+            else:
+                st, _, body, _ = req("GET", url, headers=hdrs)
+            print(f"\n===== master {label} -> {st} len={len(body)}")
+        st, _, body, fin = req("GET", url, headers={})
+        text = body.decode("utf-8", "replace")
+        variants = [l for l in text.splitlines() if l and not l.startswith("#")]
+        if variants:
+            v = urllib.parse.urljoin(fin, variants[0])
+            r = urllib.request.Request(v, headers={"User-Agent": "Kodi/21"})
+            with urllib.request.urlopen(r, timeout=20) as resp:
+                vt = resp.read().decode()
+            print("  variant bare ->", resp.status, "host", urllib.parse.urlparse(v).netloc,
+                  "query?", bool(urllib.parse.urlparse(v).query))
+            seg = [l for l in vt.splitlines() if l and not l.startswith("#")][0]
+            sv = urllib.parse.urljoin(v, seg)
+            r = urllib.request.Request(sv, headers={"User-Agent": "Kodi/21", "Range": "bytes=0-99"})
+            try:
+                with urllib.request.urlopen(r, timeout=20) as resp:
+                    print("  segment bare ->", resp.status, resp.headers.get("Content-Type"))
+            except urllib.error.HTTPError as e:
+                print("  segment bare ->", e.code)
+        sub = [l for l in text.splitlines() if "TYPE=SUBTITLES" in l]
+        print("  subtitle lines:", len(sub))
+        # VMAP
+        ad = (sample.get("Ad") or [{}])[0].get("url")
+        if ad:
+            st, ct, body, _ = req("GET", ad, headers=dict(T, Accept="*/*"))
+            print(f"\n===== VMAP -> {st} {ct} len={len(body)}")
+            print(mask(body[:2500].decode("utf-8", "replace")))
+        # timeline probe (report only)
+        rk = sample["ratingKey"]
+        st, ct, body, _ = req("POST", base + "/timeline", headers=T, params={
+            "ratingKey": rk, "key": f"/library/metadata/{rk}", "state": "playing", "time": 1000,
+            "duration": sample.get("duration", 0)})
+        print(f"\n===== timeline POST -> {st} {mask(body[:300].decode('utf-8', 'replace'))}")
+        st, ct, body, _ = req("PUT", base + "/timeline", headers=T, params={
+            "ratingKey": rk, "key": f"/library/metadata/{rk}", "state": "playing", "time": 1000,
+            "duration": sample.get("duration", 0)})
+        print(f"===== timeline PUT -> {st} {mask(body[:300].decode('utf-8', 'replace'))}")
+    # search: free section items
+    st, sr = req_json("GET", "https://discover.provider.plex.tv/library/search", headers=T, params={
+        "query": "star", "searchTypes": "movies,tv", "searchProviders": "discover,plexAVOD",
+        "includeMetadata": 1, "limit": 5})
+    for sec in mc(sr).get("SearchResults") or []:
+        print(f"\n===== search section {sec.get('id')} {sec.get('title')}")
+        for r in (sec.get("SearchResult") or [])[:5]:
+            m = r.get("Metadata") or {}
+            print("  ", m.get("type"), m.get("title"), m.get("ratingKey"), m.get("source"),
+                  "Media" in m, m.get("key"))
+    return 0
+
+
+def req_json(method, url, **kw):
+    st, ct, body, _ = req(method, url, **kw)
+    try:
+        d = json.loads(body)
+        _mask_tokens(d)
+        return st, d
+    except Exception:
+        return st, {}
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(round3() if os.environ.get("PROBE_MODE", "round3") == "round3" else main())
