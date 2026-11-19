@@ -355,6 +355,126 @@ def round3():
     return 0
 
 
+def round4():
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    _, hubs = req_json("GET", base + "/hubs", headers=T)
+    clear = drm = None
+    for h in (mc(hubs).get("Hub") or [])[:25]:
+        _, d = req_json("GET", base + h["key"], headers=T, params={"count": 20})
+        for m in mc(d).get("Metadata") or []:
+            ms = m.get("Media") or []
+            if any(x.get("drm") for x in ms):
+                drm = drm or m
+            elif ms:
+                clear = clear or m
+        if clear and drm:
+            break
+    # genre listing + paging
+    _, g = req_json("GET", base + "/library/sections/movies/genre", headers=T, params={"type": 1})
+    gk = (mc(g).get("Directory") or [{}])[0].get("key")
+    for start in (0, 3):
+        st, d = req_json("GET", base + gk, headers=T,
+                         params={"X-Plex-Container-Start": start, "X-Plex-Container-Size": 3})
+        c = mc(d)
+        print(f"===== genre {gk} start={start} -> {st} total={c.get('totalSize')} size={c.get('size')} offset={c.get('offset')}",
+              [m.get("title") for m in c.get("Metadata") or []])
+    st, d = req_json("GET", base + gk, headers=T, params={"sort": "titleSort", "X-Plex-Container-Size": 3})
+    print("  sorted titleSort ->", st, [m.get("title") for m in mc(d).get("Metadata") or []])
+    st, d = req_json("GET", base + "/hubs/sections/movies/trending", headers=T,
+                     params={"X-Plex-Container-Start": 20, "X-Plex-Container-Size": 20})
+    c = mc(d)
+    print("===== hub paging start=20 ->", st, "total", c.get("totalSize"), "size", c.get("size"), "offset", c.get("offset"))
+    for label, m in (("CLEAR", clear), ("DRM", drm)):
+        if not m:
+            print("no", label); continue
+        print(f"\n######## {label}: {m.get('title')} {m.get('type')} {m.get('ratingKey')}")
+        _, md = req_json("GET", base + f"/library/metadata/{m['ratingKey']}", headers=T)
+        item = (mc(md).get("Metadata") or [m])[0]
+        for media in item.get("Media") or []:
+            print("  Media:", json.dumps({k: v for k, v in media.items() if k != "Part"})[:600])
+            for part in media.get("Part") or []:
+                print("   Part:", mask(json.dumps({k: v for k, v in part.items() if k != "Stream"})[:800]))
+                url = base + part["key"]
+                st, ct, body, fin = req("GET", url, headers=T)
+                text = body.decode("utf-8", "replace")
+                print(f"   GET part -> {st} {ct} len={len(text)}")
+                for line in text.splitlines():
+                    if "EXT-X-KEY" in line or "SESSION-KEY" in line or "license" in line.lower():
+                        print("    ", mask(line[:600]))
+                if "<MPD" in text:
+                    import re as _re
+                    for cp in _re.findall(r"<ContentProtection.*?(?:/>|</ContentProtection>)", text, _re.S)[:4]:
+                        print("    CP:", mask(cp[:700]))
+                    for k in _re.findall(r'[\w:]*(?:licen[cs]e|laurl|Laurl)[^>]{0,300}', text)[:4]:
+                        print("    LIC:", mask(k[:400]))
+                    bu = _re.findall(r"<BaseURL>(.*?)</BaseURL>", text)
+                    print("    BaseURL:", bu[:1])
+                    if bu:
+                        im = _re.findall(r'initialization="([^"]+)"', text)
+                        if im:
+                            seg = urllib.parse.urljoin(bu[0], im[0])
+                            r = urllib.request.Request(seg, headers={"User-Agent": "Kodi/21", "Range": "bytes=0-99"})
+                            try:
+                                with urllib.request.urlopen(r, timeout=20) as resp:
+                                    print("    init seg bare ->", resp.status)
+                            except urllib.error.HTTPError as e:
+                                print("    init seg bare ->", e.code)
+                elif "#EXTM3U" in text:
+                    vs = [l for l in text.splitlines() if l and not l.startswith("#")]
+                    if vs:
+                        v = urllib.parse.urljoin(fin, vs[0])
+                        r = urllib.request.Request(v, headers={"User-Agent": "Kodi/21"})
+                        try:
+                            with urllib.request.urlopen(r, timeout=20) as resp:
+                                vt = resp.read().decode()
+                            print("    variant bare -> 200", urllib.parse.urlparse(v).netloc)
+                            for line in vt.splitlines():
+                                if "EXT-X-KEY" in line or "EXT-X-MAP" in line:
+                                    print("     ", mask(line[:400])); 
+                            seg = [l for l in vt.splitlines() if l and not l.startswith("#")][0]
+                            r = urllib.request.Request(urllib.parse.urljoin(v, seg),
+                                                       headers={"User-Agent": "Kodi/21", "Range": "bytes=0-99"})
+                            with urllib.request.urlopen(r, timeout=20) as resp:
+                                print("    segment bare ->", resp.status)
+                        except urllib.error.HTTPError as e:
+                            print("    variant/segment bare ->", e.code)
+        # playQueue for DRM: does it add license info?
+        if label == "DRM":
+            uri = f"provider://tv.plex.provider.vod/library/metadata/{m['ratingKey']}"
+            _, pq = req_json("POST", base + "/playQueues", headers=T,
+                             params={"uri": uri, "type": "video", "continuous": 0})
+            pi = (mc(pq).get("Metadata") or [{}])[0]
+            for media in pi.get("Media") or []:
+                print("  PQ Media:", mask(json.dumps(media)[:1500]))
+            for k in ("/library/parts/%s/license", "/drm/license/%s", "/library/metadata/%s/license"):
+                pid = (item.get("Media") or [{}])[0].get("Part", [{}])[0].get("id")
+                st, ct, body, _ = req("POST", base + (k % pid), headers=dict(T, **{"Content-Type": "application/octet-stream"}))
+                print("  try", k % pid, "->", st, mask(body[:200].decode("utf-8", "replace")))
+        ad = (item.get("Ad") or [{}])[0].get("url")
+        if ad and label == "CLEAR":
+            st, ct, body, _ = req("GET", ad, headers=dict(T, Accept="*/*"))
+            print(f"\n===== VMAP -> {st} {ct} len={len(body)}")
+            print(mask(body[:2000].decode("utf-8", "replace")))
+            rk = m["ratingKey"]
+            for meth in ("POST", "PUT", "GET"):
+                st, ct, body, _ = req(meth, base + "/timeline", headers=T, params={
+                    "ratingKey": rk, "key": f"/library/metadata/{rk}", "state": "stopped", "time": 60000,
+                    "duration": item.get("duration", 0)})
+                print(f"===== timeline {meth} -> {st} {mask(body[:200].decode('utf-8', 'replace'))}")
+    st, sr = req_json("GET", "https://discover.provider.plex.tv/library/search", headers=T, params={
+        "query": "star", "searchTypes": "movies,tv", "searchProviders": "discover,plexAVOD",
+        "includeMetadata": 1, "limit": 5})
+    for sec in mc(sr).get("SearchResults") or []:
+        print(f"\n===== search section {sec.get('id')} {sec.get('title')}")
+        for r in (sec.get("SearchResult") or [])[:4]:
+            mm = r.get("Metadata") or {}
+            print("  ", mm.get("type"), mm.get("title"), mm.get("ratingKey"), mm.get("source"), "Media" in mm)
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -366,4 +486,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    sys.exit(round3() if os.environ.get("PROBE_MODE", "round3") == "round3" else main())
+    mode = os.environ.get("PROBE_MODE", "round4")
+    sys.exit({"round3": round3, "round4": round4}.get(mode, main)())
