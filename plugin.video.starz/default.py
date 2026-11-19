@@ -191,7 +191,7 @@ def _tagged_art(art, text):
         width = int(width.group(1)) if width else 600
         size = max(int(width * (0.045 if key == "poster" else 0.025)), 14)
         pad = max(size // 3, 4)
-        box_w = int(len(text) * size * 0.62) + 2 * pad
+        box_w = int(len(text) * size * 0.68) + 2 * pad
         box_h = int(size * 1.3) + pad
         edge = str(max(width // 60, 6))
         align = "top,right" if top10 else "top,left"
@@ -200,6 +200,9 @@ def _tagged_art(art, text):
         out[key] = src + "&" + urlencode({
             "blend": TAG_IMAGES + ("top10.png" if top10 else "tag.png"),
             "blend-mode": "normal", "blend-w": str(box_w), "blend-h": str(box_h),
+            # stretch to the box: by default imgix keeps the PNG's shape
+            # (a square Top 10, a 4:1 strip too short for Leaving Soon).
+            "blend-fit": "scale",
             "blend-align": align, "blend-pad": edge,
             "txt": text, "txt-size": str(size), "txt-color": TAG_TEXT,
             "txt-font": "Helvetica Neue,Bold", "txt-align": align,
