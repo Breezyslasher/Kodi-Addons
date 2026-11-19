@@ -81,7 +81,7 @@ code captured so far has no TV-provider flow, only Google and Apple sign-in
 - **Movies and series: up to 1080p, on desktop too.** Starz's manifests
   offer 202p to 1080p, and every resolution uses the same key, so the
   licence Kodi gets with the software Widevine (L3) CDM unlocks 1080p as
-  well. Not yet confirmed on a 1080p screen.
+  well. Confirmed: 1920x1080 in Kodi on Linux.
 - **InputStream Adaptive caps the stream at your screen's size** by default.
   On a smaller monitor you get less (e.g. 1280x952 on a 1280x1024 screen).
   To change it: InputStream Adaptive's settings → *Stream selection* /
