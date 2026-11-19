@@ -47,6 +47,83 @@ DEFAULT_PORT = 57812
 # and is rejected. Set in the service process; read from the file in the plugin.
 _SECRET = None
 
+# Apple publishes per-episode markers in the master playlist as
+# EXT-X-SESSION-DATA tags (com.apple.hls.*). Parsed each time the master is
+# served -- one play at a time, so module globals suffice -- into:
+#   _SKIP_MARKERS : the Skip Intro / Skip Recap / Next-episode button points
+#   _START_MARKERS: where to begin playback (skip the intro ident; Apple resume)
+# Reset to {} for a master that carries none.
+_SKIP_MARKERS = {}
+_START_MARKERS = {}
+
+
+def _session_data(text):
+    out = {}
+    for m in re.finditer(
+            r'#EXT-X-SESSION-DATA:DATA-ID="(com\.apple\.hls\.[^"]+)",'
+            r'VALUE="([^"]*)"', text):
+        out[m.group(1)] = m.group(2)
+    return out
+
+
+def _num(data, key):
+    try:
+        return float(data[key])
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+def _parse_skip_markers(data):
+    marks = {}
+    try:
+        count = int(float(data.get("com.apple.hls.skip.count", "0")))
+    except (ValueError, TypeError):
+        count = 0
+    for i in range(count):
+        typ = (data.get("com.apple.hls.skip.%d.type" % i) or "").lower()
+        start = _num(data, "com.apple.hls.skip.%d.start" % i)
+        target = _num(data, "com.apple.hls.skip.%d.target" % i)
+        # skipbuttons jumps to the second value, so pass the skip target as the
+        # "end"; drop a marker under a second as noise.
+        if typ in ("intro", "recap") and start is not None \
+                and target is not None and target - start >= 1:
+            marks[typ] = (start, target)
+    credits = _num(data, "com.apple.hls.up-next.start")
+    if credits is not None and credits > 60:
+        marks["credits"] = credits
+    return marks
+
+
+def _parse_start_markers(data):
+    marks = {}
+    # Where content proper begins (after Apple's intro ident bumper): the
+    # explicit resume-after-summary time, else the pre-roll's own length.
+    pre = _num(data, "com.apple.hls.video-summary-resume-time")
+    if pre is None:
+        pre = _num(data, "com.apple.hls.pre-roll.duration")
+    if pre is not None and pre >= 2:
+        marks["pre_roll_end"] = pre
+    watched = _num(data, "com.apple.hls.watched.time")
+    if watched is not None:
+        marks["watched_time"] = watched
+    dur = _num(data, "com.apple.hls.feature.duration")
+    if dur:
+        marks["duration"] = dur
+    return marks
+
+
+def skip_markers():
+    """The last master's skip markers, as skipbuttons wants:
+    {"intro": (start, target), "recap": (start, target), "credits": start}."""
+    return dict(_SKIP_MARKERS)
+
+
+def start_markers():
+    """Where to start playback for the last master, in seconds:
+    {"pre_roll_end", "watched_time", "duration"}. pre_roll_end skips Apple's
+    intro ident; watched_time is Apple's own resume position."""
+    return dict(_START_MARKERS)
+
 
 def _context():
     return kodiutils.read_json(CONTEXT_FILE, default={}) or {}
@@ -566,6 +643,17 @@ class _Handler(BaseHTTPRequestHandler):
         Renditions referenced only by dropped variants are removed too, so ISA
         does not report "Cannot find variant for AUDIO GROUP-ID".
         """
+        global _SKIP_MARKERS, _START_MARKERS
+        try:
+            sd = _session_data(text)
+            _SKIP_MARKERS = _parse_skip_markers(sd)
+            _START_MARKERS = _parse_start_markers(sd)
+            if _SKIP_MARKERS or _START_MARKERS:
+                kodiutils.log("Master markers: skip=%s start=%s"
+                              % (_SKIP_MARKERS, _START_MARKERS))
+        except Exception as exc:
+            _SKIP_MARKERS, _START_MARKERS = {}, {}
+            kodiutils.log("Master marker parse failed: %s" % exc)
         # Two of the three limits exist to keep the Widevine CDM happy: it
         # refuses the higher tiers' keys and cannot decode HEVC. An unencrypted
         # stream never reaches the CDM, so it plays at whatever quality and

@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.11.18" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.11.19" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
 		<import addon="inputstream.adaptive" version="21.0.0"/>
 		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+		<import addon="script.module.skipbuttons" version="1.0.1" optional="true"/>
 	</requires>
 	<extension point="xbmc.python.pluginsource" library="default.py">
 		<provides>video</provides>
@@ -33,6 +34,15 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.11.19 - Skip Intro/Recap, Next Episode, and smart resume
+- NEW: on-screen Skip Recap / Skip Intro buttons and a Next Episode button
+  near the end of an episode, driven by Apple's own skip markers. Needs the
+  script.module.skipbuttons helper add-on (optional -- without it playback is
+  unchanged).
+- NEW: the Apple ident bumper at the very start of a title is skipped
+  automatically, and playback can resume at Apple's own watched position
+  (toggle "Resume from Apple's watched position" in settings).
+
 2026.11.18 - Sign-in no longer breaks on a capitalised Apple ID
 - FIX: the Apple ID is now lower-cased and trimmed before sign-in. Apple
   normalises the account to lowercase when it checks the SRP proof, so an

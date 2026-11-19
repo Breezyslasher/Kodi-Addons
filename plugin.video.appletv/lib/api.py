@@ -1099,6 +1099,45 @@ class AppleTVApi(object):
             episodes = [e for e in episodes if str(e.get("season")) == str(season)]
         return self._harvest_streams(episodes)
 
+    def next_episode_id(self, content_id):
+        """The content id of the episode after this one in its show, or None.
+
+        Reads the playing episode's show, season and number from its detail
+        document, lists the show's episodes and returns the next one in
+        (season, episode) order. Best-effort: returns None (and logs what it
+        was missing) rather than guess, so a lookup that cannot resolve simply
+        leaves the Next-episode button off.
+        """
+        data, _mut = self._detail_json(content_id, "Episode")
+        if not data:
+            return None
+        show_id = (self._deep_find(data, "showId")
+                   or self._deep_find(data, "showContentId"))
+        cur_season = self._deep_find(data, "seasonNumber")
+        cur_episode = self._deep_find(data, "episodeNumber")
+        if not show_id or cur_season is None or cur_episode is None:
+            kodiutils.log("Next episode: show/season/episode not found "
+                          "(show=%s season=%s episode=%s)"
+                          % (show_id, cur_season, cur_episode))
+            return None
+        try:
+            cur = (int(cur_season), int(cur_episode))
+        except (TypeError, ValueError):
+            return None
+        ordered = []
+        for e in self.get_show_episodes(show_id):
+            try:
+                ordered.append(((int(e["season"]), int(e["episode"])), e["id"]))
+            except (KeyError, TypeError, ValueError):
+                continue
+        ordered.sort(key=lambda pair: pair[0])
+        for idx, (key, _eid) in enumerate(ordered):
+            if key == cur and idx + 1 < len(ordered):
+                nxt = ordered[idx + 1][1]
+                kodiutils.log("Next episode of %s: %s" % (content_id, nxt))
+                return nxt
+        return None
+
     # -- playback --------------------------------------------------------
 
     def list_playables(self, content_id, item_type="Movie"):

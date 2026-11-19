@@ -15,9 +15,17 @@ import time
 import xbmc
 
 from lib import kodiutils
+from lib import license_proxy
 from lib.api import AppleTVApi, PLAYBACK_REPORT_CACHE, SEEK_CONTEXT
 from lib.auth import AppleAuth
 from lib.license_proxy import LicenseProxy, release_leases
+
+try:
+    from skipbuttons import SkipController
+except ImportError:
+    # The shared module is a separate add-on; without it the skip buttons are
+    # simply absent and everything else plays as before.
+    SkipController = None
 
 # How often to tell Apple where playback has reached. The web client posts
 # far more often than this, but it is reporting analytics as well; for a
@@ -203,11 +211,131 @@ class KeyPlaySeeker(object):
         self._index = 0
 
 
+def start_resume(player):
+    """One-shot at playback start: skip Apple's intro ident bumper, and resume
+    at Apple's own watched position when Kodi is not already resuming.
+
+    The markers come from the master playlist (license_proxy.start_markers()).
+    If Kodi (or ISA) has already seeked past the pre-roll -- e.g. a Continue
+    Watching item whose Kodi resume point put it mid-stream -- nothing is done,
+    so this never fights Kodi's own resume or a "start from beginning" choice
+    that still lands after the ident. Apple resume only applies to a genuine
+    mid-point (never near the end, which is treated as finished).
+    """
+    m = license_proxy.start_markers()
+    if not m:
+        return
+    pre = m.get("pre_roll_end") or 0.0
+    watched = m.get("watched_time") or 0.0
+    try:
+        pos = player.getTime()
+        dur = m.get("duration") or player.getTotalTime() or 0.0
+    except Exception:
+        return
+    # Already resumed/seeked past the ident: leave it exactly as Kodi set it.
+    if pos > pre + 2:
+        return
+    target = None
+    if kodiutils.get_setting_bool("apple_auto_resume", True) and dur \
+            and pre + 30 < watched < dur * 0.9:
+        target = watched            # Apple's resume position
+    elif pre >= 2:
+        target = pre                # just skip the intro ident
+    if target and target > pos + 1:
+        try:
+            player.seekTime(float(target))
+            kodiutils.log("Start seek: to %.1fs (pre-roll=%.1f watched=%.1f)"
+                          % (target, pre, watched))
+        except Exception as exc:
+            kodiutils.log_error("Start seek failed: %s" % exc)
+
+
+class SkipButtons(object):
+    """Drives the Skip recap / Skip intro / Next episode buttons.
+
+    The markers come from the master playlist Apple serves (parsed by the
+    licence proxy into license_proxy.skip_markers()); the next episode is
+    looked up from the show's episode list. Both reads are off the player's
+    callback thread. A no-op when script.module.skipbuttons is not installed.
+    """
+
+    def __init__(self, player):
+        self._ctl = None
+        self._api = None
+        self._next_url = None
+        if SkipController is not None:
+            try:
+                self._ctl = SkipController(
+                    player, play_next=self._play_next,
+                    autoplay=lambda: kodiutils.get_setting_bool(
+                        "autoplay_next", True))
+            except Exception as exc:
+                kodiutils.log_error("Skip buttons unavailable: %s" % exc)
+
+    def start(self, player):
+        if not self._ctl:
+            return
+        self._next_url = None
+        marks = license_proxy.skip_markers()
+        if not marks:
+            self._ctl.reset()
+            return
+        ctx = kodiutils.read_json(PLAYBACK_REPORT_CACHE, default={}) or {}
+        content_id = ctx.get("content_id")
+        threading.Thread(target=self._prepare, args=(marks, content_id),
+                         daemon=True).start()
+
+    def _prepare(self, marks, content_id):
+        has_next = False
+        if content_id and kodiutils.get_setting_bool("autoplay_next", True):
+            try:
+                nxt = self._lazy_api().next_episode_id(content_id)
+                if nxt:
+                    self._next_url = (
+                        "plugin://plugin.video.appletv/"
+                        "?action=play&item_id=%s&item_type=Episode" % nxt)
+                    has_next = True
+            except Exception as exc:
+                kodiutils.log("Skip buttons: next-episode lookup failed: %s" % exc)
+        try:
+            self._ctl.reset(marks, has_next=has_next,
+                            credits=bool(marks.get("credits")))
+            kodiutils.log("Skip buttons: marks=%s next=%s" % (marks, has_next))
+        except Exception as exc:
+            kodiutils.log_error("Skip buttons reset failed: %s" % exc)
+
+    def tick(self, player):
+        if not self._ctl:
+            return
+        try:
+            if player.isPlayingVideo():
+                self._ctl.tick(player.getTime(), time.time())
+        except Exception:
+            pass
+
+    def reset(self):
+        if self._ctl:
+            try:
+                self._ctl.reset()
+            except Exception:
+                pass
+
+    def _play_next(self):
+        if self._next_url:
+            xbmc.executebuiltin("PlayMedia(%s)" % self._next_url)
+
+    def _lazy_api(self):
+        if self._api is None:
+            self._api = AppleTVApi(AppleAuth())
+        return self._api
+
+
 class Player(xbmc.Player):
     def __init__(self, history, seeker):
         super(Player, self).__init__()
         self.history = history
         self.seeker = seeker
+        self.skip = SkipButtons(self)
 
     def onAVStarted(self):
         # Only ours: every other player in Kodi is none of our business.
@@ -218,15 +346,19 @@ class Player(xbmc.Player):
             return
         self.history.start(self)
         self.seeker.start(self)
+        start_resume(self)
+        self.skip.start(self)
 
     def onPlayBackStopped(self):
         self.history.stop()
         self.seeker.reset()
+        self.skip.reset()
         self._release_leases()
 
     def onPlayBackEnded(self):
         self.history.stop()
         self.seeker.reset()
+        self.skip.reset()
         self._release_leases()
 
     @staticmethod
@@ -254,6 +386,7 @@ def main():
     while not monitor.abortRequested():
         history.tick(player)
         seeker.tick(player)
+        player.skip.tick(player)
         if monitor.waitForAbort(1):
             break
     history.stop()
