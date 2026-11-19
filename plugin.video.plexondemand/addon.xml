@@ -5,6 +5,7 @@
 		<import addon="script.module.requests" version="2.31.0"/>
 		<import addon="inputstream.adaptive" version="21.0.0"/>
 		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+		<import addon="script.module.skipbuttons" version="1.0.1" optional="true"/>
 	</requires>
 	<extension point="xbmc.python.pluginsource" library="default.py">
 		<provides>video</provides>
@@ -31,6 +32,9 @@ Unofficial; not affiliated with or endorsed by Plex, Inc.</description>
 - First release: Plex's free Movies &amp; Shows catalogue without a Plex server or account
 - Featured rows, Movies and TV Shows by genre, search
 - Clear HLS playback with subtitles; Widevine DASH for DRM titles
-- Optional plex.tv/link sign-in; watch progress reported to Plex</news>
+- Optional plex.tv/link sign-in; watch progress reported to Plex
+- Continue Watching, resume points and watched marks shared with Plex
+- Subtitles on DRM titles too; trailers from the context menu
+- Next episode countdown at the credits (Skip Buttons), autoplay setting</news>
 	</extension>
 </addon>

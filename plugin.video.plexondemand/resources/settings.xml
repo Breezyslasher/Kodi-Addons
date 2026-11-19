@@ -8,6 +8,7 @@
         <setting id="max_height" type="select" label="32031" values="0|480|720|1080" default="0" />
         <setting id="subtitles" type="bool" label="32032" default="true" />
         <setting id="report_progress" type="bool" label="32033" default="true" />
+        <setting id="autoplay_next" type="bool" label="32038" default="true" />
     </category>
     <category label="32002">
         <setting id="base_url_override" type="text" label="32034" default="" />

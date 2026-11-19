@@ -130,3 +130,32 @@ msgstr ""
 msgctxt "#32037"
 msgid "Client identifier"
 msgstr ""
+
+msgctxt "#32038"
+msgid "Autoplay the next episode at the credits"
+msgstr ""
+
+msgctxt "#32040"
+msgid "Continue Watching"
+msgstr ""
+
+msgctxt "#32041"
+msgid "Play trailer"
+msgstr ""
+
+msgctxt "#32042"
+msgid "No trailer for this title"
+msgstr ""
+
+msgctxt "#32043"
+msgid "Mark as watched"
+msgstr ""
+
+msgctxt "#32044"
+msgid "Mark as unwatched"
+msgstr ""
+
+msgctxt "#32045"
+msgid "Remove from Continue Watching"
+msgstr ""
+

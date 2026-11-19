@@ -151,5 +151,32 @@ if drm:
 r = api._get("/timeline", {"ratingKey": clear["ratingKey"], "key": "/library/metadata/%s" % clear["ratingKey"],
                            "state": "stopped", "time": 1000, "duration": clear.get("duration", 0)})
 check("timeline report", "playbackState" in r, r.get("playbackState"))
+# ---- watch state, trailers, DRM subtitles, up next
+rk = clear["ratingKey"]
+api._get("/timeline", {"ratingKey": rk, "key": "/library/metadata/%s" % rk, "state": "stopped",
+                       "time": 240000, "duration": clear.get("duration", 0)})
+st = api.user_states([rk, eps[0]["ratingKey"]])
+check("batch userState has resume point", (st.get(rk) or {}).get("viewOffset") == 240000, st.get(rk))
+cw = api.continue_watching()
+check("continue watching lists it", any(m.get("ratingKey") == rk for m in cw), len(cw))
+api.action("removeFromContinueWatching", rk)
+check("remove from continue watching", not any(m.get("ratingKey") == rk for m in api.continue_watching()))
+api.action("scrobble", rk)
+check("scrobble marks watched", (api.user_state(rk) or {}).get("viewCount") == 1)
+api.action("unscrobble", rk)
+check("unscrobble", (api.user_state(rk) or {}).get("viewCount") == 0)
+tr = api.trailer(api.metadata(rk))
+check("trailer resolves to open HLS", bool(tr) and tr[1].startswith("https://"), tr and tr[1].split("/")[2])
+if drm:
+    part = [x for x in api.metadata(drm["ratingKey"])["Media"] if x.get("protocol") == "dash"][0]["Part"][0]
+    subs = playback._stream_subtitles(api, part)
+    check("DRM subtitles resolve", bool(subs) and subs[0].startswith("https://"), subs[:1])
+nxt = api.next_item(eps[0]["ratingKey"])
+check("up next after episode 1", bool(nxt) and nxt.get("type") == "episode", nxt and nxt.get("index"))
+playback.build(api, eps[0]["ratingKey"])
+import json as _json
+handoff = _json.loads(PROPS.get("plexondemand.playing", "{}"))
+check("handoff carries next episode", handoff.get("next") == (nxt or {}).get("ratingKey"), handoff)
+
 print("\n%d failure(s)" % len(FAIL))
 sys.exit(1 if FAIL else 0)

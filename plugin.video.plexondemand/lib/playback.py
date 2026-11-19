@@ -78,6 +78,22 @@ def _subtitles(api, manifest_url, headers):
         return []
 
 
+def _stream_subtitles(api, part):
+    """Subtitle files listed on the Part (DRM DASH parts included): each
+    /library/streams/<id>-<lang>?format=srt redirects to an open file."""
+    subs = []
+    for st in part.get("Stream") or []:
+        if st.get("streamType") != 3 or not st.get("key"):
+            continue
+        try:
+            u = api.subtitle_url(st["key"], "srt" if "srt" in (st.get("formats") or "srt") else "vtt")
+            if u and u not in subs:
+                subs.append(u)
+        except Exception as exc:
+            kodiutils.log_error("subtitle %s failed: %s" % (st.get("key"), exc))
+    return subs
+
+
 def _check(api, manifest_url, headers):
     resp = api.session.get(manifest_url, headers=headers, timeout=20, stream=True)
     status = resp.status_code
@@ -89,7 +105,7 @@ def _check(api, manifest_url, headers):
 
 
 def build(api, rating_key):
-    item_meta = api.metadata(rating_key)
+    item_meta = api.metadata(rating_key, markers=True)
     media, part, proto, drm = _pick(item_meta)
     if not part:
         raise DrmUnavailable()
@@ -110,8 +126,10 @@ def build(api, rating_key):
         li.setProperty("inputstream.adaptive.chooser_resolution_max",
                        "%dp" % kodiutils.get_setting_int("max_height"))
 
-    if proto == "hls" and kodiutils.get_setting_bool("subtitles", True):
-        subs = _subtitles(api, manifest, headers)
+    if kodiutils.get_setting_bool("subtitles", True):
+        subs = _stream_subtitles(api, part)
+        if not subs and proto == "hls":
+            subs = _subtitles(api, manifest, headers)
         if subs:
             li.setSubtitles(subs)
 
@@ -120,7 +138,13 @@ def build(api, rating_key):
 
     li.setArt(listing.art(item_meta))
     listing.info(li, item_meta)
-    _remember(item_meta)
+    nxt = None
+    if item_meta.get("type") == "episode":
+        try:
+            nxt = api.next_item(item_meta["ratingKey"])
+        except Exception as exc:
+            kodiutils.log("up next lookup failed: %s" % exc)
+    _remember(item_meta, nxt)
     return li
 
 
@@ -156,8 +180,14 @@ def _isa_version():
     return tuple((parts + [0, 0, 0])[:3])
 
 
-def _remember(m):
-    """Hand the playing title to service.py for /timeline progress reports."""
+def _remember(m, nxt=None):
+    """Hand the playing title to service.py: /timeline progress reports,
+    the credits marker and the next episode for the skip-buttons countdown."""
+    credits = None
+    for mk in m.get("Marker") or []:
+        if mk.get("type") == "credits" and mk.get("startTimeOffset") is not None:
+            credits = int(mk["startTimeOffset"]) / 1000.0
     xbmcgui.Window(10000).setProperty("plexondemand.playing", json.dumps({
         "ratingKey": m.get("ratingKey"), "key": m.get("key") or "/library/metadata/%s" % m.get("ratingKey"),
-        "duration": m.get("duration") or 0}))
+        "duration": m.get("duration") or 0, "credits": credits,
+        "next": (nxt or {}).get("ratingKey")}))

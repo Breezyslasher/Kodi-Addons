@@ -36,6 +36,12 @@ S = {
     "drm_unavailable": 32026,
     "season_n": 32027,
     "vpn_blocked": 32028,
+    "continue_watching": 32040,
+    "trailer": 32041,
+    "no_trailer": 32042,
+    "mark_watched": 32043,
+    "mark_unwatched": 32044,
+    "remove_cw": 32045,
 }
 
 
@@ -61,8 +67,43 @@ def end(content="videos", cache=True):
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=cache)
 
 
-def add_items(items):
+def _apply_user_state(api, items):
+    """Resume points and watched marks: /library/metadata on the VOD host has
+    none, so fetch them for the whole page in one batched userState call."""
+    if not kodiutils.get_setting_bool("report_progress", True):
+        return
+    keys = [m.get("ratingKey") for m in items if m.get("type") in ("movie", "episode")]
+    if not keys:
+        return
+    states = api.user_states(keys)
+    for m in items:
+        st = states.get(m.get("ratingKey"))
+        if st:
+            for field in ("viewOffset", "viewCount"):
+                if m.get(field) is None:
+                    m[field] = st.get(field)
+
+
+def _menu(m, in_cw=False):
+    rk = m["ratingKey"]
+    entries = []
+    if m.get("type") in ("movie", "show"):
+        entries.append((L("trailer"), "RunPlugin(%s)" % url(action="trailer", rk=rk)))
+    if m.get("type") in ("movie", "episode"):
+        if m.get("viewCount"):
+            entries.append((L("mark_unwatched"), "RunPlugin(%s)" % url(action="mark", rk=rk, how="unscrobble")))
+        else:
+            entries.append((L("mark_watched"), "RunPlugin(%s)" % url(action="mark", rk=rk, how="scrobble")))
+    if in_cw:
+        entries.append((L("remove_cw"), "RunPlugin(%s)" % url(
+            action="mark", rk=rk, how="removeFromContinueWatching")))
+    return entries
+
+
+def add_items(items, api=None, in_cw=False):
     content = "videos"
+    if api is not None:
+        _apply_user_state(api, items)
     for m in items:
         kind = m.get("type")
         rk = m.get("ratingKey")
@@ -74,6 +115,9 @@ def add_items(items):
         item = xbmcgui.ListItem(label)
         item.setArt(_art(m))
         _info(item, m)
+        if in_cw and kind == "episode" and m.get("grandparentTitle"):
+            item.setLabel("%s - %s" % (m["grandparentTitle"], label))
+        item.addContextMenuItems(_menu(m, in_cw))
         if kind in ("movie", "episode"):
             content = "movies" if kind == "movie" else "episodes"
             item.setProperty("IsPlayable", "true")
@@ -97,6 +141,7 @@ def add_next(query, start, count, total):
 # ---------------------------------------------------------------- views
 def root():
     api = PlexVodApi()
+    folder(L("continue_watching"), {"action": "continue"})
     folder(L("featured"), {"action": "hubs"})
     folder(L("movies"), {"action": "genres", "type": TYPE_MOVIE})
     folder(L("shows"), {"action": "genres", "type": TYPE_SHOW})
@@ -126,15 +171,17 @@ def genres(media_type):
 
 
 def listing(key, start=0):
-    items, total = PlexVodApi().listing(key, start)
-    content = add_items(items)
+    api = PlexVodApi()
+    items, total = api.listing(key, start)
+    content = add_items(items, api)
     add_next({"action": "list", "key": key}, start, len(items), total)
     end(content)
 
 
 def children(rk, start=0):
-    items, total = PlexVodApi().children(rk, start)
-    content = add_items(items)
+    api = PlexVodApi()
+    items, total = api.children(rk, start)
+    content = add_items(items, api)
     add_next({"action": "children", "rk": rk}, start, len(items), total)
     end(content)
 
@@ -145,11 +192,47 @@ def search(query=None):
         if not query:
             xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
             return
-    items = PlexVodApi().search(query)
+    api = PlexVodApi()
+    items = api.search(query)
     if not items:
         kodiutils.notify(L("no_results"))
-    content = add_items(items)
+    content = add_items(items, api)
     end(content, cache=False)
+
+
+def continue_watching():
+    api = PlexVodApi()
+    items = api.continue_watching()
+    content = add_items(items, api, in_cw=True)
+    end(content, cache=False)
+
+
+def trailer(rk):
+    api = PlexVodApi()
+    try:
+        found = api.trailer(api.metadata(rk))
+    except PlexApiError as exc:
+        kodiutils.log_error("trailer %s: %s" % (rk, exc))
+        found = None
+    if not found:
+        kodiutils.notify(L("no_trailer"))
+        return
+    title, stream = found
+    li = xbmcgui.ListItem(title, path=stream)
+    li.setProperty("inputstream", "inputstream.adaptive")
+    li.setMimeType("application/vnd.apple.mpegurl")
+    li.setContentLookup(False)
+    xbmc.Player().play(stream, li)
+
+
+def mark(rk, how):
+    try:
+        PlexVodApi().action(how, rk)
+    except PlexApiError as exc:
+        kodiutils.log_error("%s %s: %s" % (how, rk, exc))
+        kodiutils.notify("%s: %s" % (L("error"), exc), icon=xbmcgui.NOTIFICATION_ERROR)
+        return
+    xbmc.executebuiltin("Container.Refresh")
 
 
 def play(rk):
@@ -216,6 +299,12 @@ def router(paramstring):
     try:
         if not action:
             root()
+        elif action == "continue":
+            continue_watching()
+        elif action == "trailer":
+            trailer(p["rk"])
+        elif action == "mark":
+            mark(p["rk"], p.get("how", "scrobble"))
         elif action == "hubs":
             hubs()
         elif action == "genres":

@@ -24,6 +24,24 @@ Actions, US region, anonymous token):
                   (401 without), segments are on vod-content.plexvideos.com
   Ads             Metadata.Ad[] = {type: vmap, url: {vod}/vmap?...}; client
                   side, nothing is stitched into the stream.
+  Continue        GET {vod}/hubs/continueWatching -> Hub[].Metadata[] with
+  Watching        viewOffset (filled by /timeline reports)
+  Resume point    GET discover.provider.plex.tv/library/metadata/<rk>/userState
+                  -> UserState[{viewOffset, viewCount, viewState}]
+                  (/library/metadata on the VOD host carries no viewOffset)
+  Trailers        Metadata.primaryExtraKey (/library/metadata/<rk>/extras/<id>)
+                  -> Media[].Part[].key .../parts/hls.m3u8, which redirects to
+                  an open HLS on vod-content.plexvideos.com
+  Markers         GET /library/metadata/<rk>?includeMarkers=1 -> Marker[]
+                  {type: intro|credits, startTimeOffset, endTimeOffset} (ms)
+  Up next         POST {vod}/playQueues?uri=provider://tv.plex.provider.vod
+                  /library/metadata/<rk>&type=video&continuous=1 -> the rest of
+                  the show in order (Metadata[])
+  Actions         PUT {vod}/actions/scrobble|removeFromContinueWatching
+                  ?ratingKey=<rk> (from the provider's Feature "actions")
+
+The VOD base is read from plex.tv/media/providers once per run (falls back to
+the constant; the Advanced setting overrides both).
 """
 
 import requests
@@ -50,7 +68,7 @@ class PlexVodApi(object):
     def __init__(self):
         self.auth = PlexAuth()
         self.session = requests.Session()
-        self.base = kodiutils.get_setting("base_url_override").rstrip("/") or VOD_BASE
+        self.base = kodiutils.get_setting("base_url_override").rstrip("/") or _provider_base(self)
 
     # ---- transport
     def headers(self):
@@ -91,8 +109,9 @@ class PlexVodApi(object):
         c = self._get(key, self.page_params(start))
         return c.get("Metadata") or [], _total(c)
 
-    def metadata(self, rating_key):
-        items = self._get("/library/metadata/%s" % rating_key).get("Metadata") or []
+    def metadata(self, rating_key, markers=False):
+        params = {"includeMarkers": 1} if markers else None
+        items = self._get("/library/metadata/%s" % rating_key, params).get("Metadata") or []
         if not items:
             raise PlexApiError("no metadata for %s" % rating_key)
         return items[0]
@@ -114,6 +133,105 @@ class PlexVodApi(object):
                 if meta and meta.get("ratingKey"):
                     out.append(meta)
         return out
+
+
+    # ---- watch state
+    def continue_watching(self):
+        c = self._get("/hubs/continueWatching")
+        items = list(c.get("Metadata") or [])
+        for hub in c.get("Hub") or []:
+            items.extend(hub.get("Metadata") or [])
+        return items
+
+    def user_state(self, rating_key):
+        try:
+            c = self._get(DISCOVER_BASE + "/library/metadata/%s/userState" % rating_key)
+        except PlexApiError as exc:
+            kodiutils.log("userState %s: %s" % (rating_key, exc))
+            return {}
+        return (c.get("UserState") or [{}])[0]
+
+    def user_states(self, rating_keys):
+        """{ratingKey: UserState} for many titles in one call (comma-joined)."""
+        out = {}
+        keys = [k for k in rating_keys if k]
+        for i in range(0, len(keys), 50):
+            chunk = keys[i:i + 50]
+            try:
+                c = self._get(DISCOVER_BASE + "/library/metadata/%s/userState" % ",".join(chunk))
+            except PlexApiError as exc:
+                kodiutils.log("userState batch: %s" % exc)
+                continue
+            for st in c.get("UserState") or []:
+                out[st.get("ratingKey")] = st
+        return out
+
+    def subtitle_url(self, stream_key, fmt="srt"):
+        """Open CDN URL of a subtitle stream (/library/streams/<id>-<lang>);
+        the provider redirects ?format=srt|vtt to vod-static.plex.tv."""
+        url = stream_key if stream_key.startswith("http") else self.base + stream_key
+        resp = self.session.get(url, params={"format": fmt}, headers=self.headers(), timeout=TIMEOUT,
+                                stream=True)
+        resp.close()
+        return resp.url if resp.status_code == 200 else None
+
+    def action(self, name, rating_key):
+        return self._get("/actions/%s" % name, {"ratingKey": rating_key}, method="PUT")
+
+    # ---- extras / up next
+    def trailer(self, item):
+        """(title, playable url) of the title's trailer, or None."""
+        key = item.get("primaryExtraKey")
+        extras = []
+        if key:
+            extras = self._get(key).get("Metadata") or []
+        if not extras:
+            extras = self._get("/library/metadata/%s/extras" % item["ratingKey"]).get("Metadata") or []
+        extras.sort(key=lambda e: 0 if e.get("subtype") == "trailer" else 1)
+        for extra in extras:
+            for media in extra.get("Media") or []:
+                for part in media.get("Part") or []:
+                    if part.get("key"):
+                        url = part["key"] if part["key"].startswith("http") else self.base + part["key"]
+                        # The part answers with a redirect to an open HLS URL on
+                        # the CDN; hand Kodi that, so no token rides along.
+                        resp = self.session.get(url, headers=self.headers(), timeout=TIMEOUT)
+                        if resp.status_code == 200:
+                            return extra.get("title") or "Trailer", resp.url
+        return None
+
+    def next_item(self, rating_key):
+        """The item after rating_key in a continuous play queue (next episode)."""
+        uri = "provider://%s/library/metadata/%s" % (VOD_ID, rating_key)
+        c = self._get("/playQueues", {"uri": uri, "type": "video", "continuous": 1}, method="POST")
+        items = c.get("Metadata") or []
+        for i, m in enumerate(items):
+            if m.get("ratingKey") == rating_key:
+                return items[i + 1] if i + 1 < len(items) else None
+        return None
+
+
+_PROVIDER_BASE = None
+
+
+def _provider_base(api):
+    """The VOD provider's baseURL from plex.tv/media/providers (cached per run)."""
+    global _PROVIDER_BASE
+    if _PROVIDER_BASE:
+        return _PROVIDER_BASE
+    _PROVIDER_BASE = VOD_BASE
+    try:
+        h = base_headers()
+        h["X-Plex-Token"] = api.auth.token()
+        resp = api.session.get("https://plex.tv/media/providers", headers=h, timeout=TIMEOUT)
+        data = resp.json() if resp.status_code == 200 else []
+        providers = data if isinstance(data, list) else (data.get("MediaContainer") or {}).get("MediaProvider") or []
+        for p in providers:
+            if p.get("identifier") == VOD_ID and str(p.get("baseURL", "")).startswith("https://"):
+                _PROVIDER_BASE = p["baseURL"].rstrip("/")
+    except Exception as exc:
+        kodiutils.log("provider list unavailable, using %s: %s" % (VOD_BASE, exc))
+    return _PROVIDER_BASE
 
 
 def _total(container):
