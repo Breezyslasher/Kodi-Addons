@@ -610,6 +610,18 @@ def do_manage_devices(api, auth):
     return True
 
 
+def _apply_play_info(li, api, content_id):
+    try:
+        item = to_item(api.title_detail(content_id))
+    except Exception as exc:
+        kodiutils.log_error("Title details for %s: %s" % (content_id, exc))
+        return
+    if item:
+        item = dict(item, resume=None, playcount=None, trailer_id=None)
+        li.setLabel(item.get("title", ""))
+        _apply_info(li, item)
+
+
 def do_play(api, content_id, auth=None, seek_to=None, programme=None, channel=None):
     if not ensure_widevine():
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -649,6 +661,10 @@ def do_play(api, content_id, auth=None, seek_to=None, programme=None, channel=No
     if programme:
         # Played from a channel: show what is on, not just "On now".
         programme_info.apply(li, programme, NAMES.get(channel, ""))
+    elif not playback.get("live"):
+        # Up Next, autoplay and the TV guide play a bare URL, which gives Kodi
+        # no title, plot or artwork: fill them in from the title's details.
+        _apply_play_info(li, api, content_id)
     if playback.get("live") and channel:
         # The service follows the schedule and updates this info when the
         # next programme starts.
