@@ -166,25 +166,22 @@ def show_people(api, content_id):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-# The website's corner tags: Top 10 in teal, the rest in its lime green.
-TAG_COLOURS = {"Top 10": "2FD3C9"}
-TAG_BG = "D4F04C"
+# The website's corner tags (chunk-C-jVc5mZ.js .content-badge): dark text on
+# a gradient, #92fffb -> #2dbfc4 left to right; Top 10 in the top-right
+# corner with #2ec0c5 -> #d9fffd at 15deg. imgix draws no gradients, so the
+# gradient is a small PNG in this repo (resources/tags) blended onto the
+# image as a patch, with a see-through ~text label on top (endpoint check
+# probes badge_blend_img and badge_blend_mark). Pinned to a commit so the
+# URL never changes.
+TAG_IMAGES = ("https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/"
+              "d991a7901db857b5a3986b2efa26f3290827a26d/plugin.video.starz/resources/tags/")
 TAG_TEXT = "0B2B33"
 
 
-def _tag_mark(text, size):
-    """An imgix ~text label (endpoint check probe_badge_label_alone): the
-    tag with its own background, stamped on with mark= (probe_badge_mark;
-    imgix only accepts the absolute ~text URL there)."""
-    return "https://stz1.imgix.net/~text?" + urlencode({
-        "txt": text, "txt-size": str(size), "txt-color": TAG_TEXT,
-        "txt-font": "Helvetica Neue,Bold", "txt-pad": str(max(size // 3, 4)),
-        "bg": TAG_COLOURS.get(text, TAG_BG)})
-
-
 def _tagged_art(art, text):
-    """The title's own Starz images with ``text`` in the top-left corner;
-    the size follows each image's requested width (w=)."""
+    """The title's own Starz images with ``text`` in the corner; the size
+    follows each image's requested width (w=)."""
+    top10 = text == "Top 10"
     out = dict(art)
     for key in ("poster", "thumb", "landscape"):
         src = art.get(key) or ""
@@ -192,10 +189,22 @@ def _tagged_art(art, text):
             continue
         width = re.search(r"[?&]w=(\d+)", src)
         width = int(width.group(1)) if width else 600
-        size = max(int(width * (0.05 if key == "poster" else 0.03)), 14)
+        size = max(int(width * (0.045 if key == "poster" else 0.025)), 14)
+        pad = max(size // 3, 4)
+        box_w = int(len(text) * size * 0.62) + 2 * pad
+        box_h = int(size * 1.3) + pad
+        edge = str(max(width // 60, 6))
+        align = "top,right" if top10 else "top,left"
+        label = "https://stz1.imgix.net/~text?" + urlencode({
+            "txt": text, "txt-size": str(size), "txt-color": TAG_TEXT,
+            "txt-font": "Helvetica Neue,Bold", "txt-pad": str(pad),
+            "txt-align": "middle,center", "w": str(box_w), "h": str(box_h),
+            "bg": "00FFFFFF"})
         out[key] = src + "&" + urlencode({
-            "mark": _tag_mark(text, size), "mark-align": "top,left",
-            "mark-pad": str(max(width // 50, 6))})
+            "blend": TAG_IMAGES + ("top10.png" if top10 else "tag.png"),
+            "blend-mode": "normal", "blend-w": str(box_w), "blend-h": str(box_h),
+            "blend-align": align, "blend-pad": edge,
+            "mark": label, "mark-align": align, "mark-pad": edge})
     return out
 
 
