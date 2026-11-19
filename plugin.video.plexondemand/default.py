@@ -195,7 +195,11 @@ HISTORY_MAX = 20
 def search_menu():
     """New search + recent searches. Nothing here opens the keyboard on its
     own, so coming back to this folder never re-prompts."""
-    folder("[B]%s[/B]" % L("new_search"), {"action": "search_new"})
+    # An action, not a folder: a folder must finish its own listing first, and
+    # Kodi drops a Container.Update sent while that listing is still loading
+    # (the results then only opened from the recent-search entry).
+    new = xbmcgui.ListItem("[B]%s[/B]" % L("new_search"))
+    xbmcplugin.addDirectoryItem(HANDLE, url(action="search_new"), new, False)
     for q in kodiutils.read_json(HISTORY_FILE, []) or []:
         item = xbmcgui.ListItem(q)
         item.addContextMenuItems([(L("remove_search"), "RunPlugin(%s)" % url(action="search_forget", query=q))])
@@ -208,7 +212,6 @@ def search_new():
     reloads that URL (not this one) when you come back from a video, so the
     keyboard does not reopen."""
     query = kodiutils.input_text(L("search"))
-    xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
     if not query:
         return
     query = query.strip()
