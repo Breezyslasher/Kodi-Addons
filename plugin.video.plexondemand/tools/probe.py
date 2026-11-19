@@ -475,6 +475,77 @@ def round4():
     return 0
 
 
+def round5():
+    """What unlocks a DRM manifest (451)? Print error bodies across variants."""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    _, hubs = req_json("GET", base + "/hubs", headers=T)
+    drm = None
+    for h in (mc(hubs).get("Hub") or [])[:25]:
+        _, d = req_json("GET", base + h["key"], headers=T, params={"count": 20})
+        for m in mc(d).get("Metadata") or []:
+            if any(x.get("drm") for x in m.get("Media") or []):
+                drm = m
+                break
+        if drm:
+            break
+    print("DRM title:", drm.get("title"), drm.get("ratingKey"))
+    pid = [x for x in drm["Media"] if x.get("protocol") == "dash"][0]["Part"][0]["id"]
+    mpd = base + f"/library/parts/{pid}-dash.mpd"
+    variants = [
+        ("plain", {}, {}),
+        ("hdr X-Plex-DRM=widevine", {"X-Plex-DRM": "widevine"}, {}),
+        ("q X-Plex-DRM=widevine", {}, {"X-Plex-DRM": "widevine"}),
+        ("q drm=widevine", {}, {"drm": "widevine"}),
+        ("hdr Platform=Android", {"X-Plex-Platform": "Android", "X-Plex-Product": "Plex for Android (TV)",
+                                  "X-Plex-Device": "SHIELD Android TV"}, {}),
+        ("hdr Platform=Android + DRM", {"X-Plex-Platform": "Android", "X-Plex-Product": "Plex for Android (TV)",
+                                        "X-Plex-Device": "SHIELD Android TV", "X-Plex-DRM": "widevine"}, {}),
+        ("hdr Chrome UA + Client-Profile", {"X-Plex-Client-Profile-Extra": "add-drm-support(scheme=widevine)"}, {}),
+        ("hdr X-Plex-Features", {"X-Plex-Features": "external-media,indirect-media,hub-style-list,drm"}, {}),
+        ("hdr X-Plex-Session-Identifier", {"X-Plex-Session-Identifier": str(uuid.uuid4())}, {}),
+    ]
+    for label, h, q in variants:
+        st, ct, body, _ = req("GET", mpd, headers=dict(T, **h), params=q or None)
+        text = body.decode("utf-8", "replace")
+        print(f"\n== {label} -> {st} {ct}")
+        print("  ", mask(text[:400]))
+        if st == 200:
+            import re as _re
+            for cp in _re.findall(r"<ContentProtection.*?(?:/>|</ContentProtection>)", text, _re.S)[:3]:
+                print("   CP:", mask(cp[:500]))
+            break
+    # playQueue for the DRM title, full dump of the relevant item
+    uri = f"provider://tv.plex.provider.vod/library/metadata/{drm['ratingKey']}"
+    st, ct, body, _ = req("POST", base + "/playQueues", headers=T,
+                          params={"uri": uri, "type": "video", "continuous": 0})
+    print("\n== playQueue ->", st, mask(body[:300].decode("utf-8", "replace")))
+    try:
+        pq = json.loads(body)
+        for it in mc(pq).get("Metadata") or []:
+            if it.get("ratingKey") == drm["ratingKey"]:
+                print("   PQ item Media:", mask(json.dumps(it.get("Media"))[:1500]))
+    except Exception:
+        pass
+    # licence endpoint with a junk challenge
+    st, ct, body, _ = req("POST", base + f"/library/parts/{pid}-dash/license", headers=dict(T, **{"Content-Type": "application/octet-stream"}))
+    print("\n== license (empty body) ->", st, mask(body[:300].decode("utf-8", "replace")))
+    r = urllib.request.Request(base + f"/library/parts/{pid}-dash/license", data=b"\x08\x04", method="POST",
+                               headers=dict(HEADERS, **T, **{"Content-Type": "application/octet-stream"}))
+    try:
+        with urllib.request.urlopen(r, timeout=20) as resp:
+            print("== license (junk) ->", resp.status, resp.read()[:200])
+    except urllib.error.HTTPError as e:
+        print("== license (junk) ->", e.code, mask(e.read()[:300].decode("utf-8", "replace")))
+    # Is DRM a region thing? check user features for drm-ish names
+    _, u = req_json("GET", "https://plex.tv/api/v2/user", headers=T)
+    feats = (u.get("subscription") or {}).get("features") or []
+    print("\n== user features containing drm/avod/vod:", [f for f in feats if any(k in str(f).lower() for k in ("drm", "vod", "widevine", "fairplay"))])
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -486,5 +557,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round4")
-    sys.exit({"round3": round3, "round4": round4}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round5")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5}.get(mode, main)())
