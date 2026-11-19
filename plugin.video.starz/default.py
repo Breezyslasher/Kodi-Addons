@@ -207,7 +207,8 @@ def add_item(item):
     if item.get("coming_soon") and "cs" not in keys:
         keys.insert(0, "cs")   # comingSoon flag without the badge key
     drawn = next((k for k in keys if k in TAG_SIZES), None)
-    if drawn and STATE.get("poster_tags") and item.get("art"):
+    tagged = bool(drawn and STATE.get("poster_tags") and item.get("art"))
+    if tagged:
         # Drawn in the image's corner, as on the website; any others (rare)
         # stay in the label.
         item = dict(item, art=_tagged_art(item["art"], drawn))
@@ -236,7 +237,8 @@ def add_item(item):
         target, folder = url(action="season", series_id=item.get("series_id", ""),
                              season_id=item["id"]), True
     elif item.get("coming_soon"):
-        li.setLabel("%s  [COLOR grey]%s[/COLOR]" % (li.getLabel(), L(32116)))
+        if not (tagged and drawn == "cs"):   # the poster already says it
+            li.setLabel("%s  [COLOR grey]%s[/COLOR]" % (li.getLabel(), L(32116)))
         target, folder = url(action="noop"), False
     else:
         li.setProperty("IsPlayable", "true")
