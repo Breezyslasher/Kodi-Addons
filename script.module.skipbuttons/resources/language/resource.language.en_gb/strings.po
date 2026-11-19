@@ -1,0 +1,28 @@
+# Kodi Media Center language file
+# Addon Name: Skip Buttons
+# Addon id: script.module.skipbuttons
+# Addon Provider: Breezyslasher
+msgid ""
+msgstr ""
+"Project-Id-Version: script.module.skipbuttons\n"
+"Report-Msgid-Bugs-To: https://github.com/Breezyslasher/Kodi-Addons\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+
+msgctxt "#30000"
+msgid "Skip recap"
+msgstr ""
+
+msgctxt "#30001"
+msgid "Skip intro"
+msgstr ""
+
+msgctxt "#30002"
+msgid "Next episode in %d"
+msgstr ""
+
+msgctxt "#30003"
+msgid "Watch credits"
+msgstr ""

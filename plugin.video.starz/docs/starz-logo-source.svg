@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_2"
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 932 210.93">
+  <g id="starz-logo-glint">
+    <defs>
+      <style>.cls-1{fill:url(#linear-gradient);}.cls-2{fill:url(#linear-gradient-3);}.cls-3{fill:url(#linear-gradient-4);}.cls-4{fill:url(#linear-gradient-2);}.cls-5{fill:url(#linear-gradient-6);}.cls-6{fill:url(#linear-gradient-7);}.cls-7{fill:url(#linear-gradient-5);}</style>
+      <linearGradient id="linear-gradient" x1="-158.43" y1="1798.64" x2="1361.46" y2="430.13" gradientTransform="translate(0 1500.58) scale(1 -1)" gradientUnits="userSpaceOnUse">
+        <stop offset=".09" stop-color="#fff24c"/>
+        <stop offset=".12" stop-color="#fff242"/>
+        <stop offset=".15" stop-color="#fff567"/>
+        <stop offset=".17" stop-color="#fff56b"/>
+        <stop offset=".2" stop-color="#fff677"/>
+        <stop offset=".21" stop-color="#fff88b"/>
+        <stop offset=".23" stop-color="#eef0a1"/>
+        <stop offset=".24" stop-color="#ecf0a7"/>
+        <stop offset=".26" stop-color="#dfefc0"/>
+        <stop offset=".29" stop-color="#caf0d8"/>
+        <stop offset=".32" stop-color="#b1f7e6"/>
+        <stop offset=".36" stop-color="#a6f7f2"/>
+        <stop offset=".42" stop-color="#9ff7f9"/>
+        <stop offset=".58" stop-color="#9ef7fb"/>
+        <stop offset=".61" stop-color="#9af6fa"/>
+        <stop offset=".64" stop-color="#90f5fa"/>
+        <stop offset=".67" stop-color="#80f4fa"/>
+        <stop offset=".69" stop-color="#68f2f9"/>
+        <stop offset=".72" stop-color="#49eff9"/>
+        <stop offset=".74" stop-color="#25ecf8"/>
+        <stop offset=".76" stop-color="#00e9f8"/>
+      </linearGradient>
+      <linearGradient id="linear-gradient-2" x1="-176.9" y1="2289.27" x2="1299.12" y2="960.25" xlink:href="#linear-gradient"/>
+      <linearGradient id="linear-gradient-3" x1="-318.73" y1="2226.29" x2="1134.53" y2="917.77" xlink:href="#linear-gradient"/>
+      <linearGradient id="linear-gradient-4" x1="-140.54" y1="1865.7" x2="1358.47" y2="515.99" xlink:href="#linear-gradient"/>
+      <linearGradient id="linear-gradient-5" x1="15.22" y1="2118.68" x2="1495.22" y2="786.08" xlink:href="#linear-gradient"/>
+      <linearGradient id="linear-gradient-6" x1="64.64" y1="2074.83" x2="1464.42" y2="814.46" xlink:href="#linear-gradient"/>
+      <linearGradient id="linear-gradient-7" x1="-213.2" y1="1665.23" x2="1228.19" y2="367.41" xlink:href="#linear-gradient"/>
+    </defs>
+    <g id="Layer_2-2">
+      <g id="Layer_1-2">
+        <polygon class="cls-1" points="347.76 5.66 176.55 5.66 176.55 60.17 231.69 60.17 231.69 205.26 291.88 205.26 291.88 60.17 347.76 60.17 347.76 5.66"/>
+        <polygon class="cls-4" points="821.66 150.76 907.99 5.65 731.52 5.65 731.52 60.16 810.62 60.16 724.29 205.26 886.63 205.26 916.89 150.76 821.66 150.76"/>
+        <path class="cls-2" d="m709.12,70.93c0-36.04-23.81-65.28-82.39-65.28h-86.64v199.61h60.19v-84.03l50,84.03h71.34l-51-73.82c27.17-12.21,38.51-36.15,38.51-60.51h-.01Zm-82.39,23.04h-26.45v-39.16h26.45c16.18,0,22.54,8.75,22.54,19.58s-6.37,19.58-22.54,19.58Z"/>
+        <path class="cls-3" d="m394.75,5.65l-79.02,199.61h63.77l7.2-21.68h69.8l7.2,21.68h63.77L448.44,5.65h-53.69Zm5.22,137.93l21.62-65.14,21.62,65.14h-43.25.01Z"/>
+        <path class="cls-7" d="m924.26,195.75c.51-.64.78-1.47.78-2.38,0-2.29-1.66-3.83-4.14-3.83h-5.08v12.76h2.4v-4.97h1.76l2.73,4.97h2.76l-3.02-5.32c.75-.24,1.37-.66,1.82-1.23h-.01Zm-3.54-.76h-2.5v-3.08h2.5c1.22,0,1.84.51,1.84,1.52s-.62,1.56-1.84,1.56Z"/>
+        <path class="cls-5" d="m920,183.92c-6.63,0-12,5.37-12,12s5.37,12,12,12,12-5.37,12-12-5.37-12-12-12Zm0,21.67c-5.33,0-9.67-4.34-9.67-9.67s4.34-9.67,9.67-9.67,9.67,4.34,9.67,9.67-4.34,9.67-9.67,9.67Z"/>
+        <path class="cls-6" d="m62.77,60.17c0-6.32,5-15.81,24.51-15.81s24.51,9.49,24.51,15.81h57.85c0-15.21-8.03-60.17-81.47-60.17S5.09,46.06,5.09,60.17c0,85.39,113.86,54.2,113.86,86.85,0,8.05-6.4,16.62-28.62,16.62-24.53,0-29.52-11.24-29.52-19.79H0c.21,15.62,6.5,67.08,90.33,67.08,62.09,0,88.82-29.14,88.82-66.09,0-84.67-116.37-52.65-116.37-84.67h0Z"/>
+      </g>
+    </g>
+  </g>
+</svg>

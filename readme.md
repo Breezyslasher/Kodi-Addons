@@ -84,6 +84,29 @@ See the [addon README](service.watchparty/README.md) for setup and details.
 
 ---
 
+### [Starz](plugin.video.starz/) *(experimental)*
+Sign in with your Starz account and browse the full Starz catalogue in Kodi, with playback through InputStream Adaptive using Widevine DRM.
+
+**Highlights:**
+- Movies, series and episodes with English/Spanish audio and subtitles, trailers and extras
+- Continue Watching, My List, watched marks and resume points shared with Starz's own apps
+- Genres, categories, filters and sort, search, cast & crew pages and recommendations
+- TV Schedule for the STARZ, Encore and Plex channels, and Kodi's TV guide through IPTV Manager
+- Skip recap, Skip intro and Next episode buttons, Up Next support, profiles with parental controls, and device management for Starz's 6-device limit
+
+**Resolution:** movies and series up to 1080p, desktop included: Starz encrypts every resolution with one key, so the software Widevine L3 CDM can play HD (InputStream Adaptive caps the stream at your screen's size). Live STARZ tops out at 576p.
+
+**Known limits:** Starz's private web endpoints may change without notice; a daily GitHub check watches them. See the [addon README](plugin.video.starz/README.md).
+
+---
+
+### [Skip Buttons](script.module.skipbuttons/)
+A shared module that gives video add-ons **Skip recap**, **Skip intro** and a **Next episode** countdown (with **Watch credits**) over the video, from times the add-on supplies. Installed automatically with add-ons that use it, such as Starz. See the [module README](script.module.skipbuttons/README.md) to use it in your own add-on.
+
+**Requirements:** a Starz subscription (US), a Widevine CDM, and Kodi 21+
+
+---
+
 ### [TubiTV](plugin.video.tubitv/)
 Browse and watch Tubi — free, ad-supported films and TV shows — from inside Kodi. A fork of Lunatixz's addon, kept here so it can be maintained as Tubi changes its API.
 

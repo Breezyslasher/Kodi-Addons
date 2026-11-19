@@ -1,0 +1,972 @@
+"""Starz catalogue and playback-info calls.
+
+Read from the captures (docs/recon.md row C):
+
+* playdata.starz.com/metadata-service/play/partner/Web/v8/blocks is public (no
+  auth headers). With playContents=map it returns every page's rows (HOME,
+  SERIES, MOVIES, BROWSE, ...) plus a PLAY_CONTENTS block whose
+  playContentsById holds the metadata for every title the rows reference.
+* .../v8/content?contentIds=... fetches titles the map lacks.
+* auth.starz.com/api/v4/User/continue is the signed-in resume list.
+
+* Series: v8/content?contentIds={id} (no includes) is the whole tree.
+* Search: v8/content?searchString=&contentType=... -> ids.
+* My List: GET/PUT/DELETE auth.starz.com/api/v4/User/Queue[/{id}].
+* Playback: see playback().
+
+Shapes returned to default.py:
+
+    item     {"id", "type": "movie"|"series"|"episode", "title", "plot",
+              "year", "duration", "season", "episode", "mpaa", "genres",
+              "art", "resume"}
+    row      {"id", "title", "kind": "items"|"folder"}
+    playback {"manifest_url", "manifest_type", "license_url",
+              "license_headers", "stream_headers", "subtitles"}
+"""
+
+import os
+import re
+import time
+from urllib.parse import quote
+
+import requests
+
+from lib import kodiutils
+from lib.auth import AUTH_API, USER_AGENT, NotReadyError
+
+METADATA = "https://playdata.starz.com/metadata-service/play/partner/Web/v8/"
+# The STARZ channel's live stream (live HAR: starz.com/livetv -> play/2,
+# GET Play / POST Play/start with this id, a dynamic DASH manifest on
+# live-linear.starz.com). The only live stream the website offers; it is
+# the STARZ channel (confirmed against the STZ1 schedule while watching).
+LIVE_ID = "starz_livestream"
+LIVE_CHANNEL = "STZ1"
+LINEAR = "https://playdata.starz.com/metadata-service/play/partner/Web/v6/content/linear"
+CAROUSEL = "https://recommender.starz.com/api/v3/carousel/partner/Web/profile/%s/lang/en-US/"
+RECOMMENDER = "https://recommender.starz.com/api/v3/recommendations/partner/Web/profile/"
+IMAGES = "https://stz1.imgix.net/Web/contentId/%s/type/%s/dimension/%s"
+LANG = "en-US"
+PAGES = "BROWSE,HOME,MOVIES,PLAYLIST,SEARCH,SEARCH RESULTS,SERIES"
+# The web client's own include list for blocks (sign-in HAR #285).
+INCLUDES = ("badgeKeys,categoryKeys,comingSoon,contentId,contentType,detail,"
+            "episodeCount,firstEpisodeRuntime,free,icon,images,logLine,"
+            "maxReleaseYear,message,minReleaseYear,newContent,original,"
+            "popularity,previewContentId,product,properCaseTitle,releaseYear,"
+            "runtime,seasonNumber,seriesName,templates,title,topContentId,"
+            # Cast for movies/series in every list; accepted by v8/content
+            # (endpoint check probe_movie_cast_includes).
+            "actors,directors,studio")
+
+BLOCKS_CACHE = "blocks.json"
+# The current play session, written by default.py and read by service.py.
+PLAYING_FILE = "playing.json"
+BLOCKS_TTL = 30 * 60
+
+# Rows whose titles are listed by id. Others (TRAILER_SWIM_LANE,
+# RECOMMENDED_SWIM_LANE, ...) are personalised through recommender.starz.com
+# and are left out for now.
+ID_ROWS = {"SWIM_LANE", "POPULAR_SWIM_LANE", "TOP_CONTENT_SWIM_LANE",
+           "SWIM_LANE_CATEGORY"}
+# Rows the website fills from the recommender or the account rather than from
+# contentIds (blocks HAR: populateVia "recommender" / "playAuth").
+PERSONAL_ROWS = {"TRAILER_SWIM_LANE", "RECOMMENDED_SWIM_LANE", "PLAYLIST_SWIM_LANE"}
+BADGES_CACHE = "badges.json"
+BADGES_TTL = 24 * 3600
+TYPES = {"Movie": "movie", "Series with Season": "series", "Season": "season",
+         "Episode": "episode"}
+
+TIMEOUT = 20
+PARENTAL_PIN_NEEDED = 1501
+PARENTAL_PIN_WRONG = 1500
+
+
+def _image(content_id, kind, dimension, width):
+    return (IMAGES % (content_id, kind, dimension) +
+            "/lang/%s?fit=max&auto=format,compress&w=%d" % (LANG, width))
+
+
+def _art(content_id):
+    landscape = _image(content_id, "KEY", "2560x1440", 1280)
+    return {"thumb": landscape, "fanart": _image(content_id, "KEY", "2560x1440", 1920),
+            "poster": _image(content_id, "KEY", "1536x2048", 600),
+            "landscape": landscape,
+            "clearlogo": "https://stz1.imgix.net/Web/contentId/%s/type/titleart"
+                         "?fit=max&auto=format,compress&w=400&trim=color" % content_id}
+
+
+def _episode_title(content):
+    """"Not Exactly How We Planned" rather than "S1 E1 - Not Exactly...":
+    Kodi shows season/episode numbers itself."""
+    # Not titleBrief: in the series HAR that is a production code ("Power 101").
+    title = content.get("properCaseTitle") or content.get("title") or ""
+    return re.sub(r"^S\d+\s*E\d+\s*-\s*", "", title)
+
+
+def to_item(content, series=None):
+    """A Kodi-facing item. ``series`` is the parent series content, for the
+    art seasons and episodes borrow (series HAR: episodes have their own
+    STUDIO still, seasons their own KEY art; poster and logo are the
+    series')."""
+    kind = TYPES.get(content.get("contentType"))
+    if not kind:
+        return None
+    cid = content.get("contentId")
+    title = content.get("properCaseTitle") or content.get("title") or ""
+    if kind == "episode":
+        title = _episode_title(content)
+    item = {"id": str(cid), "type": kind,
+            "title": title,
+            "plot": content.get("logLine", ""),
+            "year": content.get("releaseYear") or content.get("minReleaseYear"),
+            "duration": content.get("runtime") or content.get("runTime"),
+            "mpaa": content.get("ratingName", ""),
+            "genres": content.get("simplifiedGenres") or [],
+            "art": _art(cid)}
+    sid = (series or {}).get("contentId") or content.get("topContentId")
+    if kind in ("season", "episode") and sid:
+        parent = _art(sid)
+        # Parent art goes under tvshow.* as in Kodi's own library. A plain
+        # "poster" on an episode makes poster/wall views show the series
+        # poster instead of the episode still.
+        art = {"tvshow.%s" % k: v for k, v in parent.items()}
+        art["fanart"] = parent["fanart"]
+        if kind == "episode":
+            art["thumb"] = art["landscape"] = _image(cid, "STUDIO", "2560x1440", 1280)
+        else:
+            art["thumb"] = art["landscape"] = _image(cid, "KEY", "2560x1440", 1280)
+            art["poster"] = parent["poster"]   # seasons do have posters
+        item["art"] = art
+        item["series_id"] = str(sid)
+        item["series_title"] = (series or {}).get("title") or content.get("seriesName", "")
+    if kind == "season":
+        item["season"] = content.get("order")
+        item["episode_count"] = content.get("episodeCount")
+    if kind == "episode":
+        item["season"] = content.get("seasonNumber") or content.get("season")
+        item["episode"] = content.get("order") or content.get("episodeNumber")
+    if content.get("resumeSeconds"):
+        item["resume"] = content["resumeSeconds"]
+    if content.get("comingSoon"):
+        item["coming_soon"] = True
+    if content.get("badgeKeys"):
+        item["badge_keys"] = list(content["badgeKeys"])
+    if content.get("previewContentId") and kind in ("movie", "series"):
+        item["trailer_id"] = str(content["previewContentId"])
+    _add_people(item, content)
+    return item
+
+
+def _add_people(item, content):
+    """Cast, directors, writers and studio when the content carries them
+    (the series tree does for series, seasons and episodes: actors and
+    directors as [{id, fullName}], credits with keyedRoles, W = writer)."""
+    actors = content.get("actors") or []
+    if actors:
+        # No photos: Configuration's starzHeadshotImageUrlTemplate answers
+        # 403 to anyone but the website (endpoint check, 2026-11-18).
+        item["cast"] = [{"name": a.get("fullName", ""), "order": n}
+                        for n, a in enumerate(actors) if a.get("fullName")]
+    directors = [d.get("fullName") for d in content.get("directors") or []
+                 if d.get("fullName")]
+    if directors:
+        item["directors"] = directors
+    writers = [c.get("name") for c in content.get("credits") or []
+               if any(r.get("key") == "W" for r in c.get("keyedRoles") or [])]
+    if writers:
+        item["writers"] = writers
+    studio = re.sub(r"^©\s*\d{4}\s*", "", content.get("studio") or "").strip()
+    if studio:
+        item["studio"] = studio
+
+
+def is_watched(entry):
+    """Starz says so, or playback reached the credits (creditTimeIn), which
+    is where Starz's own apps move on to the next episode."""
+    if entry.get("isCompleted"):
+        return True
+    credits, resume = entry.get("creditTimeIn"), entry.get("resumeSeconds")
+    return bool(credits and resume and resume >= credits)
+
+
+def apply_history(items, history):
+    """Watched mark or resume point on each movie/episode from User/history
+    entries keyed by contentId. Items with no entry are left alone."""
+    for item in items:
+        entry = history.get(item.get("id"))
+        if not entry or item.get("type") not in ("movie", "episode"):
+            continue
+        if is_watched(entry):
+            item["playcount"] = 1
+            item.pop("resume", None)
+        elif entry.get("resumeSeconds"):
+            item["resume"] = entry["resumeSeconds"]
+            item.setdefault("duration", entry.get("runTime"))
+    return items
+
+
+class StarzApi(object):
+
+    def __init__(self, auth):
+        self.auth = auth
+        self.http = requests.Session()
+        self.http.headers.update({"User-Agent": USER_AGENT,
+                                  "Accept": "application/json, text/plain, */*",
+                                  "Origin": "https://www.starz.com",
+                                  "Referer": "https://www.starz.com/"})
+        self._blocks = None
+
+    # -- metadata ------------------------------------------------------------
+
+    def _get(self, path, params):
+        resp = self.http.get(METADATA + path, params=params, timeout=TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()
+
+    def blocks(self):
+        """All pages' rows plus the id -> title map, cached for half an hour
+        (each Kodi navigation is a new process)."""
+        if self._blocks is None:
+            cached = kodiutils.read_json(BLOCKS_CACHE, default=None)
+            if cached and time.time() - cached.get("at", 0) < BLOCKS_TTL:
+                self._blocks = cached["data"]
+            else:
+                data = self._get("blocks", {"playContents": "map", "lang": LANG,
+                                            "pages": PAGES, "includes": INCLUDES})
+                self._blocks = data.get("blocks") or []
+                kodiutils.write_json(BLOCKS_CACHE, {"at": time.time(),
+                                                    "data": self._blocks})
+        return self._blocks
+
+    def _content_map(self):
+        for block in self.blocks():
+            if block.get("blockType") == "PLAY_CONTENTS":
+                return block.get("playContentsById") or {}
+        return {}
+
+    def contents(self, ids):
+        """Titles by id: from the blocks map, fetching any it lacks."""
+        cmap = self._content_map()
+        ids = [str(i) for i in ids]
+        missing = [i for i in ids if i not in cmap]
+        if missing:
+            data = self._get("content", {"lang": LANG, "contentIds": ",".join(missing),
+                                         "includes": INCLUDES})
+            for c in (data.get("playContentArray") or {}).get("playContents") or []:
+                cmap[str(c.get("contentId"))] = c
+        return [cmap[i] for i in ids if i in cmap]
+
+    def _find(self, block_id, blocks=None):
+        for block in self.blocks() if blocks is None else blocks:
+            if str(block.get("id")) == str(block_id):
+                return block
+            found = self._find(block_id, block.get("blocks") or [])
+            if found:
+                return found
+        return None
+
+    @staticmethod
+    def _row_ids(block):
+        ids = list(block.get("contentIds") or [])
+        for sub in block.get("blocks") or []:
+            if sub.get("blockType") == "CONTENT" and sub.get("contentId"):
+                ids.append(sub["contentId"])
+        return ids
+
+    # -- catalogue -----------------------------------------------------------
+
+    def page_rows(self, page="HOME"):
+        """The rows of one page (HOME, SERIES, MOVIES, BROWSE)."""
+        for block in self.blocks():
+            if block.get("blockType") == "PAGE" and block.get("pageKey") == page:
+                return self._rows(block.get("blocks") or [])
+        return []
+
+    # -- full catalogue: All / Genres / filter & sort ---------------------
+    # The blocks map holds every title (sign-in HAR: all 449 movies, i.e.
+    # every ALL_MOVIES key, and 54 series), each with simplifiedGenres,
+    # popularity (higher = more popular: the site's Popular rows run in
+    # descending order) and release years. The website's filter dialog works
+    # on the same data client-side; there is no separate endpoint.
+
+    SORTS = ("az", "popular", "year")
+    # The website's Filters panel (screenshot of its view-all page): type
+    # (All / Movies / Series), Release Year by decade and Run Time buckets,
+    # each a set of checkboxes; Sort (A to Z / Popular / Release Year) is a
+    # separate bar. No request is made when either changes.
+    DECADES = ("2020", "2010", "2000", "1990", "1980", "1970", "1960", "pre1960")
+    RUNTIMES = ("lt20", "20-40", "40-60", "gt60")
+
+    def _catalogue(self, kind=None):
+        wanted = {"movie": ("Movie",), "series": ("Series with Season",)}.get(
+            kind, ("Movie", "Series with Season"))
+        return [c for c in self._content_map().values()
+                if c.get("contentType") in wanted]
+
+    def genres(self, kind=None):
+        """[(genre, count)] A-Z."""
+        counts = {}
+        for c in self._catalogue(kind):
+            for g in c.get("simplifiedGenres") or []:
+                counts[g] = counts.get(g, 0) + 1
+        return sorted(counts.items(), key=lambda gc: gc[0].lower())
+
+    @staticmethod
+    def _sort_title(c):
+        title = (c.get("properCaseTitle") or c.get("title") or "").lower()
+        return re.sub(r"^(the|a|an)\s+", "", title)
+
+    @staticmethod
+    def _int(value):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
+
+    def _years(self, c):
+        """(first, last) release year; a series spans its seasons."""
+        if c.get("releaseYear"):
+            y = self._int(c["releaseYear"])
+            return y, y
+        lo = self._int(c.get("minReleaseYear"))
+        hi = self._int(c.get("maxReleaseYear")) or lo
+        return (lo or hi), hi
+
+    def _in_decades(self, c, decades):
+        lo, hi = self._years(c)
+        if not hi:
+            return False
+        for d in decades:
+            start, end = (0, 1959) if d == "pre1960" else (int(d), int(d) + 9)
+            if lo <= end and hi >= start:   # a series counts in every decade it ran
+                return True
+        return False
+
+    def _in_runtimes(self, c, buckets):
+        """Minutes: a movie's runtime, a series' first-episode runtime."""
+        mins = self._int(c.get("runtime") or c.get("firstEpisodeRuntime")) / 60.0
+        if not mins:
+            return False
+        return any((b == "lt20" and mins < 20) or (b == "20-40" and 20 <= mins < 40)
+                   or (b == "40-60" and 40 <= mins <= 60) or (b == "gt60" and mins > 60)
+                   for b in buckets)
+
+    def _source(self, source):
+        if source == "recommended":
+            return self._recommended_contents()
+        return self._catalogue()
+
+    def browse(self, source="all", kind=None, decades=(), runtimes=(), genres=(),
+               sort=""):
+        """A full list with the website's filters and sort applied. Empty
+        filters mean everything; no sort keeps the source's own order
+        (A-Z for the whole catalogue)."""
+        titles = self._source(source)
+        if kind:
+            want = "Movie" if kind == "movie" else "Series with Season"
+            titles = [c for c in titles if c.get("contentType") == want]
+        if decades:
+            titles = [c for c in titles if self._in_decades(c, decades)]
+        if runtimes:
+            titles = [c for c in titles if self._in_runtimes(c, runtimes)]
+        if genres:
+            titles = [c for c in titles
+                      if set(genres) & set(c.get("simplifiedGenres") or [])]
+        if not sort and source == "all":
+            sort = "az"
+        if sort == "popular":
+            titles.sort(key=lambda c: (-(c.get("popularity") or 0), self._sort_title(c)))
+        elif sort == "year":
+            titles.sort(key=lambda c: (-self._years(c)[1], self._sort_title(c)))
+        elif sort == "az":
+            titles.sort(key=self._sort_title)
+        items = [i for i in (to_item(c) for c in titles) if i]
+        return self._finish(items)
+
+    def _recommended_contents(self, type_param=None):
+        """Personalised picks for the selected profile (recommender HARs:
+        GET recommender.starz.com/api/v3/recommendations/partner/Web/
+        profile/{profileId} -> {"ranks": [{contentId, ...}]}, signed with
+        the app token, not the session), in Starz's order."""
+        profile = self.auth.profile_id
+        if not profile:
+            return []
+        resp = self.http.get(RECOMMENDER + profile,
+                             params={"type": type_param} if type_param else None,
+                             headers=self.auth.app_headers(), timeout=TIMEOUT)
+        resp.raise_for_status()
+        ids = [r.get("contentId") for r in (resp.json() or {}).get("ranks") or []]
+        return [c for c in self.contents(ids)
+                if c.get("contentType") in ("Movie", "Series with Season")]
+
+    # -- people and "If you like" (actor HAR) --------------------------------
+
+    def title_detail(self, content_id):
+        """Full detail for one title (no includes): actors, directors and
+        credits for a movie, series or episode."""
+        data = self._get("content", {"lang": LANG, "contentIds": str(content_id)})
+        contents = (data.get("playContentArray") or {}).get("playContents") or []
+        return contents[0] if contents else {}
+
+    def people(self, content_id):
+        """[(artist_id, name, roles)] - cast in billing order, then the rest
+        of the credits (directors, writers, producers...)."""
+        c = self.title_detail(content_id)
+        out, seen = [], set()
+        for a in c.get("actors") or []:
+            if a.get("id") and a["id"] not in seen:
+                seen.add(a["id"])
+                out.append((a["id"], a.get("fullName", ""), ["Actor"]))
+        for cr in c.get("credits") or []:
+            if cr.get("id") and cr["id"] not in seen:
+                seen.add(cr["id"])
+                out.append((cr["id"], cr.get("name", ""),
+                            [r.get("name") for r in cr.get("keyedRoles") or [] if r.get("name")]))
+        return out
+
+    def artist(self, artist_id):
+        """(name, items): everything on Starz the person is in.
+        GET v8/artists?artistId={id}&lang -> {"artists": {"artist": [{id,
+        name, keyedRoles, contents: [{id, type}]}]}} (actor HAR #14; public)."""
+        data = self._get("artists", {"artistId": str(artist_id), "lang": LANG})
+        found = ((data.get("artists") or {}).get("artist") or [{}])[0]
+        roles = {str(c.get("id")): [r.get("name") for r in c.get("keyedRoles") or []
+                                    if r.get("name")]
+                 for c in found.get("contents") or [] if c.get("id")}
+        items = [i for i in (to_item(c) for c in self.contents(list(roles))) if i]
+        for item in items:
+            # Their role on each title (director/writer pages in the second
+            # actor HAR); shown when it is not simply acting.
+            r = [x for x in roles.get(item["id"], []) if x != "Actor"]
+            if r:
+                item["label_extra"] = ", ".join(r)
+        return found.get("name", ""), self._finish(items)
+
+    def similar(self, content_id):
+        """"If you like X": GET recommender.../recommendations/partner/Web?
+        contentIdsCSV={id} with the app token -> {"ranks": [...]} (actor HAR
+        #35; the website passes the series id on an episode page)."""
+        resp = self.http.get(RECOMMENDER.rsplit("/profile/", 1)[0],
+                             params={"contentIdsCSV": str(content_id)},
+                             headers=self.auth.app_headers(), timeout=TIMEOUT)
+        resp.raise_for_status()
+        ids = [r.get("contentId") for r in (resp.json() or {}).get("ranks") or []
+               if str(r.get("contentId")) != str(content_id)]
+        items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
+        return self._finish(items)
+
+    def categories_row_id(self):
+        """The Browse page's "Browse By" grid (CATEGORY_GRID)."""
+        for block in self.blocks():
+            if block.get("blockType") == "PAGE" and block.get("pageKey") == "BROWSE":
+                for sub in block.get("blocks") or []:
+                    if sub.get("blockType") == "CATEGORY_GRID":
+                        return str(sub["id"])
+        return None
+
+    def _rows(self, blocks):
+        rows = []
+        for block in blocks:
+            title = block.get("title")
+            if not title:
+                continue
+            subs = block.get("blocks") or []
+            if any(s.get("blockType") in ID_ROWS for s in subs):
+                rows.append({"id": str(block["id"]), "title": title, "kind": "folder"})
+            elif self._row_ids(block) and (block.get("blockType") in ID_ROWS or subs):
+                rows.append({"id": str(block["id"]), "title": title, "kind": "items"})
+            elif block.get("blockType") == "COMING_SOON" and self._coming_soon_ids():
+                rows.append({"id": str(block["id"]), "title": title, "kind": "items"})
+            elif (block.get("blockType") in PERSONAL_ROWS and self.auth.signed_in
+                  and self.auth.profile_id):
+                rows.append({"id": str(block["id"]), "title": title, "kind": "items"})
+        return rows
+
+    def row(self, row_id):
+        """(sub_rows, items) for a row id: a folder has rows, a row has items."""
+        block = self._find(row_id)
+        if not block:
+            return [], []
+        subs = block.get("blocks") or []
+        if any(s.get("blockType") in ID_ROWS for s in subs):
+            return self._rows(subs), []
+        if block.get("blockType") in PERSONAL_ROWS:
+            return [], self._personal_row(block)
+        ids = (self._coming_soon_ids() if block.get("blockType") == "COMING_SOON"
+               else self._row_ids(block))
+        items = [to_item(c) for c in self.contents(ids)]
+        return [], self._finish([i for i in items if i])
+
+    def _page_of(self, block_id):
+        for page in self.blocks():
+            if page.get("blockType") == "PAGE" and self._find(block_id, page.get("blocks") or []):
+                return page.get("pageKey")
+        return None
+
+    def _personal_row(self, block):
+        """Featured For You (recommender carousel), Recommended For You
+        (recommendations) and Your Playlist (My List), as the website fills
+        them; Movies/Series pages ask for their own kind."""
+        kind = block.get("blockType")
+        if kind == "PLAYLIST_SWIM_LANE":
+            return self.my_list()
+        page = self._page_of(block.get("id"))
+        types = block.get("contentTypes") or ["Movie", "Series with Season"]
+        if kind == "TRAILER_SWIM_LANE":
+            contents = self._carousel_contents(page if page in ("MOVIES", "SERIES") else None)
+        else:
+            contents = self._recommended_contents(
+                "Movies" if types == ["Movie"] else None)
+        contents = [c for c in contents if c.get("contentType") in types]
+        return self._finish([i for i in (to_item(c) for c in contents) if i])
+
+    def _carousel_contents(self, page_key=None):
+        """GET recommender .../carousel/partner/Web/profile/{id}/lang/en-US/
+        [?pageKey=MOVIES|SERIES] with the app token -> {"items": [{contentId,
+        content, images, carouselType...}]} (sign-in and profiles HARs)."""
+        profile = self.auth.profile_id
+        if not profile:
+            return []
+        resp = self.http.get(CAROUSEL % profile,
+                             params={"pageKey": page_key} if page_key else None,
+                             headers=self.auth.app_headers(), timeout=TIMEOUT)
+        resp.raise_for_status()
+        ids = [i.get("contentId") for i in (resp.json() or {}).get("items") or []
+               if i.get("contentId")]
+        return self.contents(ids)
+
+    def badge_labels(self):
+        """{key: label} from GET v8/badgeKeys (fr Free, nsea New Season, ne
+        New Episode, tc Top 10, ls Leaving Soon...), cached for a day."""
+        if "_badges" not in self.__dict__:
+            cached = kodiutils.read_json(BADGES_CACHE, default=None)
+            if cached and time.time() - cached.get("at", 0) < BADGES_TTL:
+                self._badges = cached["data"]
+            else:
+                try:
+                    self._badges = self._get("badgeKeys", {"lang": LANG}) or {}
+                    kodiutils.write_json(BADGES_CACHE, {"at": time.time(), "data": self._badges})
+                except Exception as exc:
+                    kodiutils.log_error("badgeKeys: %s" % exc)
+                    self._badges = {}
+        return self._badges
+
+    # -- why playback failed ------------------------------------------------
+
+    def access_problem(self):
+        """A plain reason Starz will not play here, or None. Only called after
+        a playback failure. User/geolocation (app token): isAllowedAccess,
+        isKnownProxy, country; User/access (session): result is "None" for a
+        normal account (sign-in HAR), with a message otherwise."""
+        try:
+            geo = self.http.get(AUTH_API + "User/geolocation",
+                                headers=self.auth.app_headers(), timeout=TIMEOUT).json() or {}
+            if geo.get("isKnownProxy"):
+                return "proxy"
+            if geo.get("isAllowedAccess") is False or geo.get("isAllowedCountry") is False:
+                return "country:%s" % (geo.get("country") or "?")
+        except Exception as exc:
+            kodiutils.log_error("geolocation: %s" % exc)
+        try:
+            acc = self.auth.request("GET", AUTH_API + "User/access").json() or {}
+            if acc.get("message"):
+                return "message:%s" % acc["message"]
+            if acc.get("result") not in (None, "None", "", "Allowed", "Ok", "OK"):
+                return "access:%s" % acc["result"]
+        except Exception as exc:
+            kodiutils.log_error("User/access: %s" % exc)
+        return None
+
+    # -- profiles and parental controls (profiles and parental HARs) -------
+
+    def profile_icons(self):
+        """GET User/profiles/icons -> [{iconUrl, iconUrlFiltered, isCustom}]."""
+        return self.auth.request("GET", AUTH_API + "User/profiles/icons").json() or []
+
+    def create_profile(self, name, icon_url):
+        """POST User/profiles {"name", "iconUrl"} -> the new profile."""
+        return self.auth.request("POST", AUTH_API + "User/profiles",
+                                 json={"name": name, "iconUrl": icon_url}).json()
+
+    def update_profile(self, profile, name=None, icon_url=None):
+        """Rename a profile or change its picture. PUT User/profiles with the
+        profile as GET User/profiles returns it (name, profileIcon, id,
+        isAdmin), the new name in "name" and the picture to use in a
+        top-level "iconUrl"; profileIcon stays the old one (profile-edit
+        HAR #90, #304). Returns the updated profile."""
+        body = {"name": name or profile.get("name", ""),
+                "profileIcon": profile.get("profileIcon") or {},
+                "id": profile["id"], "isAdmin": bool(profile.get("isAdmin")),
+                "iconUrl": icon_url or (profile.get("profileIcon") or {}).get("iconUrl", "")}
+        return self.auth.request("PUT", AUTH_API + "User/profiles", json=body).json()
+
+    def delete_profile(self, profile_id):
+        """DELETE User/profiles/{id} -> 204."""
+        self.auth.request("DELETE", AUTH_API + "User/profiles/%s" % profile_id)
+
+    def parental_controls(self, profile_id):
+        """[{rating, type: TV|MPAA, enabled}] in Starz's order (youngest
+        first within each type)."""
+        data = self.auth.request("GET", AUTH_API + "ParentalControls/" + profile_id).json()
+        return (data or {}).get("parentalControls") or []
+
+    def has_pin(self):
+        """GET User -> hasParentalControlPIN: whether the account has a
+        parental-control PIN yet (the website asks for a new one if not)."""
+        user = self.auth.request("GET", AUTH_API + "User").json() or {}
+        return bool(user.get("hasParentalControlPIN"))
+
+    def create_pin(self, pin):
+        """POST ParentalControls/Pin {"parentalControlPin"} -> 204. This sets
+        the account's FIRST PIN (the website's newPin); with a PIN already
+        set it answers 403. An existing PIN is checked by the save itself:
+        PUT ParentalControls answers 403 for a wrong one."""
+        self.auth.request("POST", AUTH_API + "ParentalControls/Pin",
+                          json={"parentalControlPin": pin})
+
+    def set_parental_limits(self, profile_id, pin, controls, max_rating):
+        """PUT ParentalControls {parentalControlPin, profileId,
+        parentalControls: [{rating, type, enabled, selected}]} -> 204.
+        max_rating is {type: rating}: like the website's slider, the chosen
+        maximum is "selected" and everything above it is disabled. The site
+        never sends "no limit": allowing everything selects the top rating
+        (TV-MA, NC-17), so a missing type does the same here. Checked: all 7
+        saves in the parental HAR rebuild byte for byte."""
+        max_rating = dict(max_rating)
+        for t in {c.get("type") for c in controls}:
+            if not max_rating.get(t):
+                max_rating[t] = [c.get("rating") for c in controls if c.get("type") == t][-1]
+        out, over = [], {}
+        for c in controls:
+            t, r = c.get("type"), c.get("rating")
+            limit = max_rating.get(t)
+            out.append({"rating": r, "type": t, "enabled": not over.get(t),
+                        "selected": bool(limit) and r == limit})
+            if limit and r == limit:
+                over[t] = True
+        self.auth.request("PUT", AUTH_API + "ParentalControls",
+                          json={"parentalControlPin": pin, "parentalControls": out,
+                                "profileId": profile_id})
+
+    # -- activate another device --------------------------------------------
+
+    def activate_device(self, code, email, password):
+        """Link another device (a TV showing a code) to this account, the way
+        starz.com/activate does it even when signed in (activate HAR): check
+        the code with GET Activate/{code} (app token; 200 with {code,
+        authId}), then POST Activate/Login {code, emailAddress, password,
+        preLoginEmailAddress} -> {subscriptionState}. Not Activate/Device,
+        which the site's JS names but did not use."""
+        self.auth.link_code(code.strip().upper(), email, password)
+
+    def _coming_soon_ids(self):
+        """The Home page's COMING_SOON block carries no contentIds; the
+        website lists the titles flagged comingSoon in the blocks map."""
+        return [k for k, c in self._content_map().items()
+                if c.get("comingSoon") and c.get("contentType") in TYPES]
+
+    def _finish(self, items, series_id=None):
+        """Every listing ends here: add watched marks and resume points.
+        Parental controls hide nothing: as on the website, every title is
+        listed and one above the profile's limits asks for the account PIN
+        when played (parental-PIN HAR: Play 403 errorCode 1501)."""
+        return apply_history(items, self.history(series_id))
+
+    def history(self, series_id=None):
+        """User/history as {contentId: entry} (sign-in HAR #304; series HAR
+        ?topContentId=). Empty when signed out or if Starz fails: watched
+        marks are a nicety and must never break a listing."""
+        if not self.auth.signed_in:
+            return {}
+        key = str(series_id or "")
+        cache = self.__dict__.setdefault("_history", {})
+        if key not in cache:
+            params = {"topContentId": series_id} if series_id else None
+            try:
+                entries = self.auth.request("GET", AUTH_API + "User/history",
+                                            params=params).json() or []
+            except Exception as exc:
+                kodiutils.log_error("User/history: %s" % exc)
+                entries = []
+            cache[key] = {str(e.get("contentId")): e for e in entries
+                          if isinstance(e, dict)}
+        return cache[key]
+
+    def continue_watching(self):
+        entries = self.auth.request("GET", AUTH_API + "User/continue").json() or []
+        meta = {str(c.get("contentId")): c
+                for c in self.contents([e.get("contentId") for e in entries])}
+        items = []
+        for entry in entries:
+            merged = dict(meta.get(str(entry.get("contentId")), {}))
+            merged.update({k: v for k, v in entry.items() if v is not None})
+            item = to_item(merged)
+            if item:
+                if entry.get("seriesTitle") and item["type"] == "episode":
+                    item["title"] = "%s - %s" % (entry["seriesTitle"],
+                                                 entry.get("displayTitle") or item["title"])
+                items.append(item)
+        return items
+
+    def series_tree(self, series_id):
+        """The whole series: v8/content?contentIds={id} with no includes
+        returns it with childContent seasons, each with childContent
+        episodes (series HAR #513)."""
+        data = self._get("content", {"lang": LANG, "contentIds": str(series_id)})
+        contents = (data.get("playContentArray") or {}).get("playContents") or []
+        if not contents:
+            raise NotReadyError("Starz returned nothing for series %s" % series_id)
+        return contents[0]
+
+    def extras(self, series_id):
+        """A series' extras from its tree (series HAR): previews (trailers),
+        each season's bonusMaterials in order, then promo spots. They are
+        ordinary titles with a contentId and play through Play/start like
+        anything else [VERIFY: no capture of an extra playing yet]."""
+        series = self.series_tree(series_id)
+        out = []
+
+        def add(c, prefix=""):
+            cid = c.get("contentId")
+            if not cid:
+                return
+            title = c.get("properCaseTitle") or c.get("title") or ""
+            out.append({"id": str(cid), "type": "extra",
+                        "title": ("%s: %s" % (prefix, title)) if prefix else title,
+                        "plot": c.get("logLine", ""),
+                        "duration": self._int(c.get("runtime")),
+                        "art": _art(series.get("contentId") or series_id)})
+
+        for c in series.get("previews") or []:
+            add(c)
+        for season in sorted(series.get("childContent") or [], key=lambda x: self._int(x.get("order"))):
+            for c in sorted(season.get("bonusMaterials") or [], key=lambda x: self._int(x.get("order"))):
+                add(c, season.get("properCaseTitle") or season.get("title") or "")
+        for c in series.get("spots") or []:
+            add(c)
+        return series, out
+
+    def seasons(self, series_id):
+        series = self.series_tree(series_id)
+        seasons = sorted(series.get("childContent") or [],
+                         key=lambda s: s.get("order") or 0)
+        return series, [i for i in (to_item(s, series) for s in seasons) if i]
+
+    def episodes(self, series_id, season_id):
+        series = self.series_tree(series_id)
+        for season in series.get("childContent") or []:
+            if str(season.get("contentId")) == str(season_id):
+                eps = sorted(season.get("childContent") or [],
+                             key=lambda e: e.get("order") or 0)
+                items = [i for i in (to_item(e, series) for e in eps) if i]
+                return self._finish(items, series_id)
+        return []
+
+    def search(self, query):
+        """Matching ids, then their metadata (series HAR #324, #326)."""
+        # The web client's exact query (no lang).
+        data = self._get("content", {"include": "contentId",
+                                     "contentType": ["Movie", "Series with Season"],
+                                     "searchString": query, "limit": 1000})
+        ids = [c.get("contentId") for c in
+               (data.get("playContentArray") or {}).get("playContents") or []]
+        items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
+        return self._finish(items)
+
+    # -- linear schedule (schedule HAR) ---------------------------------------
+
+    @staticmethod
+    def _timezone():
+        """IANA zone for the schedule's day boundaries (the website sends the
+        browser's, e.g. America/New_York). Times in the reply are absolute
+        (startMs), so this only decides where "today" starts and ends."""
+        tz = os.environ.get("TZ", "")
+        if "/" in tz:
+            return tz.lstrip(":")
+        try:
+            with open("/etc/timezone") as fh:
+                tz = fh.read().strip()
+                if "/" in tz:
+                    return tz
+        except OSError:
+            pass
+        real = os.path.realpath("/etc/localtime")
+        if "zoneinfo/" in real:
+            return real.split("zoneinfo/", 1)[1]
+        return "America/New_York"
+
+    def schedule(self, code, day=0):
+        """One channel's line-up for a day (0 = today, 1 = tomorrow).
+        GET v6/content/linear?fromDay&toDay&tz&services={code}&templates=true
+        (public) -> {"linearSchedule": {"elements": [{contentType, title,
+        contentId, startMs, endMs, availableOnOtt, logLine, ratingName,
+        releaseYear, simplifiedGenres, ...}]}}. The reply runs from the
+        evening before into the night after; kept as Starz sends it, the
+        caller picks the window it wants."""
+        data = self._get_url(LINEAR, {"fromDay": str(day), "toDay": str(day),
+                                      "tz": self._timezone(),
+                                      "services": code.lower(), "templates": "true"})
+        return ((data.get("linearSchedule") or {}).get("elements")) or []
+
+    def on_now(self, code):
+        now = time.time() * 1000
+        for el in self.schedule(code, 0):
+            if (el.get("startMs") or 0) <= now < (el.get("endMs") or 0):
+                return el
+        return None
+
+    def _get_url(self, url, params):
+        resp = self.http.get(url, params=params, timeout=TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()
+
+    # -- devices (device HARs) ---------------------------------------------
+
+    def devices(self):
+        """GET User/devices -> [{deviceId, name, type, lastAccess, country,
+        countryRegion, city}], newest first as Starz returns them."""
+        return (self.auth.request("GET", AUTH_API + "User/devices").json()
+                or {}).get("devices") or []
+
+    def logout_devices(self, device_ids):
+        """POST User/devices/logout {"Devices": [deviceId, ...]} -> 204
+        (device HAR: the list went from 6 to 5, minus exactly the id sent)."""
+        self.auth.request("POST", AUTH_API + "User/devices/logout",
+                          json={"Devices": list(device_ids)})
+
+    def hide_from_continue(self, content_id):
+        """PUT User/resumepoints/hide {"ids": [id]} -> 204. A movie is hidden
+        by its own contentId (hide HAR #20, #33); an episode by its series'
+        (episode hide HAR: {"ids": [21220]} for a Power episode)."""
+        self.auth.request("PUT", AUTH_API + "User/resumepoints/hide",
+                          json={"ids": [int(content_id)]})
+
+    # -- play session reporting (service.py) ---------------------------------
+
+    def report_play(self, kind, content_id, session_id, position):
+        """Play/update (keep-alive HAR: every 20-30 s, contentId as a number,
+        200 with {..., "bypassSave": false}) or Play/stop (episode HAR #398:
+        contentId as a string, 204). Both under the session token, with the
+        playbackSessionId from Play/start and an int position."""
+        resp = self.auth.request("POST", AUTH_API + "Play/%s" % kind, json={
+            "contentId": int(content_id) if kind == "update" else str(content_id),
+            "playbackSessionId": session_id,
+            "mediaResumePointSeconds": int(position)})
+        if kind == "update":
+            try:
+                if (resp.json() or {}).get("bypassSave"):
+                    kodiutils.log("Play/update: Starz did not save this position (bypassSave)")
+            except ValueError:
+                pass
+
+    # -- My List (User/Queue) ------------------------------------------------
+
+    def my_list(self):
+        entries = self.auth.request("GET", AUTH_API + "User/Queue").json() or []
+        entries.sort(key=lambda e: e.get("order") or 0)
+        ids = [e.get("contentId") for e in entries]
+        items = [i for i in (to_item(c) for c in self.contents(ids)) if i]
+        return self._finish(items)
+
+    def my_list_ids(self):
+        """{contentId: remindMe} for everything on My List."""
+        try:
+            return {str(e.get("contentId")): bool(e.get("remindMe")) for e in
+                    self.auth.request("GET", AUTH_API + "User/Queue").json() or []}
+        except Exception:
+            return {}
+
+    def set_reminder(self, content_id, on):
+        """Remind me on a Coming Soon title, as the website does it (reminder
+        HAR, toggled 7 times): on = PUT User/Queue/{id} {"remindMe": true}
+        (it goes on My List flagged to remind); off = DELETE
+        User/Queue/{id}, which takes it off My List again."""
+        if on:
+            self.auth.request("PUT", AUTH_API + "User/Queue/%s" % content_id,
+                              json={"remindMe": True})
+        else:
+            self.auth.request("DELETE", AUTH_API + "User/Queue/%s" % content_id)
+
+    def add_to_list(self, content_id):
+        self.auth.request("PUT", AUTH_API + "User/Queue/%s" % content_id,
+                          json={"remindMe": False})
+
+    def remove_from_list(self, content_id):
+        self.auth.request("DELETE", AUTH_API + "User/Queue/%s" % content_id)
+
+    # -- playback ------------------------------------------------------------
+
+    def playback(self, content_id, subtitle_langs=("en",), pin=None):
+        """Resolve a title to a playback dict (play HAR, recon rows D-K).
+
+        GET Play?contentId= is the entitlement/device check (204 when fine;
+        403 errorCode 1305 at the device limit). POST Play/start returns the
+        DASH manifest (mediaUrl), the licence endpoint and a per-play licence
+        token, and WebVTT captions. The licence URL is
+        mediaDrmEndpoint/{default_KID}?token={token percent-encoded}; the
+        server takes the raw Widevine challenge with no auth headers, so ISA
+        posts to it directly. Segments need no cookies or signed URLs.
+        The clear preroll the web player shows first is skipped.
+        """
+        live = str(content_id) == LIVE_ID
+        # The live stream's id is a string (live HAR); titles' are numbers.
+        cid = LIVE_ID if live else int(content_id)
+        # Above the profile's parental limits, Play answers 403 errorCode
+        # 1501 (PARENTAL_PIN_NEEDED); the website then asks for the account
+        # PIN and sends it as &pin= here and as parentalControlPin to
+        # Play/start (parental-PIN HAR). A wrong PIN is 1500.
+        params = {"contentId": cid}
+        start = {"contentId": cid}
+        if pin:
+            params["pin"] = pin
+            start["parentalControlPin"] = pin
+        start["mediaResumePointSeconds"] = None
+        self.auth.request("GET", AUTH_API + "Play", params=params)
+        info = self.auth.request("POST", AUTH_API + "Play/start", json=start).json()
+        manifest_url = info["mediaUrl"]
+        # The live manifest has no default_KID; the website then licenses
+        # with an empty key id (.../ghostlocker/?token=..., live HAR #211).
+        kid = self._default_kid(manifest_url, required=not live)
+        license_url = "%s/%s?token=%s" % (info["mediaDrmEndpoint"].rstrip("/"),
+                                          kid, quote(info["mediaLicenseToken"], safe=""))
+        kodiutils.log("Play/start ok: content=%s kid=%s keepAlive=%ss" % (
+            cid, kid, info.get("keepAliveSeconds")))
+        web = {"User-Agent": USER_AGENT, "Origin": "https://www.starz.com",
+               "Referer": "https://www.starz.com/"}
+        return {"manifest_url": manifest_url, "manifest_type": "mpd",
+                "license_url": license_url,
+                # Exactly what the browser sent: no Content-Type, no auth.
+                "license_headers": web,
+                "stream_headers": web,
+                "subtitles": self._captions(info.get("captions") or [], subtitle_langs),
+                "session_id": info.get("playbackSessionId"),
+                "keep_alive": info.get("keepAliveSeconds"),
+                "live": live,
+                # Live plays report under the id Play/start returns ("2"),
+                # not the one used to start it (second live HAR).
+                "report_id": str(info.get("contentId") or content_id)}
+
+    def _default_kid(self, manifest_url, required=True):
+        """The manifest's cenc:default_KID, which names the licence URL.
+        On-demand manifests carry exactly one, shared by every track; the
+        live manifest carries none ("" then, as the website uses)."""
+        resp = self.http.get(manifest_url, timeout=TIMEOUT)
+        resp.raise_for_status()
+        kids = re.findall(r'default_KID="([0-9a-fA-F-]{32,36})"', resp.text)
+        if not kids and not required:
+            return ""
+        if not kids:
+            raise NotReadyError("No default_KID in the manifest; this title is "
+                                "packaged differently from the captured one.")
+        if len(set(k.lower() for k in kids)) > 1:
+            kodiutils.log("Manifest has %d key ids; licensing with the first"
+                          % len(set(kids)))
+        return kids[0].lower()
+
+    @staticmethod
+    def _captions(captions, langs):
+        """WebVTT caption URLs, preferred languages first (en-US -> en)."""
+        def rank(c):
+            lang = (c.get("language") or "").split("-")[0].lower()
+            return langs.index(lang) if lang in langs else len(langs)
+        return [c["url"] for c in sorted(captions, key=rank)
+                if c.get("url") and (c.get("type") or "VTT").upper() == "VTT"]

@@ -19,7 +19,9 @@ ADDON_FOLDERS = [
     "script.akl.heroic",
     "script.webhook.runner",
     "service.watchparty",
-    "plugin.video.tubitv"
+    "plugin.video.tubitv",
+    "plugin.video.starz",
+    "script.module.skipbuttons"
 ]
 
 def get_addon_xml_content(folder):

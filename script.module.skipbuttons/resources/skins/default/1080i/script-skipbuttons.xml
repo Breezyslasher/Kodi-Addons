@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The Skip recap / Skip intro / Next episode button over the video
+     (lib/skipbuttons). Bottom-right; a second button (Watch credits) only at
+     the credits. -->
+<window>
+    <defaultcontrol always="true">3001</defaultcontrol>
+    <controls>
+        <!-- Invisible, full screen, behind the buttons: a mouse click or tap
+             anywhere else dismisses the pop-up. The remote never focuses it
+             (no navigation leads here). -->
+        <control type="button" id="3000">
+            <left>0</left>
+            <top>0</top>
+            <width>1920</width>
+            <height>1080</height>
+            <texturefocus />
+            <texturenofocus />
+            <label />
+        </control>
+        <control type="group">
+            <right>70</right>
+            <bottom>130</bottom>
+            <width>700</width>
+            <height>76</height>
+            <animation effect="fade" start="0" end="100" time="200">WindowOpen</animation>
+            <animation effect="fade" start="100" end="0" time="200">WindowClose</animation>
+            <control type="button" id="3001">
+                <right>0</right>
+                <top>0</top>
+                <width>340</width>
+                <height>76</height>
+                <font>font13</font>
+                <align>center</align>
+                <aligny>center</aligny>
+                <textcolor>FFFFFFFF</textcolor>
+                <focusedcolor>FF101010</focusedcolor>
+                <texturefocus colordiffuse="FFFFFFFF" border="16">skipbuttons_button.png</texturefocus>
+                <texturenofocus colordiffuse="CC000000" border="16">skipbuttons_button.png</texturenofocus>
+                <onleft>3002</onleft>
+            </control>
+            <control type="button" id="3002">
+                <right>360</right>
+                <top>0</top>
+                <width>300</width>
+                <height>76</height>
+                <font>font13</font>
+                <align>center</align>
+                <aligny>center</aligny>
+                <textcolor>FFFFFFFF</textcolor>
+                <focusedcolor>FF101010</focusedcolor>
+                <texturefocus colordiffuse="FFFFFFFF" border="16">skipbuttons_button.png</texturefocus>
+                <texturenofocus colordiffuse="CC000000" border="16">skipbuttons_button.png</texturenofocus>
+                <onright>3001</onright>
+                <visible>!String.IsEmpty(Window.Property(secondary))</visible>
+            </control>
+        </control>
+    </controls>
+</window>

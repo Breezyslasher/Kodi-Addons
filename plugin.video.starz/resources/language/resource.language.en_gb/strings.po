@@ -1,0 +1,500 @@
+# Kodi Media Center language file
+# Addon Name: Starz
+# Addon id: plugin.video.starz
+# Addon Provider: Breezyslasher
+msgid ""
+msgstr ""
+"Project-Id-Version: plugin.video.starz\n"
+"Report-Msgid-Bugs-To: https://github.com/Breezyslasher/Kodi-Addons\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+
+msgctxt "#32000"
+msgid "Account"
+msgstr ""
+
+msgctxt "#32013"
+msgid "Search"
+msgstr ""
+
+msgctxt "#32014"
+msgid "Sign in"
+msgstr ""
+
+msgctxt "#32015"
+msgid "Sign out"
+msgstr ""
+
+msgctxt "#32020"
+msgid "Starz email address"
+msgstr ""
+
+msgctxt "#32021"
+msgid "Password"
+msgstr ""
+
+msgctxt "#32023"
+msgid "Signed in"
+msgstr ""
+
+msgctxt "#32026"
+msgid "Search Starz"
+msgstr ""
+
+msgctxt "#32030"
+msgid "Sign out of Starz? This Kodi is also removed from your Starz devices."
+msgstr ""
+
+msgctxt "#32040"
+msgid "Not implemented yet"
+msgstr ""
+
+msgctxt "#32024"
+msgid "Sign-in failed"
+msgstr ""
+
+msgctxt "#32050"
+msgid "Continue Watching"
+msgstr ""
+
+msgctxt "#32051"
+msgid "Home"
+msgstr ""
+
+msgctxt "#32052"
+msgid "Series"
+msgstr ""
+
+msgctxt "#32053"
+msgid "Movies"
+msgstr ""
+
+msgctxt "#32054"
+msgid "Browse"
+msgstr ""
+
+msgctxt "#32055"
+msgid "Email and password"
+msgstr ""
+
+msgctxt "#32056"
+msgid "Activation code (for Google or Apple accounts too: sign in on another device)"
+msgstr ""
+
+msgctxt "#32057"
+msgid "On a phone or computer, go to[CR][B]%s[/B][CR]and enter the code [B]%s[/B]"
+msgstr ""
+
+msgctxt "#32058"
+msgid "The activation code expired. Try again."
+msgstr ""
+
+msgctxt "#32059"
+msgid "Choose a profile"
+msgstr ""
+
+msgctxt "#32060"
+msgid "Switch profile"
+msgstr ""
+
+msgctxt "#32061"
+msgid "Could not reach Starz"
+msgstr ""
+
+msgctxt "#32062"
+msgid "Switch profile [COLOR grey](%s)[/COLOR]"
+msgstr ""
+
+msgctxt "#32063"
+msgid "Sign out [COLOR grey](%s)[/COLOR]"
+msgstr ""
+
+msgctxt "#32064"
+msgid "No results"
+msgstr ""
+
+msgctxt "#32065"
+msgid "Add to My List"
+msgstr ""
+
+msgctxt "#32066"
+msgid "Remove from My List"
+msgstr ""
+
+msgctxt "#32067"
+msgid "Added to My List"
+msgstr ""
+
+msgctxt "#32068"
+msgid "Removed from My List"
+msgstr ""
+
+msgctxt "#32069"
+msgid "My List"
+msgstr ""
+
+msgctxt "#32070"
+msgid "Remove from Continue Watching"
+msgstr ""
+
+msgctxt "#32071"
+msgid "Removed from Continue Watching"
+msgstr ""
+
+msgctxt "#32072"
+msgid "All Movies"
+msgstr ""
+
+msgctxt "#32073"
+msgid "All Series"
+msgstr ""
+
+msgctxt "#32074"
+msgid "Genres"
+msgstr ""
+
+msgctxt "#32075"
+msgid "Categories"
+msgstr ""
+
+msgctxt "#32076"
+msgid "A–Z"
+msgstr ""
+
+msgctxt "#32077"
+msgid "Popular"
+msgstr ""
+
+msgctxt "#32078"
+msgid "Release year"
+msgstr ""
+
+msgctxt "#32079"
+msgid "Movies & Series"
+msgstr ""
+
+msgctxt "#32080"
+msgid "[B]Filter & sort:[/B] %s · %s · %s"
+msgstr ""
+
+msgctxt "#32081"
+msgid "All genres"
+msgstr ""
+
+msgctxt "#32082"
+msgid "Show"
+msgstr ""
+
+msgctxt "#32083"
+msgid "Genre"
+msgstr ""
+
+msgctxt "#32084"
+msgid "Sort by"
+msgstr ""
+
+msgctxt "#32085"
+msgid "Recommended For You"
+msgstr ""
+
+msgctxt "#32086"
+msgid "Movies only"
+msgstr ""
+
+msgctxt "#32087"
+msgid "Filters"
+msgstr ""
+
+msgctxt "#32088"
+msgid "Release year"
+msgstr ""
+
+msgctxt "#32089"
+msgid "Run time"
+msgstr ""
+
+msgctxt "#32090"
+msgid "Reset"
+msgstr ""
+
+msgctxt "#32091"
+msgid "Apply"
+msgstr ""
+
+msgctxt "#32092"
+msgid "All"
+msgstr ""
+
+msgctxt "#32093"
+msgid "Recommended order"
+msgstr ""
+
+msgctxt "#32094"
+msgid "[B]Sort:[/B] %s"
+msgstr ""
+
+msgctxt "#32095"
+msgid "[B]Filters:[/B] %s"
+msgstr ""
+
+msgctxt "#32096"
+msgid "Cast & crew"
+msgstr ""
+
+msgctxt "#32097"
+msgid "If you like %s"
+msgstr ""
+
+msgctxt "#32100"
+msgid "Log out devices (%d on your account)"
+msgstr ""
+
+msgctxt "#32101"
+msgid "No devices found"
+msgstr ""
+
+msgctxt "#32102"
+msgid "last used"
+msgstr ""
+
+msgctxt "#32103"
+msgid "Log out %d device(s) from your Starz account?"
+msgstr ""
+
+msgctxt "#32104"
+msgid "Logged out %d device(s)"
+msgstr ""
+
+msgctxt "#32105"
+msgid "Log out other devices now?"
+msgstr ""
+
+msgctxt "#32106"
+msgid "Manage devices"
+msgstr ""
+
+msgctxt "#32110"
+msgid "TV Schedule"
+msgstr ""
+
+msgctxt "#32111"
+msgid "[B]On now:[/B] %s"
+msgstr ""
+
+msgctxt "#32112"
+msgid "Tomorrow"
+msgstr ""
+
+msgctxt "#32113"
+msgid "Nothing on this channel can be played right now"
+msgstr ""
+
+msgctxt "#32114"
+msgid "TV Guide"
+msgstr ""
+
+msgctxt "#32115"
+msgid "Add Starz channels to Kodi's TV guide (needs IPTV Manager)"
+msgstr ""
+
+msgctxt "#32116"
+msgid "(Coming soon)"
+msgstr ""
+
+msgctxt "#32117"
+msgid "Remind me"
+msgstr ""
+
+msgctxt "#32118"
+msgid "Cancel reminder"
+msgstr ""
+
+msgctxt "#32119"
+msgid "Reminder set"
+msgstr ""
+
+msgctxt "#32120"
+msgid "Reminder cancelled"
+msgstr ""
+
+msgctxt "#32121"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#32122"
+msgid "Play the next episode automatically (without the Up Next add-on)"
+msgstr ""
+
+msgctxt "#32123"
+msgid "Watch trailer"
+msgstr ""
+
+msgctxt "#32124"
+msgid "Extras"
+msgstr ""
+
+msgctxt "#32130"
+msgid "Account owner"
+msgstr ""
+
+msgctxt "#32131"
+msgid "Activate a TV or device"
+msgstr ""
+
+msgctxt "#32132"
+msgid "Code shown on the TV or device"
+msgstr ""
+
+msgctxt "#32133"
+msgid "Device activated"
+msgstr ""
+
+msgctxt "#32134"
+msgid "Starz has detected a VPN or proxy and won't play through it. Turn it off and try again."
+msgstr ""
+
+msgctxt "#32135"
+msgid "Starz isn't available from your current location (%s)."
+msgstr ""
+
+msgctxt "#32136"
+msgid "Starz says this account can't watch right now (%s). Check your subscription on starz.com."
+msgstr ""
+
+msgctxt "#32140"
+msgid "current"
+msgstr ""
+
+msgctxt "#32141"
+msgid "[B]Add profile[/B]"
+msgstr ""
+
+msgctxt "#32142"
+msgid "Picture"
+msgstr ""
+
+msgctxt "#32143"
+msgid "Profile name"
+msgstr ""
+
+msgctxt "#32144"
+msgid "Choose a picture"
+msgstr ""
+
+msgctxt "#32145"
+msgid "Profile %s added"
+msgstr ""
+
+msgctxt "#32146"
+msgid "Switch to this profile"
+msgstr ""
+
+msgctxt "#32147"
+msgid "Parental controls"
+msgstr ""
+
+msgctxt "#32148"
+msgid "Delete profile"
+msgstr ""
+
+msgctxt "#32149"
+msgid "Switched to %s"
+msgstr ""
+
+msgctxt "#32150"
+msgid "Delete the profile %s? Its My List, history and settings go with it."
+msgstr ""
+
+msgctxt "#32151"
+msgid "Profile %s deleted"
+msgstr ""
+
+msgctxt "#32152"
+msgid "Starz parental-control PIN"
+msgstr ""
+
+msgctxt "#32153"
+msgid "Starz did not accept that PIN"
+msgstr ""
+
+msgctxt "#32154"
+msgid "%s: highest TV rating allowed"
+msgstr ""
+
+msgctxt "#32155"
+msgid "%s: highest movie rating allowed"
+msgstr ""
+
+msgctxt "#32156"
+msgid "(everything)"
+msgstr ""
+
+msgctxt "#32157"
+msgid "Parental controls saved for %s"
+msgstr ""
+
+msgctxt "#32158"
+msgid "Manage profiles"
+msgstr ""
+
+msgctxt "#32160"
+msgid "Rename"
+msgstr ""
+
+msgctxt "#32161"
+msgid "Change picture"
+msgstr ""
+
+msgctxt "#32162"
+msgid "Profile %s updated"
+msgstr ""
+
+msgctxt "#32163"
+msgid "Create a 4-digit parental-control PIN for your Starz account"
+msgstr ""
+
+msgctxt "#32164"
+msgid "Enter the new PIN again"
+msgstr ""
+
+msgctxt "#32165"
+msgid "The PIN must be 4 digits"
+msgstr ""
+
+msgctxt "#32166"
+msgid "The PINs did not match"
+msgstr ""
+
+msgctxt "#32167"
+msgid "Parental controls can only be changed from the account owner's profile. Switch to %s?"
+msgstr ""
+
+msgctxt "#32168"
+msgid "Show Starz tags (Top 10, New Season, Leaving Soon...) on posters"
+msgstr ""
+
+msgctxt "#32169"
+msgid "Next episode in %d s: %s"
+msgstr ""
+
+msgctxt "#32171"
+msgid "Live"
+msgstr ""
+
+msgctxt "#32176"
+msgid "Above this profile's parental limits: Starz parental-control PIN"
+msgstr ""
+
+msgctxt "#32177"
+msgid "This title is above the profile's parental-control limits"
+msgstr ""
+
+msgctxt "#32178"
+msgid "[COLOR grey]Add profile (Starz allows %d)[/COLOR]"
+msgstr ""
+
+msgctxt "#32179"
+msgid "Starz allows up to %d profiles per account. Delete one to add another."
+msgstr ""
