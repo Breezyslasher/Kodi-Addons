@@ -581,6 +581,29 @@ def round6():
     return 0
 
 
+def logo():
+    """Fetch Plex's own logo assets and print them base64 (for resources/)."""
+    import base64
+    urls = [
+        "https://provider-static.plex.tv/icons/vod-560.svg",
+        "https://upload.wikimedia.org/wikipedia/commons/7/7b/Plex_logo_2022.svg",
+        "https://commons.wikimedia.org/wiki/Special:FilePath/Plex_logo_2022.svg",
+        "https://app.plex.tv/desktop/favicon.ico",
+        "https://www.plex.tv/wp-content/themes/plex/assets/img/plex-logo.svg",
+    ]
+    for u in urls:
+        try:
+            r = urllib.request.Request(u, headers={"User-Agent": "KodiAddonBuild/1.0"})
+            with urllib.request.urlopen(r, timeout=20) as resp:
+                body = resp.read()
+                print(f"== {u} -> {resp.status} {resp.headers.get('Content-Type')} {len(body)} final={resp.geturl()}")
+                if len(body) < 60000:
+                    print("B64:" + base64.b64encode(body).decode())
+        except Exception as e:
+            print(f"== {u} -> {e}")
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -592,5 +615,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round6")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "logo")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo}.get(mode, main)())
