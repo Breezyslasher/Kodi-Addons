@@ -27,7 +27,7 @@ your real Plex account.
 | Actions | `PUT {vod}/actions/scrobble`, `unscrobble`, `removeFromContinueWatching` `?ratingKey=` |
 | Trailers | `primaryExtraKey` -> `.../extras/<id>/parts/hls.m3u8` (redirects to open HLS) |
 | Subtitles | `Part.Stream[streamType=3].key` -> `/library/streams/<id>-<lang>?format=srt` (redirects to `vod-static.plex.tv`; works for DRM titles) |
-| Markers | `/library/metadata/<rk>?includeMarkers=1` -> `credits` only, not on every title |
+| Markers | `/library/metadata/<rk>?includeMarkers=1` -> `credits` only. Survey of 250 movies / 407 episodes: credits on 22% of movies, on 0% of episodes; no `intro` markers and no chapters anywhere |
 | Up next | `POST {vod}/playQueues?uri=provider://tv.plex.provider.vod/library/metadata/<rk>&type=video&continuous=1` |
 | Ads | `Metadata.Ad[]` = VMAP at `{vod}/vmap?...` (client-side VAST pods) |
 
@@ -38,8 +38,9 @@ your real Plex account.
   datacenter/VPN IPs per title. The add-on shows that message.
 - Region-limited catalogue (mainly US).
 - Widevine L3 devices may be limited to SD on DRM titles.
-- Plex has no intro markers for these titles, so there is no Skip intro; the Next episode
-  countdown uses the credits marker, or the last 25 seconds when there is none.
+- Plex has no intro markers for these titles, so there is no Skip intro. Episodes have no
+  credits markers either, so the Next episode countdown starts 25 seconds before the end.
+  On movies with a credits marker, reaching the credits marks the movie watched.
 
 ## Dev tools (not shipped in the zip)
 - `tools/smoke_test.py`: runs `lib/` against the live service with Kodi stubbed.

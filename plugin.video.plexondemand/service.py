@@ -63,8 +63,11 @@ class Player(xbmc.Player):
         if ended and duration:
             self.last_time = duration
         self._report("stopped")
-        if duration and self.last_time >= duration * WATCHED_AT \
-                and kodiutils.get_setting_bool("report_progress", True):
+        # Reaching the credits counts as watched; titles without a credits
+        # marker (most of them, see README) fall back to 90 % of the runtime.
+        credits = cur.get("credits")
+        done = (credits and self.last_time >= credits) or (duration and self.last_time >= duration * WATCHED_AT)
+        if done and kodiutils.get_setting_bool("report_progress", True):
             try:
                 PlexVodApi().action("scrobble", cur["ratingKey"])
             except Exception as exc:
