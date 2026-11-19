@@ -37,7 +37,8 @@ from lib.auth import AUTH_API, USER_AGENT, NotReadyError
 METADATA = "https://playdata.starz.com/metadata-service/play/partner/Web/v8/"
 # The STARZ channel's live stream (live HAR: starz.com/livetv -> play/2,
 # GET Play / POST Play/start with this id, a dynamic DASH manifest on
-# live-linear.starz.com). The only live stream the website offers.
+# live-linear.starz.com). The only live stream the website offers; it is
+# the STARZ channel (confirmed against the STZ1 schedule while watching).
 LIVE_ID = "starz_livestream"
 LIVE_CHANNEL = "STZ1"
 LINEAR = "https://playdata.starz.com/metadata-service/play/partner/Web/v6/content/linear"
