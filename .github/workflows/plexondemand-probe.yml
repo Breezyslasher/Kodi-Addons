@@ -1,0 +1,35 @@
+name: Plex On Demand probe
+
+# Development probe for plugin.video.plexondemand. Plex documents none of the
+# free on-demand provider endpoints; this captures response shapes from a
+# GitHub runner (US region) so the addon is written against real responses.
+# Uses an anonymous Plex token only; no account or secrets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      query:
+        description: Search term
+        required: false
+        default: western
+  push:
+    branches: [ plugin.video.plexondemand ]
+    paths:
+      - 'plugin.video.plexondemand/tools/**'
+      - '.github/workflows/plexondemand-probe.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Probe
+        env:
+          PROBE_QUERY: ${{ github.event.inputs.query || 'western' }}
+        run: python3 -u plugin.video.plexondemand/tools/probe.py
