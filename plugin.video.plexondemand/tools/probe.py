@@ -604,6 +604,139 @@ def logo():
     return 0
 
 
+def round7():
+    """DRM subtitles, trailers, continue watching, viewOffset, playQueue up-next/markers."""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    _, hubs = req_json("GET", base + "/hubs", headers=T)
+    clear = drm = show = None
+    for h in (mc(hubs).get("Hub") or [])[:30]:
+        _, d = req_json("GET", base + h["key"], headers=T, params={"count": 20})
+        for m in mc(d).get("Metadata") or []:
+            if m.get("type") == "show":
+                show = show or m
+            elif any(x.get("drm") for x in m.get("Media") or []):
+                drm = drm or m
+            elif m.get("Media"):
+                clear = clear or m
+        if clear and drm and show:
+            break
+
+    def keys(label, d):
+        print(f"   {label} keys:", sorted(k for k in d if not isinstance(d.get(k), (dict, list))))
+        print(f"   {label} list keys:", sorted(k for k in d if isinstance(d.get(k), (dict, list))))
+
+    # ---- 1. DRM subtitles
+    print("\n######## 1 DRM subtitles:", drm.get("title"))
+    for params in ({}, {"includeStreams": 1}, {"checkFiles": 1, "includeStreams": 1}):
+        _, md = req_json("GET", base + f"/library/metadata/{drm['ratingKey']}", headers=T, params=params or None)
+        it = (mc(md).get("Metadata") or [{}])[0]
+        streams = [st for me in it.get("Media") or [] for pa in me.get("Part") or [] for st in pa.get("Stream") or []]
+        print(f"  metadata {params} -> streams={len(streams)} subs={[x for x in streams if x.get('streamType') == 3][:2]}")
+    uri = f"provider://tv.plex.provider.vod/library/metadata/{drm['ratingKey']}"
+    _, pq = req_json("POST", base + "/playQueues", headers=T, params={"uri": uri, "type": "video", "continuous": 0})
+    it = next((x for x in mc(pq).get("Metadata") or [] if x.get("ratingKey") == drm["ratingKey"]), {})
+    subs = [st for me in it.get("Media") or [] if me.get("protocol") == "dash"
+            for pa in me.get("Part") or [] for st in pa.get("Stream") or [] if st.get("streamType") == 3]
+    print("  playQueue dash subs:", json.dumps(subs)[:600])
+    for sub in subs[:1]:
+        for q in ({}, {"format": "vtt"}, {"format": "srt"}, {"encoding": "utf-8", "format": "vtt"}):
+            st, ct, body, fin = req("GET", base + sub["key"], headers=T, params=q or None)
+            print(f"   GET {sub['key']} {q} -> {st} {ct} final={mask(fin)[:160]}")
+            print("     ", mask(body[:160].decode("utf-8", "replace")).replace("\n", " | "))
+            r = urllib.request.Request(fin, headers={"User-Agent": "Kodi/21"})
+            try:
+                with urllib.request.urlopen(r, timeout=20) as resp:
+                    print("      bare fetch of final ->", resp.status)
+            except urllib.error.HTTPError as e:
+                print("      bare fetch of final ->", e.code)
+
+    # ---- 2. trailers
+    print("\n######## 2 trailers:", clear.get("title"))
+    _, md = req_json("GET", base + f"/library/metadata/{clear['ratingKey']}", headers=T)
+    it = (mc(md).get("Metadata") or [{}])[0]
+    keys("metadata", it)
+    pek = it.get("primaryExtraKey")
+    print("  primaryExtraKey:", pek)
+    for path in ([pek] if pek else []) + [f"/library/metadata/{clear['ratingKey']}/extras"]:
+        _, ex = req_json("GET", base + path, headers=T)
+        for e in (mc(ex).get("Metadata") or [])[:3]:
+            print("  extra:", e.get("type"), e.get("subtype"), e.get("extraType"), e.get("title"), e.get("duration"))
+            for me in e.get("Media") or []:
+                print("    media:", json.dumps({k: v for k, v in me.items() if k != "Part"})[:300])
+                for pa in me.get("Part") or []:
+                    print("    part:", json.dumps({k: v for k, v in pa.items() if k != "Stream"})[:300])
+                    u = pa["key"] if pa["key"].startswith("http") else base + pa["key"]
+                    st, ct, body, fin = req("GET", u, headers=T)
+                    print("    GET part ->", st, ct, mask(fin)[:150])
+
+    # ---- 3/4. timeline -> continue watching + viewOffset
+    print("\n######## 3/4 continue watching / viewOffset:", clear.get("title"))
+    rk = clear["ratingKey"]
+    for state, t in (("playing", 120000), ("paused", 300000), ("stopped", 300000)):
+        st, ct, body, _ = req("GET", base + "/timeline", headers=T, params={
+            "ratingKey": rk, "key": f"/library/metadata/{rk}", "state": state, "time": t,
+            "duration": clear.get("duration", 0)})
+        print(f"  timeline {state} -> {st} {mask(body[:200].decode('utf-8', 'replace'))}")
+    import time as _t
+    _t.sleep(3)
+    _, md = req_json("GET", base + f"/library/metadata/{rk}", headers=T)
+    it = (mc(md).get("Metadata") or [{}])[0]
+    print("  metadata viewOffset/viewCount/lastViewedAt:", it.get("viewOffset"), it.get("viewCount"), it.get("lastViewedAt"))
+    for path in ("/hubs/continueWatching", "/hubs/sections/movies/continueWatching"):
+        _, cw = req_json("GET", base + path, headers=T)
+        c = mc(cw)
+        items = c.get("Metadata") or [m for h in c.get("Hub") or [] for m in h.get("Metadata") or []]
+        print(f"  {path} -> size={c.get('size')} items={[(m.get('title'), m.get('viewOffset')) for m in items[:5]]}")
+    _, hl = req_json("GET", base + f"/hubs/sections/movies/recommended", headers=T, params={"count": 50})
+    hit = [m for m in mc(hl).get("Metadata") or [] if m.get("ratingKey") == rk]
+    print("  in hub listing viewOffset:", [m.get("viewOffset") for m in hit])
+    # discover provider user state
+    st, ct, body, _ = req("GET", f"https://discover.provider.plex.tv/library/metadata/{rk}/userState", headers=T)
+    print("  discover userState ->", st, mask(body[:300].decode("utf-8", "replace")))
+    # mark watched: scrobble candidates
+    for path in ("/actions/scrobble", "/:/scrobble"):
+        st, ct, body, _ = req("PUT", base + path, headers=T, params={"identifier": "tv.plex.provider.vod", "key": rk, "ratingKey": rk})
+        print(f"  PUT {path} -> {st} {mask(body[:150].decode('utf-8', 'replace'))}")
+    _, root = req_json("GET", base + "/", headers=T)
+    for f in (mc(root).get("MediaProvider") or {}).get("Feature") or []:
+        if f.get("type") == "actions":
+            print("  actions:", [(a.get("id"), a.get("key")) for a in f.get("Action") or []])
+
+    # ---- 5. playQueue up-next for an episode + markers
+    print("\n######## 5 playQueue up-next:", show.get("title"))
+    _, ch = req_json("GET", base + f"/library/metadata/{show['ratingKey']}/children", headers=T)
+    season = (mc(ch).get("Metadata") or [{}])[0]
+    _, eps = req_json("GET", base + f"/library/metadata/{season['ratingKey']}/children", headers=T)
+    ep = (mc(eps).get("Metadata") or [{}])[0]
+    print("  first episode:", ep.get("title"), ep.get("index"), "of", len(mc(eps).get("Metadata") or []))
+    for cont in (0, 1):
+        uri = f"provider://tv.plex.provider.vod/library/metadata/{ep['ratingKey']}"
+        _, pq = req_json("POST", base + "/playQueues", headers=T, params={
+            "uri": uri, "type": "video", "continuous": cont, "includeChapters": 1, "includeMarkers": 1})
+        c = mc(pq)
+        print(f"  continuous={cont}: id={c.get('playQueueID')} total={c.get('playQueueTotalCount')} "
+              f"selOffset={c.get('playQueueSelectedItemOffset')} version={c.get('playQueueVersion')}")
+        for m in (c.get("Metadata") or [])[:6]:
+            print("    ", m.get("type"), m.get("parentIndex"), m.get("index"), m.get("title"), m.get("ratingKey"),
+                  "pqItem", m.get("playQueueItemID"), "Chapter" in m, "Marker" in m)
+        sel = next((m for m in c.get("Metadata") or [] if m.get("ratingKey") == ep["ratingKey"]), {})
+        print("    markers:", json.dumps(sel.get("Marker"))[:500])
+        print("    chapters:", json.dumps(sel.get("Chapter"))[:300])
+        if cont and c.get("playQueueID"):
+            st, d = req_json("GET", base + f"/playQueues/{c['playQueueID']}", headers=T, params={"window": 3})
+            print("    GET playQueue ->", st, mc(d).get("size"))
+    _, md = req_json("GET", base + f"/library/metadata/{ep['ratingKey']}", headers=T, params={"includeMarkers": 1, "includeChapters": 1})
+    it = (mc(md).get("Metadata") or [{}])[0]
+    print("  metadata markers:", json.dumps(it.get("Marker"))[:500], "chapters:", bool(it.get("Chapter")))
+    _, md = req_json("GET", base + f"/library/metadata/{clear['ratingKey']}", headers=T, params={"includeMarkers": 1})
+    it = (mc(md).get("Metadata") or [{}])[0]
+    print("  movie markers:", json.dumps(it.get("Marker"))[:400])
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -615,5 +748,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "full")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round7")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7}.get(mode, main)())
