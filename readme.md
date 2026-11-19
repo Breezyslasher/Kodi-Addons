@@ -107,6 +107,17 @@ A shared module that gives video add-ons **Skip recap**, **Skip intro** and a **
 
 ---
 
+### [Plex On Demand](plugin.video.plexondemand/) *(experimental, unofficial)*
+Plex's free, ad-supported Movies &amp; Shows catalogue in Kodi, with no Plex Media Server and no account needed.
+
+- Featured rows, Movies and TV Shows by genre, and search
+- Clear titles play as HLS with subtitles; DRM titles play as Widevine DASH through InputStream Adaptive
+- Optional plex.tv/link sign-in, which syncs watch progress to your Plex account
+
+**Known limits:** the catalogue is mainly US-only; Plex blocks some titles on VPN or datacenter connections; Plex's ads are not played. See the [addon README](plugin.video.plexondemand/README.md).
+
+**Requirements:** Kodi 21+, InputStream Adaptive, and a Widevine CDM for DRM titles
+
 ### [TubiTV](plugin.video.tubitv/)
 Browse and watch Tubi — free, ad-supported films and TV shows — from inside Kodi. A fork of Lunatixz's addon, kept here so it can be maintained as Tubi changes its API.
 

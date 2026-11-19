@@ -76,7 +76,8 @@ jobs:
             'service.watchparty',
             'plugin.video.tubitv',
             'plugin.video.starz',
-            'script.module.skipbuttons'
+            'script.module.skipbuttons',
+            'plugin.video.plexondemand'
         ]
         
         addons_xml_content = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<addons>\n'
