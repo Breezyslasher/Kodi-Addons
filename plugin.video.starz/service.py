@@ -17,6 +17,7 @@ for a playing file that matches it, so other addons' playback is ignored.
 """
 
 import threading
+import time
 
 import xbmc
 
@@ -30,6 +31,7 @@ from lib.api import to_item
 # The website reports every 20-30 s (keep-alive HAR), well inside the 600 s
 # keep-alive Starz gives; doing the same keeps the resume point current.
 UPDATE_SECS = 30
+LIVE_DELAY_SECS = 25
 POLL_SECS = 1
 
 
@@ -59,13 +61,15 @@ class Player(xbmc.Player):
             return
         kodiutils.delete_file(PLAYING_FILE)
         self._finish()   # a previous title that never reported stopping
-        if info.get("live"):
-            # Live: no position to save, no next episode, nothing to seek.
-            # The live capture shows no Play/update; none are sent.
-            kodiutils.log("Playing the STARZ live stream (no progress reports)")
-            self.session = None
-            return
         self.session = Session(info)
+        if info.get("live"):
+            # Live (second live HAR): Play/update every 30 s with contentId 2
+            # and the wall-clock time as the position, Play/stop with "2" and
+            # 0. No next episode and nothing to seek.
+            if info.get("report_id"):
+                info["content_id"] = info["report_id"]
+            kodiutils.log("Playing the live stream")
+            return
         kodiutils.log("Tracking Starz playback of %s" % info.get("content_id"))
         # Off the callback thread: two metadata requests.
         threading.Thread(target=self._prepare_next, args=(self.session,)).start()
@@ -82,7 +86,11 @@ class Player(xbmc.Player):
         if not self.session:
             return
         try:
-            if self.isPlayingVideo():
+            if self.session.info.get("live"):
+                # What the website sends for live: the time now, minus the
+                # manifest's suggested presentation delay (25 s).
+                self.session.position = time.time() - LIVE_DELAY_SECS
+            elif self.isPlayingVideo():
                 self.session.position = self.getTime()
         except RuntimeError:
             return
@@ -104,6 +112,8 @@ class Player(xbmc.Player):
             kodiutils.log_error("Play/%s failed: %s" % (kind, exc))
 
     def _finish(self):
+        if self.session and self.session.info.get("live"):
+            self.session.position = 0     # the website stops live with 0
         if self.session:
             self._report("stop")
             self.session = None

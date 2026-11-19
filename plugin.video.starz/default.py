@@ -648,7 +648,7 @@ def do_play(api, content_id, auth=None, seek_to=None):
         "content_id": str(content_id), "session_id": playback.get("session_id"),
         "keep_alive": playback.get("keep_alive"),
         "manifest_url": playback["manifest_url"], "seek_to": seek_to,
-        "live": bool(playback.get("live"))})
+        "live": bool(playback.get("live")), "report_id": playback.get("report_id")})
     xbmcplugin.setResolvedUrl(HANDLE, True, build_isa_listitem(playback))
 
 

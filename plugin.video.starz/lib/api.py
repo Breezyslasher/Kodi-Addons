@@ -948,7 +948,10 @@ class StarzApi(object):
                 "subtitles": self._captions(info.get("captions") or [], subtitle_langs),
                 "session_id": info.get("playbackSessionId"),
                 "keep_alive": info.get("keepAliveSeconds"),
-                "live": live}
+                "live": live,
+                # Live plays report under the id Play/start returns ("2"),
+                # not the one used to start it (second live HAR).
+                "report_id": str(info.get("contentId") or content_id)}
 
     def _default_kid(self, manifest_url, required=True):
         """The manifest's cenc:default_KID, which names the licence URL.
