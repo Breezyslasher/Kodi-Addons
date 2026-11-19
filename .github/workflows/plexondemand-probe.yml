@@ -80,7 +80,7 @@ jobs:
             }
 
       - name: Probe
-        if: github.event_name == 'workflow_dispatch'
+        if: always() && github.event_name == 'workflow_dispatch'
         env:
           PROBE_QUERY: ${{ github.event.inputs.query || 'western' }}
         run: python3 -u plugin.video.plexondemand/tools/probe.py
