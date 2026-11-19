@@ -867,6 +867,13 @@ def do_profile_menu(api, auth, profile_id):
         if xbmcgui.Dialog().yesno(kodiutils.ADDON_NAME, L(32150) % p.get("name", "")):
             api.delete_profile(profile_id)
             kodiutils.notify(L(32151) % p.get("name", ""))
+            if profile_id == auth.profile_id:
+                # Don't stay on a profile that no longer exists: Starz
+                # applies no limits to it. Move to the account owner's.
+                owner = next((x for x in profiles.values() if x.get("isAdmin")), None)
+                if owner:
+                    auth.select_profile(owner)
+                    kodiutils.notify(L(32149) % owner.get("name", ""))
             xbmc.executebuiltin("Container.Refresh")
     else:
         # Starz only takes parental-control changes from the account owner's
