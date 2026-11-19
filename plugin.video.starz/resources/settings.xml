@@ -2,6 +2,7 @@
 <settings>
     <category label="32000">
         <setting id="sign_in" type="action" label="32014" action="RunPlugin(plugin://plugin.video.starz/?action=sign_in)" />
+        <setting id="profiles" type="action" label="32158" action="ActivateWindow(Videos,plugin://plugin.video.starz/?action=profiles,return)" />
         <setting id="profile" type="action" label="32060" action="RunPlugin(plugin://plugin.video.starz/?action=profile)" />
         <setting id="activate_device" type="action" label="32131" action="RunPlugin(plugin://plugin.video.starz/?action=activate_device)" />
         <setting id="devices" type="action" label="32106" action="RunPlugin(plugin://plugin.video.starz/?action=devices)" />

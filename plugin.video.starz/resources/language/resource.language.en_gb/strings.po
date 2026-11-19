@@ -362,3 +362,79 @@ msgstr ""
 msgctxt "#32136"
 msgid "Starz says this account can't watch right now (%s). Check your subscription on starz.com."
 msgstr ""
+
+msgctxt "#32140"
+msgid "current"
+msgstr ""
+
+msgctxt "#32141"
+msgid "[B]Add profile[/B]"
+msgstr ""
+
+msgctxt "#32142"
+msgid "Picture"
+msgstr ""
+
+msgctxt "#32143"
+msgid "Profile name"
+msgstr ""
+
+msgctxt "#32144"
+msgid "Choose a picture"
+msgstr ""
+
+msgctxt "#32145"
+msgid "Profile %s added"
+msgstr ""
+
+msgctxt "#32146"
+msgid "Switch to this profile"
+msgstr ""
+
+msgctxt "#32147"
+msgid "Parental controls"
+msgstr ""
+
+msgctxt "#32148"
+msgid "Delete profile"
+msgstr ""
+
+msgctxt "#32149"
+msgid "Switched to %s"
+msgstr ""
+
+msgctxt "#32150"
+msgid "Delete the profile %s? Its My List, history and settings go with it."
+msgstr ""
+
+msgctxt "#32151"
+msgid "Profile %s deleted"
+msgstr ""
+
+msgctxt "#32152"
+msgid "Starz parental-control PIN"
+msgstr ""
+
+msgctxt "#32153"
+msgid "Starz did not accept that PIN"
+msgstr ""
+
+msgctxt "#32154"
+msgid "%s: highest TV rating allowed"
+msgstr ""
+
+msgctxt "#32155"
+msgid "%s: highest movie rating allowed"
+msgstr ""
+
+msgctxt "#32156"
+msgid "(everything)"
+msgstr ""
+
+msgctxt "#32157"
+msgid "Parental controls saved for %s"
+msgstr ""
+
+msgctxt "#32158"
+msgid "Manage profiles"
+msgstr ""

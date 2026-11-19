@@ -568,6 +568,57 @@ class StarzApi(object):
             kodiutils.log_error("User/access: %s" % exc)
         return None
 
+    # -- profiles and parental controls (profiles and parental HARs) -------
+
+    def profile_icons(self):
+        """GET User/profiles/icons -> [{iconUrl, iconUrlFiltered, isCustom}]."""
+        return self.auth.request("GET", AUTH_API + "User/profiles/icons").json() or []
+
+    def create_profile(self, name, icon_url):
+        """POST User/profiles {"name", "iconUrl"} -> the new profile."""
+        return self.auth.request("POST", AUTH_API + "User/profiles",
+                                 json={"name": name, "iconUrl": icon_url}).json()
+
+    def delete_profile(self, profile_id):
+        """DELETE User/profiles/{id} -> 204."""
+        self.auth.request("DELETE", AUTH_API + "User/profiles/%s" % profile_id)
+
+    def parental_controls(self, profile_id):
+        """[{rating, type: TV|MPAA, enabled}] in Starz's order (youngest
+        first within each type)."""
+        data = self.auth.request("GET", AUTH_API + "ParentalControls/" + profile_id).json()
+        return (data or {}).get("parentalControls") or []
+
+    def check_pin(self, pin):
+        """POST ParentalControls/Pin {"parentalControlPin"} -> 204 when right."""
+        self.auth.request("POST", AUTH_API + "ParentalControls/Pin",
+                          json={"parentalControlPin": pin})
+
+    def set_parental_limits(self, profile_id, pin, controls, max_rating):
+        """PUT ParentalControls {parentalControlPin, profileId,
+        parentalControls: [{rating, type, enabled, selected}]} -> 204.
+        max_rating is {type: rating}: like the website's slider, the chosen
+        maximum is "selected" and everything above it is disabled. The site
+        never sends "no limit": allowing everything selects the top rating
+        (TV-MA, NC-17), so a missing type does the same here. Checked: all 7
+        saves in the parental HAR rebuild byte for byte."""
+        max_rating = dict(max_rating)
+        for t in {c.get("type") for c in controls}:
+            if not max_rating.get(t):
+                max_rating[t] = [c.get("rating") for c in controls if c.get("type") == t][-1]
+        out, over = [], {}
+        for c in controls:
+            t, r = c.get("type"), c.get("rating")
+            limit = max_rating.get(t)
+            out.append({"rating": r, "type": t, "enabled": not over.get(t),
+                        "selected": bool(limit) and r == limit})
+            if limit and r == limit:
+                over[t] = True
+        self.auth.request("PUT", AUTH_API + "ParentalControls",
+                          json={"parentalControlPin": pin, "parentalControls": out,
+                                "profileId": profile_id})
+        self.__dict__.pop("_blocked", None)
+
     # -- activate another device --------------------------------------------
 
     def activate_device(self, code):

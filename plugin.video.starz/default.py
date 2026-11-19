@@ -225,6 +225,7 @@ def main_menu(auth):
             li.setArt({"icon": auth.profile_icon, "thumb": auth.profile_icon,
                        "fanart": ADDON_ART["fanart"]})
         xbmcplugin.addDirectoryItem(HANDLE, url(action="profile"), li, True)
+        add_dir(L(32158), "profiles")
         add_action(L(32131), "activate_device")
         add_action(L(32106), "devices")
         add_dir(L(32063) % (auth.username or "-"), "sign_out")
@@ -627,6 +628,106 @@ def do_play(api, content_id, auth=None, seek_to=None):
     xbmcplugin.setResolvedUrl(HANDLE, True, build_isa_listitem(playback))
 
 
+# -- profiles ------------------------------------------------------------------
+
+def show_profiles(auth):
+    """Manage profiles: each profile (picture, owner marked), then Add."""
+    for p in auth.profiles():
+        label = p.get("name", "?")
+        if p.get("id") == auth.profile_id:
+            label = "[B]%s[/B]  [COLOR grey]%s[/COLOR]" % (label, L(32140))
+        elif p.get("isAdmin"):
+            label = "%s  [COLOR grey]%s[/COLOR]" % (label, L(32130))
+        li = xbmcgui.ListItem(label)
+        icon = (p.get("profileIcon") or {}).get("iconUrl")
+        if icon:
+            li.setArt({"icon": icon, "thumb": icon})
+        li.setProperty("IsPlayable", "false")
+        xbmcplugin.addDirectoryItem(HANDLE, url(action="profile_menu", profile_id=p["id"]),
+                                    li, False)
+    add_action(L(32141), "profile_add")
+    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
+
+
+def _pick_icon(api, heading):
+    icons = [i.get("iconUrl") for i in api.profile_icons() if i.get("iconUrl")]
+    if not icons:
+        return ""
+    entries = []
+    for n, icon in enumerate(icons, 1):
+        li = xbmcgui.ListItem("%s %d" % (L(32142), n))
+        li.setArt({"icon": icon, "thumb": icon})
+        entries.append(li)
+    i = xbmcgui.Dialog().select(heading, entries, useDetails=True)
+    return icons[i] if i >= 0 else None
+
+
+def do_profile_add(api):
+    name = kodiutils.input_text(L(32143))
+    if not name:
+        return
+    icon = _pick_icon(api, L(32144))
+    if icon is None:
+        return
+    api.create_profile(name.strip(), icon)
+    kodiutils.notify(L(32145) % name.strip())
+    xbmc.executebuiltin("Container.Refresh")
+
+
+def do_profile_menu(api, auth, profile_id):
+    profiles = {p["id"]: p for p in auth.profiles()}
+    p = profiles.get(profile_id)
+    if not p:
+        return
+    options = [(L(32146), "switch"), (L(32147), "parental")]
+    if not p.get("isAdmin"):
+        options.append((L(32148), "delete"))   # the account owner's stays
+    i = xbmcgui.Dialog().select(p.get("name", ""), [o[0] for o in options])
+    if i < 0:
+        return
+    what = options[i][1]
+    if what == "switch":
+        auth.select_profile(p)
+        kodiutils.notify(L(32149) % p.get("name", ""))
+        xbmc.executebuiltin("Container.Refresh")
+    elif what == "delete":
+        if xbmcgui.Dialog().yesno(kodiutils.ADDON_NAME, L(32150) % p.get("name", "")):
+            api.delete_profile(profile_id)
+            kodiutils.notify(L(32151) % p.get("name", ""))
+            xbmc.executebuiltin("Container.Refresh")
+    else:
+        do_parental(api, p)
+
+
+def do_parental(api, profile):
+    """The website's rating slider: the account PIN first, then the most a
+    profile may watch, separately for TV and for movies."""
+    pin = xbmcgui.Dialog().numeric(0, L(32152), bHiddenInput=True)
+    if not pin:
+        return
+    try:
+        api.check_pin(pin)
+    except StarzAuthError as exc:
+        kodiutils.ok_dialog("%s\n\n%s" % (L(32153), exc))
+        return
+    controls = api.parental_controls(profile["id"])
+    limits = {}
+    for kind, heading in (("TV", L(32154)), ("MPAA", L(32155))):
+        ratings = [c["rating"] for c in controls if c.get("type") == kind]
+        if not ratings:
+            continue
+        allowed = [c["rating"] for c in controls if c.get("type") == kind and c.get("enabled")]
+        # The top rating means no limit, as on the website.
+        names = ratings[:-1] + ["%s  [COLOR grey]%s[/COLOR]" % (ratings[-1], L(32156))]
+        i = xbmcgui.Dialog().select(heading % profile.get("name", ""), names,
+                                    preselect=max(len(allowed) - 1, 0))
+        if i < 0:
+            return
+        limits[kind] = ratings[i]
+    api.set_parental_limits(profile["id"], pin, controls, limits)
+    kodiutils.notify(L(32157) % profile.get("name", ""))
+
+
 # -- TV schedule -------------------------------------------------------------
 
 def _clock(ms):
@@ -770,6 +871,12 @@ def router(paramstring):
             xbmcplugin.setPluginCategory(HANDLE, L(32097) % params.get("title", ""))
             items = api.similar(params.get("content_id"))
             show_items(items, _content_for(items))
+        elif action == "profiles":
+            show_profiles(auth)
+        elif action == "profile_add":
+            do_profile_add(api)
+        elif action == "profile_menu":
+            do_profile_menu(api, auth, params.get("profile_id"))
         elif action == "activate_device":
             code = kodiutils.input_text(L(32132))
             if code:
