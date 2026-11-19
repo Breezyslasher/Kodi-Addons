@@ -234,6 +234,54 @@ export function parseIdentity(it) {
 }
 
 /**
+ * The website each Kodi streaming addon plays, for a Kodi title whose path
+ * can't be turned into a link: of the title's JustWatch offers, the one on
+ * this site comes first (not JustWatch's first, e.g. Prime Video for a Starz
+ * title), and an add-on channel (on Amazon or Apple TV) isn't it. The
+ * Android app's AddonLinks.sameService.
+ */
+const ADDON_HOSTS = {
+  'plugin.video.netflix': ['netflix.com'],
+  'plugin.video.youtube': ['youtube.com', 'youtu.be'],
+  'slyguy.disney.plus': ['disneyplus.com'],
+  'slyguy.hulu': ['hulu.com'],
+  'slyguy.paramount.plus': ['paramountplus.com'],
+  'slyguy.max': ['hbomax.com', 'max.com'],
+  'slyguy.discovery.plus': ['discoveryplus.com'],
+  'plugin.video.amazon-test': ['amazon.com', 'primevideo.com'],
+  'plugin.video.appletv': ['tv.apple.com'],
+  'plugin.video.skyott': ['peacocktv.com'],
+  'plugin.video.tubitv': ['tubitv.com'],
+  'plugin.video.crunchyroll': ['crunchyroll.com'],
+  'plugin.video.starz': ['starz.com'],
+  'plugin.video.plutotv': ['pluto.tv'],
+};
+
+/** The addon in a plugin:// path ("plugin://slyguy.hulu/?…" → "slyguy.hulu"). */
+export function addonOf(plugin) {
+  const m = /^plugin:\/\/([^/?#]+)/.exec(String(plugin || '').trim());
+  return m ? m[1] : null;
+}
+
+/** Whether [link] is on the site Kodi's [addon] plays. */
+export function sameService(link, addon) {
+  const hosts = ADDON_HOSTS[addon];
+  if (!hosts) return false;
+  let host;
+  try {
+    host = new URL(String(link).trim()).hostname.toLowerCase();
+  } catch (e) {
+    return false;
+  }
+  return hosts.some(h => host === h || host.endsWith(`.${h}`));
+}
+
+/** [offers] with the ones on Kodi's [addon]'s site first (else unchanged). */
+export function preferAddon(offers, addon) {
+  return [...offers.filter(o => sameService(o.link, addon)), ...offers.filter(o => !sameService(o.link, addon))];
+}
+
+/**
  * A Kodi streaming addon's plugin:// path → the web link of the same title
  * (the Android app's AddonLinks.kt; the Kodi addon's addon_links.py does the
  * other way). Formats from each addon's source (2026-11-15): Netflix
