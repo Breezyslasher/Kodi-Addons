@@ -80,6 +80,17 @@ api = PlexVodApi()
 tok = api.auth.token()
 print("::add-mask::" + tok)
 check("anonymous token", bool(tok))
+from lib.auth import base_headers as _bh
+_h = _bh()
+pin = api.auth.create_pin(_h)
+check("PIN create", bool(pin.get("code")) and pin.get("clientIdentifier") == _h["X-Plex-Client-Identifier"],
+      len(pin.get("code") or ""))
+try:
+    check("PIN poll (same client id)", api.auth.check_pin(pin["id"], _h) is None)
+except Exception as exc:
+    check("PIN poll (same client id)", False, exc)
+SETTINGS.pop("client_id", None)  # a lost setting must not change the id
+check("client id stable across lost setting", _bh()["X-Plex-Client-Identifier"] == _h["X-Plex-Client-Identifier"])
 hubs = api.hubs()
 check("hubs", len(hubs) > 10, len(hubs))
 items, total = api.hub_items(hubs[0]["key"])

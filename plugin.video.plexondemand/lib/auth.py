@@ -31,11 +31,28 @@ VERSION = "4.145.1"
 TIMEOUT = 20
 
 
+_CLIENT_ID = None
+CLIENT_FILE = "client.json"
+
+
 def client_id():
-    cid = kodiutils.get_setting("client_id")
+    """One stable X-Plex-Client-Identifier for this install.
+
+    plex.tv only answers GET /pins/{id} for the client id that created the
+    PIN (404 otherwise), and a Kodi setting written with setSetting is not
+    always readable again within the same run, so a fresh uuid was minted per
+    call and every poll 404'd. Keep it in memory and in a profile file (read
+    back reliably), mirroring it into the setting only for display/debug.
+    """
+    global _CLIENT_ID
+    if _CLIENT_ID:
+        return _CLIENT_ID
+    cid = (kodiutils.read_json(CLIENT_FILE, {}) or {}).get("id") or kodiutils.get_setting("client_id")
     if not cid:
         cid = str(uuid.uuid4())
-        kodiutils.set_setting("client_id", cid)
+    kodiutils.write_json(CLIENT_FILE, {"id": cid})
+    kodiutils.set_setting("client_id", cid)
+    _CLIENT_ID = cid
     return cid
 
 
@@ -51,6 +68,10 @@ def base_headers():
         "X-Plex-Device-Name": "Kodi",
         "X-Plex-Language": "en",
     }
+
+
+class PinExpired(Exception):
+    pass
 
 
 class PlexAuth(object):
@@ -83,13 +104,18 @@ class PlexAuth(object):
         return True
 
     # ---- PIN link flow
-    def create_pin(self):
-        resp = requests.post(PLEX_TV + "/pins", headers=base_headers(), timeout=TIMEOUT)
+    def create_pin(self, headers=None):
+        resp = requests.post(PLEX_TV + "/pins", headers=headers or base_headers(), timeout=TIMEOUT)
         resp.raise_for_status()
         return resp.json()
 
-    def check_pin(self, pin_id):
-        resp = requests.get("%s/pins/%s" % (PLEX_TV, pin_id), headers=base_headers(), timeout=TIMEOUT)
+    def check_pin(self, pin_id, headers=None):
+        """The PIN's authToken once linked, else None. Must be polled with the
+        same X-Plex-Client-Identifier that created it."""
+        resp = requests.get("%s/pins/%s" % (PLEX_TV, pin_id), headers=headers or base_headers(),
+                            timeout=TIMEOUT)
+        if resp.status_code == 404:
+            raise PinExpired("PIN %s not found for this client (expired or other client id)" % pin_id)
         resp.raise_for_status()
         return resp.json().get("authToken")
 
@@ -102,14 +128,17 @@ class PlexAuth(object):
 
     def link(self, progress):
         """Run the plex.tv/link flow. progress(code, percent) -> False to cancel."""
-        pin = self.create_pin()
+        headers = base_headers()
+        pin = self.create_pin(headers)
+        if pin.get("clientIdentifier") and pin["clientIdentifier"] != headers["X-Plex-Client-Identifier"]:
+            kodiutils.log_error("PIN created for a different client id than sent")
         expires = time.time() + int(pin.get("expiresIn") or 900)
         started = time.time()
         while time.time() < expires:
             pct = int(100 * (time.time() - started) / max(1, expires - started))
             if progress(pin["code"], pct) is False:
                 return None
-            tok = self.check_pin(pin["id"])
+            tok = self.check_pin(pin["id"], headers)
             if tok:
                 kodiutils.set_setting("plex_token", tok)
                 try:
@@ -125,5 +154,8 @@ class PlexAuth(object):
         return None
 
     def sign_out(self):
+        global _CLIENT_ID
         for key in ("plex_token", "account_name", "anon_token", "client_id"):
             kodiutils.set_setting(key, "")
+        kodiutils.delete_file(CLIENT_FILE)
+        _CLIENT_ID = None
