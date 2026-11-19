@@ -47,6 +47,7 @@ S = {
     "add_watchlist": 32049,
     "remove_watchlist": 32050,
     "watchlist_added": 32051,
+    "watchlist_removed": 32075,
     "watchlist_empty": 32052,
     "region_notice": 32053,
     "related": 32054,
@@ -115,7 +116,7 @@ def _menu(m, in_cw=False, in_wl=False):
                 action="mark", rk=rk, how="removeFromWatchlist")))
         else:
             entries.append((L("add_watchlist"), "RunPlugin(%s)" % url(
-                action="mark", rk=rk, how="addToWatchlist", quiet=1)))
+                action="mark", rk=rk, how="addToWatchlist")))
     if m.get("type") in ("movie", "show"):
         entries.append((L("related"), "Container.Update(%s)" % url(action="related", rk=rk)))
     if m.get("type") in ("movie", "show", "episode"):
@@ -135,8 +136,11 @@ def _menu(m, in_cw=False, in_wl=False):
 
 def add_items(items, api=None, in_cw=False, in_wl=False, in_store=False):
     content = "videos"
+    watchlisted = set()
     if api is not None:
         _apply_user_state(api, items)
+        if not in_wl and any(m.get("type") in ("movie", "show") for m in items):
+            watchlisted = api.watchlist_keys()
     for m in items:
         kind = m.get("type")
         rk = m.get("ratingKey")
@@ -152,7 +156,7 @@ def add_items(items, api=None, in_cw=False, in_wl=False, in_store=False):
             item.setLabel("%s  [COLOR gray]%s[/COLOR]" % (label, m["rentalPrice"]))
         if in_cw and kind == "episode" and m.get("grandparentTitle"):
             item.setLabel("%s - %s" % (m["grandparentTitle"], label))
-        item.addContextMenuItems(_menu(m, in_cw, in_wl))
+        item.addContextMenuItems(_menu(m, in_cw, in_wl or rk in watchlisted))
         if kind in ("movie", "episode"):
             content = "movies" if kind == "movie" else "episodes"
             item.setProperty("IsPlayable", "true")
@@ -402,9 +406,12 @@ def mark(rk, how, quiet=False):
         kodiutils.log_error("%s %s: %s" % (how, rk, exc))
         kodiutils.notify("%s: %s" % (L("error"), exc), icon=xbmcgui.NOTIFICATION_ERROR)
         return
-    if quiet:  # adding to the watchlist changes nothing in the list on screen
+    if how == "addToWatchlist":
         kodiutils.notify(L("watchlist_added"))
-        return
+    elif how == "removeFromWatchlist":
+        kodiutils.notify(L("watchlist_removed"))
+    # Refresh so the context menu flips between Add and Remove (and watched
+    # ticks / Continue Watching rows update).
     xbmc.executebuiltin("Container.Refresh")
 
 

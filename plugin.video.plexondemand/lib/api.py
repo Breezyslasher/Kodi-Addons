@@ -183,6 +183,17 @@ class PlexVodApi(object):
         """kind: similarTitles | more-from-credits (both free VOD titles)."""
         return self._get("/library/metadata/%s/%s" % (rating_key, kind), {"count": 50}).get("Metadata") or []
 
+    def watchlist_keys(self):
+        """ratingKeys on the account's watchlist (one call, up to 300), so any
+        listing can offer Remove instead of Add: userState has no watchlist flag."""
+        try:
+            c = self._get(DISCOVER_BASE + "/library/sections/watchlist/all",
+                          {"X-Plex-Container-Start": 0, "X-Plex-Container-Size": 300})
+        except PlexApiError as exc:
+            kodiutils.log("watchlist keys: %s" % exc)
+            return set()
+        return set(m.get("ratingKey") for m in c.get("Metadata") or [] if m.get("ratingKey"))
+
     def watchlist(self, start=0):
         c = self._get(DISCOVER_BASE + "/library/sections/watchlist/all", self.page_params(start))
         return c.get("Metadata") or [], _total(c)

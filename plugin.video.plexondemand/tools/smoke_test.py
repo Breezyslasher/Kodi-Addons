@@ -195,6 +195,7 @@ from lib.api import image
 api.action("addToWatchlist", rk)
 wl, _ = api.watchlist()
 check("watchlist add + list", any(m.get("ratingKey") == rk for m in wl), len(wl))
+check("watchlist keys (Remove offered in any listing)", rk in api.watchlist_keys())
 api.action("removeFromWatchlist", rk)
 import time as _time
 for _ in range(5):  # the watchlist list can lag a removal by a moment

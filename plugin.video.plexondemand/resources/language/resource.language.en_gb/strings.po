@@ -275,3 +275,7 @@ msgctxt "#32074"
 msgid "Rent or buy it on Plex at %s, then play it here (signed in with the same account)."
 msgstr ""
 
+msgctxt "#32075"
+msgid "Removed from your Watchlist"
+msgstr ""
+
