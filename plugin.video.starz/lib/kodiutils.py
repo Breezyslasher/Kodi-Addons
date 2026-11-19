@@ -84,8 +84,17 @@ def input_numeric(heading):
     return result or None
 
 
+_PROFILE_DIR = []
+
+
 def profile_dir():
+    # Remembered: when an update replaces the add-on, Kodi unregisters it
+    # before stopping the old service, and Addon() then raises "Unknown
+    # addon id" during the service's clean-up.
+    if _PROFILE_DIR:
+        return _PROFILE_DIR[0]
     path = xbmcvfs.translatePath(addon().getAddonInfo("profile"))
+    _PROFILE_DIR.append(path)
     if not os.path.exists(path):
         os.makedirs(path)
     return path

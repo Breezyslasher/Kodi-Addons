@@ -196,7 +196,10 @@ def run():
             player.tick(clock)
         player._finish()
     finally:
-        relay.stop()
+        try:
+            relay.stop()
+        except Exception as exc:   # e.g. the add-on is mid-update
+            xbmc.log("[plugin.video.starz] relay stop: %s" % exc, xbmc.LOGINFO)
 
 
 if __name__ == "__main__":
