@@ -364,18 +364,16 @@
       "note": "Probe: poster badge drawn by imgix (plain)."
     },
     {
-      "id": "probe_badge_txt",
-      "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
+      "id": "probe_badge_label_alone",
+      "url": "https://stz1.imgix.net/~text",
       "params": {
-        "fit": "max",
-        "w": "300",
-        "fm": "jpg",
         "txt": "New Season",
         "txt-size": "18",
         "txt-color": "0B2B33",
         "txt-font": "Helvetica Neue,Bold",
-        "txt-align": "top,left",
-        "txt-pad": "10"
+        "txt-pad": "8",
+        "bg": "D4F04C",
+        "fm": "png"
       },
       "headers": {
         "Accept": "image/*"
@@ -384,21 +382,18 @@
         "content_type": "image/"
       },
       "report_only": true,
-      "note": "Probe: poster badge drawn by imgix (txt)."
+      "note": "Probe: poster badge drawn by imgix (label_alone)."
     },
     {
-      "id": "probe_badge_blend",
+      "id": "probe_badge_mark",
       "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
       "params": {
         "fit": "max",
         "w": "300",
         "fm": "jpg",
-        "blend-color": "D4F04C",
-        "blend-mode": "normal",
-        "blend-w": "110",
-        "blend-h": "30",
-        "blend-align": "top,left",
-        "blend-alpha": "100"
+        "mark": "https://stz1.imgix.net/~text?txt=New+Season&txt-size=18&txt-color=0B2B33&txt-font=Helvetica+Neue%2CBold&txt-pad=8&bg=D4F04C",
+        "mark-align": "top,left",
+        "mark-pad": "0"
       },
       "headers": {
         "Accept": "image/*"
@@ -407,27 +402,18 @@
         "content_type": "image/"
       },
       "report_only": true,
-      "note": "Probe: poster badge drawn by imgix (blend)."
+      "note": "Probe: poster badge drawn by imgix (mark)."
     },
     {
-      "id": "probe_badge_blend_txt",
+      "id": "probe_badge_mark_rel",
       "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
       "params": {
         "fit": "max",
         "w": "300",
         "fm": "jpg",
-        "blend-color": "D4F04C",
-        "blend-mode": "normal",
-        "blend-w": "110",
-        "blend-h": "30",
-        "blend-align": "top,left",
-        "blend-alpha": "100",
-        "txt": "New Season",
-        "txt-size": "18",
-        "txt-color": "0B2B33",
-        "txt-font": "Helvetica Neue,Bold",
-        "txt-align": "top,left",
-        "txt-pad": "10"
+        "mark": "/~text?txt=New+Season&txt-size=18&txt-color=0B2B33&txt-font=Helvetica+Neue%2CBold&txt-pad=8&bg=D4F04C",
+        "mark-align": "top,left",
+        "mark-pad": "0"
       },
       "headers": {
         "Accept": "image/*"
@@ -436,7 +422,7 @@
         "content_type": "image/"
       },
       "report_only": true,
-      "note": "Probe: poster badge drawn by imgix (blend_txt)."
+      "note": "Probe: poster badge drawn by imgix (mark_rel)."
     }
   ]
 }
