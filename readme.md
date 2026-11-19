@@ -108,7 +108,7 @@ A shared module that gives video add-ons **Skip recap**, **Skip intro** and a **
 ---
 
 ### [Plex On Demand](plugin.video.plexondemand/) *(experimental, unofficial)*
-Plex's free, ad-supported Movies &amp; Shows catalogue in Kodi, with no Plex Media Server and no account needed.
+Plex's free, ad-supported Movies & Shows catalogue in Kodi, with no Plex Media Server and no account needed.
 
 - Featured rows, Movies and TV Shows by genre, and search
 - Clear titles play as HLS with subtitles; DRM titles play as Widevine DASH through InputStream Adaptive
