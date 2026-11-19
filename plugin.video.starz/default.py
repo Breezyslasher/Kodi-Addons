@@ -357,10 +357,14 @@ def do_sign_out(auth):
         auth.sign_out()
 
 
-def do_search(api):
-    query = kodiutils.input_text(L(32026))
+def do_search(api, query=None):
+    """Results live at a URL that carries the query, so a refresh (after
+    My List or Remind me) reloads them instead of asking again."""
     if not query:
-        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+        query = kodiutils.input_text(L(32026))
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False, cacheToDisc=False)
+        if query and query.strip():
+            xbmc.executebuiltin("Container.Update(%s)" % url(action="search", query=query.strip()))
         return
     items = api.search(query)
     if not items:
@@ -1051,7 +1055,7 @@ def router(paramstring):
             show_items(api.episodes(params.get("series_id"),
                                     params.get("season_id")), "episodes")
         elif action == "search":
-            do_search(api)
+            do_search(api, params.get("query"))
         elif action == "my_list":
             items = api.my_list()
             show_items(items, _content_for(items))
