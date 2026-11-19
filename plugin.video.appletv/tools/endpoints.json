@@ -1,0 +1,107 @@
+{
+  "name": "Apple TV (plugin.video.appletv)",
+  "defaults": {
+    "timeout": 30,
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+    }
+  },
+  "checks": [
+    {
+      "id": "page_shell_developer_token",
+      "url": "https://tv.apple.com",
+      "headers": {
+        "Accept": "text/html"
+      },
+      "expect": {
+        "status": 200
+      },
+      "save": {
+        "bearer": "regex:\"developerToken\"\\s*:\\s*\"([A-Za-z0-9_.\\-]{20,})\""
+      },
+      "note": "The single point of failure: the Bearer token is read out of the page markup by name. A rename here breaks every call below."
+    },
+    {
+      "id": "utsk_in_shell",
+      "url": "https://tv.apple.com",
+      "headers": {
+        "Accept": "text/html"
+      },
+      "expect": {
+        "status": 200
+      },
+      "save": {
+        "utsk_shell": "regex:\"utsk\"\\s*:\\s*\"([^\"]+)\""
+      },
+      "report_only": true,
+      "note": "The shell usually also carries a utsk; absent is fine -- /configurations mints one (next check)."
+    },
+    {
+      "id": "configurations_mint_utsk",
+      "method": "POST",
+      "url": "https://tv.apple.com/api/uts/v3/configurations?caller=web&locale=en-US&pfm=web&sfh=143441&v=96",
+      "headers": {
+        "Authorization": "Bearer {bearer}",
+        "Origin": "https://tv.apple.com",
+        "Content-Type": "application/json"
+      },
+      "json": {
+        "featureFlags": {
+          "clientFeatures": []
+        }
+      },
+      "expect": {
+        "json_paths": [
+          "data.utskProps.utsk"
+        ]
+      },
+      "save": {
+        "utsk": "json:data.utskProps.utsk"
+      },
+      "note": "The sanctioned way to mint a utsk; the addon falls back to this when the shell stops carrying one. Needs the Bearer from the shell."
+    },
+    {
+      "id": "channel_canvas",
+      "url": "https://tv.apple.com/api/uts/v3/canvases/channels/tvs.sbd.4000?caller=web&pfm=web&v=96&locale=en-US&sf=143441&utscf=OjAAAAEAAAAAAAIAEAAAACMAKwAtAA~~&utsk={utsk}&includePlatter=true",
+      "headers": {
+        "Authorization": "Bearer {bearer}",
+        "Origin": "https://tv.apple.com"
+      },
+      "expect": {
+        "json_paths": [
+          "data.canvas",
+          "data.canvas.shelves[0].url"
+        ]
+      },
+      "note": "The Apple TV+ channel page (tvs.sbd.4000) and its shelves -- the home tabs are built from these."
+    },
+    {
+      "id": "search",
+      "url": "https://tv.apple.com/api/uts/v3/search?caller=web&pfm=web&v=96&locale=en-US&sf=143441&utscf=OjAAAAEAAAAAAAIAEAAAACMAKwAtAA~~&utsk={utsk}&searchTerm=ted%20lasso&topResultsOnly=true",
+      "headers": {
+        "Authorization": "Bearer {bearer}",
+        "Origin": "https://tv.apple.com"
+      },
+      "expect": {
+        "json_paths": [
+          "data"
+        ]
+      },
+      "note": "Catalogue search."
+    },
+    {
+      "id": "search_landing",
+      "url": "https://tv.apple.com/api/uts/v3/search/landing?caller=web&pfm=web&v=96&locale=en-US&sf=143441&utscf=OjAAAAEAAAAAAAIAEAAAACMAKwAtAA~~&utsk={utsk}",
+      "headers": {
+        "Authorization": "Bearer {bearer}",
+        "Origin": "https://tv.apple.com"
+      },
+      "expect": {
+        "json_paths": [
+          "data.canvas"
+        ]
+      },
+      "note": "The search landing page (browse categories)."
+    }
+  ]
+}
