@@ -660,23 +660,31 @@ def do_play(api, content_id, auth=None, seek_to=None, programme=None, channel=No
 
 # -- profiles ------------------------------------------------------------------
 
-def show_profiles(auth):
-    """Manage profiles: each profile (picture, owner marked), then Add."""
-    for p in auth.profiles():
-        label = p.get("name", "?")
-        if p.get("id") == auth.profile_id:
-            label = "[B]%s[/B]  [COLOR grey]%s[/COLOR]" % (label, L(32140))
-        elif p.get("isAdmin"):
-            label = "%s  [COLOR grey]%s[/COLOR]" % (label, L(32130))
-        li = xbmcgui.ListItem(label)
-        icon = avatar((p.get("profileIcon") or {}).get("iconUrl"), p.get("name"))
-        if icon:
-            li.setArt({"icon": icon, "thumb": icon})
-        li.setProperty("IsPlayable", "false")
-        xbmcplugin.addDirectoryItem(HANDLE, url(action="profile_menu", profile_id=p["id"]),
-                                    li, False)
-    add_action(L(32141), "profile_add")
-    xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
+def show_profiles(api, auth):
+    """Manage profiles as a dialog, so it also opens from Settings (Kodi
+    will not switch windows while the Settings dialog is open). Lists each
+    profile with its picture, then Add profile; returns when cancelled."""
+    while True:
+        profiles = auth.profiles()
+        items = []
+        for p in profiles:
+            li = xbmcgui.ListItem(p.get("name", "?"))
+            if p.get("id") == auth.profile_id:
+                li.setLabel2(L(32140))
+            elif p.get("isAdmin"):
+                li.setLabel2(L(32130))
+            icon = avatar((p.get("profileIcon") or {}).get("iconUrl"), p.get("name"))
+            if icon:
+                li.setArt({"icon": icon, "thumb": icon})
+            items.append(li)
+        items.append(xbmcgui.ListItem(L(32141)))
+        i = xbmcgui.Dialog().select(L(32158), items, useDetails=True)
+        if i < 0:
+            return
+        if i == len(profiles):
+            do_profile_add(api)
+        else:
+            do_profile_menu(api, auth, profiles[i].get("id"))
 
 
 def _pick_icon(api, heading):
@@ -931,7 +939,9 @@ def router(paramstring):
             items = api.similar(params.get("content_id"))
             show_items(items, _content_for(items))
         elif action == "profiles":
-            show_profiles(auth)
+            show_profiles(api, auth)
+            if HANDLE >= 0:
+                xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         elif action == "profile_add":
             do_profile_add(api)
         elif action == "profile_menu":

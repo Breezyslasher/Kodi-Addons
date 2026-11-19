@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.19.12" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.19.13" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,7 +35,10 @@ Features:
 			<clearlogo>resources/clearlogo.png</clearlogo>
 			<banner>resources/banner.png</banner>
 		</assets>
-		<news>v2026.11.19.12
+		<news>v2026.11.19.13
+- Manage profiles opens from Settings (as a dialog: your profiles with their pictures, then Add profile)
+
+v2026.11.19.12
 - Channels play with the airing programme's title, plot and artwork; on the live STARZ channel the info follows the schedule to each next programme
 
 v2026.11.19.11
