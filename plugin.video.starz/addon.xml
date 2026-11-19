@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.19.8" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.19.9" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,7 +35,10 @@ Features:
 			<clearlogo>resources/clearlogo.png</clearlogo>
 			<banner>resources/banner.png</banner>
 		</assets>
-		<news>v2026.11.19.8
+		<news>v2026.11.19.9
+- Live TV: the STARZ channel's real live stream (main menu, TV Schedule and Kodi's TV guide); the other channels still tune in on demand
+
+v2026.11.19.8
 - Cancel reminder now removes the title from My List, as on the website
 
 v2026.11.19.7

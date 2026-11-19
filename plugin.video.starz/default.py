@@ -11,7 +11,7 @@ import xbmcplugin
 
 from lib import kodiutils
 from lib.auth import StarzAuth, StarzAuthError, NotReadyError
-from lib.api import StarzApi, PLAYING_FILE
+from lib.api import StarzApi, PLAYING_FILE, LIVE_ID, LIVE_CHANNEL
 from lib.license_relay import relay_url, LICENSE_FILE
 from lib import iptv
 from lib.channels import CHANNELS, NAMES, logo
@@ -234,6 +234,11 @@ def main_menu(auth):
     add_dir(L(32052), "page", page="SERIES")
     add_dir(L(32053), "page", page="MOVIES")
     add_dir(L(32054), "page", page="BROWSE")
+    li = xbmcgui.ListItem(L(32170))
+    li.setArt({"icon": logo(_ADDON_PATH, LIVE_CHANNEL), "thumb": logo(_ADDON_PATH, LIVE_CHANNEL),
+               "fanart": ADDON_ART["fanart"]})
+    li.setProperty("IsPlayable", "true")
+    xbmcplugin.addDirectoryItem(HANDLE, url(action="live", channel=LIVE_CHANNEL), li, False)
     add_dir(L(32110), "channels")
     add_dir(L(32074), "genres")
     add_dir(L(32075), "categories")
@@ -642,7 +647,8 @@ def do_play(api, content_id, auth=None, seek_to=None):
     kodiutils.write_json(PLAYING_FILE, {
         "content_id": str(content_id), "session_id": playback.get("session_id"),
         "keep_alive": playback.get("keep_alive"),
-        "manifest_url": playback["manifest_url"], "seek_to": seek_to})
+        "manifest_url": playback["manifest_url"], "seek_to": seek_to,
+        "live": bool(playback.get("live"))})
     xbmcplugin.setResolvedUrl(HANDLE, True, build_isa_listitem(playback))
 
 
@@ -820,6 +826,11 @@ def show_channel(api, code, day):
 def do_live(api, code, auth):
     """Tune in: play what the channel is showing now, from where it is.
     Starz has no live streams; this is the scheduled title on demand."""
+    if code == LIVE_CHANNEL:
+        # STARZ has a real live stream: play that, not the title on demand.
+        kodiutils.log("Playing the STARZ live stream")
+        do_play(api, LIVE_ID, auth)
+        return
     el = api.on_now(code)
     if not el or not el.get("availableOnOtt"):
         kodiutils.notify(L(32113))

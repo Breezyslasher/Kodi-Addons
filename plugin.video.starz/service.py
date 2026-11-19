@@ -59,6 +59,12 @@ class Player(xbmc.Player):
             return
         kodiutils.delete_file(PLAYING_FILE)
         self._finish()   # a previous title that never reported stopping
+        if info.get("live"):
+            # Live: no position to save, no next episode, nothing to seek.
+            # The live capture shows no Play/update; none are sent.
+            kodiutils.log("Playing the STARZ live stream (no progress reports)")
+            self.session = None
+            return
         self.session = Session(info)
         kodiutils.log("Tracking Starz playback of %s" % info.get("content_id"))
         # Off the callback thread: two metadata requests.

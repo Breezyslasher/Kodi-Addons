@@ -35,6 +35,11 @@ from lib import kodiutils
 from lib.auth import AUTH_API, USER_AGENT, NotReadyError
 
 METADATA = "https://playdata.starz.com/metadata-service/play/partner/Web/v8/"
+# The STARZ channel's live stream (live HAR: starz.com/livetv -> play/2,
+# GET Play / POST Play/start with this id, a dynamic DASH manifest on
+# live-linear.starz.com). The only live stream the website offers.
+LIVE_ID = "starz_livestream"
+LIVE_CHANNEL = "STZ1"
 LINEAR = "https://playdata.starz.com/metadata-service/play/partner/Web/v6/content/linear"
 CAROUSEL = "https://recommender.starz.com/api/v3/carousel/partner/Web/profile/%s/lang/en-US/"
 RECOMMENDER = "https://recommender.starz.com/api/v3/recommendations/partner/Web/profile/"
@@ -918,13 +923,17 @@ class StarzApi(object):
         posts to it directly. Segments need no cookies or signed URLs.
         The clear preroll the web player shows first is skipped.
         """
-        cid = int(content_id)
+        live = str(content_id) == LIVE_ID
+        # The live stream's id is a string (live HAR); titles' are numbers.
+        cid = LIVE_ID if live else int(content_id)
         self.auth.request("GET", AUTH_API + "Play", params={"contentId": cid})
         info = self.auth.request("POST", AUTH_API + "Play/start",
                                  json={"contentId": cid,
                                        "mediaResumePointSeconds": None}).json()
         manifest_url = info["mediaUrl"]
-        kid = self._default_kid(manifest_url)
+        # The live manifest has no default_KID; the website then licenses
+        # with an empty key id (.../ghostlocker/?token=..., live HAR #211).
+        kid = self._default_kid(manifest_url, required=not live)
         license_url = "%s/%s?token=%s" % (info["mediaDrmEndpoint"].rstrip("/"),
                                           kid, quote(info["mediaLicenseToken"], safe=""))
         kodiutils.log("Play/start ok: content=%s kid=%s keepAlive=%ss" % (
@@ -938,14 +947,18 @@ class StarzApi(object):
                 "stream_headers": web,
                 "subtitles": self._captions(info.get("captions") or [], subtitle_langs),
                 "session_id": info.get("playbackSessionId"),
-                "keep_alive": info.get("keepAliveSeconds")}
+                "keep_alive": info.get("keepAliveSeconds"),
+                "live": live}
 
-    def _default_kid(self, manifest_url):
+    def _default_kid(self, manifest_url, required=True):
         """The manifest's cenc:default_KID, which names the licence URL.
-        The captured manifest carries exactly one, shared by every track."""
+        On-demand manifests carry exactly one, shared by every track; the
+        live manifest carries none ("" then, as the website uses)."""
         resp = self.http.get(manifest_url, timeout=TIMEOUT)
         resp.raise_for_status()
         kids = re.findall(r'default_KID="([0-9a-fA-F-]{32,36})"', resp.text)
+        if not kids and not required:
+            return ""
         if not kids:
             raise NotReadyError("No default_KID in the manifest; this title is "
                                 "packaged differently from the captured one.")
