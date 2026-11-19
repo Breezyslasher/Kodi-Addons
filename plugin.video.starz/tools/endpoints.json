@@ -347,23 +347,6 @@
       "note": "Profile pictures with the initial drawn by imgix (txt=...)."
     },
     {
-      "id": "probe_badge_plain",
-      "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
-      "params": {
-        "fit": "max",
-        "w": "300",
-        "fm": "jpg"
-      },
-      "headers": {
-        "Accept": "image/*"
-      },
-      "expect": {
-        "content_type": "image/"
-      },
-      "report_only": true,
-      "note": "Probe: poster badge drawn by imgix (plain)."
-    },
-    {
       "id": "probe_badge_label_alone",
       "url": "https://stz1.imgix.net/~text",
       "params": {
@@ -372,7 +355,7 @@
         "txt-color": "0B2B33",
         "txt-font": "Helvetica Neue,Bold",
         "txt-pad": "8",
-        "bg": "D4F04C",
+        "bg": "FFFFFF",
         "fm": "png"
       },
       "headers": {
@@ -382,18 +365,22 @@
         "content_type": "image/"
       },
       "report_only": true,
-      "note": "Probe: poster badge drawn by imgix (label_alone)."
+      "note": "Probe: gradient tag (label_alone)."
     },
     {
-      "id": "probe_badge_mark",
-      "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
+      "id": "probe_badge_label_grad",
+      "url": "https://stz1.imgix.net/~text",
       "params": {
-        "fit": "max",
-        "w": "300",
-        "fm": "jpg",
-        "mark": "https://stz1.imgix.net/~text?txt=New+Season&txt-size=18&txt-color=0B2B33&txt-font=Helvetica+Neue%2CBold&txt-pad=8&bg=D4F04C",
-        "mark-align": "top,left",
-        "mark-pad": "0"
+        "txt": "New Season",
+        "txt-size": "18",
+        "txt-color": "0B2B33",
+        "txt-font": "Helvetica Neue,Bold",
+        "txt-pad": "8",
+        "bg": "FFFFFF",
+        "blend": "https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/starz/plugin.video.starz/resources/tags/tag.png",
+        "blend-mode": "multiply",
+        "blend-size": "inherit",
+        "fm": "png"
       },
       "headers": {
         "Accept": "image/*"
@@ -402,18 +389,24 @@
         "content_type": "image/"
       },
       "report_only": true,
-      "note": "Probe: poster badge drawn by imgix (mark)."
+      "note": "Probe: gradient tag (label_grad)."
     },
     {
-      "id": "probe_badge_mark_rel",
-      "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
+      "id": "probe_badge_label_grad_round",
+      "url": "https://stz1.imgix.net/~text",
       "params": {
-        "fit": "max",
-        "w": "300",
-        "fm": "jpg",
-        "mark": "/~text?txt=New+Season&txt-size=18&txt-color=0B2B33&txt-font=Helvetica+Neue%2CBold&txt-pad=8&bg=D4F04C",
-        "mark-align": "top,left",
-        "mark-pad": "0"
+        "txt": "New Season",
+        "txt-size": "18",
+        "txt-color": "0B2B33",
+        "txt-font": "Helvetica Neue,Bold",
+        "txt-pad": "8",
+        "bg": "FFFFFF",
+        "blend": "https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/starz/plugin.video.starz/resources/tags/tag.png",
+        "blend-mode": "multiply",
+        "blend-size": "inherit",
+        "fm": "png",
+        "mask": "corners",
+        "corner-radius": "6,0,10,0"
       },
       "headers": {
         "Accept": "image/*"
@@ -422,7 +415,27 @@
         "content_type": "image/"
       },
       "report_only": true,
-      "note": "Probe: poster badge drawn by imgix (mark_rel)."
+      "note": "Probe: gradient tag (label_grad_round)."
+    },
+    {
+      "id": "probe_badge_poster_grad",
+      "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
+      "params": {
+        "fit": "max",
+        "w": "300",
+        "fm": "jpg",
+        "mark": "https://stz1.imgix.net/~text?txt=New+Season&txt-size=18&txt-color=0B2B33&txt-font=Helvetica+Neue%2CBold&txt-pad=8&bg=FFFFFF&blend=https%3A%2F%2Fraw.githubusercontent.com%2FBreezyslasher%2FKodi-Addons%2Fstarz%2Fplugin.video.starz%2Fresources%2Ftags%2Ftag.png&blend-mode=multiply&blend-size=inherit&fm=png&mask=corners&corner-radius=6%2C0%2C10%2C0",
+        "mark-align": "top,left",
+        "mark-pad": "6"
+      },
+      "headers": {
+        "Accept": "image/*"
+      },
+      "expect": {
+        "content_type": "image/"
+      },
+      "report_only": true,
+      "note": "Probe: gradient tag (poster_grad)."
     }
   ]
 }
