@@ -167,3 +167,63 @@ msgctxt "#32047"
 msgid "Remove from recent searches"
 msgstr ""
 
+msgctxt "#32048"
+msgid "Watchlist"
+msgstr ""
+
+msgctxt "#32049"
+msgid "Add to Watchlist"
+msgstr ""
+
+msgctxt "#32050"
+msgid "Remove from Watchlist"
+msgstr ""
+
+msgctxt "#32051"
+msgid "Added to your Watchlist"
+msgstr ""
+
+msgctxt "#32052"
+msgid "Your Watchlist is empty"
+msgstr ""
+
+msgctxt "#32053"
+msgid "Plex places you in %s; the free catalogue is mainly for the US"
+msgstr ""
+
+msgctxt "#32054"
+msgid "More like this"
+msgstr ""
+
+msgctxt "#32055"
+msgid "Sort genre lists by"
+msgstr ""
+
+msgctxt "#32056"
+msgid "Resize artwork (faster lists)"
+msgstr ""
+
+msgctxt "#32057"
+msgid "Newest"
+msgstr ""
+
+msgctxt "#32058"
+msgid "Title A-Z"
+msgstr ""
+
+msgctxt "#32059"
+msgid "Title Z-A"
+msgstr ""
+
+msgctxt "#32060"
+msgid "Audience rating"
+msgstr ""
+
+msgctxt "#32061"
+msgid "Browse"
+msgstr ""
+
+msgctxt "#32062"
+msgid "More from this cast & crew"
+msgstr ""
+

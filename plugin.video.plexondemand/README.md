@@ -28,6 +28,11 @@ your real Plex account.
 | Trailers | `primaryExtraKey` -> `.../extras/<id>/parts/hls.m3u8` (redirects to open HLS) |
 | Subtitles | `Part.Stream[streamType=3].key` -> `/library/streams/<id>-<lang>?format=srt` (redirects to `vod-static.plex.tv`; works for DRM titles) |
 | Markers | `/library/metadata/<rk>?includeMarkers=1` -> `credits` only. Survey of 250 movies / 407 episodes: credits on 22% of movies, on 0% of episodes; no `intro` markers and no chapters anywhere |
+| Watchlist | `PUT {vod}/actions/addToWatchlist`, `removeFromWatchlist` `?ratingKey=`; list `GET discover.provider.plex.tv/library/sections/watchlist/all` |
+| More like this | `GET {vod}/library/metadata/<rk>/similarTitles` and `/more-from-credits` (free titles; `/library/people/<id>` has no filmography) |
+| Artwork | `images.plex.tv/photo?url=&width=&height=` (no token; a 920 KB poster becomes about 29 KB) |
+| Sort | genre listings take `sort=titleSort`, `titleSort:desc`, `audienceRating:desc`; year/decade/rating filters are ignored by Plex |
+| Search size | `limit=100` is honoured; `offset` is ignored |
 | Up next | `POST {vod}/playQueues?uri=provider://tv.plex.provider.vod/library/metadata/<rk>&type=video&continuous=1` |
 | Ads | `Metadata.Ad[]` = VMAP at `{vod}/vmap?...` (client-side VAST pods) |
 
@@ -47,6 +52,11 @@ your real Plex account.
 `script.module.skipbuttons` is a required dependency, so Kodi installs it with the add-on. Its
 buttons appear only after **Kodi is restarted** following that first install, because the
 add-on's service has to reload with the module available.
+
+## Endpoint check
+`.github/workflows/plexondemand-probe.yml` runs the offline service test and the live smoke
+test on every push to this branch, and daily from `main`. A failing scheduled run opens (or
+comments on) one issue labelled `plexondemand-endpoint`.
 
 ## Dev tools (not shipped in the zip)
 - `tools/smoke_test.py`: runs `lib/` against the live service with Kodi stubbed.

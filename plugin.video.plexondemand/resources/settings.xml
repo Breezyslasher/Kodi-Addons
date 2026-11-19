@@ -10,6 +10,10 @@
         <setting id="report_progress" type="bool" label="32033" default="true" />
         <setting id="autoplay_next" type="bool" label="32038" default="true" />
     </category>
+    <category label="32061">
+        <setting id="genre_sort" type="enum" label="32055" lvalues="32057|32058|32059|32060" default="0" />
+        <setting id="resize_art" type="bool" label="32056" default="true" />
+    </category>
     <category label="32002">
         <setting id="base_url_override" type="text" label="32034" default="" />
         <setting id="client_id" type="text" label="32037" default="" visible="false" />

@@ -43,6 +43,14 @@ S = {
     "mark_unwatched": 32044,
     "remove_cw": 32045,
     "new_search": 32046,
+    "watchlist": 32048,
+    "add_watchlist": 32049,
+    "remove_watchlist": 32050,
+    "watchlist_added": 32051,
+    "watchlist_empty": 32052,
+    "region_notice": 32053,
+    "related": 32054,
+    "more_cast": 32062,
     "remove_search": 32047,
 }
 
@@ -86,9 +94,18 @@ def _apply_user_state(api, items):
                     m[field] = st.get(field)
 
 
-def _menu(m, in_cw=False):
+def _menu(m, in_cw=False, in_wl=False):
     rk = m["ratingKey"]
     entries = []
+    if m.get("type") in ("movie", "show"):
+        if in_wl:
+            entries.append((L("remove_watchlist"), "RunPlugin(%s)" % url(
+                action="mark", rk=rk, how="removeFromWatchlist")))
+        else:
+            entries.append((L("add_watchlist"), "RunPlugin(%s)" % url(
+                action="mark", rk=rk, how="addToWatchlist", quiet=1)))
+    if m.get("type") in ("movie", "show"):
+        entries.append((L("related"), "Container.Update(%s)" % url(action="related", rk=rk)))
     if m.get("type") in ("movie", "show"):
         entries.append((L("trailer"), "RunPlugin(%s)" % url(action="trailer", rk=rk)))
     if m.get("type") in ("movie", "episode"):
@@ -102,7 +119,7 @@ def _menu(m, in_cw=False):
     return entries
 
 
-def add_items(items, api=None, in_cw=False):
+def add_items(items, api=None, in_cw=False, in_wl=False):
     content = "videos"
     if api is not None:
         _apply_user_state(api, items)
@@ -119,7 +136,7 @@ def add_items(items, api=None, in_cw=False):
         _info(item, m)
         if in_cw and kind == "episode" and m.get("grandparentTitle"):
             item.setLabel("%s - %s" % (m["grandparentTitle"], label))
-        item.addContextMenuItems(_menu(m, in_cw))
+        item.addContextMenuItems(_menu(m, in_cw, in_wl))
         if kind in ("movie", "episode"):
             content = "movies" if kind == "movie" else "episodes"
             item.setProperty("IsPlayable", "true")
@@ -143,7 +160,9 @@ def add_next(query, start, count, total):
 # ---------------------------------------------------------------- views
 def root():
     api = PlexVodApi()
+    _region_notice(api)
     folder(L("continue_watching"), {"action": "continue"})
+    folder(L("watchlist"), {"action": "watchlist"})
     folder(L("featured"), {"action": "hubs"})
     folder(L("movies"), {"action": "genres", "type": TYPE_MOVIE})
     folder(L("shows"), {"action": "genres", "type": TYPE_SHOW})
@@ -158,25 +177,45 @@ def root():
     end("files", cache=False)
 
 
+def _region_notice(api):
+    """Once per Kodi session: the free catalogue is mainly US-only."""
+    win = xbmcgui.Window(10000)
+    if win.getProperty("plexondemand.region_checked"):
+        return
+    win.setProperty("plexondemand.region_checked", "1")
+    code = api.region()
+    if code and code != "US":
+        kodiutils.notify(L("region_notice") % code, time_ms=8000)
+
+
 def hubs():
     for h in PlexVodApi().hubs():
         folder(h.get("title") or h["key"], {"action": "list", "key": h["key"], "title": h.get("title", "")})
     end("files")
 
 
+SORTS = ["", "titleSort", "titleSort:desc", "audienceRating:desc"]  # setting order
+
+
 def genres(media_type):
+    sort = SORTS[min(kodiutils.get_setting_int("genre_sort", 0), len(SORTS) - 1)]
     for g in PlexVodApi().genres(int(media_type)):
         if g.get("key"):
-            folder(g.get("title") or "?", {"action": "list", "key": g["key"]},
-                   art={"icon": g.get("icon") or ""})
+            query = {"action": "list", "key": g["key"]}
+            if sort:
+                query["sort"] = sort
+            folder(g.get("title") or "?", query, art={"icon": g.get("icon") or ""})
     end("files")
 
 
-def listing(key, start=0):
+def listing(key, start=0, sort=None):
     api = PlexVodApi()
-    items, total = api.listing(key, start)
+    items, total = api.listing(key, start, sort)
     content = add_items(items, api)
-    add_next({"action": "list", "key": key}, start, len(items), total)
+    query = {"action": "list", "key": key}
+    if sort:
+        query["sort"] = sort
+    add_next(query, start, len(items), total)
     end(content)
 
 
@@ -245,6 +284,27 @@ def search(query=None):
     end(content, cache=False)
 
 
+def watchlist(start=0):
+    api = PlexVodApi()
+    items, total = api.watchlist(start)
+    if not items and not start:
+        kodiutils.notify(L("watchlist_empty"))
+    content = add_items(items, api, in_wl=True)
+    add_next({"action": "watchlist"}, start, len(items), total)
+    end(content, cache=False)
+
+
+def related(rk, kind="similarTitles"):
+    """More like this: Plex's similar titles, with a folder for the cast &
+    crew's other free titles at the top."""
+    api = PlexVodApi()
+    if kind == "similarTitles":
+        folder("[B]%s[/B]" % L("more_cast"), {"action": "related", "rk": rk, "kind": "more-from-credits"})
+    items = api.related(rk, kind)
+    content = add_items(items, api)
+    end(content)
+
+
 def continue_watching():
     api = PlexVodApi()
     items = api.continue_watching()
@@ -270,12 +330,15 @@ def trailer(rk):
     xbmc.Player().play(stream, li)
 
 
-def mark(rk, how):
+def mark(rk, how, quiet=False):
     try:
         PlexVodApi().action(how, rk)
     except PlexApiError as exc:
         kodiutils.log_error("%s %s: %s" % (how, rk, exc))
         kodiutils.notify("%s: %s" % (L("error"), exc), icon=xbmcgui.NOTIFICATION_ERROR)
+        return
+    if quiet:  # adding to the watchlist changes nothing in the list on screen
+        kodiutils.notify(L("watchlist_added"))
         return
     xbmc.executebuiltin("Container.Refresh")
 
@@ -349,13 +412,17 @@ def router(paramstring):
         elif action == "trailer":
             trailer(p["rk"])
         elif action == "mark":
-            mark(p["rk"], p.get("how", "scrobble"))
+            mark(p["rk"], p.get("how", "scrobble"), bool(p.get("quiet")))
+        elif action == "watchlist":
+            watchlist(int(p.get("start", 0)))
+        elif action == "related":
+            related(p["rk"], p.get("kind", "similarTitles"))
         elif action == "hubs":
             hubs()
         elif action == "genres":
             genres(p.get("type", TYPE_MOVIE))
         elif action == "list":
-            listing(p["key"], int(p.get("start", 0)))
+            listing(p["key"], int(p.get("start", 0)), p.get("sort"))
         elif action == "children":
             children(p["rk"], int(p.get("start", 0)))
         elif action == "search":

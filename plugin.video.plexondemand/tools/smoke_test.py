@@ -190,5 +190,29 @@ import json as _json
 handoff = _json.loads(PROPS.get("plexondemand.playing", "{}"))
 check("handoff carries next episode", handoff.get("next") == (nxt or {}).get("ratingKey"), handoff)
 
+# ---- watchlist, related, images, sort, search size, region
+from lib.api import image
+api.action("addToWatchlist", rk)
+wl, _ = api.watchlist()
+check("watchlist add + list", any(m.get("ratingKey") == rk for m in wl), len(wl))
+api.action("removeFromWatchlist", rk)
+check("watchlist remove", not any(m.get("ratingKey") == rk for m in api.watchlist()[0]))
+sim = api.related(rk)
+cast = api.related(rk, "more-from-credits")
+check("related: similar titles", len(sim) > 0, len(sim))
+check("related: more from cast & crew", len(cast) > 0, len(cast))
+thumb = next((m.get("thumb") for m in sim if m.get("thumb")), None)
+import requests as _rq
+r = _rq.get(image(thumb, 400, 600), timeout=20) if thumb else None
+check("image transcoder resizes art", bool(r) and r.status_code == 200 and r.headers.get("Content-Type", "").startswith("image/")
+      and len(r.content) < 200000, r is not None and len(r.content))
+az, _ = api.listing(mg[0]["key"], sort="titleSort")
+za, _ = api.listing(mg[0]["key"], sort="titleSort:desc")
+check("genre sort A-Z vs Z-A differ", az and za and az[0].get("ratingKey") != za[0].get("ratingKey"),
+      (az[0].get("title"), za[0].get("title")))
+many = api.search("love")
+check("search returns more than 30", len(many) > 30, len(many))
+check("region lookup", api.region() == "US", api.region())
+
 print("\n%d failure(s)" % len(FAIL))
 sys.exit(1 if FAIL else 0)

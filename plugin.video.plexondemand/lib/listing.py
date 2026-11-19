@@ -1,5 +1,11 @@
 """Plex Metadata -> Kodi ListItem art and info tags."""
 
+# Artwork goes through images.plex.tv's transcoder at roughly the size Kodi
+# shows it (a 920 KB source poster arrives at ~29 KB); clearlogos keep their
+# transparency, so they stay as they are.
+SIZES = {"poster": (400, 600), "thumb": (400, 600), "fanart": (1280, 720)}
+EPISODE_THUMB = (640, 360)
+
 
 def art(m):
     art = {}
@@ -24,6 +30,12 @@ def art(m):
         art.setdefault("fanart", m.get("grandparentArt") or "")
     elif m.get("type") == "season":
         art.setdefault("fanart", m.get("parentArt") or "")
+    from .api import image
+    for kind, (w, h) in SIZES.items():
+        if art.get(kind):
+            if kind == "thumb" and m.get("type") == "episode":
+                w, h = EPISODE_THUMB
+            art[kind] = image(art[kind], w, h)
     return art
 
 

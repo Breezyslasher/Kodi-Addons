@@ -37,8 +37,20 @@ Actions, US region, anonymous token):
   Up next         POST {vod}/playQueues?uri=provider://tv.plex.provider.vod
                   /library/metadata/<rk>&type=video&continuous=1 -> the rest of
                   the show in order (Metadata[])
-  Actions         PUT {vod}/actions/scrobble|removeFromContinueWatching
-                  ?ratingKey=<rk> (from the provider's Feature "actions")
+  Actions         PUT {vod}/actions/scrobble|unscrobble|removeFromContinueWatching
+                  |addToWatchlist|removeFromWatchlist ?ratingKey=<rk>
+  Watchlist       GET discover.provider.plex.tv/library/sections/watchlist/all
+                  (paged; works for the anonymous account too)
+  Sort            genre listings take sort=titleSort|titleSort:desc|
+                  audienceRating:desc (year/decade/contentRating filters are
+                  ignored by the provider)
+  Images          images.plex.tv/photo?url=<art>&width=&height= (no token);
+                  a 920 KB poster comes back at ~29 KB for 300x450
+  Search          limit=100 honoured, offset ignored
+  Related         GET {vod}/library/metadata/<rk>/similarTitles and
+                  /more-from-credits -> 30 free titles each ("You Might Also
+                  Like", "More From This Cast & Crew"). /library/people/<id>
+                  has no filmography, so cast browsing goes through the latter.
 
 The VOD base is read from plex.tv/media/providers once per run (falls back to
 the constant; the Advanced setting overrides both).
@@ -105,8 +117,11 @@ class PlexVodApi(object):
     def genres(self, media_type):
         return self._get("/library/sections/movies/genre", {"type": media_type}).get("Directory") or []
 
-    def listing(self, key, start=0):
-        c = self._get(key, self.page_params(start))
+    def listing(self, key, start=0, sort=None):
+        params = self.page_params(start)
+        if sort:
+            params["sort"] = sort
+        c = self._get(key, params)
         return c.get("Metadata") or [], _total(c)
 
     def metadata(self, rating_key, markers=False):
@@ -123,7 +138,7 @@ class PlexVodApi(object):
     def search(self, query):
         c = self._get(DISCOVER_BASE + "/library/search", {
             "query": query, "searchTypes": "movies,tv", "searchProviders": "discover,plexAVOD",
-            "includeMetadata": 1, "limit": 30})
+            "includeMetadata": 1, "limit": 100})
         out = []
         for section in c.get("SearchResults") or []:
             if section.get("id") != "plex":
@@ -150,6 +165,22 @@ class PlexVodApi(object):
             kodiutils.log("userState %s: %s" % (rating_key, exc))
             return {}
         return (c.get("UserState") or [{}])[0]
+
+    def related(self, rating_key, kind="similarTitles"):
+        """kind: similarTitles | more-from-credits (both free VOD titles)."""
+        return self._get("/library/metadata/%s/%s" % (rating_key, kind), {"count": 50}).get("Metadata") or []
+
+    def watchlist(self, start=0):
+        c = self._get(DISCOVER_BASE + "/library/sections/watchlist/all", self.page_params(start))
+        return c.get("Metadata") or [], _total(c)
+
+    def region(self):
+        """Two-letter country Plex places this connection in, or ''."""
+        try:
+            resp = self.session.get("https://plex.tv/api/v2/geoip", headers=self.headers(), timeout=TIMEOUT)
+            return (resp.json() or {}).get("code") or ""
+        except Exception:
+            return ""
 
     def user_states(self, rating_keys):
         """{ratingKey: UserState} for many titles in one call (comma-joined)."""
@@ -232,6 +263,15 @@ def _provider_base(api):
     except Exception as exc:
         kodiutils.log("provider list unavailable, using %s: %s" % (VOD_BASE, exc))
     return _PROVIDER_BASE
+
+
+def image(url, width, height):
+    """Resized artwork through Plex's image transcoder (no token needed)."""
+    if not url or not url.startswith("http") or not kodiutils.get_setting_bool("resize_art", True):
+        return url
+    from urllib.parse import urlencode
+    return "https://images.plex.tv/photo?" + urlencode(
+        {"url": url, "width": width, "height": height, "minSize": 1, "upscale": 1})
 
 
 def _total(container):
