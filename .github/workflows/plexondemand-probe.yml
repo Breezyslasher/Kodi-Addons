@@ -5,8 +5,13 @@ name: Plex On Demand probe
 # GitHub runner (US region) so the addon is written against real responses.
 # Uses an anonymous Plex token only; no account or secrets. Pushes run the
 # smoke test of the addon's own lib/ code; a manual run also runs the probe.
+# Daily (from main) it is the endpoint check: the scheduled run files or
+# updates one rolling issue (label plexondemand-endpoint) when the smoke test
+# fails, so a Plex API change is known within a day.
 
 on:
+  schedule:
+    - cron: '41 8 * * *'
   workflow_dispatch:
     inputs:
       query:
@@ -22,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 jobs:
   probe:
@@ -38,7 +44,40 @@ jobs:
         run: python3 -u plugin.video.plexondemand/tools/test_service.py
 
       - name: Smoke-test the addon code against the live service
-        run: python3 -u plugin.video.plexondemand/tools/smoke_test.py
+        id: smoke
+        run: |
+          set +e
+          python3 -u plugin.video.plexondemand/tools/smoke_test.py | tee smoke.txt
+          status=${PIPESTATUS[0]}
+          { echo '```'; cat smoke.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+
+      - name: Open or update the endpoint issue (scheduled runs only)
+        if: failure() && github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.existsSync('smoke.txt') ? fs.readFileSync('smoke.txt', 'utf8') : '(no output)';
+            const label = 'plexondemand-endpoint';
+            const open = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo, state: 'open', labels: label,
+            });
+            const text = [
+              'The daily Plex On Demand endpoint check failed; the addon may be broken until this is fixed.', '',
+              '```', body.trim().split('\n').filter(l => !l.startsWith('PASS')).join('\n'), '```', '',
+              `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            ].join('\n');
+            if (open.data.length) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: open.data[0].number, body: text,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner, repo: context.repo.repo,
+                title: 'Plex On Demand addon: a Plex endpoint has changed', body: text, labels: [label],
+              });
+            }
 
       - name: Probe
         if: github.event_name == 'workflow_dispatch'

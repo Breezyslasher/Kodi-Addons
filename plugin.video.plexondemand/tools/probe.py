@@ -978,6 +978,32 @@ def round10():
     return 0
 
 
+def round11():
+    """Contents of the related hubs; whether their items are free VOD titles."""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    disc = "https://discover.provider.plex.tv"
+    for rk in ("5d9f3cb89dd5f4001e84c9e8", "61effc8a9911a6c1eee7f3dd"):  # a movie, a show
+        print(f"\n######## {rk}")
+        for host, h in (("vod", base), ("disc", disc)):
+            for tail in ("similarTitles", "more-from-credits", "studio"):
+                st, d = req_json("GET", h + f"/library/metadata/{rk}/{tail}", headers=T, params={"count": 10})
+                c = mc(d)
+                items = c.get("Metadata") or []
+                srcs = sorted(set((m.get("source") or "-").split("/")[-1] for m in items))
+                media = sum(1 for m in items if m.get("Media"))
+                print(f"== {host} {tail} -> {st} size={c.get('size')} total={c.get('totalSize')} sources={srcs} "
+                      f"withMedia={media} first={[(m.get('type'), m.get('title')) for m in items[:4]]}")
+        # are the disc similar titles playable from the VOD provider?
+        _, d = req_json("GET", disc + f"/library/metadata/{rk}/similarTitles", headers=T, params={"count": 10})
+        for m in (mc(d).get("Metadata") or [])[:4]:
+            st, _ = req_json("GET", base + f"/library/metadata/{m['ratingKey']}", headers=T)
+            print(f"   disc similar {m.get('title')!r} on VOD -> {st}")
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -989,5 +1015,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round10")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round11")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11}.get(mode, main)())
