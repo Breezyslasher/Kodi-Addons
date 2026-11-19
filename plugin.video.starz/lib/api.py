@@ -607,8 +607,17 @@ class StarzApi(object):
         data = self.auth.request("GET", AUTH_API + "ParentalControls/" + profile_id).json()
         return (data or {}).get("parentalControls") or []
 
-    def check_pin(self, pin):
-        """POST ParentalControls/Pin {"parentalControlPin"} -> 204 when right."""
+    def has_pin(self):
+        """GET User -> hasParentalControlPIN: whether the account has a
+        parental-control PIN yet (the website asks for a new one if not)."""
+        user = self.auth.request("GET", AUTH_API + "User").json() or {}
+        return bool(user.get("hasParentalControlPIN"))
+
+    def create_pin(self, pin):
+        """POST ParentalControls/Pin {"parentalControlPin"} -> 204. This sets
+        the account's FIRST PIN (the website's newPin); with a PIN already
+        set it answers 403. An existing PIN is checked by the save itself:
+        PUT ParentalControls answers 403 for a wrong one."""
         self.auth.request("POST", AUTH_API + "ParentalControls/Pin",
                           json={"parentalControlPin": pin})
 

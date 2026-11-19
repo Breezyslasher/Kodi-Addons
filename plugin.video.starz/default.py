@@ -750,20 +750,38 @@ def do_profile_menu(api, auth, profile_id):
             kodiutils.notify(L(32151) % p.get("name", ""))
             xbmc.executebuiltin("Container.Refresh")
     else:
+        # Starz only takes parental-control changes from the account owner's
+        # profile (the website shows them only then); otherwise 403, code 0.
+        current = profiles.get(auth.profile_id) or {}
+        if not current.get("isAdmin"):
+            owner = next((x for x in profiles.values() if x.get("isAdmin")), None)
+            if not owner or not xbmcgui.Dialog().yesno(
+                    kodiutils.ADDON_NAME, L(32167) % owner.get("name", "")):
+                return
+            auth.select_profile(owner)
+            kodiutils.notify(L(32149) % owner.get("name", ""))
         do_parental(api, p)
 
 
 def do_parental(api, profile):
-    """The website's rating slider: the account PIN first, then the most a
-    profile may watch, separately for TV and for movies."""
-    pin = xbmcgui.Dialog().numeric(0, L(32152), bHiddenInput=True)
-    if not pin:
-        return
+    """The website's rating slider: the most a profile may watch, separately
+    for TV and for movies, saved with the account PIN. As on the website, an
+    account without a PIN creates one first; an existing PIN is checked by
+    the save (403 = wrong PIN, so it asks again)."""
     try:
-        api.check_pin(pin)
-    except StarzAuthError as exc:
-        kodiutils.ok_dialog("%s\n\n%s" % (L(32153), exc))
-        return
+        has_pin = api.has_pin()
+    except StarzAuthError:
+        has_pin = True
+    pin = None
+    if not has_pin:
+        pin = _new_pin()
+        if not pin:
+            return
+        try:
+            api.create_pin(pin)
+        except StarzAuthError as exc:
+            kodiutils.ok_dialog("%s\n\n%s" % (L(32024), exc))
+            return
     controls = api.parental_controls(profile["id"])
     limits = {}
     for kind, heading in (("TV", L(32154)), ("MPAA", L(32155))):
@@ -778,8 +796,35 @@ def do_parental(api, profile):
         if i < 0:
             return
         limits[kind] = ratings[i]
-    api.set_parental_limits(profile["id"], pin, controls, limits)
-    kodiutils.notify(L(32157) % profile.get("name", ""))
+    for _ in range(3):
+        if not pin:
+            pin = xbmcgui.Dialog().numeric(0, L(32152), bHiddenInput=True)
+            if not pin:
+                return
+        try:
+            api.set_parental_limits(profile["id"], pin, controls, limits)
+        except StarzAuthError as exc:
+            if getattr(exc, "status", None) == 403 and exc.code == 1500:
+                kodiutils.ok_dialog(L(32153))   # "Specified PIN is not correct"
+                pin = None
+                continue
+            raise
+        kodiutils.notify(L(32157) % profile.get("name", ""))
+        return
+
+
+def _new_pin():
+    """Ask for a new 4-digit PIN twice; None if cancelled or mismatched."""
+    first = xbmcgui.Dialog().numeric(0, L(32163), bHiddenInput=True)
+    if not first:
+        return None
+    if len(first) != 4:
+        kodiutils.ok_dialog(L(32165))
+        return None
+    if xbmcgui.Dialog().numeric(0, L(32164), bHiddenInput=True) != first:
+        kodiutils.ok_dialog(L(32166))
+        return None
+    return first
 
 
 # -- TV schedule -------------------------------------------------------------

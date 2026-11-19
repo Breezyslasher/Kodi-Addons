@@ -47,7 +47,7 @@ calls and opens an issue when one changes.
 **Account**
 - Profiles with their pictures, and **Manage profiles** (Settings → Account): add a profile (name
   and picture), rename it or change its picture, delete one, and set its parental controls (highest TV and
-  movie rating) with your Starz parental-control PIN. Each profile's limits
+  movie rating) with your Starz parental-control PIN, from the account owner's profile (Kodi offers to switch to it). Each profile's limits
   are applied: titles with a blocked rating are hidden.
 - Not in Kodi: changing your email, password or PIN (use starz.com)
 - **Manage devices** (Settings → Account): log out other devices. Starz allows 6; at the limit,
