@@ -38,6 +38,18 @@ class AddonPathTest(unittest.TestCase):
         self.assertEqual(addon_links.addon_path('https://www.starz.com/us/en/series/the-white-queen/season-1/18331'),
                          (None, None))
 
+    def test_plex_free_catalogue(self):
+        play = 'plugin://plugin.video.plexondemand/?action=play&rk=%s'
+        link = ('https://watch.plex.tv/show/forensic-files/season/1/episode/1?autoplay=1'
+                '&utm_content=5d9c0c4a02391c001f5addaa&utm_medium=deeplink&utm_source=justWatch-v2-catalog')
+        self.assertEqual(addon_links.addon_path(link), ('plugin.video.plexondemand', play % '5d9c0c4a02391c001f5addaa'))
+        self.assertEqual(addon_links.addon_path('https://watch.plex.tv/movie/the-terminator?utm_content=5d776b59ad5437001f79ec8f'),
+                         ('plugin.video.plexondemand', play % '5d776b59ad5437001f79ec8f'))
+        # live TV (its utm_content is a channel), and a link without the id
+        for link in ('https://watch.plex.tv/live-tv/channel/forensic-files?autoplay=1&utm_content=6449369f243fbe342a9c0b4d',
+                     'https://watch.plex.tv/movie/the-terminator'):
+            self.assertEqual(addon_links.addon_path(link), (None, None))
+
     def test_crunchyroll(self):
         # One Piece Film Red (the link the Android app and extension share)
         for link in ('https://www.crunchyroll.com/watch/GZ7UV2MZK/one-piece-film-red',

@@ -255,6 +255,7 @@ const ADDON_HOSTS = {
   'plugin.video.crunchyroll': ['crunchyroll.com'],
   'plugin.video.starz': ['starz.com'],
   'plugin.video.plutotv': ['pluto.tv'],
+  'plugin.video.plexondemand': ['watch.plex.tv'],
 };
 
 /** The addon in a plugin:// path ("plugin://slyguy.hulu/?…" → "slyguy.hulu"). */
@@ -267,12 +268,15 @@ export function addonOf(plugin) {
 export function sameService(link, addon) {
   const hosts = ADDON_HOSTS[addon];
   if (!hosts) return false;
-  let host;
+  let url;
   try {
-    host = new URL(String(link).trim()).hostname.toLowerCase();
+    url = new URL(String(link).trim());
   } catch (e) {
     return false;
   }
+  // a live channel on the same site (Plex, Pluto) isn't the title
+  if (url.pathname.includes('/live-tv/')) return false;
+  const host = url.hostname.toLowerCase();
   return hosts.some(h => host === h || host.endsWith(`.${h}`));
 }
 

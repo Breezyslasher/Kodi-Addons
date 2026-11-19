@@ -72,6 +72,13 @@ addon's own source (2026-11-15):
   starz.com/us/en/play/<id> (phones, and Kodi's own shares). A season page
   (/us/en/series/<name>/season-<n>/<id>) isn't an episode (2026-11-18).
   Movies and episodes played on Kodi and on an Android phone (2026-11-19).
+- Plex's free catalogue, plugin.video.plexondemand (Breezyslasher's,
+  Kodi-Addons branch plugin.video.plexondemand): ?action=play&rk=<ratingKey>
+  — JustWatch's Plex links (watch.plex.tv/movie/<slug>,
+  /show/<slug>/season/<n>/episode/<n>) carry it as utm_content: Forensic
+  Files S1 E1-2 and Forensic Files II S1 E1 looked up as those episodes
+  (WatchParty's tools/probe/plex_vod.py, 2026-11-19). A link without it, and
+  Plex's live TV (/live-tv/), aren't titles.
 
 SlyGuy's paths are built as SlyGuy's router builds them (route in "_",
 arguments sorted); the addons parse them the same way.
@@ -167,6 +174,12 @@ def addon_path(link, media_type=''):
             cid = m.group(1) or m.group(2) or m.group(3)
             return ('plugin.video.starz', 'plugin://plugin.video.starz/?' + urlencode(
                 [('action', 'play'), ('content_id', cid)]))
+    elif host == 'watch.plex.tv':
+        rk = (query.get('utm_content') or [''])[0]
+        if re.match(r'^/(?:[a-z]{2}/)?(?:movie/[^/]+|show/[^/]+/season/\d+/episode/\d+)/?$', path) \
+                and re.match(r'^[0-9a-f]{24}$', rk):
+            return ('plugin.video.plexondemand', 'plugin://plugin.video.plexondemand/?' + urlencode(
+                [('action', 'play'), ('rk', rk)]))
     elif on('crunchyroll.com'):
         m = re.match(r'^/(?:[a-z]{2}(?:-[a-z]{2})?/)?watch/([A-Z0-9]+)(?:/|$)', path)
         if m:
