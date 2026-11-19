@@ -166,47 +166,34 @@ def show_people(api, content_id):
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-# The website's corner tags (chunk-C-jVc5mZ.js .content-badge): dark text on
-# a gradient, #92fffb -> #2dbfc4 left to right; Top 10 in the top-right
-# corner with #2ec0c5 -> #d9fffd at 15deg. imgix draws no gradients, so the
-# gradient is a small PNG in this repo (resources/tags) blended onto the
-# image as a patch, with a see-through ~text label on top (endpoint check
-# probes badge_blend_img and badge_blend_mark). Pinned to a commit so the
-# URL never changes.
+# The website's corner tags (chunk-C-jVc5mZ.js .content-badge), pre-drawn as
+# PNGs in resources/tags (gradient, rounded corners, text; Top 10 stacked)
+# and blended onto the title's own image by imgix. Pinned to the commit that
+# added them so the URLs never change. {badge key: (width, height)}.
 TAG_IMAGES = ("https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/"
-              "d991a7901db857b5a3986b2efa26f3290827a26d/plugin.video.starz/resources/tags/")
-TAG_TEXT = "0B2B33"
+              "f452a38d6e5e02818a05e72097f17e3cfb0fbf8c/plugin.video.starz/resources/tags/")
+TAG_SIZES = {"cs": [445, 91], "fr": [179, 91], "ja": [389, 91], "ls": [453, 91], "ne": [436, 91], "nm": [379, 91], "nsea": [417, 91], "nser": [386, 91], "tc": [155, 186]}
 
 
-def _tagged_art(art, text):
-    """The title's own Starz images with ``text`` in the corner; the size
-    follows each image's requested width (w=)."""
-    top10 = text == "Top 10"
+def _tagged_art(art, key):
+    """The title's own Starz images with the tag for badge ``key`` in the
+    corner (Top 10 top-right, the rest top-left, as on the website)."""
+    tw, th = TAG_SIZES[key]
     out = dict(art)
-    for key in ("poster", "thumb", "landscape"):
-        src = art.get(key) or ""
+    for kind in ("poster", "thumb", "landscape"):
+        src = art.get(kind) or ""
         if not src.startswith("https://stz1.imgix.net/Web/"):
             continue
         width = re.search(r"[?&]w=(\d+)", src)
         width = int(width.group(1)) if width else 600
-        size = max(int(width * (0.045 if key == "poster" else 0.025)), 14)
-        pad = max(size // 3, 4)
-        box_w = int(len(text) * size * 0.68) + 2 * pad
-        box_h = int(size * 1.3) + pad
-        edge = str(max(width // 60, 6))
-        align = "top,right" if top10 else "top,left"
-        # The text goes straight onto the image (txt=, probe badge_blend_txt):
-        # a ~text label stamped with mark= lost its text over the blend.
-        out[key] = src + "&" + urlencode({
-            "blend": TAG_IMAGES + ("top10.png" if top10 else "tag.png"),
-            "blend-mode": "normal", "blend-w": str(box_w), "blend-h": str(box_h),
-            # stretch to the box: by default imgix keeps the PNG's shape
-            # (a square Top 10, a 4:1 strip too short for Leaving Soon).
-            "blend-fit": "scale",
-            "blend-align": align, "blend-pad": edge,
-            "txt": text, "txt-size": str(size), "txt-color": TAG_TEXT,
-            "txt-font": "Helvetica Neue,Bold", "txt-align": align,
-            "txt-pad": str(int(edge) + pad)})
+        # A one-line tag is about 6% of a poster's width tall (website).
+        height = max(int(width * (0.06 if kind == "poster" else 0.035)), 16)
+        height = height * th // 91          # Top 10 is two lines
+        out[kind] = src + "&" + urlencode({
+            "blend": TAG_IMAGES + key + ".png", "blend-mode": "normal",
+            "blend-w": str(height * tw // th), "blend-h": str(height),
+            "blend-fit": "scale", "blend-pad": "0",
+            "blend-align": "top,right" if key == "tc" else "top,left"})
     return out
 
 
@@ -215,13 +202,15 @@ def add_item(item):
     extras = [item["label_extra"]] if item.get("label_extra") else []
     # Starz's badges (New Season, New Episode, Top 10, Leaving Soon...); Coming
     # Soon has its own marker below.
-    tags = [STATE["badges"][k] for k in item.get("badge_keys") or []
+    keys = [k for k in item.get("badge_keys") or []
             if k != "cs" and k in (STATE.get("badges") or {})]
-    if tags and STATE.get("poster_tags") and item.get("art"):
-        # Drawn in the poster's corner, as on the website; the rest (rare)
+    drawn = next((k for k in keys if k in TAG_SIZES), None)
+    if drawn and STATE.get("poster_tags") and item.get("art"):
+        # Drawn in the image's corner, as on the website; any others (rare)
         # stay in the label.
-        item = dict(item, art=_tagged_art(item["art"], tags[0]))
-        tags = tags[1:]
+        item = dict(item, art=_tagged_art(item["art"], drawn))
+        keys.remove(drawn)
+    tags = [STATE["badges"][k] for k in keys]
     extras += tags
     if extras:
         label = "%s  [COLOR grey]%s[/COLOR]" % (label, " · ".join(extras))

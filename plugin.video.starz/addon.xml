@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.19.22" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.19.23" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,7 +35,10 @@ Features:
 			<clearlogo>resources/clearlogo.png</clearlogo>
 			<banner>resources/banner.png</banner>
 		</assets>
-		<news>v2026.11.19.22
+		<news>v2026.11.19.23
+- Poster tags drawn like the website: rounded, gradient, Top 10 stacked in the top-right corner
+
+v2026.11.19.22
 - Poster tags: the box fits the whole text (Leaving Soon, Top 10)
 
 v2026.11.19.21
