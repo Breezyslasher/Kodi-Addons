@@ -5,8 +5,9 @@ Capture-confirmed:
   GET {vod}/timeline?ratingKey&key&state&time&duration -> 200 (POST/PUT 404);
       the reported time is what userState / Continue Watching return later.
   PUT {vod}/actions/scrobble?ratingKey -> 200, userState viewState complete.
-  Metadata?includeMarkers=1 -> Marker {type: credits, startTimeOffset} on some
-      titles; the next episode comes from a continuous playQueue (playback.py).
+  Metadata?includeMarkers=1 -> Marker {type: credits, startTimeOffset, final}
+      on ~22% of movies and no episodes (survey); no intro markers seen. The
+      next episode comes from a continuous playQueue (playback.py).
 """
 
 import json
@@ -37,6 +38,7 @@ class Player(xbmc.Player):
         self.last_report = 0
         self.last_time = 0
         self.skip = None
+        self.next_started = False
         if SkipController:
             self.skip = SkipController(self, play_next=self.play_next,
                                        autoplay=lambda: kodiutils.get_setting_bool("autoplay_next", True))
@@ -90,7 +92,10 @@ class Player(xbmc.Player):
         raw = xbmcgui.Window(10000).getProperty(PROP)
         xbmcgui.Window(10000).clearProperty(PROP)
         self.current = json.loads(raw) if raw else None
+        self.next_started = False
         if not self.current:
+            if self.skip:  # another add-on's video: no button left from an earlier title
+                self.skip.reset()
             return
         self.tick()
         self._report("playing")
@@ -102,6 +107,8 @@ class Player(xbmc.Player):
                 credits = duration - CREDITS_FALLBACK
             if credits:
                 marks["credits"] = credits
+            if self.current.get("intro"):
+                marks["intro"] = tuple(self.current["intro"])
             self.skip.reset(marks, has_next=bool(self.current.get("next")))
 
     def onPlayBackPaused(self):
@@ -115,9 +122,14 @@ class Player(xbmc.Player):
         self._finish()
 
     def onPlayBackEnded(self):
+        # Autoplay at the end whenever there is a next episode, including after
+        # "Watch credits" or a dismissed countdown; but not when the countdown
+        # already started it, or it would play twice.
         nxt = (self.current or {}).get("next")
+        started = self.next_started
         self._finish(ended=True)
-        if nxt and not self.skip and kodiutils.get_setting_bool("autoplay_next", True):
+        self.next_started = False
+        if nxt and not started and kodiutils.get_setting_bool("autoplay_next", True):
             self._play(nxt)
 
     def onPlayBackError(self):
@@ -129,6 +141,7 @@ class Player(xbmc.Player):
     def play_next(self):
         nxt = (self.current or {}).get("next")
         if nxt:
+            self.next_started = True
             self._play(nxt)
 
     @staticmethod

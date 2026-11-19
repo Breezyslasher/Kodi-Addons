@@ -17,6 +17,7 @@ on:
     branches: [ plugin.video.plexondemand ]
     paths:
       - 'plugin.video.plexondemand/**'
+      - 'script.module.skipbuttons/**'
       - '.github/workflows/plexondemand-probe.yml'
 
 permissions:
@@ -30,6 +31,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+      - name: Offline test of the service and Skip Buttons wiring
+        run: python3 -u plugin.video.plexondemand/tools/test_service.py
+
       - name: Smoke-test the addon code against the live service
         run: |
           pip install -q requests

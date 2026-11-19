@@ -183,11 +183,20 @@ def _isa_version():
 def _remember(m, nxt=None):
     """Hand the playing title to service.py: /timeline progress reports,
     the credits marker and the next episode for the skip-buttons countdown."""
-    credits = None
-    for mk in m.get("Marker") or []:
-        if mk.get("type") == "credits" and mk.get("startTimeOffset") is not None:
-            credits = int(mk["startTimeOffset"]) / 1000.0
+    markers = m.get("Marker") or []
+    # Plex can send an early credits sequence and the final one; the final one
+    # carries "final": true (every credits marker in the round-9 survey did).
+    # Prefer it, else the latest start.
+    marks = [mk for mk in markers if mk.get("type") == "credits" and mk.get("startTimeOffset") is not None]
+    final = [mk for mk in marks if mk.get("final")] or marks
+    credits = max(int(mk["startTimeOffset"]) for mk in final) / 1000.0 if final else None
+    # No intro markers have been seen on these titles (survey: 0 of 657), but
+    # Plex's format is the same; hand one over so Skip intro works if it comes.
+    intro = next(((int(mk["startTimeOffset"]) / 1000.0, int(mk["endTimeOffset"]) / 1000.0)
+                  for mk in markers
+                  if mk.get("type") == "intro" and mk.get("startTimeOffset") is not None
+                  and mk.get("endTimeOffset")), None)
     xbmcgui.Window(10000).setProperty("plexondemand.playing", json.dumps({
         "ratingKey": m.get("ratingKey"), "key": m.get("key") or "/library/metadata/%s" % m.get("ratingKey"),
-        "duration": m.get("duration") or 0, "credits": credits,
+        "duration": m.get("duration") or 0, "credits": credits, "intro": intro,
         "next": (nxt or {}).get("ratingKey")}))

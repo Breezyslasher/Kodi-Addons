@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.19" provider-name="Breezyslasher">
+<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.19.1" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
 		<import addon="inputstream.adaptive" version="21.0.0"/>
 		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
-		<import addon="script.module.skipbuttons" version="1.0.1" optional="true"/>
+		<import addon="script.module.skipbuttons" version="1.0.1"/>
 	</requires>
 	<extension point="xbmc.python.pluginsource" library="default.py">
 		<provides>video</provides>
@@ -28,7 +28,13 @@ Unofficial; not affiliated with or endorsed by Plex, Inc.</description>
 			<icon>resources/icon.png</icon>
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
-		<news>v2026.11.19
+		<news>v2026.11.19.1
+- Next episode now also autoplays at the end after "Watch credits" or a dismissed countdown
+- Skip Buttons is installed with the add-on (no longer optional)
+- Search: New search opens its results directly and survives coming back from a video
+- Reaching a movie's credits marks it watched
+
+v2026.11.19
 - First release: Plex's free Movies &amp; Shows catalogue without a Plex server or account
 - Featured rows, Movies and TV Shows by genre, search
 - Clear HLS playback with subtitles; Widevine DASH for DRM titles

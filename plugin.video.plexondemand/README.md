@@ -42,6 +42,11 @@ your real Plex account.
   credits markers either, so the Next episode countdown starts 25 seconds before the end.
   On movies with a credits marker, reaching the credits marks the movie watched.
 
+## Skip Buttons
+`script.module.skipbuttons` is a required dependency, so Kodi installs it with the add-on. Its
+buttons appear only after **Kodi is restarted** following that first install, because the
+add-on's service has to reload with the module available.
+
 ## Dev tools (not shipped in the zip)
 - `tools/smoke_test.py`: runs `lib/` against the live service with Kodi stubbed.
 - `tools/probe.py`: raw endpoint captures. Both run from
