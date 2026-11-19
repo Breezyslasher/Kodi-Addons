@@ -347,16 +347,12 @@
       "note": "Profile pictures with the initial drawn by imgix (txt=...)."
     },
     {
-      "id": "probe_badge_label_alone",
-      "url": "https://stz1.imgix.net/~text",
+      "id": "probe_badge_plain",
+      "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
       "params": {
-        "txt": "New Season",
-        "txt-size": "18",
-        "txt-color": "0B2B33",
-        "txt-font": "Helvetica Neue,Bold",
-        "txt-pad": "8",
-        "bg": "FFFFFF",
-        "fm": "png"
+        "fit": "max",
+        "w": "300",
+        "fm": "jpg"
       },
       "headers": {
         "Accept": "image/*"
@@ -365,66 +361,69 @@
         "content_type": "image/"
       },
       "report_only": true,
-      "note": "Probe: gradient tag (label_alone)."
+      "note": "Probe: gradient tag (plain)."
     },
     {
-      "id": "probe_badge_label_grad",
-      "url": "https://stz1.imgix.net/~text",
-      "params": {
-        "txt": "New Season",
-        "txt-size": "18",
-        "txt-color": "0B2B33",
-        "txt-font": "Helvetica Neue,Bold",
-        "txt-pad": "8",
-        "bg": "FFFFFF",
-        "blend": "https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/starz/plugin.video.starz/resources/tags/tag.png",
-        "blend-mode": "multiply",
-        "blend-size": "inherit",
-        "fm": "png"
-      },
-      "headers": {
-        "Accept": "image/*"
-      },
-      "expect": {
-        "content_type": "image/"
-      },
-      "report_only": true,
-      "note": "Probe: gradient tag (label_grad)."
-    },
-    {
-      "id": "probe_badge_label_grad_round",
-      "url": "https://stz1.imgix.net/~text",
-      "params": {
-        "txt": "New Season",
-        "txt-size": "18",
-        "txt-color": "0B2B33",
-        "txt-font": "Helvetica Neue,Bold",
-        "txt-pad": "8",
-        "bg": "FFFFFF",
-        "blend": "https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/starz/plugin.video.starz/resources/tags/tag.png",
-        "blend-mode": "multiply",
-        "blend-size": "inherit",
-        "fm": "png",
-        "mask": "corners",
-        "corner-radius": "6,0,10,0"
-      },
-      "headers": {
-        "Accept": "image/*"
-      },
-      "expect": {
-        "content_type": "image/"
-      },
-      "report_only": true,
-      "note": "Probe: gradient tag (label_grad_round)."
-    },
-    {
-      "id": "probe_badge_poster_grad",
+      "id": "probe_badge_blend_img",
       "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
       "params": {
         "fit": "max",
         "w": "300",
         "fm": "jpg",
-        "mark": "https://stz1.imgix.net/~text?txt=New+Season&txt-size=18&txt-color=0B2B33&txt-font=Helvetica+Neue%2CBold&txt-pad=8&bg=FFFFFF&blend=https%3A%2F%2Fraw.githubusercontent.com%2FBreezyslasher%2FKodi-Addons%2Fstarz%2Fplugin.video.starz%2Fresources%2Ftags%2Ftag.png&blend-mode=multiply&blend-size=inherit&fm=png&mask=corners&corner-radius=6%2C0%2C10%2C0",
+        "blend": "https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/starz/plugin.video.starz/resources/tags/tag.png",
+        "blend-mode": "normal",
+        "blend-w": "118",
+        "blend-h": "34",
+        "blend-align": "top,left",
+        "blend-pad": "6"
+      },
+      "headers": {
+        "Accept": "image/*"
+      },
+      "expect": {
+        "content_type": "image/"
+      },
+      "report_only": true,
+      "note": "Probe: gradient tag (blend_img)."
+    },
+    {
+      "id": "probe_badge_blend_img_fit",
+      "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
+      "params": {
+        "fit": "max",
+        "w": "300",
+        "fm": "jpg",
+        "blend": "https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/starz/plugin.video.starz/resources/tags/tag.png",
+        "blend-mode": "normal",
+        "blend-w": "118",
+        "blend-h": "34",
+        "blend-align": "top,left",
+        "blend-pad": "6",
+        "blend-fit": "scale"
+      },
+      "headers": {
+        "Accept": "image/*"
+      },
+      "expect": {
+        "content_type": "image/"
+      },
+      "report_only": true,
+      "note": "Probe: gradient tag (blend_img_fit)."
+    },
+    {
+      "id": "probe_badge_blend_mark",
+      "url": "https://stz1.imgix.net/Web/contentId/21220/type/KEY/dimension/1536x2048/lang/en-US",
+      "params": {
+        "fit": "max",
+        "w": "300",
+        "fm": "jpg",
+        "blend": "https://raw.githubusercontent.com/Breezyslasher/Kodi-Addons/starz/plugin.video.starz/resources/tags/tag.png",
+        "blend-mode": "normal",
+        "blend-w": "118",
+        "blend-h": "34",
+        "blend-align": "top,left",
+        "blend-pad": "6",
+        "mark": "https://stz1.imgix.net/~text?txt=New+Season&txt-size=18&txt-color=0B2B33&txt-font=Helvetica+Neue%2CBold&txt-pad=8&bg=00FFFFFF",
         "mark-align": "top,left",
         "mark-pad": "6"
       },
@@ -435,7 +434,7 @@
         "content_type": "image/"
       },
       "report_only": true,
-      "note": "Probe: gradient tag (poster_grad)."
+      "note": "Probe: gradient tag (blend_mark)."
     }
   ]
 }
