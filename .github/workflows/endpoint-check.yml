@@ -1,17 +1,25 @@
 name: Endpoint check (reusable)
 
-# Runs an addon's endpoint spec (see .github/endpoint-check/check_endpoints.py)
-# against the live service, and optionally files one rolling issue when it
-# fails. Each addon calls this with its own spec; see
-# starz-endpoint-check.yml for an example caller.
+# Runs an addon's endpoint checks against the live service and optionally
+# files one rolling issue when they fail. Callers pass either a declarative
+# spec for the shared engine (.github/endpoint-check/check_endpoints.py) or,
+# where a spec cannot express what has to be checked, their own script - Tubi
+# signs every request, which no JSON spec can do. See endpoint-checks.yml for
+# the callers.
 
 on:
   workflow_call:
     inputs:
       spec:
-        description: Path to the addon's endpoint spec (JSON)
-        required: true
+        description: Path to the addon's endpoint spec (JSON). Either this or script.
+        required: false
         type: string
+        default: ''
+      script:
+        description: Path to the addon's own checker script, run instead of a spec.
+        required: false
+        type: string
+        default: ''
       name:
         description: Human name used in the issue title
         required: true
@@ -40,12 +48,30 @@ jobs:
         with:
           python-version: '3.x'
 
+      # A checker script drives the addon's own code, which needs what the
+      # addon needs. The shared engine is standard library only.
+      - name: Install what the checker needs
+        if: inputs.script != ''
+        run: python3 -m pip install --quiet requests
+
       - name: Run endpoint checks
         id: check
+        env:
+          SPEC: ${{ inputs.spec }}
+          SCRIPT: ${{ inputs.script }}
         run: |
           set +e
-          python3 .github/endpoint-check/check_endpoints.py "${{ inputs.spec }}" | tee result.txt
-          echo "status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          if [ -n "$SCRIPT" ]; then
+            python3 "$SCRIPT" | tee result.txt
+            status=${PIPESTATUS[0]}
+          elif [ -n "$SPEC" ]; then
+            python3 .github/endpoint-check/check_endpoints.py "$SPEC" | tee result.txt
+            status=${PIPESTATUS[0]}
+          else
+            echo 'one of spec or script has to be given' | tee result.txt
+            status=2
+          fi
+          echo "status=$status" >> "$GITHUB_OUTPUT"
 
       - name: Summary
         if: always()
