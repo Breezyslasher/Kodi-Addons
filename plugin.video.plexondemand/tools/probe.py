@@ -737,6 +737,55 @@ def round7():
     return 0
 
 
+def round8():
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    disc = "https://discover.provider.plex.tv"
+    # 1. DRM subtitle stream fetch
+    sk = "/library/streams/62d04d8b700e44e586e47e68-eng"
+    for q in ({}, {"format": "vtt"}, {"format": "srt"}):
+        st, ct, body, fin = req("GET", base + sk, headers=T, params=q or None)
+        print(f"== sub {q} -> {st} {ct} final={mask(fin)[:170]}")
+        print("   ", mask(body[:220].decode("utf-8", "replace")).replace("\n", " | "))
+        if st == 200 and fin != base + sk:
+            r = urllib.request.Request(fin, headers={"User-Agent": "Kodi/21"})
+            try:
+                with urllib.request.urlopen(r, timeout=20) as resp:
+                    print("    bare final ->", resp.status, resp.headers.get("Content-Type"))
+            except urllib.error.HTTPError as e:
+                print("    bare final ->", e.code)
+    # 2. episode markers across a season
+    _, eps = req_json("GET", base + "/library/metadata/61effc8a9911a6c1eee7f3df/children", headers=T)
+    for e in (mc(eps).get("Metadata") or [])[:4]:
+        _, md = req_json("GET", base + f"/library/metadata/{e['ratingKey']}", headers=T, params={"includeMarkers": 1})
+        it = (mc(md).get("Metadata") or [{}])[0]
+        print("== ep", e.get("index"), "markers:", json.dumps(it.get("Marker")))
+    _, eps = req_json("GET", base + "/library/metadata/61effc8a9911a6c1eee7f3df/children", headers=T, params={"includeMarkers": 1})
+    print("== children includeMarkers:", [bool(e.get("Marker")) for e in mc(eps).get("Metadata") or []][:6])
+    # 3. scrobble / removeFromContinueWatching effect on userState
+    rk = "5d9f3cb89dd5f4001e84c9e8"
+    def us():
+        _, d = req_json("GET", disc + f"/library/metadata/{rk}/userState", headers=T)
+        return (mc(d).get("UserState") or [{}])[0]
+    req("GET", base + "/timeline", headers=T, params={"ratingKey": rk, "key": f"/library/metadata/{rk}",
+        "state": "stopped", "time": 300000, "duration": 5624703})
+    print("== userState after progress:", us())
+    st, ct, body, _ = req("PUT", base + "/actions/removeFromContinueWatching", headers=T, params={"ratingKey": rk})
+    print("== removeFromContinueWatching ->", st, mask(body[:150].decode()))
+    _, cw = req_json("GET", base + "/hubs/continueWatching", headers=T)
+    print("   CW after remove:", [m.get("title") for h in mc(cw).get("Hub") or [] for m in h.get("Metadata") or []])
+    st, ct, body, _ = req("PUT", base + "/actions/scrobble", headers=T, params={"ratingKey": rk})
+    print("== scrobble(ratingKey) ->", st, "userState:", us())
+    st, ct, body, _ = req("PUT", base + "/actions/unscrobble", headers=T, params={"ratingKey": rk})
+    print("== unscrobble ->", st, mask(body[:120].decode()), "userState:", us())
+    # batch userState?
+    st, ct, body, _ = req("GET", disc + "/library/metadata/" + rk + ",5d9f3c2d9dd5f4001e84b59c/userState", headers=T)
+    print("== batch userState ->", st, mask(body[:300].decode("utf-8", "replace")))
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -748,5 +797,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round7")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round8")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8}.get(mode, main)())
