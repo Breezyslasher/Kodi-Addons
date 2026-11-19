@@ -20,10 +20,49 @@ jobs:
     - name: Generate repository files
       run: |
         import os
+        import re
         import shutil
         import zipfile
         import hashlib
         import xml.etree.ElementTree as ET
+
+        def version_key(v):
+            """Numeric key for dotted versions like 2026.7.6.3; None if not plain numbers."""
+            parts = v.split('.')
+            return tuple(int(p) for p in parts) if all(p.isdigit() for p in parts) else None
+
+        def older_entries(addon_id, zip_dir, current_version):
+            """addons.xml entries for the older zips kept in zip_dir, newest first."""
+            current_key = version_key(current_version)
+            if current_key is None:
+                return []
+            found = []
+            for name in os.listdir(zip_dir):
+                if not (name.startswith(addon_id + '-') and name.endswith('.zip')):
+                    continue
+                try:
+                    with zipfile.ZipFile(os.path.join(zip_dir, name)) as zf:
+                        xml_text = zf.read(f'{addon_id}/addon.xml').decode('utf-8')
+                    root = ET.fromstring(xml_text.encode('utf-8'))
+                except Exception as e:
+                    print(f"  old zip skipped ({name}): {e}")
+                    continue
+                version = root.get('version') or ''
+                key = version_key(version)
+                # Kodi downloads <id>-<version>.zip, so the name must match the addon.xml inside.
+                if root.get('id') != addon_id or name != f'{addon_id}-{version}.zip':
+                    print(f"  old zip skipped ({name}): id/version doesn't match file name")
+                    continue
+                if key is None or key >= current_key:
+                    continue
+                entry = xml_text[xml_text.find('<addon'):].strip()
+                # Drop the changelog to keep addons.xml small.
+                entry = re.sub(r'\s*<news>.*?</news>', '', entry, flags=re.S)
+                found.append((key, version, entry))
+            found.sort(reverse=True)
+            for _, version, _ in found:
+                print(f"  older version listed: {version}")
+            return [entry for _, _, entry in found]
 
         # Addon folders to process
         addon_folders = [
@@ -130,7 +169,13 @@ jobs:
             addon_start = addon_xml.find('<addon')
             if addon_start != -1:
                 addons_xml_content += addon_xml[addon_start:].strip() + '\n'
-        
+
+            # List the older zips too, so Kodi's "Versions" button can install them.
+            # Not for the repository add-on: downgrading it could point Kodi at an old feed.
+            if not actual_addon_id.startswith('repository.'):
+                for entry in older_entries(actual_addon_id, zip_dir, version):
+                    addons_xml_content += entry + '\n'
+
         addons_xml_content += '</addons>\n'
         
         # Write addons.xml to ZIPS folder
