@@ -1,49 +1,62 @@
 """Skip recap / Skip intro / Next episode buttons over the video.
 
-Written to be add-on independent (to become a shared module): the caller
-passes the markers, the labels and what "next episode" does. Nothing here
-knows about Starz except markers(), which reads Starz's fields.
+Kodi has no skip button of its own. This module shows a small dialog in the
+bottom-right corner while a marked part of the video plays, as streaming
+apps do. Any add-on that knows where those parts are can use it:
 
-Every episode's detail (v8/content) carries them, as the Starz apps use:
-"recap": {"timeIn", "timeOut"}, "intro": {"timeIn", "timeOut"} and
-"creditTimeIn" (seconds; e.g. Power S1E2: recap 10-61, intro 62-152,
-credits 3432). Kodi has no skip button of its own, so this shows a small
-dialog over the video (resources/skins/default/1080i/script-starz-skip.xml),
-as Up Next does for its pop-up.
+    from skipbuttons import SkipController
+
+    class Player(xbmc.Player):
+        def __init__(self):
+            xbmc.Player.__init__(self)
+            self.skip = SkipController(self, play_next=self.start_next_episode)
+
+        def onAVStarted(self):
+            self.skip.reset({"recap": (10, 61), "intro": (62, 152),
+                             "credits": 3432}, has_next=True)
+
+        def onPlayBackStopped(self):
+            self.skip.reset()          # closes any button
+
+    # and once a second, from the service loop, while playing:
+    player.skip.tick(player.getTime(), time.time())
+
+Markers are seconds into the video; any of them may be missing:
+
+* "recap": (start, end)  -> Skip recap (jumps to end)
+* "intro": (start, end)  -> Skip intro (jumps to end)
+* "credits": start       -> Next episode, counting down; Watch credits
+
+Skip buttons hide themselves after SKIP_SHOW_SECS so Kodi's own controls
+stay reachable; Back hides any button. At the credits the countdown calls
+play_next() unless the viewer chooses Watch credits.
 """
 
 import xbmc
+import xbmcaddon
 import xbmcgui
-
+import xbmcvfs
 
 PRIMARY, SECONDARY = 3001, 3002
 BACK = (xbmcgui.ACTION_NAV_BACK, xbmcgui.ACTION_PREVIOUS_MENU)
 SKIP_SHOW_SECS = 10     # a skip button hides itself after this long
 NEXT_DELAY_SECS = 10    # the countdown before the next episode starts
+MODULE_ID = "script.module.skipbuttons"
+SKIN_FILE = "script-skipbuttons.xml"
 
 
-def markers(content):
-    """{"recap": (in, out), "intro": (in, out), "credits": t} from a title's
-    detail; only sensible ranges."""
-    out = {}
-    runtime = _num(content.get("runtime"))
-    for name in ("recap", "intro"):
-        seg = content.get(name) or {}
-        t_in, t_out = _num(seg.get("timeIn")), _num(seg.get("timeOut"))
-        if t_in is not None and t_out and t_out - t_in >= 5:
-            out[name] = (t_in, t_out)
-    credits = _num(content.get("creditTimeIn"))
-    # Ignore a credits time at (or past) the very end (previews: = runtime).
-    if credits and credits > 60 and (not runtime or credits < runtime - 5):
-        out["credits"] = credits
-    return out
+def _module():
+    return xbmcaddon.Addon(MODULE_ID)
 
 
-def _num(value):
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+def default_labels():
+    """The module's own, translatable button texts."""
+    s = _module().getLocalizedString
+    return {"recap": s(30000), "intro": s(30001), "next": s(30002), "credits": s(30003)}
+
+
+def _log(msg):
+    xbmc.log("[%s] %s" % (MODULE_ID, msg), xbmc.LOGINFO)
 
 
 class SkipDialog(xbmcgui.WindowXMLDialog):
@@ -80,39 +93,31 @@ class SkipDialog(xbmcgui.WindowXMLDialog):
             self.close()
 
 
-def _log(msg):
-    xbmc.log("[skip] %s" % msg, xbmc.LOGINFO)
-
-
-def new_dialog(skin_path, primary, secondary=""):
-    d = SkipDialog("script-starz-skip.xml", skin_path, "default", "1080i")
-    d.primary_label, d.secondary_label = primary, secondary
-    return d
-
-
 class SkipController(object):
-    """Driven once a second by the service with the playing position."""
+    """Drive with tick(position, now) about once a second while playing."""
 
-    def __init__(self, player, play_next, labels, skin_path, autoplay=lambda: True):
-        """labels: {"recap", "intro", "next" (with %d for seconds left),
-        "credits"}; skin_path: the add-on folder holding resources/skins;
-        autoplay: callable, whether the credits countdown is wanted."""
+    def __init__(self, player, play_next=None, labels=None, autoplay=None):
+        """player: the xbmc.Player (for seekTime); play_next: callable that
+        starts the next episode (no Next episode button without it);
+        labels: override any of {"recap", "intro", "next" (with %d for the
+        seconds left), "credits"}; autoplay: callable returning whether the
+        credits countdown is wanted (default: always)."""
         self.player = player
-        self.play_next = play_next   # callable: start the next episode
-        self.labels = labels
-        self.skin_path = skin_path
-        self.autoplay = autoplay
+        self.play_next = play_next
+        self.labels = default_labels()
+        self.labels.update(labels or {})
+        self.autoplay = autoplay or (lambda: True)
+        self.skin_path = xbmcvfs.translatePath(_module().getAddonInfo("path"))
         self.reset()
 
-    def reset(self, marks=None, has_next=False, next_title="", own_credits=True):
+    def reset(self, marks=None, has_next=False, credits=True):
+        """New markers for a new video (none: just close). credits=False
+        leaves the credits to someone else (e.g. Up Next's pop-up)."""
         self.close()
         self.marks = marks or {}
         self.has_next = has_next
-        self.next_title = next_title
-        self.own_credits = own_credits   # False when Up Next does the credits
+        self.own_credits = credits
         self.done = set()                # segments dismissed or used
-        self.dialog = None
-        self.segment = None
         self.shown_at = None
 
     def close(self):
@@ -130,8 +135,8 @@ class SkipController(object):
             seg = self.marks.get(name)
             if seg and seg[0] <= pos < seg[1] - 2:
                 return name
-        if (self.marks.get("credits") and self.has_next and self.own_credits
-                and pos >= self.marks["credits"]
+        if (self.marks.get("credits") and self.has_next and self.play_next
+                and self.own_credits and pos >= self.marks["credits"]
                 and self.autoplay()):
             return "credits"
         return None
@@ -170,8 +175,10 @@ class SkipController(object):
         else:
             primary, secondary = self.labels[seg], ""
         self.segment, self.shown_at = seg, now
-        self.dialog = new_dialog(self.skin_path, primary, secondary)
-        self.dialog.show()
+        d = SkipDialog(SKIN_FILE, self.skin_path, "default", "1080i")
+        d.primary_label, d.secondary_label = primary, secondary
+        self.dialog = d
+        d.show()
 
     def _chosen(self, choice):
         seg = self.segment

@@ -482,19 +482,3 @@ msgstr ""
 msgctxt "#32171"
 msgid "Live"
 msgstr ""
-
-msgctxt "#32172"
-msgid "Next episode in %d"
-msgstr ""
-
-msgctxt "#32173"
-msgid "Watch credits"
-msgstr ""
-
-msgctxt "#32174"
-msgid "Skip recap"
-msgstr ""
-
-msgctxt "#32175"
-msgid "Skip intro"
-msgstr ""

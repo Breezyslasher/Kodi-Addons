@@ -19,7 +19,8 @@ calls and opens an issue when one changes.
 - Resume points and Continue Watching shared with Starz's own apps
 - **Skip recap** and **Skip intro** buttons, and at the credits **Next
   episode** (counts down from 10) or **Watch credits**, from Starz's own
-  markers. With the [Up Next](https://github.com/im85288/service.upnext)
+  markers (through the shared [Skip Buttons](../script.module.skipbuttons/)
+  module). With the [Up Next](https://github.com/im85288/service.upnext)
   add-on installed, Up Next's pop-up handles the credits instead
   (autoplay: Settings → Playback)
 - Trailers (context menu, and the Trailer button in Kodi's info dialog) and

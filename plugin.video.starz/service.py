@@ -26,7 +26,7 @@ from lib.api import StarzApi, PLAYING_FILE
 from lib.auth import StarzAuth
 from lib.license_relay import LicenseRelay
 from lib import upnext
-from lib import skip
+from skipbuttons import SkipController
 from lib import programme
 from lib.channels import NAMES
 from lib.api import to_item
@@ -36,6 +36,30 @@ from lib.api import to_item
 UPDATE_SECS = 30
 LIVE_DELAY_SECS = 25
 POLL_SECS = 1
+
+
+def skip_markers(content):
+    """The markers script.module.skipbuttons takes, from a Starz title's
+    detail (v8/content): "recap"/"intro": {"timeIn", "timeOut"} and
+    "creditTimeIn", in seconds (e.g. Power S1E2: recap 10-61, intro 62-152,
+    credits 3432)."""
+    def num(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+    out = {}
+    runtime = num(content.get("runtime"))
+    for name in ("recap", "intro"):
+        seg = content.get(name) or {}
+        t_in, t_out = num(seg.get("timeIn")), num(seg.get("timeOut"))
+        if t_in is not None and t_out and t_out - t_in >= 5:
+            out[name] = (t_in, t_out)
+    credits = num(content.get("creditTimeIn"))
+    # Not a credits time at (or past) the very end (previews: = runtime).
+    if credits and credits > 60 and (not runtime or credits < runtime - 5):
+        out["credits"] = credits
+    return out
 
 
 class Session(object):
@@ -51,11 +75,9 @@ class Player(xbmc.Player):
     def __init__(self):
         xbmc.Player.__init__(self)
         self.session = None
-        L = kodiutils.localize
-        self.skip = skip.SkipController(
+        # Skip recap / Skip intro / Next episode (script.module.skipbuttons).
+        self.skip = SkipController(
             self, self._play_next,
-            {"next": L(32172), "credits": L(32173), "recap": L(32174), "intro": L(32175)},
-            kodiutils.addon_path(),
             autoplay=lambda: kodiutils.get_setting_bool("autoplay_next", True))
 
     def _play_next(self):
@@ -171,7 +193,7 @@ class Player(xbmc.Player):
         try:
             api = StarzApi(StarzAuth())
             current = api.title_detail(session.info["content_id"])
-            marks = skip.markers(current)
+            marks = skip_markers(current)
             nxt = cur_item = next_item = None
             if current.get("contentType") == "Episode" and current.get("nextContentId"):
                 nxt = api.title_detail(current["nextContentId"])
@@ -180,7 +202,7 @@ class Player(xbmc.Player):
                 return                # playback moved on meanwhile
             session.next_id = next_item["id"] if cur_item and next_item else None
             self.skip.reset(marks, has_next=bool(session.next_id),
-                            own_credits=not upnext.installed())
+                            credits=not upnext.installed())
             kodiutils.log("Markers %s, next episode %s" % (marks, session.next_id))
             if not session.next_id:
                 return

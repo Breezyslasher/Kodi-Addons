@@ -92,11 +92,16 @@ Sign in with your Starz account and browse the full Starz catalogue in Kodi, wit
 - Continue Watching, My List, watched marks and resume points shared with Starz's own apps
 - Genres, categories, filters and sort, search, cast & crew pages and recommendations
 - TV Schedule for the STARZ, Encore and Plex channels, and Kodi's TV guide through IPTV Manager
-- Up Next support, profiles with parental controls, and device management for Starz's 6-device limit
+- Skip recap, Skip intro and Next episode buttons, Up Next support, profiles with parental controls, and device management for Starz's 6-device limit
 
 **Resolution:** standard definition (~576p) on desktop and LibreELEC, which use the software Widevine L3 CDM; HD needs a hardware Widevine L1 Android device.
 
 **Known limits:** Starz's private web endpoints may change without notice; a daily GitHub check watches them. See the [addon README](plugin.video.starz/README.md).
+
+---
+
+### [Skip Buttons](script.module.skipbuttons/)
+A shared module that gives video add-ons **Skip recap**, **Skip intro** and a **Next episode** countdown (with **Watch credits**) over the video, from times the add-on supplies. Installed automatically with add-ons that use it, such as Starz. See the [module README](script.module.skipbuttons/README.md) to use it in your own add-on.
 
 **Requirements:** a Starz subscription (US), a Widevine CDM, and Kodi 21+
 

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- The Skip recap / Skip intro / Next episode button over the video
-     (lib/skip.py). Bottom-right; a second button (Watch credits) only at
+     (lib/skipbuttons). Bottom-right; a second button (Watch credits) only at
      the credits. -->
 <window>
     <defaultcontrol always="true">3001</defaultcontrol>
@@ -21,9 +21,9 @@
                 <align>center</align>
                 <aligny>center</aligny>
                 <textcolor>FFFFFFFF</textcolor>
-                <focusedcolor>FF0B2B33</focusedcolor>
-                <texturefocus colordiffuse="FF92FFFB" border="16">starz_button.png</texturefocus>
-                <texturenofocus colordiffuse="CC000000" border="16">starz_button.png</texturenofocus>
+                <focusedcolor>FF101010</focusedcolor>
+                <texturefocus colordiffuse="FFFFFFFF" border="16">skipbuttons_button.png</texturefocus>
+                <texturenofocus colordiffuse="CC000000" border="16">skipbuttons_button.png</texturenofocus>
                 <onleft>3002</onleft>
             </control>
             <control type="button" id="3002">
@@ -35,9 +35,9 @@
                 <align>center</align>
                 <aligny>center</aligny>
                 <textcolor>FFFFFFFF</textcolor>
-                <focusedcolor>FF0B2B33</focusedcolor>
-                <texturefocus colordiffuse="FF92FFFB" border="16">starz_button.png</texturefocus>
-                <texturenofocus colordiffuse="CC000000" border="16">starz_button.png</texturenofocus>
+                <focusedcolor>FF101010</focusedcolor>
+                <texturefocus colordiffuse="FFFFFFFF" border="16">skipbuttons_button.png</texturefocus>
+                <texturenofocus colordiffuse="CC000000" border="16">skipbuttons_button.png</texturenofocus>
                 <onright>3001</onright>
                 <visible>!String.IsEmpty(Window.Property(secondary))</visible>
             </control>
