@@ -26,6 +26,8 @@ from lib.api import StarzApi, PLAYING_FILE
 from lib.auth import StarzAuth
 from lib.license_relay import LicenseRelay
 from lib import upnext
+from lib import programme
+from lib.channels import NAMES
 from lib.api import to_item
 
 # The website reports every 20-30 s (keep-alive HAR), well inside the 600 s
@@ -99,6 +101,29 @@ class Player(xbmc.Player):
         elif now - self.session.last_update >= UPDATE_SECS:
             self._report("update")
             self.session.last_update = now
+        self._follow_schedule()
+
+    def _follow_schedule(self):
+        """Live: when the airing programme ends, put the next one's title,
+        plot and artwork on the player (Player.updateInfoTag, Kodi 20+)."""
+        info = self.session.info if self.session else {}
+        if not info.get("live") or not info.get("channel"):
+            return
+        end = info.get("programme_end") or 0
+        if time.time() * 1000 < end:
+            return
+        if time.time() - self.session.__dict__.get("schedule_checked", 0) < 30:
+            return            # at most one look-up every 30 s
+        self.session.schedule_checked = time.time()
+        try:
+            el = StarzApi(StarzAuth()).on_now(info["channel"])
+            if not el:
+                return
+            info["programme_end"] = el.get("endMs") or 0
+            self.updateInfoTag(programme.listitem(el, NAMES.get(info["channel"], "")))
+            kodiutils.log("Live now: %s" % el.get("title"))
+        except Exception as exc:
+            kodiutils.log_error("Live programme update failed: %s" % exc)
 
     def _report(self, kind):
         s = self.session

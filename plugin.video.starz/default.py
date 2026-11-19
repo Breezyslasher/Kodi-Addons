@@ -15,6 +15,7 @@ from lib.api import StarzApi, PLAYING_FILE, LIVE_ID, LIVE_CHANNEL
 from lib.license_relay import relay_url, LICENSE_FILE
 from lib import iptv
 from lib.channels import CHANNELS, NAMES, logo
+from lib import programme as programme_info
 from lib.api import to_item
 
 HANDLE = int(sys.argv[1])
@@ -609,7 +610,7 @@ def do_manage_devices(api, auth):
     return True
 
 
-def do_play(api, content_id, auth=None, seek_to=None):
+def do_play(api, content_id, auth=None, seek_to=None, programme=None, channel=None):
     if not ensure_widevine():
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
@@ -644,7 +645,17 @@ def do_play(api, content_id, auth=None, seek_to=None):
         "keep_alive": playback.get("keep_alive"),
         "manifest_url": playback["manifest_url"], "seek_to": seek_to,
         "live": bool(playback.get("live")), "report_id": playback.get("report_id")})
-    xbmcplugin.setResolvedUrl(HANDLE, True, build_isa_listitem(playback))
+    li = build_isa_listitem(playback)
+    if programme:
+        # Played from a channel: show what is on, not just "On now".
+        programme_info.apply(li, programme, NAMES.get(channel, ""))
+    if playback.get("live") and channel:
+        # The service follows the schedule and updates this info when the
+        # next programme starts.
+        info = kodiutils.read_json(PLAYING_FILE, default={}) or {}
+        info.update(channel=channel, programme_end=(programme or {}).get("endMs"))
+        kodiutils.write_json(PLAYING_FILE, info)
+    xbmcplugin.setResolvedUrl(HANDLE, True, li)
 
 
 # -- profiles ------------------------------------------------------------------
@@ -826,7 +837,12 @@ def do_live(api, code, auth):
     if code == LIVE_CHANNEL:
         # STARZ has a real live stream: play that, not the title on demand.
         kodiutils.log("Playing the STARZ live stream")
-        do_play(api, LIVE_ID, auth)
+        try:
+            now = api.on_now(code)
+        except Exception as exc:
+            kodiutils.log_error("Schedule for %s: %s" % (code, exc))
+            now = None
+        do_play(api, LIVE_ID, auth, programme=now, channel=code)
         return
     el = api.on_now(code)
     if not el or not el.get("availableOnOtt"):
@@ -835,7 +851,8 @@ def do_live(api, code, auth):
         return
     offset = max(0, int(time.time() - el["startMs"] / 1000.0))
     kodiutils.log("Tuning in to %s: %s at %ds" % (code, el.get("title"), offset))
-    do_play(api, el["contentId"], auth, seek_to=offset if offset > 30 else None)
+    do_play(api, el["contentId"], auth, seek_to=offset if offset > 30 else None,
+            programme=el, channel=code)
 
 
 # -- router --------------------------------------------------------------
