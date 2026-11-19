@@ -452,5 +452,5 @@ msgid "Profile %s updated"
 msgstr ""
 
 msgctxt "#32170"
-msgid "Live TV: STARZ"
+msgid "Live TV"
 msgstr ""
