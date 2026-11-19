@@ -291,6 +291,21 @@
         ]
       },
       "note": "Up Next: an episode's next episode and credits time (Power S1E1)."
+    },
+    {
+      "id": "badges",
+      "url": "https://playdata.starz.com/metadata-service/play/partner/Web/v8/badgeKeys",
+      "params": {
+        "lang": "en-US"
+      },
+      "expect": {
+        "json_paths": [
+          "nsea",
+          "ne",
+          "tc"
+        ]
+      },
+      "note": "Badges on titles (New Season, New Episode, Top 10)."
     }
   ]
 }

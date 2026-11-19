@@ -208,6 +208,10 @@ class StarzAuth(object):
     def profile_name(self):
         return self._session.get("profile_name", "")
 
+    @property
+    def profile_icon(self):
+        return self._session.get("profile_icon", "")
+
     def _save(self, **changes):
         self._session.update(changes)
         kodiutils.write_json(SESSION_FILE, self._session)
@@ -343,7 +347,8 @@ class StarzAuth(object):
 
     def select_profile(self, profile):
         self.request("POST", AUTH_API + "User/profiles/%s/select" % profile["id"])
-        self._save(profile_id=profile["id"], profile_name=profile.get("name", ""))
+        self._save(profile_id=profile["id"], profile_name=profile.get("name", ""),
+                   profile_icon=(profile.get("profileIcon") or {}).get("iconUrl", ""))
 
     # -- signed-in requests -------------------------------------------------
 

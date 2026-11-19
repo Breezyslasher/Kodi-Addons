@@ -334,3 +334,31 @@ msgstr ""
 msgctxt "#32124"
 msgid "Extras"
 msgstr ""
+
+msgctxt "#32130"
+msgid "Account owner"
+msgstr ""
+
+msgctxt "#32131"
+msgid "Activate a TV or device"
+msgstr ""
+
+msgctxt "#32132"
+msgid "Code shown on the TV or device"
+msgstr ""
+
+msgctxt "#32133"
+msgid "Device activated"
+msgstr ""
+
+msgctxt "#32134"
+msgid "Starz has detected a VPN or proxy and won't play through it. Turn it off and try again."
+msgstr ""
+
+msgctxt "#32135"
+msgid "Starz isn't available from your current location (%s)."
+msgstr ""
+
+msgctxt "#32136"
+msgid "Starz says this account can't watch right now (%s). Check your subscription on starz.com."
+msgstr ""

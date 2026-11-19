@@ -36,6 +36,7 @@ from lib.auth import AUTH_API, USER_AGENT, NotReadyError
 
 METADATA = "https://playdata.starz.com/metadata-service/play/partner/Web/v8/"
 LINEAR = "https://playdata.starz.com/metadata-service/play/partner/Web/v6/content/linear"
+CAROUSEL = "https://recommender.starz.com/api/v3/carousel/partner/Web/profile/%s/lang/en-US/"
 RECOMMENDER = "https://recommender.starz.com/api/v3/recommendations/partner/Web/profile/"
 IMAGES = "https://stz1.imgix.net/Web/contentId/%s/type/%s/dimension/%s"
 LANG = "en-US"
@@ -60,6 +61,11 @@ BLOCKS_TTL = 30 * 60
 # and are left out for now.
 ID_ROWS = {"SWIM_LANE", "POPULAR_SWIM_LANE", "TOP_CONTENT_SWIM_LANE",
            "SWIM_LANE_CATEGORY"}
+# Rows the website fills from the recommender or the account rather than from
+# contentIds (blocks HAR: populateVia "recommender" / "playAuth").
+PERSONAL_ROWS = {"TRAILER_SWIM_LANE", "RECOMMENDED_SWIM_LANE", "PLAYLIST_SWIM_LANE"}
+BADGES_CACHE = "badges.json"
+BADGES_TTL = 24 * 3600
 TYPES = {"Movie": "movie", "Series with Season": "series", "Season": "season",
          "Episode": "episode"}
 
@@ -134,6 +140,8 @@ def to_item(content, series=None):
         item["resume"] = content["resumeSeconds"]
     if content.get("comingSoon"):
         item["coming_soon"] = True
+    if content.get("badgeKeys"):
+        item["badge_keys"] = list(content["badgeKeys"])
     if content.get("previewContentId") and kind in ("movie", "series"):
         item["trailer_id"] = str(content["previewContentId"])
     _add_people(item, content)
@@ -366,7 +374,7 @@ class StarzApi(object):
         items = [i for i in (to_item(c) for c in titles) if i]
         return self._finish(items)
 
-    def _recommended_contents(self):
+    def _recommended_contents(self, type_param=None):
         """Personalised picks for the selected profile (recommender HARs:
         GET recommender.starz.com/api/v3/recommendations/partner/Web/
         profile/{profileId} -> {"ranks": [{contentId, ...}]}, signed with
@@ -374,8 +382,9 @@ class StarzApi(object):
         profile = self.auth.profile_id
         if not profile:
             return []
-        resp = self.http.get(RECOMMENDER + profile, headers=self.auth.app_headers(),
-                             timeout=TIMEOUT)
+        resp = self.http.get(RECOMMENDER + profile,
+                             params={"type": type_param} if type_param else None,
+                             headers=self.auth.app_headers(), timeout=TIMEOUT)
         resp.raise_for_status()
         ids = [r.get("contentId") for r in (resp.json() or {}).get("ranks") or []]
         return [c for c in self.contents(ids)
@@ -459,6 +468,9 @@ class StarzApi(object):
                 rows.append({"id": str(block["id"]), "title": title, "kind": "items"})
             elif block.get("blockType") == "COMING_SOON" and self._coming_soon_ids():
                 rows.append({"id": str(block["id"]), "title": title, "kind": "items"})
+            elif (block.get("blockType") in PERSONAL_ROWS and self.auth.signed_in
+                  and self.auth.profile_id):
+                rows.append({"id": str(block["id"]), "title": title, "kind": "items"})
         return rows
 
     def row(self, row_id):
@@ -469,10 +481,101 @@ class StarzApi(object):
         subs = block.get("blocks") or []
         if any(s.get("blockType") in ID_ROWS for s in subs):
             return self._rows(subs), []
+        if block.get("blockType") in PERSONAL_ROWS:
+            return [], self._personal_row(block)
         ids = (self._coming_soon_ids() if block.get("blockType") == "COMING_SOON"
                else self._row_ids(block))
         items = [to_item(c) for c in self.contents(ids)]
         return [], self._finish([i for i in items if i])
+
+    def _page_of(self, block_id):
+        for page in self.blocks():
+            if page.get("blockType") == "PAGE" and self._find(block_id, page.get("blocks") or []):
+                return page.get("pageKey")
+        return None
+
+    def _personal_row(self, block):
+        """Featured For You (recommender carousel), Recommended For You
+        (recommendations) and Your Playlist (My List), as the website fills
+        them; Movies/Series pages ask for their own kind."""
+        kind = block.get("blockType")
+        if kind == "PLAYLIST_SWIM_LANE":
+            return self.my_list()
+        page = self._page_of(block.get("id"))
+        types = block.get("contentTypes") or ["Movie", "Series with Season"]
+        if kind == "TRAILER_SWIM_LANE":
+            contents = self._carousel_contents(page if page in ("MOVIES", "SERIES") else None)
+        else:
+            contents = self._recommended_contents(
+                "Movies" if types == ["Movie"] else None)
+        contents = [c for c in contents if c.get("contentType") in types]
+        return self._finish([i for i in (to_item(c) for c in contents) if i])
+
+    def _carousel_contents(self, page_key=None):
+        """GET recommender .../carousel/partner/Web/profile/{id}/lang/en-US/
+        [?pageKey=MOVIES|SERIES] with the app token -> {"items": [{contentId,
+        content, images, carouselType...}]} (sign-in and profiles HARs)."""
+        profile = self.auth.profile_id
+        if not profile:
+            return []
+        resp = self.http.get(CAROUSEL % profile,
+                             params={"pageKey": page_key} if page_key else None,
+                             headers=self.auth.app_headers(), timeout=TIMEOUT)
+        resp.raise_for_status()
+        ids = [i.get("contentId") for i in (resp.json() or {}).get("items") or []
+               if i.get("contentId")]
+        return self.contents(ids)
+
+    def badge_labels(self):
+        """{key: label} from GET v8/badgeKeys (fr Free, nsea New Season, ne
+        New Episode, tc Top 10, ls Leaving Soon...), cached for a day."""
+        if "_badges" not in self.__dict__:
+            cached = kodiutils.read_json(BADGES_CACHE, default=None)
+            if cached and time.time() - cached.get("at", 0) < BADGES_TTL:
+                self._badges = cached["data"]
+            else:
+                try:
+                    self._badges = self._get("badgeKeys", {"lang": LANG}) or {}
+                    kodiutils.write_json(BADGES_CACHE, {"at": time.time(), "data": self._badges})
+                except Exception as exc:
+                    kodiutils.log_error("badgeKeys: %s" % exc)
+                    self._badges = {}
+        return self._badges
+
+    # -- why playback failed ------------------------------------------------
+
+    def access_problem(self):
+        """A plain reason Starz will not play here, or None. Only called after
+        a playback failure. User/geolocation (app token): isAllowedAccess,
+        isKnownProxy, country; User/access (session): result is "None" for a
+        normal account (sign-in HAR), with a message otherwise."""
+        try:
+            geo = self.http.get(AUTH_API + "User/geolocation",
+                                headers=self.auth.app_headers(), timeout=TIMEOUT).json() or {}
+            if geo.get("isKnownProxy"):
+                return "proxy"
+            if geo.get("isAllowedAccess") is False or geo.get("isAllowedCountry") is False:
+                return "country:%s" % (geo.get("country") or "?")
+        except Exception as exc:
+            kodiutils.log_error("geolocation: %s" % exc)
+        try:
+            acc = self.auth.request("GET", AUTH_API + "User/access").json() or {}
+            if acc.get("message"):
+                return "message:%s" % acc["message"]
+            if acc.get("result") not in (None, "None", "", "Allowed", "Ok", "OK"):
+                return "access:%s" % acc["result"]
+        except Exception as exc:
+            kodiutils.log_error("User/access: %s" % exc)
+        return None
+
+    # -- activate another device --------------------------------------------
+
+    def activate_device(self, code):
+        """POST Activate/Device/{code} with the session: link another device
+        (a TV showing a code) to this account, as starz.com/activate does
+        for a signed-in user. From the site's JS bundle
+        (requiresSessionToken); [VERIFY] not captured."""
+        self.auth.request("POST", AUTH_API + "Activate/Device/%s" % code.strip().upper())
 
     def _coming_soon_ids(self):
         """The Home page's COMING_SOON block carries no contentIds; the

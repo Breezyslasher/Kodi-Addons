@@ -101,7 +101,7 @@ def _apply_info(li, item):
 
 # Set by the router: My List context items only make sense when signed in,
 # and the ids already on the list decide Add vs Remove.
-STATE = {"signed_in": False, "my_list": None}
+STATE = {"signed_in": False, "my_list": None, "badges": {}}
 
 
 def _list_menu(item):
@@ -147,8 +147,13 @@ def show_people(api, content_id):
 
 def add_item(item):
     label = item.get("title", "")
-    if item.get("label_extra"):
-        label = "%s  [COLOR grey]%s[/COLOR]" % (label, item["label_extra"])
+    extras = [item["label_extra"]] if item.get("label_extra") else []
+    # Starz's badges (New Season, New Episode, Top 10, Leaving Soon...); Coming
+    # Soon has its own marker below.
+    extras += [STATE["badges"][k] for k in item.get("badge_keys") or []
+               if k != "cs" and k in (STATE.get("badges") or {})]
+    if extras:
+        label = "%s  [COLOR grey]%s[/COLOR]" % (label, " · ".join(extras))
     li = xbmcgui.ListItem(label)
     _apply_info(li, item)
     menu = _list_menu(item) + _people_menu(item)
@@ -215,7 +220,12 @@ def main_menu(auth):
     add_dir(L(32075), "categories")
     add_dir(L(32013), "search")
     if auth.signed_in:
-        add_dir(L(32062) % (auth.profile_name or "-"), "profile")
+        li = xbmcgui.ListItem(L(32062) % (auth.profile_name or "-"))
+        if auth.profile_icon:
+            li.setArt({"icon": auth.profile_icon, "thumb": auth.profile_icon,
+                       "fanart": ADDON_ART["fanart"]})
+        xbmcplugin.addDirectoryItem(HANDLE, url(action="profile"), li, True)
+        add_action(L(32131), "activate_device")
         add_action(L(32106), "devices")
         add_dir(L(32063) % (auth.username or "-"), "sign_out")
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
@@ -304,7 +314,16 @@ def pick_profile(auth):
     if len(profiles) == 1:
         index = 0
     else:
-        index = xbmcgui.Dialog().select(L(32059), [p.get("name", "?") for p in profiles])
+        entries = []
+        for p in profiles:
+            li = xbmcgui.ListItem(p.get("name", "?"), L(32130) if p.get("isAdmin") else "")
+            icon = (p.get("profileIcon") or {}).get("iconUrl")
+            if icon:
+                li.setArt({"icon": icon, "thumb": icon})
+            entries.append(li)
+        current = [i for i, p in enumerate(profiles) if p.get("id") == auth.profile_id]
+        index = xbmcgui.Dialog().select(L(32059), entries, useDetails=True,
+                                        preselect=current[0] if current else -1)
         if index < 0:
             return
     try:
@@ -587,8 +606,17 @@ def do_play(api, content_id, auth=None, seek_to=None):
             if not do_manage_devices(api, auth):
                 raise
             playback = api.playback(content_id, kodiutils.subtitle_languages())
-    except Exception:
+    except Exception as exc:
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        if getattr(exc, "code", None) != DEVICE_LIMIT:
+            # Say why, when Starz's account checks know: location or access.
+            problem = api.access_problem()
+            if problem:
+                kodiutils.log_error("Playback refused: %s (%s)" % (problem, exc))
+                kind, _, detail = problem.partition(":")
+                raise StarzAuthError({"proxy": L(32134), "country": L(32135) % detail,
+                                      "message": detail,
+                                      "access": L(32136) % detail}.get(kind, problem))
         raise
     # Hand the play session to service.py, which reports progress and the
     # final position to Starz (Play/update, Play/stop) once this process ends.
@@ -690,6 +718,9 @@ def router(paramstring):
     auth = StarzAuth()
     api = StarzApi(auth)
     STATE["signed_in"] = auth.signed_in
+    if action in ("row", "page", "search", "my_list", "all", "browse", "recommended",
+                  "artist", "similar", "continue"):
+        STATE["badges"] = api.badge_labels()
     if auth.signed_in and action in ("row", "series", "search", "my_list", "all",
                                      "recommended", "browse", "artist", "similar"):
         STATE["my_list"] = api.my_list_ids()
@@ -739,6 +770,13 @@ def router(paramstring):
             xbmcplugin.setPluginCategory(HANDLE, L(32097) % params.get("title", ""))
             items = api.similar(params.get("content_id"))
             show_items(items, _content_for(items))
+        elif action == "activate_device":
+            code = kodiutils.input_text(L(32132))
+            if code:
+                api.activate_device(code)
+                kodiutils.notify(L(32133))
+            if HANDLE >= 0:
+                xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         elif action == "devices":
             do_manage_devices(api, auth)
             if HANDLE >= 0:

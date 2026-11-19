@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.starz" name="Starz" version="2026.11.18.24" provider-name="Breezyslasher">
+<addon id="plugin.video.starz" name="Starz" version="2026.11.19" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -35,7 +35,14 @@ Features:
 			<clearlogo>resources/clearlogo.png</clearlogo>
 			<banner>resources/banner.png</banner>
 		</assets>
-		<news>v2026.11.18.24
+		<news>v2026.11.19
+- Featured For You, Recommended For You and Your Playlist rows on Home, Movies and Series
+- Badges on titles: New Season, New Episode, Top 10, Leaving Soon, Free...
+- Profile pictures in the profile picker and menu
+- Clear message when Starz refuses playback because of a VPN/proxy, your location or your account
+- Activate a TV or device by entering its code in Kodi
+
+v2026.11.18.24
 - First release in the Breezyslasher repository
 
 v2026.11.18.23
