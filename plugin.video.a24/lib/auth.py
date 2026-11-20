@@ -47,12 +47,12 @@ ACCOUNT_API = AUTH_BASE + "/api/v1/"
 APP_ORIGIN = "https://app.a24films.com"
 # Public OAuth client of the A24 web app (constant in its JS bundle).
 CLIENT_ID = "nHodnPAsF9MSYmRkVlFH1EsD142RZ9Nk1xNg1f1e"
-# authReturnUrl from the bundle: web build first, then the native build's
-# (Capacitor apps), then the web one without its trailing slash. The first
-# real-box sign-in got HTTP 400 from authorize with the web one; the signed-
-# out CI probe shows parameters are only checked once signed in.
-REDIRECT_URIS = (APP_ORIGIN + "/tabs/home/",
-                 "https://api.app.a24films.com/redirect/",
+# authReturnUrl from the bundle. Real-box test 2026-11-20: the native
+# build's return URL is the one registered for this client and issues a
+# code; the web build's answers HTTP 400 "invalid_request: Mismatching
+# redirect URI". The others stay as fallbacks in case A24 changes it.
+REDIRECT_URIS = ("https://api.app.a24films.com/redirect/",
+                 APP_ORIGIN + "/tabs/home/",
                  APP_ORIGIN + "/tabs/home")
 
 SESSION_COOKIE = "nexussessionid"
@@ -233,7 +233,8 @@ class A24Auth(object):
         # redirect URI...); it holds no secrets -- the verifier stays in Kodi.
         location = resp.headers.get("Location", "")
         loc = urlsplit(location)
-        body = re.sub(r"<[^>]+>", " ", resp.text or "")
+        body = re.sub(r"(?is)<(style|script)[^>]*>.*?</\1>", " ", resp.text or "")
+        body = re.sub(r"<[^>]+>", " ", body)
         kodiutils.log_error("authorize [%s]: no code (HTTP %s, %s, redirect %s%s?%s): %s" % (
             redirect_uri, resp.status_code, resp.headers.get("Content-Type"),
             loc.netloc, loc.path, ",".join("%s=%s" % (k, v[0][:80]) if k in ("error", "error_description") else k
