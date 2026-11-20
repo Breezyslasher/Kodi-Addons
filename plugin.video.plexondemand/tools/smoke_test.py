@@ -261,6 +261,15 @@ for h in sh:
             break
 check("store row has priced titles", bool(rentals) and bool(rentals[0].get("rentalPrice")),
       rentals and (rentals[0].get("title"), rentals[0].get("rentalPrice")))
+free_in_store = []
+for h in sh:
+    if h["key"].endswith("/myRentalsAndPurchases"):
+        continue
+    row = api.listing(h["key"])[0]
+    free = [m.get("title") for m in row if not is_store_item(m)]
+    print("INFO store row %r: %d titles, %d free" % (h.get("title") or h["key"], len(row), len(free)))
+    free_in_store += free
+check("store rows hold only priced titles", not free_in_store, free_in_store[:5])
 try:
     playback.build(api, rentals[0]["ratingKey"])
     check("unrented title -> NotRented", False, "played without a rental?")
