@@ -24,7 +24,6 @@ on:
       - 'plugin.video.tubitv/tools/check_endpoints.py'
       - 'plugin.video.plexondemand/tools/endpoints.json'
       - 'plugin.video.plexondemand/tools/check_endpoints.py'
-      - 'plugin.video.plexondemand/tools/probe.py'
       - 'plugin.video.plexondemand/tools/smoke_test.py'
       - 'plugin.video.plexondemand/tools/test_service.py'
       - 'plugin.video.plexondemand/lib/**'
@@ -66,10 +65,6 @@ jobs:
           # Plex On Demand's script runs its spec through the shared engine,
           # then drives the addon's own code against the live service, then
           # the offline service/Skip Buttons test - one job, one issue.
-          - name: Plex probe (temporary)
-            spec: ''
-            script: plugin.video.plexondemand/tools/probe.py
-            issue_label: plexondemand-probe
           - name: Plex On Demand
             spec: ''
             script: plugin.video.plexondemand/tools/check_endpoints.py
