@@ -260,19 +260,19 @@ msgid "No rentals or purchases on this account (sign in to see yours)"
 msgstr ""
 
 msgctxt "#32071"
-msgid "\"%s\" is a rental and is not rented on this Plex account."
+msgid "Not rented on your Plex account."
 msgstr ""
 
 msgctxt "#32072"
-msgid "Rent: %s (%s hours to watch once started)"
+msgid "[B]Rent %s[/B] (%s hours to watch)"
 msgstr ""
 
 msgctxt "#32073"
-msgid "Buy: %s"
+msgid "[B]Buy %s[/B]"
 msgstr ""
 
 msgctxt "#32074"
-msgid "Rent or buy it on Plex at %s, then play it here (signed in with the same account)."
+msgid "Rent or buy it at %s, then play it here."
 msgstr ""
 
 msgctxt "#32075"

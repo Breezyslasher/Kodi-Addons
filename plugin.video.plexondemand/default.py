@@ -427,14 +427,18 @@ def play(rk):
         item = playback.build(api, rk)
     except playback.NotRented as nr:
         m = nr.item
-        lines = [L("not_rented") % (m.get("title") or "")]
+        # Short lines, title as the heading: Kodi's OK dialog fits ~4 lines,
+        # and the full watch.plex.tv link used to be cut off.
+        offers = []
         if m.get("rentalPrice"):
-            hours = m.get("viewableDuration")
-            lines.append(L("rent_price") % (m["rentalPrice"], hours or 48))
+            offers.append(L("rent_price") % (m["rentalPrice"], m.get("viewableDuration") or 48))
         if m.get("purchasePriceLabel"):
-            lines.append(L("buy_price") % m["purchasePriceLabel"])
-        lines.append(L("rent_where") % (m.get("publicPagesURL") or "watch.plex.tv"))
-        kodiutils.ok_dialog("[CR]".join(lines))
+            offers.append(L("buy_price") % m["purchasePriceLabel"])
+        lines = [L("not_rented")]
+        if offers:
+            lines.append("   \u00b7   ".join(offers))
+        lines.append(L("rent_where") % "watch.plex.tv")
+        kodiutils.ok_dialog("[CR]".join(lines), heading=m.get("title") or None)
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     except playback.Blocked:
