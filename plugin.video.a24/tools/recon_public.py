@@ -80,7 +80,9 @@ def main():
         status, final, headers, text = fetch(url)
         server = headers.get("Server") or headers.get("server") or ""
         powered = headers.get("X-Powered-By") or headers.get("x-powered-by") or ""
-        print("%s  %s  %d bytes  %s %s" % (status, final, len(text), server, powered))
+        # Query strings dropped: asset URLs can be presigned (temporary keys).
+        print("%s  %s  %d bytes  %s %s" % (status, final.split("?", 1)[0], len(text),
+                                         server, powered))
         if not text:
             continue
         low = text.lower()
