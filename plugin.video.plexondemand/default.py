@@ -8,7 +8,7 @@ import xbmcgui
 import xbmcplugin
 
 from lib import kodiutils
-from lib.api import PlexVodApi, PlexApiError, PAGE_SIZE, TYPE_MOVIE, TYPE_SHOW, is_store_item
+from lib.api import PlexVodApi, PlexApiError, PAGE_SIZE, TYPE_MOVIE, TYPE_SHOW, is_store_item, image
 from lib import playback
 from lib.listing import art as _art, info as _info
 from lib.auth import account_name
@@ -24,6 +24,8 @@ S = {
     "live_all": 32080,
     "live_now": 32081,
     "live_next": 32082,
+    "live_later": 32085,
+    "live_starts": 32086,
     "movies": 32011,
     "shows": 32012,
     "search": 32013,
@@ -597,12 +599,56 @@ def live_list(key, start=0):
         tag = item.getVideoInfoTag()
         tag.setTitle(c.get("title") or "")
         tag.setPlot("\n".join(plot))
+        # Leaving a live stream at the live edge looks like "played to the
+        # end" to Kodi, which would tick the channel as watched and offer a
+        # resume point. A channel is never watched: say so explicitly (the
+        # addon's own values win over Kodi's database in the listing).
+        tag.setPlaycount(0)
+        tag.setResumePoint(0, 0)
+        item.addContextMenuItems([(L("live_later"), "Container.Update(%s)" % url(
+            action="live_guide", id=c["id"], gk=c.get("gridKey") or "", name=c.get("title") or ""))])
         item.setProperty("IsPlayable", "true")
         xbmcplugin.addDirectoryItem(HANDLE, url(action="live_play", id=c["id"]), item, False)
     if start + LIVE_PAGE < len(chans):
         nxt_start = start + LIVE_PAGE
         folder("%s (%d/%d)" % (L("next_page"), nxt_start // LIVE_PAGE + 1, (len(chans) + LIVE_PAGE - 1) // LIVE_PAGE),
                {"action": "live_list", "key": key, "start": nxt_start})
+    end("videos", cache=False)
+
+
+def live_guide(channel_id, grid_key, name):
+    """What's on a channel from now to 24 hours ahead. The programme on now
+    plays the channel; later ones say when they start."""
+    import time
+    from lib import live
+    api = live.LiveApi()
+    now = time.time()
+    logo = ""
+    for m in api.schedule(grid_key, now, now + 24 * 3600):
+        media = m["Media"][0]
+        on_now = media["beginsAt"] <= now < media["endsAt"]
+        day = "" if time.localtime(media["beginsAt"]).tm_yday == time.localtime(now).tm_yday else \
+            time.strftime("%a ", time.localtime(media["beginsAt"]))
+        title = live.programme_title(m)
+        ep = live.episode_label(m)
+        label = "%s%s  %s%s" % (day, live.clock(media["beginsAt"]), "[B]%s[/B]" % title if on_now else title,
+                                "  [COLOR grey]%s[/COLOR]" % ep if ep else "")
+        item = xbmcgui.ListItem(label)
+        thumb = m.get("thumb") or m.get("grandparentThumb") or ""
+        item.setArt({"thumb": image(thumb, 640, 360), "icon": image(thumb, 640, 360),
+                     "fanart": image(m.get("grandparentArt") or m.get("art") or thumb, 1280, 720)})
+        tag = item.getVideoInfoTag()
+        tag.setTitle(title)
+        tag.setPlot("[B]%s-%s[/B]  %s\n%s" % (live.clock(media["beginsAt"]), live.clock(media["endsAt"]), name,
+                                               m.get("summary") or ""))
+        tag.setPlaycount(0)
+        tag.setResumePoint(0, 0)
+        if on_now:
+            item.setProperty("IsPlayable", "true")
+            target = url(action="live_play", id=channel_id)
+        else:
+            target = url(action="live_starts", at=live.clock(media["beginsAt"]), title=title)
+        xbmcplugin.addDirectoryItem(HANDLE, target, item, False)
     end("videos", cache=False)
 
 
@@ -686,6 +732,10 @@ def router(paramstring):
             live_list(p["key"], int(p.get("start", 0)))
         elif action == "live_play":
             live_play(p["id"])
+        elif action == "live_guide":
+            live_guide(p["id"], p["gk"], p.get("name", ""))
+        elif action == "live_starts":
+            kodiutils.notify(L("live_starts") % (p.get("title", ""), p.get("at", "")))
         elif action == "brands":
             brands()
         elif action == "categories":

@@ -53,7 +53,9 @@ Plex's free live channels (`tv.plex.provider.epg`, captured in probe rounds 18-1
 | Guide | `GET {epg}/grid?channelGridKey=<gridKey>&date=YYYY-MM-DD` -> one channel, one day (`Media[0].beginsAt/endsAt`); a list of keys or no date answers 400 |
 
 The add-on shows Featured, All channels (100 per page) and the genres, each channel
-with what's on now and next. **IPTV Manager** (Settings > Live TV) puts every channel,
+with what's on now and next; a channel's context menu has **What's on later** (the next
+24 hours). Channels report play count 0 and no resume point, so Kodi never ticks one as
+watched after leaving the live edge. **IPTV Manager** (Settings > Live TV) puts every channel,
 grouped by genre, into Kodi's TV section with a guide from now to about a day ahead
 (one guide call per channel and day, 16 at a time, so a full refresh takes a little while).
 

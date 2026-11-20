@@ -314,3 +314,11 @@ msgstr ""
 msgctxt "#32084"
 msgid "Add Live TV to Kodi's TV guide (IPTV Manager)"
 msgstr ""
+
+msgctxt "#32085"
+msgid "What's on later"
+msgstr ""
+
+msgctxt "#32086"
+msgid "%s starts at %s"
+msgstr ""
