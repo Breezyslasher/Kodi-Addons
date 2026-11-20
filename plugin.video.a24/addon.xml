@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.a24" name="A24 Screening Room" version="2026.11.20" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">A24 Screening Room and AAA24 client for Kodi (in development)</summary>
+		<description lang="en_GB">Sign in with your own A24 / AAA24 account and play what that account is entitled to: titles you own or have rented in the A24 Screening Room, the AAA24 member free movie of the month, and filmmaker commentaries and member extras.
+
+IN DEVELOPMENT: the service's endpoints are still being captured; menus that are not built yet say so.
+
+Personal playback only. A24 marks every stream with an on-screen watermark and an invisible forensic watermark tied to the signed-in account. This add-on plays streams exactly as A24 serves them and does nothing to change, hide or remove either watermark.
+
+Rentals and purchases are made in the A24 app or website, never in Kodi. AAA24 membership and the catalogue are US-only.</description>
+		<disclaimer lang="en_GB">Unofficial. Not affiliated with or endorsed by A24. Use only with your own account, for your own viewing; streams are watermarked and traceable to that account, and third-party clients may be against the service's terms.</disclaimer>
+		<platform>all</platform>
+		<license>GPL-3.0-only</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>v2026.11.20
+- Scaffold: menus, settings and recon tooling; sign-in, browse and playback wait on the endpoint capture (docs/recon.md)</news>
+	</extension>
+</addon>

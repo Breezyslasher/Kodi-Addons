@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="32000">
+        <setting id="sign_in" type="action" label="32014" action="RunPlugin(plugin://plugin.video.a24/?action=sign_in)" />
+        <setting id="account" type="action" label="32016" action="RunPlugin(plugin://plugin.video.a24/?action=account)" />
+        <setting id="sign_out" type="action" label="32015" action="RunPlugin(plugin://plugin.video.a24/?action=sign_out)" />
+        <setting id="account_email" type="text" default="" visible="false" />
+        <setting id="a24_token" type="text" default="" visible="false" />
+        <setting id="a24_refresh" type="text" default="" visible="false" />
+        <setting id="a24_expires" type="text" default="0" visible="false" />
+        <setting id="client_id" type="text" default="" visible="false" />
+    </category>
+    <category label="32001">
+        <setting id="max_height" type="enum" label="32040" lvalues="32046|32047|32048|32049" default="3" />
+        <setting id="subtitles" type="bool" label="32041" default="true" />
+    </category>
+    <category label="32002">
+        <setting id="dev_log" type="bool" label="32042" default="false" />
+        <setting id="manifest_override" type="text" label="32043" default="" />
+        <setting id="license_override" type="text" label="32044" default="" />
+        <setting id="license_headers_override" type="text" label="32054" default="" />
+        <setting id="test_playback" type="action" label="32055" action="RunPlugin(plugin://plugin.video.a24/?action=test_playback)" />
+    </category>
+</settings>
