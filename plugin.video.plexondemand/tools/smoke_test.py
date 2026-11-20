@@ -230,6 +230,23 @@ api.action("addToDislikes", rk)
 api.action("removeFromDislikes", rk)
 check("dislike / undo accepted", True)
 
+# ---- brands (Plex "channels") and curated categories
+br = api.brands()
+check("brands list", len(br) > 3 and all(b.get("key", "").startswith("/library/channels/") for b in br),
+      [b.get("title") for b in br[:4]])
+bi, btotal = api.listing(br[0]["key"])
+check("a brand's titles", len(bi) > 0, "%s: %d of %d" % (br[0].get("title"), len(bi), btotal))
+check("brand titles are free", not any(is_store_item(m) for m in bi))
+cats = api.categories()
+check("categories list", len(cats) > 3, [c.get("title") for c in cats[:4]])
+ci, _ = api.listing(cats[0]["key"])
+check("a category's titles", len(ci) > 0 and not any(is_store_item(m) for m in ci), len(ci))
+import requests as _rq2
+for label, row in (("brand", br[0]), ("category", cats[0])):
+    t = row.get("thumb")
+    r = _rq2.get(image(t, 400, 400), timeout=20) if t else None
+    print("INFO %s artwork via transcoder -> %s" % (label, r.status_code if r is not None else "none"))
+
 # ---- store (rentals): browse, and a title nobody rented reports NotRented
 sh = api.store_hubs()
 check("store hubs", any(h["key"].endswith("/myRentalsAndPurchases") for h in sh), len(sh))

@@ -31,6 +31,8 @@ your real Plex account.
 | Rating | `PUT {vod}/actions/rate?ratingKey=&rating=0..10` (`-1` clears); read back as `userState.userRating` |
 | Not interested | `PUT {vod}/actions/addToDislikes` / `removeFromDislikes` `?ratingKey=`: accepted, but write-only (no list, not in userState) |
 | Store (rentals) | `GET {vod}/hubs/sections/store` (rows) and `/hubs/sections/store/myRentalsAndPurchases` (the account's); items carry `rentalPrice`, `purchasePriceLabel`, `viewableDuration`, `publicPagesURL`. Same Widevine DASH as free DRM titles; without a rental the manifest answers 404 "User has no active order for this rental" |
+| Brands | `GET {vod}/library/sections/channels/all` (Plex calls them channels) -> `/library/channels/<id>` (paged titles) |
+| Categories | `GET {vod}/library/sections/categories/all` -> ready keys (`type=99`, `availabilityType=free`) with PNG artwork |
 | Watchlist | `PUT {vod}/actions/addToWatchlist`, `removeFromWatchlist` `?ratingKey=`; list `GET discover.provider.plex.tv/library/sections/watchlist/all` |
 | More like this | `GET {vod}/library/metadata/<rk>/similarTitles` and `/more-from-credits` (free titles; `/library/people/<id>` has no filmography) |
 | Artwork | `images.plex.tv/photo?url=&width=&height=` (no token; a 920 KB poster becomes about 29 KB) |

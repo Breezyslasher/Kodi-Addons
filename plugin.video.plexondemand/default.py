@@ -18,6 +18,8 @@ BASE_URL = sys.argv[0]
 
 S = {
     "featured": 32010,
+    "brands": 32077,
+    "categories": 32078,
     "movies": 32011,
     "shows": 32012,
     "search": 32013,
@@ -197,6 +199,8 @@ def root():
     if api.auth.signed_in() and kodiutils.get_setting_bool("show_rentals", True):
         folder(L("rentals"), {"action": "store"})
     folder(L("featured"), {"action": "hubs"})
+    folder(L("brands"), {"action": "brands"})
+    folder(L("categories"), {"action": "categories"})
     folder(L("movies"), {"action": "genres", "type": TYPE_MOVIE})
     folder(L("shows"), {"action": "genres", "type": TYPE_SHOW})
     folder(L("search"), {"action": "search"})
@@ -233,6 +237,29 @@ def store():
             continue
         folder(h.get("title") or h["key"], {"action": "list", "key": h["key"], "store": 1})
     end("files")
+
+
+def _directory_folders(rows):
+    """Brand / category folders: their own PNG/JPG artwork (resized)."""
+    from lib.api import image
+    for d in rows:
+        if not d.get("key"):
+            continue
+        thumb = d.get("thumb") or ""
+        art = None
+        if thumb and not thumb.lower().split("?")[0].endswith(".svg"):
+            t = image(thumb, 400, 400)
+            art = {"thumb": t, "icon": t, "poster": t}
+        folder(d.get("title") or "?", {"action": "list", "key": d["key"]}, art=art)
+    end("files")
+
+
+def brands():
+    _directory_folders(PlexVodApi().brands())
+
+
+def categories():
+    _directory_folders(PlexVodApi().categories())
 
 
 def hubs():
@@ -548,6 +575,10 @@ def router(paramstring):
             related(p["rk"], p.get("kind", "similarTitles"))
         elif action == "store":  # still reachable from old links / favourites
             store()
+        elif action == "brands":
+            brands()
+        elif action == "categories":
+            categories()
         elif action == "hubs":
             hubs()
         elif action == "genres":

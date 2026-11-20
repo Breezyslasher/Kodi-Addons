@@ -283,3 +283,11 @@ msgctxt "#32076"
 msgid "Show Rentals menu (requires sign-in)"
 msgstr ""
 
+msgctxt "#32077"
+msgid "Brands"
+msgstr ""
+
+msgctxt "#32078"
+msgid "Categories"
+msgstr ""
+

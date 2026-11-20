@@ -48,6 +48,13 @@ Actions, US region, anonymous token):
   Sort            genre listings take sort=titleSort|titleSort:desc|
                   audienceRating:desc (year/decade/contentRating filters are
                   ignored by the provider)
+  Brands          GET {vod}/library/sections/channels/all -> Directory[] (Plex
+                  calls them channels: AMC Networks, FilmRise, Hallmark, ...)
+                  with key /library/channels/<id> (paged titles) and a PNG/JPG
+                  thumb. From the user's app.plex.tv capture.
+  Categories      GET {vod}/library/sections/categories/all -> Directory[] with a
+                  ready key (genre, type=99 movies+shows, availabilityType=free)
+                  and a PNG thumb.
   Genre icons     Directory.icon (provider-static.plex.tv/icons/categories/*.svg)
                   answers 403 to everyone, even images.plex.tv's transcoder
                   (probe round 15), so genre folders carry no icon.
@@ -123,6 +130,12 @@ class PlexVodApi(object):
     def hubs(self):
         return [h for h in self._get("/hubs").get("Hub") or [] if h.get("key")]
 
+    def brands(self):
+        return self._get("/library/sections/channels/all").get("Directory") or []
+
+    def categories(self):
+        return self._get("/library/sections/categories/all").get("Directory") or []
+
     def store_hubs(self):
         return [h for h in self._get("/hubs/sections/store").get("Hub") or [] if h.get("key")]
 
@@ -140,7 +153,7 @@ class PlexVodApi(object):
         # Genre listings mix store (rental) titles in with the free ones;
         # availabilityType=free makes Plex return only free titles, so totals
         # and paging stay right (probe round 14: 4461 -> 3937, 0 priced).
-        if key.startswith("/library/sections/"):
+        if key.startswith("/library/sections/") and "availabilityType=" not in key:
             params["availabilityType"] = "free"
         c = self._get(key, params)
         return c.get("Metadata") or [], _total(c)
