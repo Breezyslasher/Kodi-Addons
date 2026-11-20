@@ -1165,6 +1165,52 @@ def round15():
     return 0
 
 
+def round16():
+    """Where does Plex keep 'Brands' (studios / networks / channels)?"""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    disc = "https://discover.provider.plex.tv"
+    _, root = req_json("GET", base + "/", headers=T)
+    for f in (mc(root).get("MediaProvider") or {}).get("Feature") or []:
+        if f.get("type") == "content":
+            print("== content feature:", mask(json.dumps(f))[:3000])
+
+    def brief(label, url, params=None):
+        st, ct, body, _ = req("GET", url, headers=T, params=params)
+        try:
+            c = mc(json.loads(body))
+            rows = c.get("Directory") or c.get("Hub") or c.get("Metadata") or []
+            print(f"== {label} -> {st} size={c.get('size')} total={c.get('totalSize')} "
+                  f"{[(r.get('type'), r.get('title'), r.get('key') or r.get('hubKey')) for r in rows[:6]]}")
+        except Exception:
+            print(f"== {label} -> {st} {mask(body[:160].decode('utf-8', 'replace'))}")
+
+    for path in ("/library/sections", "/library/sections/movies", "/library/sections/movies/brand",
+                 "/library/sections/movies/brands", "/library/sections/movies/network",
+                 "/library/sections/movies/studio", "/library/sections/movies/attribution",
+                 "/library/sections/movies/collection", "/library/sections/movies/channel",
+                 "/library/sections/movies/firstCharacter", "/hubs/sections/brands", "/hubs/brands",
+                 "/library/sections/brands", "/library/sections/brands/all", "/brands", "/channels",
+                 "/hubs/sections/movies/brands", "/library/sections/movies/categories"):
+        for params in ({"type": 1}, None):
+            brief(path + (" ?type=1" if params else ""), base + path, params)
+    for path in ("/hubs/sections/home", "/hubs/sections/brands", "/library/sections/brands/all"):
+        brief("disc " + path, disc + path)
+    # attribution values seen on items: does filtering by it work?
+    _, hubs = req_json("GET", base + "/hubs/sections/movies/trending", headers=T, params={"count": 50})
+    attrs = sorted(set(m.get("attribution") for m in mc(hubs).get("Metadata") or [] if m.get("attribution")))
+    print("== attribution values:", attrs[:20])
+    _, g = req_json("GET", base + "/library/sections/movies/genre", headers=T, params={"type": 1})
+    gk = (mc(g).get("Directory") or [{}])[0].get("key")
+    if attrs:
+        st, d = req_json("GET", base + gk, headers=T, params={"attribution": attrs[0], "X-Plex-Container-Size": 3})
+        print(f"== genre filtered attribution={attrs[0]} -> {st} total={mc(d).get('totalSize')}")
+        brief("attribution path", base + "/library/sections/movies/all", {"attribution": attrs[0], "type": 1})
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -1176,5 +1222,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round15")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14, "round15": round15}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round16")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14, "round15": round15, "round16": round16}.get(mode, main)())
