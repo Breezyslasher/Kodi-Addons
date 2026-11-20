@@ -291,3 +291,26 @@ msgctxt "#32078"
 msgid "Categories"
 msgstr ""
 
+msgctxt "#32079"
+msgid "Live TV"
+msgstr ""
+
+msgctxt "#32080"
+msgid "All channels"
+msgstr ""
+
+msgctxt "#32081"
+msgid "Now"
+msgstr ""
+
+msgctxt "#32082"
+msgid "Next"
+msgstr ""
+
+msgctxt "#32083"
+msgid "Show Live TV"
+msgstr ""
+
+msgctxt "#32084"
+msgid "Add Live TV to Kodi's TV guide (IPTV Manager)"
+msgstr ""

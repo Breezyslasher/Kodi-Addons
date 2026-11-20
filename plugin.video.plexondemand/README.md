@@ -41,6 +41,22 @@ your real Plex account.
 | Up next | `POST {vod}/playQueues?uri=provider://tv.plex.provider.vod/library/metadata/<rk>&type=video&continuous=1` |
 | Ads | `Metadata.Ad[]` = VMAP at `{vod}/vmap?...` (client-side VAST pods) |
 
+## Live TV
+Plex's free live channels (`tv.plex.provider.epg`, captured in probe rounds 18-19):
+
+| What | Endpoint |
+|---|---|
+| Provider | `plex.tv/media/providers` -> `tv.plex.provider.epg` at `https://epg.provider.plex.tv` |
+| Filters | `GET {epg}/` -> `Feature[type=grid]`: Featured (`/lineups/plex/channels/featured`) and ~15 genres (`/lineups/plex/channels?genre=<id>`) |
+| Channels | `GET {epg}/lineups/plex/channels` -> ~700 `Channel[]` (id, gridKey, title, slug, thumb logo, art, genreRatingKeys) |
+| Stream | `{epg}/library/parts/<channel id>.m3u8` with `X-Plex-Token` -> HLS master; variants carry the token, segments are open; no DRM |
+| Guide | `GET {epg}/grid?channelGridKey=<gridKey>&date=YYYY-MM-DD` -> one channel, one day (`Media[0].beginsAt/endsAt`); a list of keys or no date answers 400 |
+
+The add-on shows Featured, All channels (100 per page) and the genres, each channel
+with what's on now and next. **IPTV Manager** (Settings > Live TV) puts every channel,
+grouped by genre, into Kodi's TV section with a guide from now to about a day ahead
+(one guide call per channel and day, 16 at a time, so a full refresh takes a little while).
+
 ## Rentals
 Rentals and purchases are made in Plex's own apps or on watch.plex.tv; Kodi cannot rent. Once
 you sign in (plex.tv/link) with the same account, **My Rentals & Purchases** on the home menu

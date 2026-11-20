@@ -303,15 +303,15 @@ class PlexVodApi(object):
         return None
 
 
-_PROVIDER_BASE = None
+_PROVIDER_BASES = {}
 
 
-def _provider_base(api):
-    """The VOD provider's baseURL from plex.tv/media/providers (cached per run)."""
-    global _PROVIDER_BASE
-    if _PROVIDER_BASE:
-        return _PROVIDER_BASE
-    _PROVIDER_BASE = VOD_BASE
+def _provider_base(api, identifier=VOD_ID, fallback=VOD_BASE):
+    """A provider's baseURL from plex.tv/media/providers (cached per run):
+    tv.plex.provider.vod (on demand) or tv.plex.provider.epg (Live TV)."""
+    if identifier in _PROVIDER_BASES:
+        return _PROVIDER_BASES[identifier]
+    _PROVIDER_BASES[identifier] = fallback
     try:
         h = base_headers()
         h["X-Plex-Token"] = api.auth.token()
@@ -319,11 +319,11 @@ def _provider_base(api):
         data = resp.json() if resp.status_code == 200 else []
         providers = data if isinstance(data, list) else (data.get("MediaContainer") or {}).get("MediaProvider") or []
         for p in providers:
-            if p.get("identifier") == VOD_ID and str(p.get("baseURL", "")).startswith("https://"):
-                _PROVIDER_BASE = p["baseURL"].rstrip("/")
+            if p.get("identifier") == identifier and str(p.get("baseURL", "")).startswith("https://"):
+                _PROVIDER_BASES[identifier] = p["baseURL"].rstrip("/")
     except Exception as exc:
-        kodiutils.log("provider list unavailable, using %s: %s" % (VOD_BASE, exc))
-    return _PROVIDER_BASE
+        kodiutils.log("provider list unavailable, using %s: %s" % (fallback, exc))
+    return _PROVIDER_BASES[identifier]
 
 
 def image(url, width, height):

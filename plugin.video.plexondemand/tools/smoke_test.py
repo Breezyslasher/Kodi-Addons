@@ -295,5 +295,94 @@ except playback.NotRented as nr:
 except playback.Blocked:
     print("SKIP unrented title: blocked from this IP (451 VPN/proxy)")
 
+# ---- Live TV (tv.plex.provider.epg) and IPTV Manager
+import json as _json
+import socket as _socket
+import threading as _threading
+import time as _time
+from lib import live, iptv
+lapi = live.LiveApi()
+check("live provider base", lapi.base.startswith("https://") and "epg" in lapi.base, lapi.base)
+filters = lapi.filters()
+check("live filters (Featured + genres)", len(filters) > 3 and filters[0][0], [f[0] for f in filters[:5]])
+allch = lapi.channels(live.ALL)
+featured = lapi.channels(filters[0][1])
+check("live channels", len(allch) > 100 and all(c.get("id") and c.get("gridKey") for c in allch),
+      (len(allch), allch[0].get("title")))
+check("featured channels", 0 < len(featured) < len(allch), len(featured))
+genre_ch = lapi.channels(filters[1][1])
+check("a genre's channels", 0 < len(genre_ch) < len(allch), (filters[1][0], len(genre_ch)))
+ch = featured[0]
+li = live.build(lapi, ch["id"])
+check("live ListItem (ISA HLS, token header)",
+      li.props.get("inputstream") == "inputstream.adaptive" and "X-Plex-Token=" in li.props.get(
+          "inputstream.adaptive.manifest_headers", "") and li.mime == "application/vnd.apple.mpegurl", li.path)
+r = lapi.session.get(li.path, headers=lapi.headers(), timeout=20)
+check("live master playlist", r.status_code == 200 and r.text.startswith("#EXTM3U"), r.status_code)
+variant = [l for l in r.text.splitlines() if l and not l.startswith("#")]
+rv = lapi.session.get(variant[0], timeout=20) if variant else None
+check("live variant plays without headers", rv is not None and rv.status_code == 200 and "#EXTINF" in rv.text,
+      rv is not None and rv.status_code)
+segs = [l for l in (rv.text if rv is not None else "").splitlines() if l and not l.startswith("#")]
+if segs:
+    seg = segs[0] if segs[0].startswith("http") else variant[0].rsplit("/", 1)[0] + "/" + segs[0]
+    rs = lapi.session.get(seg, timeout=20, stream=True)
+    check("live segment open", rs.status_code == 200, rs.status_code)
+    rs.close()
+t0 = _time.time()
+nn = lapi.now_next(featured)
+with_now = [gk for gk, (cur, nxt) in nn.items() if cur]
+check("now/next for featured channels", len(with_now) >= len(featured) // 2,
+      ("%d/%d in %.1fs" % (len(with_now), len(featured), _time.time() - t0)))
+cur, nxt = nn[with_now[0]] if with_now else (None, None)
+check("now covers the present", cur and cur["Media"][0]["beginsAt"] <= _time.time() < cur["Media"][0]["endsAt"],
+      cur and live.programme_title(cur))
+check("next follows now", nxt is None or nxt["Media"][0]["beginsAt"] >= cur["Media"][0]["beginsAt"],
+      nxt and live.programme_title(nxt))
+
+streams = iptv.channels(lapi, allch)["streams"]
+check("IPTV channels: all, with stream/logo/group",
+      len(streams) == len(allch) and all(s["stream"].startswith(iptv.PLUGIN) and s["name"] for s in streams),
+      len(streams))
+check("IPTV channel ids unique", len({s["id"] for s in streams}) == len(streams))
+groups = sorted({s["group"] for s in streams})
+check("IPTV channels grouped by genre", len(groups) > 3, groups[:8])
+t0 = _time.time()
+guide = iptv.epg(lapi, featured)["epg"]
+progs = [e for v in guide.values() for e in v]
+check("IPTV guide for featured channels", len(guide) == len(featured) and len(progs) > len(featured) * 5,
+      "%d programmes, %.1fs" % (len(progs), _time.time() - t0))
+check("IPTV guide entries well-formed", all(e["start"] < e["stop"] and e["title"] for e in progs), progs[:1])
+first = sorted(guide[iptv.channel_id(featured[0])], key=lambda e: e["start"])
+now_iso = iptv._iso(_time.time())
+check("IPTV guide reaches ahead", first and first[0]["start"] <= now_iso and first[-1]["stop"] > iptv._iso(_time.time() + 12 * 3600),
+      first and (first[0]["start"], first[-1]["stop"]))
+# round trip over a socket the way IPTV Manager receives it
+srv = _socket.socket()
+srv.bind(("127.0.0.1", 0))
+srv.listen(1)
+got = []
+
+
+def _recv():
+    conn, _ = srv.accept()
+    buf = b""
+    while True:
+        b = conn.recv(65536)
+        if not b:
+            break
+        buf += b
+    got.append(_json.loads(buf))
+    conn.close()
+
+
+th = _threading.Thread(target=_recv)
+th.start()
+iptv.send(srv.getsockname()[1], lambda: iptv.channels(lapi, featured))
+th.join(10)
+srv.close()
+check("IPTV send over socket", got and got[0]["version"] == 1 and len(got[0]["streams"]) == len(featured))
+check("IPTV routes", iptv.handle("plugin://plugin.video.plexondemand/", "1") is False)
+
 print("\n%d failure(s)" % len(FAIL))
 sys.exit(1 if FAIL else 0)

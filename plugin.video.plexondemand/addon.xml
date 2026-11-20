@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.20.10" provider-name="Breezyslasher">
+<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.20.11" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -12,8 +12,10 @@
 	</extension>
 	<extension point="xbmc.service" library="service.py"/>
 	<extension point="xbmc.addon.metadata">
-		<summary lang="en_GB">Plex's free, ad-supported Movies &amp; Shows catalogue (unofficial)</summary>
+		<summary lang="en_GB">Plex's free, ad-supported Movies &amp; Shows and Live TV (unofficial)</summary>
 		<description lang="en_GB">Browse and play the free on-demand movies and TV shows Plex streams from its own cloud. No Plex Media Server and no account needed; signing in with plex.tv/link is optional and only syncs watch progress to your Plex account.
+
+Live TV: Plex's free live channels (about 700 in the US) by genre, with what's on now and next, and in Kodi's TV guide through IPTV Manager (optional).
 
 Clear titles play as HLS; Widevine-protected titles play as DASH through InputStream Adaptive (SD on most L3 devices).
 
@@ -28,7 +30,11 @@ Unofficial; not affiliated with or endorsed by Plex, Inc.</description>
 			<icon>resources/icon.png</icon>
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
-		<news>v2026.11.20.10
+		<news>v2026.11.20.11
+- Live TV: Plex's free live channels (Featured, All channels and genres) with what's on now and next
+- IPTV Manager support: Live TV channels and a day of guide in Kodi's TV section (Settings &gt; Live TV)
+
+v2026.11.20.10
 - Categories show their artwork with the name on it, like Plex's website
 
 v2026.11.20.9

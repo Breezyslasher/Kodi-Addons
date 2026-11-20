@@ -203,6 +203,24 @@
         ]
       },
       "note": "Categories menu (curated, free-only keys)."
+    },
+    {
+      "id": "live_channels",
+      "uses": [
+        "anonymous_token"
+      ],
+      "url": "https://epg.provider.plex.tv/lineups/plex/channels",
+      "headers": {
+        "X-Plex-Token": "{token}"
+      },
+      "expect": {
+        "json_paths": [
+          "MediaContainer.Channel[0].id",
+          "MediaContainer.Channel[0].gridKey",
+          "MediaContainer.Channel[0].Media[0].Part[0].key"
+        ]
+      },
+      "note": "Live TV lineup (tv.plex.provider.epg); each channel streams from /library/parts/<id>.m3u8."
     }
   ]
 }

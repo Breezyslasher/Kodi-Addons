@@ -20,6 +20,10 @@ S = {
     "featured": 32010,
     "brands": 32077,
     "categories": 32078,
+    "live_tv": 32079,
+    "live_all": 32080,
+    "live_now": 32081,
+    "live_next": 32082,
     "movies": 32011,
     "shows": 32012,
     "search": 32013,
@@ -204,6 +208,8 @@ def root():
         # The store itself (priced rows) can be switched off in Settings.
         if kodiutils.get_setting_bool("show_rentals", True):
             folder(L("rentals"), {"action": "store"})
+    if kodiutils.get_setting_bool("show_live", True):
+        folder(L("live_tv"), {"action": "live"})
     folder(L("featured"), {"action": "hubs"})
     folder(L("brands"), {"action": "brands"})
     folder(L("categories"), {"action": "categories"})
@@ -545,6 +551,77 @@ def play(rk):
     xbmcplugin.setResolvedUrl(HANDLE, True, item)
 
 
+# ---------------------------------------------------------------- live TV
+LIVE_PAGE = 100
+
+
+def live_root():
+    from lib.live import LiveApi, ALL
+    filters = LiveApi().filters()
+    # Featured (Plex's promoted filter) first, then every channel, then genres.
+    for title, key, _g in filters[:1]:
+        folder(title, {"action": "live_list", "key": key})
+    folder(L("live_all"), {"action": "live_list", "key": ALL})
+    for title, key, _g in filters[1:]:
+        folder(title, {"action": "live_list", "key": key})
+    end("files")
+
+
+def live_list(key, start=0):
+    from lib import live
+    api = live.LiveApi()
+    chans = api.channels(key)
+    page = chans[start:start + LIVE_PAGE]
+    guide = api.now_next(page)
+    for c in page:
+        cur, nxt = guide.get(c.get("gridKey"), (None, None))
+        label = c.get("title") or "?"
+        plot = []
+        if cur:
+            m = cur["Media"][0]
+            label = "%s  [COLOR grey]%s[/COLOR]" % (label, live.programme_title(cur))
+            plot.append("[B]%s %s-%s[/B]  %s" % (L("live_now"), live.clock(m["beginsAt"]), live.clock(m["endsAt"]),
+                                                  live.programme_title(cur)))
+            if live.episode_label(cur):
+                plot.append(live.episode_label(cur))
+            if cur.get("summary"):
+                plot.append(cur["summary"])
+        if nxt:
+            plot.append("")
+            plot.append("[B]%s %s[/B]  %s" % (L("live_next"), live.clock(nxt["Media"][0]["beginsAt"]),
+                                              live.programme_title(nxt)))
+        if c.get("summary"):
+            plot += ["", c["summary"]]
+        item = xbmcgui.ListItem(label)
+        item.setArt(live.channel_art(c))
+        tag = item.getVideoInfoTag()
+        tag.setTitle(c.get("title") or "")
+        tag.setPlot("\n".join(plot))
+        item.setProperty("IsPlayable", "true")
+        xbmcplugin.addDirectoryItem(HANDLE, url(action="live_play", id=c["id"]), item, False)
+    if start + LIVE_PAGE < len(chans):
+        nxt_start = start + LIVE_PAGE
+        folder("%s (%d/%d)" % (L("next_page"), nxt_start // LIVE_PAGE + 1, (len(chans) + LIVE_PAGE - 1) // LIVE_PAGE),
+               {"action": "live_list", "key": key, "start": nxt_start})
+    end("videos", cache=False)
+
+
+def live_play(channel_id):
+    from lib import live
+    try:
+        item = live.build(live.LiveApi(), channel_id)
+    except playback.Blocked:
+        kodiutils.ok_dialog(L("vpn_blocked"))
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    except Exception as exc:
+        kodiutils.log_error("live %s failed: %s" % (channel_id, exc))
+        kodiutils.notify(L("playback_failed"), icon=xbmcgui.NOTIFICATION_ERROR)
+        xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
+        return
+    xbmcplugin.setResolvedUrl(HANDLE, True, item)
+
+
 def _close_settings():
     """Run from the Settings dialog, close it first so it cannot write its
     stale values back over what the sign-in/out just stored."""
@@ -603,6 +680,12 @@ def router(paramstring):
             related(p["rk"], p.get("kind", "similarTitles"))
         elif action == "store":  # still reachable from old links / favourites
             store()
+        elif action == "live":
+            live_root()
+        elif action == "live_list":
+            live_list(p["key"], int(p.get("start", 0)))
+        elif action == "live_play":
+            live_play(p["id"])
         elif action == "brands":
             brands()
         elif action == "categories":
@@ -632,9 +715,14 @@ def router(paramstring):
     except PlexApiError as exc:
         kodiutils.log_error(str(exc))
         kodiutils.notify("%s: %s" % (L("error"), exc), icon=xbmcgui.NOTIFICATION_ERROR)
-        if HANDLE >= 0 and action != "play":
+        if HANDLE >= 0 and action not in ("play", "live_play"):
             xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
 
 
 if __name__ == "__main__":
-    router(sys.argv[2][1:] if len(sys.argv) > 2 else "")
+    # IPTV Manager calls /iptv/channels and /iptv/epg with ?port=N and wants
+    # the answer on that socket, not a directory listing.
+    from lib import iptv
+    _query = dict(parse_qsl(sys.argv[2][1:])) if len(sys.argv) > 2 else {}
+    if not iptv.handle(sys.argv[0], _query.get("port")):
+        router(sys.argv[2][1:] if len(sys.argv) > 2 else "")
