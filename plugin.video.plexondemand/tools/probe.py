@@ -1271,6 +1271,56 @@ def round18():
     return 0
 
 
+def round19():
+    """Live TV: channel list, a channel's stream, the guide grid."""
+    import time as _t
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://epg.provider.plex.tv"
+    st, ch = show("all channels", "GET", base + "/lineups/plex/channels", depth=5, headers=T)
+    chans = mc(ch).get("Channel") or []
+    print("== channel count:", len(chans), "size/total:", mc(ch).get("size"), mc(ch).get("totalSize"))
+    st2, fe = req_json("GET", base + "/lineups/plex/channels/featured", headers=T)
+    print("== featured count:", len(mc(fe).get("Channel") or []))
+    st3, ge = req_json("GET", base + "/lineups/plex/channels", headers=T, params={"genre": "news"})
+    print("== news count:", len(mc(ge).get("Channel") or []))
+    print("== sample:", [(c.get("title"), c.get("callSign"), c.get("vcn"), c.get("gridKey"), c.get("id")) for c in chans[:5]])
+    print("== keys on a channel:", sorted(chans[0].keys()) if chans else None)
+    if not chans:
+        return 0
+    c = chans[0]
+    # stream: try whatever the channel's Media/Part says
+    media = c.get("Media") or []
+    print("== media:", mask(json.dumps(media)[:1500]))
+    part = ((media or [{}])[0].get("Part") or [{}])[0]
+    for k in [part.get("key"), c.get("key")]:
+        if not k:
+            continue
+        u = k if k.startswith("http") else base + k
+        st, ct, body, final = req("GET", u, headers=T)
+        print(f"== stream try {mask(u)} -> {st} {ct} final={mask(final)}\n{mask(body[:700].decode('utf-8', 'replace'))}")
+        if st == 200 and b"#EXTM3U" in body[:20]:
+            lines = [l for l in body.decode().splitlines() if l and not l.startswith("#")]
+            if lines:
+                sub = lines[0] if lines[0].startswith("http") else final.rsplit("/", 1)[0] + "/" + lines[0]
+                st, ct, b2, _ = req("GET", sub)
+                print(f"== variant without token {mask(sub)[:200]} -> {st} {mask(b2[:300].decode('utf-8', 'replace'))}")
+    # guide grid
+    gk = c.get("gridKey") or c.get("id")
+    day = _t.strftime("%Y-%m-%d", _t.gmtime())
+    show("grid one channel", "GET", base + "/grid", depth=6, headers=T, params={"channelGridKey": gk, "date": day})
+    keys = ",".join(x.get("gridKey") or x.get("id") for x in chans[:3])
+    st, g = req_json("GET", base + "/grid", headers=T, params={"channelGridKey": keys, "date": day})
+    md = mc(g).get("Metadata") or []
+    print("== grid 3 channels ->", st, "items", len(md), "size", mc(g).get("size"))
+    st, g = req_json("GET", base + "/grid", headers=T, params={"channelGridKey": gk})
+    print("== grid no date ->", st, "items", len(mc(g).get("Metadata") or []))
+    show("hubs whatsOnNow", "GET", base + "/hubs/sections/home/whatsOnNow", depth=4, headers=T,
+         params={"X-Plex-Container-Size": 2})
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -1282,5 +1332,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round18")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14, "round15": round15, "round16": round16, "round17": round17, "round18": round18}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round19")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14, "round15": round15, "round16": round16, "round17": round17, "round18": round18, "round19": round19}.get(mode, main)())
