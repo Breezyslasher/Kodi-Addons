@@ -65,14 +65,15 @@ buttons appear only after **Kodi is restarted** following that first install, be
 add-on's service has to reload with the module available.
 
 ## Endpoint check
-Plex On Demand runs in the shared `.github/workflows/endpoint-checks.yml` matrix, three ways,
-all filing into one rolling issue labelled `plexondemand-endpoint` (scheduled runs only):
-- **Plex On Demand**: `tools/endpoints.json`, the declarative spec (token, PIN, providers,
-  hubs, genres and a genre's movies, store, search).
-- **Plex On Demand (addon code)**: `tools/smoke_test.py` drives the addon's own `lib/` against
-  the live service (playback incl. the DRM licence, watch state, watchlist, rentals, ...).
-- **Plex On Demand (service)**: `tools/test_service.py`, the service and Skip Buttons wiring
-  with Kodi stubbed (no network).
+Plex On Demand is one entry in the shared `.github/workflows/endpoint-checks.yml` matrix:
+`tools/check_endpoints.py`, which runs three parts in turn and fails if any fails. The daily
+scheduled run files one rolling issue labelled `plexondemand-endpoint`.
+1. **spec**: `tools/endpoints.json` through the shared engine (token, PIN, providers, rows,
+   genres and a genre's movies, store, search).
+2. **addon**: `tools/smoke_test.py` drives the addon's own `lib/` against the live service
+   (playback incl. the DRM licence, watch state, watchlist, rentals, ...).
+3. **service**: `tools/test_service.py`, the service and Skip Buttons wiring with Kodi stubbed
+   (no network).
 
 Pushes that touch these files or the addon's `lib/`/`service.py` run the matrix too.
 

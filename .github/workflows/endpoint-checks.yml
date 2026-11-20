@@ -23,6 +23,7 @@ on:
       - 'plugin.video.tubitv/tools/endpoints.json'
       - 'plugin.video.tubitv/tools/check_endpoints.py'
       - 'plugin.video.plexondemand/tools/endpoints.json'
+      - 'plugin.video.plexondemand/tools/check_endpoints.py'
       - 'plugin.video.plexondemand/tools/smoke_test.py'
       - 'plugin.video.plexondemand/tools/test_service.py'
       - 'plugin.video.plexondemand/lib/**'
@@ -61,23 +62,12 @@ jobs:
             spec: ''
             script: plugin.video.tubitv/tools/check_endpoints.py
             issue_label: tubi-endpoint
-          # Plex On Demand three ways, into the one rolling issue. The spec
-          # checks the endpoints still answer in the shape the addon reads;
-          # the smoke test drives the addon's own lib/ code against the live
-          # service (playback, DRM licence, watch state, watchlist, rentals);
-          # the service test runs service.py with Skip Buttons, Kodi stubbed,
-          # no network.
+          # Plex On Demand's script runs its spec through the shared engine,
+          # then drives the addon's own code against the live service, then
+          # the offline service/Skip Buttons test - one job, one issue.
           - name: Plex On Demand
-            spec: plugin.video.plexondemand/tools/endpoints.json
-            script: ''
-            issue_label: plexondemand-endpoint
-          - name: Plex On Demand (addon code)
             spec: ''
-            script: plugin.video.plexondemand/tools/smoke_test.py
-            issue_label: plexondemand-endpoint
-          - name: Plex On Demand (service)
-            spec: ''
-            script: plugin.video.plexondemand/tools/test_service.py
+            script: plugin.video.plexondemand/tools/check_endpoints.py
             issue_label: plexondemand-endpoint
     uses: ./.github/workflows/endpoint-check.yml
     with:
