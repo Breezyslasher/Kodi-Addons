@@ -1,0 +1,324 @@
+# Kodi Media Center language file
+# Addon Name: Plex On Demand
+# Addon id: plugin.video.plexondemand
+# Addon Provider: Breezyslasher
+msgid ""
+msgstr ""
+"Project-Id-Version: plugin.video.plexondemand\n"
+"Report-Msgid-Bugs-To: https://github.com/Breezyslasher/Kodi-Addons\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+
+msgctxt "#32000"
+msgid "Account"
+msgstr ""
+
+msgctxt "#32001"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#32002"
+msgid "Advanced"
+msgstr ""
+
+msgctxt "#32010"
+msgid "Featured"
+msgstr ""
+
+msgctxt "#32011"
+msgid "Movies"
+msgstr ""
+
+msgctxt "#32012"
+msgid "TV Shows"
+msgstr ""
+
+msgctxt "#32013"
+msgid "Search"
+msgstr ""
+
+msgctxt "#32014"
+msgid "Sign in with plex.tv/link (optional)"
+msgstr ""
+
+msgctxt "#32015"
+msgid "Sign out"
+msgstr ""
+
+msgctxt "#32016"
+msgid "Signed in as %s"
+msgstr ""
+
+msgctxt "#32017"
+msgid "Link your Plex account"
+msgstr ""
+
+msgctxt "#32018"
+msgid "Go to plex.tv/link and enter the code:[CR][B]%s[/B][CR]Signing in is optional; free titles play without an account."
+msgstr ""
+
+msgctxt "#32019"
+msgid "Signed in to Plex"
+msgstr ""
+
+msgctxt "#32020"
+msgid "Sign in did not complete"
+msgstr ""
+
+msgctxt "#32021"
+msgid "Sign out of your Plex account?"
+msgstr ""
+
+msgctxt "#32022"
+msgid "No free titles found"
+msgstr ""
+
+msgctxt "#32023"
+msgid "Playback failed - see the Kodi log"
+msgstr ""
+
+msgctxt "#32024"
+msgid "Next page"
+msgstr ""
+
+msgctxt "#32025"
+msgid "Plex error"
+msgstr ""
+
+msgctxt "#32026"
+msgid "This title needs Widevine DRM, which is not available on this device."
+msgstr ""
+
+msgctxt "#32027"
+msgid "Season %s"
+msgstr ""
+
+msgctxt "#32028"
+msgid "Plex blocks this title while it thinks you are on a VPN or proxy. Disable the VPN and try again."
+msgstr ""
+
+msgctxt "#32030"
+msgid "Account"
+msgstr ""
+
+msgctxt "#32031"
+msgid "Maximum resolution (0 = no limit)"
+msgstr ""
+
+msgctxt "#32032"
+msgid "Load subtitles"
+msgstr ""
+
+msgctxt "#32033"
+msgid "Report watch progress to Plex"
+msgstr ""
+
+msgctxt "#32034"
+msgid "VOD provider URL override (debug)"
+msgstr ""
+
+msgctxt "#32035"
+msgid "Plex token"
+msgstr ""
+
+msgctxt "#32036"
+msgid "Anonymous token"
+msgstr ""
+
+msgctxt "#32037"
+msgid "Client identifier"
+msgstr ""
+
+msgctxt "#32038"
+msgid "Autoplay the next episode at the credits"
+msgstr ""
+
+msgctxt "#32040"
+msgid "Continue Watching"
+msgstr ""
+
+msgctxt "#32041"
+msgid "Play trailer"
+msgstr ""
+
+msgctxt "#32042"
+msgid "No trailer for this title"
+msgstr ""
+
+msgctxt "#32043"
+msgid "Mark as watched on Plex"
+msgstr ""
+
+msgctxt "#32044"
+msgid "Mark as unwatched on Plex"
+msgstr ""
+
+msgctxt "#32045"
+msgid "Remove from Continue Watching"
+msgstr ""
+
+msgctxt "#32046"
+msgid "New search"
+msgstr ""
+
+msgctxt "#32047"
+msgid "Remove from recent searches"
+msgstr ""
+
+msgctxt "#32048"
+msgid "Watchlist"
+msgstr ""
+
+msgctxt "#32049"
+msgid "Add to Watchlist"
+msgstr ""
+
+msgctxt "#32050"
+msgid "Remove from Watchlist"
+msgstr ""
+
+msgctxt "#32051"
+msgid "Added to your Watchlist"
+msgstr ""
+
+msgctxt "#32052"
+msgid "Your Watchlist is empty"
+msgstr ""
+
+msgctxt "#32053"
+msgid "Plex places you in %s; the free catalogue is mainly for the US"
+msgstr ""
+
+msgctxt "#32054"
+msgid "More like this"
+msgstr ""
+
+msgctxt "#32055"
+msgid "Sort genre lists by"
+msgstr ""
+
+msgctxt "#32056"
+msgid "Resize artwork (faster lists)"
+msgstr ""
+
+msgctxt "#32057"
+msgid "Newest"
+msgstr ""
+
+msgctxt "#32058"
+msgid "Title A-Z"
+msgstr ""
+
+msgctxt "#32059"
+msgid "Title Z-A"
+msgstr ""
+
+msgctxt "#32060"
+msgid "Audience rating"
+msgstr ""
+
+msgctxt "#32061"
+msgid "Browse"
+msgstr ""
+
+msgctxt "#32062"
+msgid "More from this cast & crew"
+msgstr ""
+
+msgctxt "#32063"
+msgid "Rate…"
+msgstr ""
+
+msgctxt "#32064"
+msgid "%g stars"
+msgstr ""
+
+msgctxt "#32065"
+msgid "Clear rating"
+msgstr ""
+
+msgctxt "#32066"
+msgid "Not interested"
+msgstr ""
+
+msgctxt "#32067"
+msgid "Undo Not interested"
+msgstr ""
+
+msgctxt "#32068"
+msgid "Rentals"
+msgstr ""
+
+msgctxt "#32069"
+msgid "My Rentals & Purchases"
+msgstr ""
+
+msgctxt "#32070"
+msgid "No rentals or purchases on this account (sign in to see yours)"
+msgstr ""
+
+msgctxt "#32071"
+msgid "Not rented on your Plex account."
+msgstr ""
+
+msgctxt "#32072"
+msgid "[B]Rent %s[/B] (%s hours to watch)"
+msgstr ""
+
+msgctxt "#32073"
+msgid "[B]Buy %s[/B]"
+msgstr ""
+
+msgctxt "#32074"
+msgid "Rent or buy it at %s, then play it here."
+msgstr ""
+
+msgctxt "#32075"
+msgid "Removed from your Watchlist"
+msgstr ""
+
+msgctxt "#32076"
+msgid "Show Rentals store (requires sign-in)"
+msgstr ""
+
+msgctxt "#32077"
+msgid "Brands"
+msgstr ""
+
+msgctxt "#32078"
+msgid "Categories"
+msgstr ""
+
+msgctxt "#32079"
+msgid "Live TV"
+msgstr ""
+
+msgctxt "#32080"
+msgid "All channels"
+msgstr ""
+
+msgctxt "#32081"
+msgid "Now"
+msgstr ""
+
+msgctxt "#32082"
+msgid "Next"
+msgstr ""
+
+msgctxt "#32083"
+msgid "Show Live TV"
+msgstr ""
+
+msgctxt "#32084"
+msgid "Add Live TV to Kodi's TV guide (IPTV Manager)"
+msgstr ""
+
+msgctxt "#32085"
+msgid "What's on later"
+msgstr ""
+
+msgctxt "#32086"
+msgid "%s starts at %s"
+msgstr ""

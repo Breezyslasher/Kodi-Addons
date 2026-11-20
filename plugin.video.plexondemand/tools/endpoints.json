@@ -1,0 +1,226 @@
+{
+  "name": "Plex On Demand (plugin.video.plexondemand)",
+  "defaults": {
+    "timeout": 20,
+    "headers": {
+      "Accept": "application/json",
+      "X-Plex-Product": "Plex Web",
+      "X-Plex-Version": "4.145.1",
+      "X-Plex-Platform": "Chrome",
+      "X-Plex-Platform-Version": "131.0",
+      "X-Plex-Device": "Linux",
+      "X-Plex-Device-Name": "Kodi",
+      "X-Plex-Language": "en",
+      "X-Plex-Client-Identifier": "{client_id}"
+    }
+  },
+  "vars": {
+    "client_id": "{random_hex32}"
+  },
+  "checks": [
+    {
+      "id": "anonymous_token",
+      "helper": true,
+      "method": "POST",
+      "url": "https://plex.tv/api/v2/users/anonymous",
+      "expect": {
+        "status": [
+          200,
+          201
+        ],
+        "json_paths": [
+          "authToken"
+        ]
+      },
+      "save": {
+        "token": "json:authToken"
+      },
+      "note": "Anonymous account token, the key to the whole free catalogue. A 404 here means X-Plex-Product (Plex Web) is no longer accepted."
+    },
+    {
+      "id": "anonymous_token_mint",
+      "method": "POST",
+      "url": "https://plex.tv/api/v2/users/anonymous",
+      "expect": {
+        "status": [
+          200,
+          201
+        ],
+        "json_paths": [
+          "authToken"
+        ]
+      },
+      "note": "Same call as the helper, run once on its own so a failure is reported under its own name."
+    },
+    {
+      "id": "pins_create",
+      "method": "POST",
+      "url": "https://plex.tv/api/v2/pins",
+      "expect": {
+        "status": [
+          200,
+          201
+        ],
+        "json_paths": [
+          "id",
+          "code"
+        ]
+      },
+      "note": "plex.tv/link sign-in (4-character code). A change here breaks optional account sign-in."
+    },
+    {
+      "id": "media_providers",
+      "uses": [
+        "anonymous_token"
+      ],
+      "url": "https://plex.tv/media/providers",
+      "headers": {
+        "X-Plex-Token": "{token}"
+      },
+      "expect": {
+        "json_paths": [
+          "[0].identifier",
+          "[0].baseURL"
+        ]
+      },
+      "note": "The addon reads the tv.plex.provider.vod baseURL from this list (a bare JSON array with Accept: application/json; it falls back to vod.provider.plex.tv)."
+    },
+    {
+      "id": "vod_hubs",
+      "uses": [
+        "anonymous_token"
+      ],
+      "url": "https://vod.provider.plex.tv/hubs",
+      "headers": {
+        "X-Plex-Token": "{token}"
+      },
+      "expect": {
+        "json_paths": [
+          "MediaContainer.Hub[0].key"
+        ]
+      },
+      "note": "Featured rows. Each Hub key is followed into its contents."
+    },
+    {
+      "id": "movie_genres",
+      "uses": [
+        "anonymous_token"
+      ],
+      "url": "https://vod.provider.plex.tv/library/sections/movies/genre?type=1",
+      "headers": {
+        "X-Plex-Token": "{token}"
+      },
+      "expect": {
+        "json_paths": [
+          "MediaContainer.Directory[0].key"
+        ]
+      },
+      "save": {
+        "genre_key": "json:MediaContainer.Directory[0].key"
+      },
+      "note": "Movies by genre. /library/sections/movies/all answers 404 without a genre, so the Movies menu goes through these keys."
+    },
+    {
+      "id": "movies_in_genre",
+      "uses": [
+        "anonymous_token",
+        "movie_genres"
+      ],
+      "url": "https://vod.provider.plex.tv{genre_key}&X-Plex-Container-Size=5",
+      "headers": {
+        "X-Plex-Token": "{token}"
+      },
+      "expect": {
+        "json_paths": [
+          "MediaContainer.Metadata[0].title",
+          "MediaContainer.Metadata[0].ratingKey",
+          "MediaContainer.Metadata[0].Media[0].Part[0].key"
+        ]
+      },
+      "note": "A genre's movie grid, with the Media/Part key playback starts from."
+    },
+    {
+      "id": "store_hubs",
+      "uses": [
+        "anonymous_token"
+      ],
+      "url": "https://vod.provider.plex.tv/hubs/sections/store",
+      "headers": {
+        "X-Plex-Token": "{token}"
+      },
+      "expect": {
+        "json_paths": [
+          "MediaContainer.Hub[0].key"
+        ]
+      },
+      "note": "Rentals store rows (My Rentals & Purchases first)."
+    },
+    {
+      "id": "discover_search",
+      "uses": [
+        "anonymous_token"
+      ],
+      "url": "https://discover.provider.plex.tv/library/search?query=star&searchTypes=movies,tv&searchProviders=discover,plexAVOD&includeMetadata=1&limit=10",
+      "headers": {
+        "X-Plex-Token": "{token}"
+      },
+      "expect": {
+        "json_paths": [
+          "MediaContainer.SearchResults[0].SearchResult[0].Metadata.ratingKey"
+        ]
+      },
+      "note": "Catalogue search; the addon keeps the section with id 'plex' (Free On Demand)."
+    },
+    {
+      "id": "brands",
+      "uses": [
+        "anonymous_token"
+      ],
+      "url": "https://vod.provider.plex.tv/library/sections/channels/all",
+      "headers": {
+        "X-Plex-Token": "{token}"
+      },
+      "expect": {
+        "json_paths": [
+          "MediaContainer.Directory[0].key",
+          "MediaContainer.Directory[0].title"
+        ]
+      },
+      "note": "Brands menu (Plex calls them channels); each key opens /library/channels/<id>."
+    },
+    {
+      "id": "categories",
+      "uses": [
+        "anonymous_token"
+      ],
+      "url": "https://vod.provider.plex.tv/library/sections/categories/all",
+      "headers": {
+        "X-Plex-Token": "{token}"
+      },
+      "expect": {
+        "json_paths": [
+          "MediaContainer.Directory[0].key"
+        ]
+      },
+      "note": "Categories menu (curated, free-only keys)."
+    },
+    {
+      "id": "live_channels",
+      "uses": [
+        "anonymous_token"
+      ],
+      "url": "https://epg.provider.plex.tv/lineups/plex/channels",
+      "headers": {
+        "X-Plex-Token": "{token}"
+      },
+      "expect": {
+        "json_paths": [
+          "MediaContainer.Channel[0].id",
+          "MediaContainer.Channel[0].gridKey",
+          "MediaContainer.Channel[0].Media[0].Part[0].key"
+        ]
+      },
+      "note": "Live TV lineup (tv.plex.provider.epg); each channel streams from /library/parts/<id>.m3u8."
+    }
+  ]
+}

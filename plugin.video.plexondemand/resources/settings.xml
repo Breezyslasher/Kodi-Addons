@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="32000">
+        <setting id="sign_in" type="action" label="32014" action="RunPlugin(plugin://plugin.video.plexondemand/?action=sign_in)" />
+        <setting id="sign_out" type="action" label="32015" action="RunPlugin(plugin://plugin.video.plexondemand/?action=sign_out)" />
+    </category>
+    <category label="32001">
+        <setting id="max_height" type="select" label="32031" values="0|480|720|1080" default="0" />
+        <setting id="subtitles" type="bool" label="32032" default="true" />
+        <setting id="report_progress" type="bool" label="32033" default="true" />
+        <setting id="autoplay_next" type="bool" label="32038" default="true" />
+    </category>
+    <category label="32061">
+        <setting id="genre_sort" type="enum" label="32055" lvalues="32057|32058|32059|32060" default="0" />
+        <setting id="resize_art" type="bool" label="32056" default="true" />
+        <setting id="show_rentals" type="bool" label="32076" default="true" />
+    </category>
+    <category label="32079">
+        <setting id="show_live" type="bool" label="32083" default="true" />
+        <setting id="iptv.enabled" type="bool" label="32084" default="true" />
+        <setting id="iptv.channels_uri" type="text" default="plugin://plugin.video.plexondemand/iptv/channels" visible="false" />
+        <setting id="iptv.epg_uri" type="text" default="plugin://plugin.video.plexondemand/iptv/epg" visible="false" />
+    </category>
+    <category label="32002">
+        <setting id="base_url_override" type="text" label="32034" default="" />
+        <setting id="client_id" type="text" label="32037" default="" visible="false" />
+    </category>
+</settings>
