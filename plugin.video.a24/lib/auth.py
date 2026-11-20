@@ -29,6 +29,7 @@ the cookie (``a24_session`` + ``a24_session_expires``), the app tokens
 import base64
 import hashlib
 import json
+import re
 import secrets
 import time
 from urllib.parse import urlencode, urlsplit, parse_qs
@@ -46,7 +47,13 @@ ACCOUNT_API = AUTH_BASE + "/api/v1/"
 APP_ORIGIN = "https://app.a24films.com"
 # Public OAuth client of the A24 web app (constant in its JS bundle).
 CLIENT_ID = "nHodnPAsF9MSYmRkVlFH1EsD142RZ9Nk1xNg1f1e"
-REDIRECT_URI = APP_ORIGIN + "/tabs/home/"   # web build's authReturnUrl
+# authReturnUrl from the bundle: web build first, then the native build's
+# (Capacitor apps), then the web one without its trailing slash. The first
+# real-box sign-in got HTTP 400 from authorize with the web one; the signed-
+# out CI probe shows parameters are only checked once signed in.
+REDIRECT_URIS = (APP_ORIGIN + "/tabs/home/",
+                 "https://api.app.a24films.com/redirect/",
+                 APP_ORIGIN + "/tabs/home")
 
 SESSION_COOKIE = "nexussessionid"
 COOKIE_DOMAIN = ".a24films.com"
@@ -187,36 +194,52 @@ class A24Auth(object):
         logIn() does, without a browser. Row B2."""
         if not self._session_cookie:
             raise A24AuthError(kodiutils.localize(32031), 401)
-        verifier, challenge = _pkce_pair()
+        status = None
+        for redirect_uri in REDIRECT_URIS:
+            verifier, challenge = _pkce_pair()
+            code, status = self._authorize_code(challenge, redirect_uri)
+            if code:
+                kodiutils.log("authorize: code issued for redirect %s" % redirect_uri)
+                self._token({"grant_type": "authorization_code", "code": code,
+                             "client_id": CLIENT_ID, "code_verifier": verifier,
+                             "redirect_uri": redirect_uri})
+                return
+        raise A24AuthError("%s (HTTP %s)" % (kodiutils.localize(32036), status), status)
+
+    def _authorize_code(self, challenge, redirect_uri):
+        """(code or None, last HTTP status) for one authorize attempt."""
         url = "%s/api/v1/auth/authorize/?%s" % (AUTH_BASE, urlencode({
             "response_type": "code", "client_id": CLIENT_ID,
             "code_challenge": challenge, "code_challenge_method": "S256",
-            "redirect_uri": REDIRECT_URI, "back_to_site_title": "A24 App"}))
-        code = None
+            "redirect_uri": redirect_uri, "back_to_site_title": "A24 App"}))
+        resp = None
         for _ in range(6):
             resp = self.session.get(url, allow_redirects=False, timeout=TIMEOUT,
-                                    headers={"Accept": "text/html,application/json"})
+                                    headers={"Accept": "text/html,application/xhtml+xml,"
+                                                       "application/xml;q=0.9,*/*;q=0.8",
+                                             "Referer": APP_ORIGIN + "/"})
             location = resp.headers.get("Location", "")
-            if location:
-                query = parse_qs(urlsplit(location).query)
-                if query.get("code"):
-                    code = query["code"][0]
-                    break
-                url = requests.compat.urljoin(url, location)
-                if urlsplit(url).hostname not in ("account.a24films.com", "a24films.com"):
-                    break
-                continue
-            break
-        if not code:
-            # The error body names the OAuth problem (invalid_request etc.);
-            # it holds no secrets -- the code verifier never leaves Kodi.
-            kodiutils.log_error("authorize: no code (HTTP %s, redirect host %s, %s): %s" % (
-                resp.status_code, urlsplit(resp.headers.get("Location", "")).hostname,
-                resp.headers.get("Content-Type"), " ".join(resp.text.split())[:600]))
-            raise A24AuthError(kodiutils.localize(32036), resp.status_code)
-        self._token({"grant_type": "authorization_code", "code": code,
-                     "client_id": CLIENT_ID, "code_verifier": verifier,
-                     "redirect_uri": REDIRECT_URI})
+            if not location:
+                break
+            query = parse_qs(urlsplit(location).query)
+            if query.get("code"):
+                return query["code"][0], resp.status_code
+            if query.get("error"):
+                break
+            url = requests.compat.urljoin(url, location)
+            if urlsplit(url).hostname not in ("account.a24films.com", "a24films.com"):
+                break
+        # The error text names the OAuth problem (invalid_request, mismatching
+        # redirect URI...); it holds no secrets -- the verifier stays in Kodi.
+        location = resp.headers.get("Location", "")
+        loc = urlsplit(location)
+        body = re.sub(r"<[^>]+>", " ", resp.text or "")
+        kodiutils.log_error("authorize [%s]: no code (HTTP %s, %s, redirect %s%s?%s): %s" % (
+            redirect_uri, resp.status_code, resp.headers.get("Content-Type"),
+            loc.netloc, loc.path, ",".join("%s=%s" % (k, v[0][:80]) if k in ("error", "error_description") else k
+                                           for k, v in parse_qs(loc.query).items()),
+            " ".join(body.split())[:500]))
+        return None, resp.status_code
 
     def _token(self, form):
         resp = self.session.post(ACCOUNT_API + "auth/token/", data=form, timeout=TIMEOUT,
