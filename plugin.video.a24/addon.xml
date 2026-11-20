@@ -32,6 +32,6 @@ Rentals and purchases are made in the A24 app or website, never in Kodi. AAA24 m
 - Search results stay put after playback
 - Director commentary tracks play (pick them in Kodi's audio menu)
 - Screening Room: My Library, Store (rent/buy prices, "rent in the A24 app"), search, trailers and extras
-- Playback through Brightcove with Widevine (tested: an owned film plays up to 1440p, with resume)</news>
+- Playback through Brightcove with Widevine (tested: an owned film plays at the screen's resolution, 1440p on a 1440p laptop, with resume)</news>
 	</extension>
 </addon>

@@ -39,9 +39,10 @@ watching on your own account.
 ## Requirements
 
 Kodi 21+, InputStream Adaptive, a Widevine CDM (InputStream Helper installs
-it). Quality: up to **1440p** (H.264, stereo AAC) even on the desktop
-software (L3) CDM — measured on Backrooms. The *Maximum video height*
-setting can lower it.
+it). Quality: Backrooms played at **1440p** (H.264, stereo AAC) on a 1440p
+laptop with the desktop software (L3) CDM. That was the screen's limit, not
+A24's: InputStream Adaptive picks the highest stream that fits the display,
+so a 4K screen may get more. The *Maximum video height* setting can lower it.
 
 ## Settings
 
