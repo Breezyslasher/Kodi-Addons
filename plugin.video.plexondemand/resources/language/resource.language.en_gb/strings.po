@@ -148,11 +148,11 @@ msgid "No trailer for this title"
 msgstr ""
 
 msgctxt "#32043"
-msgid "Mark as watched"
+msgid "Mark as watched on Plex"
 msgstr ""
 
 msgctxt "#32044"
-msgid "Mark as unwatched"
+msgid "Mark as unwatched on Plex"
 msgstr ""
 
 msgctxt "#32045"
