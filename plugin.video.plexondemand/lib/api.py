@@ -48,6 +48,9 @@ Actions, US region, anonymous token):
   Sort            genre listings take sort=titleSort|titleSort:desc|
                   audienceRating:desc (year/decade/contentRating filters are
                   ignored by the provider)
+  Genre icons     Directory.icon (provider-static.plex.tv/icons/categories/*.svg)
+                  answers 403 to everyone, even images.plex.tv's transcoder
+                  (probe round 15), so genre folders carry no icon.
   Images          images.plex.tv/photo?url=<art>&width=&height= (no token);
                   a 920 KB poster comes back at ~29 KB for 300x450
   Search          limit=100 honoured, offset ignored
