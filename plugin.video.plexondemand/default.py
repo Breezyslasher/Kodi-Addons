@@ -196,8 +196,14 @@ def root():
     folder(L("watchlist"), {"action": "watchlist"})
     # Rentals only when signed in (an anonymous account can't own any) and
     # the user hasn't hidden them (Settings > Browse > Show Rentals).
-    if api.auth.signed_in() and kodiutils.get_setting_bool("show_rentals", True):
-        folder(L("rentals"), {"action": "store"})
+    if api.auth.signed_in():
+        # The account's own rentals/purchases: always reachable when there are
+        # any, whatever the store setting says; hidden when there are none.
+        if api.owns_any():
+            folder(L("my_rentals"), {"action": "list", "key": MY_RENTALS, "store": 1})
+        # The store itself (priced rows) can be switched off in Settings.
+        if kodiutils.get_setting_bool("show_rentals", True):
+            folder(L("rentals"), {"action": "store"})
     folder(L("featured"), {"action": "hubs"})
     folder(L("brands"), {"action": "brands"})
     folder(L("categories"), {"action": "categories"})
@@ -229,9 +235,8 @@ MY_RENTALS = "/hubs/sections/store/myRentalsAndPurchases"
 
 
 def store():
-    """Plex's rental store: the account's rentals first, then the store rows.
-    Renting happens on Plex's own apps or site; Kodi only plays."""
-    folder("[B]%s[/B]" % L("my_rentals"), {"action": "list", "key": MY_RENTALS, "store": 1})
+    """Plex's rental store rows. The account's own rentals live on the home
+    menu (My Rentals & Purchases). Renting happens in Plex's apps or site."""
     for h in PlexVodApi().store_hubs():
         if h["key"] == MY_RENTALS:
             continue

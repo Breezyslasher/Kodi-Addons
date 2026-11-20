@@ -252,6 +252,7 @@ sh = api.store_hubs()
 check("store hubs", any(h["key"].endswith("/myRentalsAndPurchases") for h in sh), len(sh))
 mine, _ = api.listing("/hubs/sections/store/myRentalsAndPurchases")
 check("my rentals (anonymous: empty)", mine == [], len(mine))
+check("owns_any is False for an anonymous account", api.owns_any() is False)
 rentals = []
 for h in sh:
     if not h["key"].endswith("/myRentalsAndPurchases"):

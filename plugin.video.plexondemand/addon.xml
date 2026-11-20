@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.20.7" provider-name="Breezyslasher">
+<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.20.8" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -28,7 +28,10 @@ Unofficial; not affiliated with or endorsed by Plex, Inc.</description>
 			<icon>resources/icon.png</icon>
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
-		<news>v2026.11.20.7
+		<news>v2026.11.20.8
+- My Rentals &amp; Purchases is on the home menu (only when signed in and you have some), independent of the Rentals store setting
+
+v2026.11.20.7
 - Category and brand folders show their names next to the artwork
 
 v2026.11.20.6
@@ -51,7 +54,7 @@ v2026.11.20.1
 - Clearer wording for the Show Rentals setting
 
 v2026.11.20
-- Rentals menu shows only when signed in, and can be hidden (Settings, Browse, Show Rentals)
+- Rentals menu shows only when signed in, and can be hidden (Settings, Browse, Show Rentals store)
 
 v2026.11.19.8
 - Remove from Watchlist is offered in every list, not only inside the Watchlist

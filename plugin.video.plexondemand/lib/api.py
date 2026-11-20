@@ -136,6 +136,16 @@ class PlexVodApi(object):
     def categories(self):
         return self._get("/library/sections/categories/all").get("Directory") or []
 
+    def owns_any(self):
+        """Whether the account has any rental or purchase (one small call)."""
+        try:
+            c = self._get("/hubs/sections/store/myRentalsAndPurchases",
+                          {"X-Plex-Container-Start": 0, "X-Plex-Container-Size": 1})
+        except PlexApiError as exc:
+            kodiutils.log("my rentals check: %s" % exc)
+            return False
+        return _total(c) > 0 or bool(c.get("Metadata"))
+
     def store_hubs(self):
         return [h for h in self._get("/hubs/sections/store").get("Hub") or [] if h.get("key")]
 

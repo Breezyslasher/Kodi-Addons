@@ -43,10 +43,10 @@ your real Plex account.
 
 ## Rentals
 Rentals and purchases are made in Plex's own apps or on watch.plex.tv; Kodi cannot rent. Once
-you sign in (plex.tv/link) with the same account, **Rentals → My Rentals & Purchases** lists
-them and they play like the free DRM titles. Playing a store title you have not rented shows its
-price and where to rent it. The Rentals menu appears only when signed in, and Settings → Browse →
-Show Rentals hides it entirely. *Playback of an actual rental has not been tested yet* (no rental
+you sign in (plex.tv/link) with the same account, **My Rentals & Purchases** on the home menu
+lists them and they play like the free DRM titles (it appears only when there is something in it). Playing a store title you have not rented shows its
+price and where to rent it. The Rentals menu (the store) appears only when signed in, and Settings → Browse →
+Show Rentals store hides it; your own rentals stay on the home menu either way. *Playback of an actual rental has not been tested yet* (no rental
 was available when this was written); the not-rented path is tested.
 
 ## Known gaps
