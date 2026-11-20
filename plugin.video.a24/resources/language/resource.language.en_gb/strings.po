@@ -236,5 +236,5 @@ msgid "Free"
 msgstr ""
 
 msgctxt "#32072"
-msgid "Includes filmmaker commentary."
+msgid "Includes filmmaker commentary: choose it from the audio track menu while playing."
 msgstr ""

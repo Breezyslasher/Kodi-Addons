@@ -30,6 +30,7 @@ Rentals and purchases are made in the A24 app or website, never in Kodi. AAA24 m
 - Scaffold: menus, settings and recon tooling
 - Sign in with an emailed A24 code (no password stored); account status
 - Search results stay put after playback
+- Director commentary tracks play (pick them in Kodi's audio menu)
 - Screening Room: My Library, Store (rent/buy prices, "rent in the A24 app"), search, trailers and extras
 - Playback through Brightcove with Widevine (tested: an owned film plays up to 1440p, with resume)</news>
 	</extension>
