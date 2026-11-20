@@ -168,7 +168,7 @@ msgid "AAA24 member free"
 msgstr ""
 
 msgctxt "#32064"
-msgid "Rent %s in the A24 app"
+msgid "%s in the A24 app"
 msgstr ""
 
 msgctxt "#32065"
@@ -213,4 +213,28 @@ msgstr ""
 
 msgctxt "#32035"
 msgid "A24 credit"
+msgstr ""
+
+msgctxt "#32036"
+msgid "Could not open the A24 Screening Room for this account"
+msgstr ""
+
+msgctxt "#32037"
+msgid "Next page"
+msgstr ""
+
+msgctxt "#32067"
+msgid "Rent"
+msgstr ""
+
+msgctxt "#32068"
+msgid "Buy"
+msgstr ""
+
+msgctxt "#32069"
+msgid "Free"
+msgstr ""
+
+msgctxt "#32072"
+msgid "Includes filmmaker commentary."
 msgstr ""

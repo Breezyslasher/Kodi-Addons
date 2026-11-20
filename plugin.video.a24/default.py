@@ -51,7 +51,7 @@ def add_action(label, action, **params):
     xbmcplugin.addDirectoryItem(HANDLE, url(action=action, **params), li, False)
 
 
-def show_items(items):
+def show_items(items, next_page=None):
     xbmcplugin.setContent(HANDLE, "movies")
     if not items:
         kodiutils.notify(L(32053))
@@ -64,11 +64,14 @@ def show_items(items):
         if menu:
             li.addContextMenuItems(menu)
         if listing.playable(item):
-            xbmcplugin.addDirectoryItem(HANDLE, url(action="play", title_id=item["id"]),
+            xbmcplugin.addDirectoryItem(HANDLE, url(action="play", title_id=item["id"],
+                                                    video_id=item.get("video_id") or ""),
                                         li, False)
         else:
             # Not entitled: say where to rent instead of failing at play time.
             xbmcplugin.addDirectoryItem(HANDLE, url(action="not_entitled"), li, False)
+    if next_page:
+        add_dir(L(32037), next_page[0], **next_page[1])
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -203,9 +206,9 @@ def _resolve(playback):
     xbmcplugin.setResolvedUrl(HANDLE, True, build_isa_listitem(playback))
 
 
-def do_play(api, title_id):
+def do_play(api, title_id, video_id=None):
     try:
-        playback = api.playback(title_id)
+        playback = api.playback(title_id, video_id or None)
     except RentalExpiredError as exc:
         kodiutils.ok_dialog(str(exc))
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
@@ -260,7 +263,9 @@ def router(paramstring):
         elif action == "member_free":
             show_items(api.member_free())
         elif action == "store":
-            show_items(api.store())
+            page = int(params.get("page") or 1)
+            items, has_next = api.store(page)
+            show_items(items, ("store", {"page": page + 1}) if has_next else None)
         elif action == "extras":
             show_items(api.extras(params.get("title_id")))
         elif action == "search":
@@ -270,7 +275,7 @@ def router(paramstring):
         elif action == "not_entitled":
             kodiutils.ok_dialog(L(32050))
         elif action == "play":
-            do_play(api, params.get("title_id"))
+            do_play(api, params.get("title_id"), params.get("video_id"))
         else:
             main_menu(auth)
     except NotReadyError as exc:

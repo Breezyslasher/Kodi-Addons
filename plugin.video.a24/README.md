@@ -7,17 +7,18 @@ month, and filmmaker commentaries / member extras.
 
 ## Status
 
-**Scaffold (M0).** Menus, settings, the item/entitlement mapping and the
-InputStream Adaptive + Widevine wiring are in place. Sign-in, browse and
-playback wait on a capture of the real service: each says "not built yet"
-and names its row in [`docs/recon.md`](docs/recon.md) until then.
+**First working build, awaiting a real-box test.** The backend is known
+(A24's own API on `api.app.a24films.com`, video on Brightcove with Widevine).
+Sign-in, My Library, Store, search, extras and playback are built from
+captures and the app's code; Member Free still waits on a capture from an
+AAA24 account. See [`docs/recon.md`](docs/recon.md).
 
 | Milestone | State |
 |---|---|
-| M0 Identify backend & capture | waiting on HARs (`tools/har_summary.py --backend`) |
-| M1 Sign in / sign out | not started |
-| M2 Library, Member Free, Store, Extras | not started |
-| M3 Widevine playback, rental expiry | ISA wiring ready; *Test playback* in Advanced |
+| M0 Identify backend & capture | done: A24 API + Brightcove (Playback Restrictions) |
+| M1 Sign in / sign out | built: emailed code, then app tokens (no password) |
+| M2 Library, Member Free, Store, Extras | Library, Store, Search, Extras built; Member Free needs a capture |
+| M3 Widevine playback, rental expiry | built (Brightcove + `BCOV-Auth` licence header); needs a real-box test |
 | M4 Polish, release zip | not started |
 
 ## What it is not

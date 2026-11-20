@@ -5,9 +5,10 @@ Item dict fields (all optional except ``id`` and ``title``):
     id, title, type ("movie" | "extra"), year, plot, duration (seconds),
     genres [str], directors [str], cast [{"name", "role", "order"}], mpaa,
     art {"poster", "fanart", "thumb", "clearlogo"},
-    entitlement (lib.api OWNED / RENTED / MEMBER_FREE / RENTABLE / UNAVAILABLE),
-    rental_expires (unix seconds), price (display string, e.g. "$5.99"),
-    has_extras (bool)
+    entitlement (lib.api OWNED / RENTED / MEMBER_FREE / FREE / RENTABLE /
+    UNAVAILABLE), rental_expires (unix seconds, 0 = window not started),
+    price (display string, e.g. "Rent $7.99 / Buy $19.99"), has_extras,
+    commentary (bool), writers [str], resume (seconds), playcount, video_id
 
 The entitlement shows in the label so the user is never offered a title they
 cannot play; rentable titles say "rent in the A24 app" and do not play.
@@ -19,7 +20,7 @@ import xbmc
 import xbmcgui
 
 from lib import kodiutils
-from lib.api import OWNED, RENTED, MEMBER_FREE, RENTABLE, PLAYABLE
+from lib.api import OWNED, RENTED, MEMBER_FREE, FREE, RENTABLE, PLAYABLE
 
 L = kodiutils.localize
 
@@ -35,6 +36,8 @@ def entitlement_label(item):
         return L(32062)
     if state == MEMBER_FREE:
         return L(32063)
+    if state == FREE:
+        return L(32069)
     if state == RENTABLE:
         return L(32064) % item["price"] if item.get("price") else L(32065)
     return L(32066)
@@ -54,6 +57,8 @@ def build(item, fanart=""):
     tag = li.getVideoInfoTag()
     tag.setTitle(label)
     plot = item.get("plot", "")
+    if item.get("commentary"):
+        plot = "%s\n\n%s" % (plot, L(32072)) if plot else L(32072)
     tag.setPlot("[B]%s[/B]\n%s" % (tag_text, plot) if plot else tag_text)
     tag.setMediaType("movie" if item.get("type", "movie") == "movie" else "video")
     try:
@@ -67,6 +72,15 @@ def build(item, fanart=""):
         tag.setGenres(item["genres"])
     if item.get("directors"):
         tag.setDirectors(item["directors"])
+    if item.get("writers"):
+        tag.setWriters(item["writers"])
+    try:
+        if item.get("playcount"):
+            tag.setPlaycount(int(item["playcount"]))
+        if item.get("resume") and item.get("duration"):
+            tag.setResumePoint(float(item["resume"]), float(item["duration"]))
+    except (TypeError, ValueError):
+        pass
     if item.get("mpaa"):
         tag.setMpaa(item["mpaa"])
     if item.get("cast"):
