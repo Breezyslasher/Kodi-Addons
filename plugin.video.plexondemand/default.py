@@ -249,7 +249,9 @@ def _directory_folders(rows):
         art = None
         if thumb and not thumb.lower().split("?")[0].endswith(".svg"):
             t = image(thumb, 400, 400)
-            art = {"thumb": t, "icon": t, "poster": t}
+            # icon/thumb only: with a poster set, Kodi's poster views show the
+            # picture without the name, and category art has no text in it.
+            art = {"thumb": t, "icon": t}
         folder(d.get("title") or "?", {"action": "list", "key": d["key"]}, art=art)
     end("files")
 
