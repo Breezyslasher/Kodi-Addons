@@ -83,12 +83,29 @@ def main_menu(auth):
         if kodiutils.get_setting_bool("is_member"):
             add_dir(L(32011), "member_free")
         add_dir(L(32012), "store")
-        add_dir(L(32013), "search")
+        # A button, not a folder: it asks, then opens the results at a URL
+        # that carries the query, so returning from playback (which reloads
+        # the folder) shows the results instead of asking again.
+        add_action(L(32013), "search")
         add_action(L(32016), "account")
         add_action(L(32015), "sign_out")
     else:
         add_action(L(32014), "sign_in")
     xbmcplugin.endOfDirectory(HANDLE, cacheToDisc=False)
+
+
+def do_search(api, query=None):
+    """As plugin.video.starz does: results live at their own URL."""
+    if not query:
+        # Run as a button (handle -1): ask, then open the results URL.
+        query = (kodiutils.input_text(L(32013)) or "").strip()
+        if HANDLE >= 0:
+            xbmcplugin.endOfDirectory(HANDLE, succeeded=False, cacheToDisc=False)
+        if query:
+            xbmc.executebuiltin("Container.Update(%s)" % url(action="search", query=query))
+        return
+    xbmcplugin.setPluginCategory(HANDLE, query)
+    show_items(api.search(query))
 
 
 # -- account ---------------------------------------------------------------
@@ -280,9 +297,7 @@ def router(paramstring):
         elif action == "extras":
             show_items(api.extras(params.get("title_id")))
         elif action == "search":
-            query = params.get("query") or kodiutils.input_text(L(32013))
-            if query:
-                show_items(api.search(query))
+            do_search(api, params.get("query"))
         elif action == "not_entitled":
             kodiutils.ok_dialog(L(32050))
         elif action == "play":
