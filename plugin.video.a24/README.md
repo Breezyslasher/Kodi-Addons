@@ -39,8 +39,9 @@ watching on your own account.
 ## Requirements
 
 Kodi 21+, InputStream Adaptive, a Widevine CDM (InputStream Helper installs
-it). Quality on the desktop software (L3) CDM may be capped — to be measured
-in M3.
+it). Quality: up to **1440p** (H.264, stereo AAC) even on the desktop
+software (L3) CDM — measured on Backrooms. The *Maximum video height*
+setting can lower it.
 
 ## Settings
 
