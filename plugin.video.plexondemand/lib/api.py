@@ -134,6 +134,11 @@ class PlexVodApi(object):
         params = self.page_params(start)
         if sort:
             params["sort"] = sort
+        # Genre listings mix store (rental) titles in with the free ones;
+        # availabilityType=free makes Plex return only free titles, so totals
+        # and paging stay right (probe round 14: 4461 -> 3937, 0 priced).
+        if key.startswith("/library/sections/"):
+            params["availabilityType"] = "free"
         c = self._get(key, params)
         return c.get("Metadata") or [], _total(c)
 
@@ -302,6 +307,11 @@ def image(url, width, height):
     from urllib.parse import urlencode
     return "https://images.plex.tv/photo?" + urlencode(
         {"url": url, "width": width, "height": height, "minSize": 1, "upscale": 1})
+
+
+def is_store_item(m):
+    """A rental/purchase title (carries prices) rather than a free one."""
+    return bool(m.get("rentalPrice") or m.get("purchasePrice") or m.get("currency"))
 
 
 def _total(container):

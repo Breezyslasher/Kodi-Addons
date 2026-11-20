@@ -8,7 +8,7 @@ import xbmcgui
 import xbmcplugin
 
 from lib import kodiutils
-from lib.api import PlexVodApi, PlexApiError, PAGE_SIZE, TYPE_MOVIE, TYPE_SHOW
+from lib.api import PlexVodApi, PlexApiError, PAGE_SIZE, TYPE_MOVIE, TYPE_SHOW, is_store_item
 from lib import playback
 from lib.listing import art as _art, info as _info
 from lib.auth import account_name
@@ -134,8 +134,11 @@ def _menu(m, in_cw=False, in_wl=False):
     return entries
 
 
-def add_items(items, api=None, in_cw=False, in_wl=False, in_store=False):
+def add_items(items, api=None, in_cw=False, in_wl=False, in_store=False, prices=True):
     content = "videos"
+    if not in_store:
+        # Safety net: rentals belong in the Rentals menu, never in free lists.
+        items = [m for m in items if not is_store_item(m)]
     watchlisted = set()
     if api is not None:
         _apply_user_state(api, items)
@@ -152,7 +155,7 @@ def add_items(items, api=None, in_cw=False, in_wl=False, in_store=False):
         item = xbmcgui.ListItem(label)
         item.setArt(_art(m))
         _info(item, m)
-        if in_store and m.get("rentalPrice"):
+        if in_store and prices and m.get("rentalPrice"):
             item.setLabel("%s  [COLOR gray]%s[/COLOR]" % (label, m["rentalPrice"]))
         if in_cw and kind == "episode" and m.get("grandparentTitle"):
             item.setLabel("%s - %s" % (m["grandparentTitle"], label))
@@ -252,7 +255,7 @@ def listing(key, start=0, sort=None, in_store=False):
     if key == MY_RENTALS and not items and not start:
         kodiutils.notify(L("no_rentals"))
     # Prices only in the store rows, not in the account's own rentals.
-    content = add_items(items, api, in_store=in_store and key != MY_RENTALS)
+    content = add_items(items, api, in_store=in_store or key == MY_RENTALS, prices=key != MY_RENTALS)
     query = {"action": "list", "key": key}
     if in_store:
         query["store"] = 1

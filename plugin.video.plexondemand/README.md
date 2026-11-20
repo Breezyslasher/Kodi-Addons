@@ -16,7 +16,7 @@ your real Plex account.
 | Provider list | `GET plex.tv/media/providers` -> `vod.provider.plex.tv` |
 | Home rows | `GET {vod}/hubs` -> `/hubs/sections/movies/<slug>` |
 | Genres | `GET {vod}/library/sections/movies/genre?type=1` (movies) / `type=2` (shows) |
-| Genre listing | `GET {vod}/library/sections/movies/all?genre=<id>&type=1` (paged with `X-Plex-Container-Start/Size`; 404 without a genre) |
+| Genre listing | `GET {vod}/library/sections/movies/all?genre=<id>&type=1&availabilityType=free` (paged with `X-Plex-Container-Start/Size`; 404 without a genre; without `availabilityType=free` movie genres mix in rental titles) |
 | Title / children | `GET {vod}/library/metadata/<ratingKey>[/children]` |
 | Search | `GET discover.provider.plex.tv/library/search?searchProviders=discover,plexAVOD` -> section `id=plex` |
 | Stream | `Media[].Part[].key` -> `/library/parts/<id>-hls.m3u8` and `-dash.mpd`; the manifest needs `X-Plex-Token`, segments on `vod-content.plexvideos.com` need nothing |

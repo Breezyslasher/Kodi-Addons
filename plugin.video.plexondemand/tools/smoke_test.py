@@ -103,6 +103,9 @@ check("genres", bool(mg) and bool(sg), "%d movie / %d show" % (len(mg), len(sg))
 movies, total = api.listing(mg[0]["key"])
 check("genre listing page 1", len(movies) > 0, "%d of %d" % (len(movies), total))
 page2, _ = api.listing(mg[0]["key"], start=len(movies))
+from lib.api import is_store_item
+check("genre listing has no rental titles (availabilityType=free)", not any(is_store_item(m) for m in movies),
+      [m.get("title") for m in movies if is_store_item(m)][:3])
 check("genre listing page 2 differs", page2 and page2[0].get("ratingKey") != movies[0].get("ratingKey"))
 shows, _ = api.listing(sg[0]["key"])
 show = next((s for s in shows if s.get("type") == "show"), None)
