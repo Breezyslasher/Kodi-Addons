@@ -1212,9 +1212,12 @@ def round16():
 
 
 def round17():
-    """Category artwork: titles, keys and the backgrounds (base64, resized) so
-    names can be drawn into them offline."""
-    import base64
+    """Category artwork: title, key and a 16x9 colour grid of each background,
+    so the art can be rebuilt with the name drawn in (Kodi can't overlay text)."""
+    import io
+    import subprocess
+    subprocess.call([sys.executable, "-m", "pip", "install", "--quiet", "pillow"])
+    from PIL import Image
     _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
     tok = secret(anon.get("authToken"))
     T = {"X-Plex-Token": tok}
@@ -1223,21 +1226,16 @@ def round17():
     print("== categories:", len(rows))
     for i, d in enumerate(rows):
         thumb = d.get("thumb") or ""
-        st, ct, body, _ = req("GET", thumb) if thumb.startswith("http") else (None, "", b"", "")
-        size = None
+        st, ct, body, _ = req("GET", thumb)
         try:
-            import struct
-            if body[:8] == b"\x89PNG\r\n\x1a\n":
-                size = struct.unpack(">II", body[16:24])
-        except Exception:
-            pass
-        print(f"== CAT {i} title={d.get('title')!r} key={d.get('key')!r} thumb={mask(thumb)} orig={st} {ct} {len(body)}B size={size}")
-        st2, ct2, img, _ = req("GET", "https://images.plex.tv/photo",
-                               params={"url": thumb, "width": 800, "height": 450, "minSize": 1, "upscale": 1, "format": "jpeg", "quality": 90})
-        print(f"== CATIMG {i} -> {st2} {ct2} {len(img)}B")
-        b = base64.b64encode(img).decode()
-        for j in range(0, len(b), 3000):
-            print(f"B64 {i} {b[j:j+3000]}")
+            im = Image.open(io.BytesIO(body)).convert("RGB")
+            size = im.size
+            grid = im.resize((16, 9), Image.BOX)
+            hexes = "".join("%02x%02x%02x" % grid.getpixel((x, y)) for y in range(9) for x in range(16))
+        except Exception as exc:
+            size, hexes = None, "ERR %s" % exc
+        print(f"== CAT {i} title={d.get('title')!r} key={d.get('key')!r} thumb={mask(thumb)} -> {st} {ct} {len(body)}B size={size}")
+        print(f"GRID {i} {hexes}")
     return 0
 
 
