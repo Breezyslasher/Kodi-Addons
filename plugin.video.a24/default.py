@@ -78,7 +78,10 @@ def show_items(items, next_page=None):
 def main_menu(auth):
     if auth.signed_in:
         add_dir(L(32010), "library")
-        add_dir(L(32011), "member_free")
+        # Only AAA24 members have a member title; the folder is not built
+        # until a member account's capture is in (recon row C2).
+        if kodiutils.get_setting_bool("is_member"):
+            add_dir(L(32011), "member_free")
         add_dir(L(32012), "store")
         add_dir(L(32013), "search")
         add_action(L(32016), "account")
@@ -105,6 +108,7 @@ def do_sign_in(auth):
     if not code:
         return
     account = auth.validate_code(email, code)
+    kodiutils.set_setting("is_member", "true" if account.get("current_plan") else "false")
     name = ((account.get("user_profile") or {}).get("first_name") or email)
     kodiutils.notify(L(32022) % name)
 
@@ -121,6 +125,7 @@ def do_account(auth):
     account = auth.account()
     profile = account.get("user_profile") or {}
     plan = account.get("current_plan")
+    kodiutils.set_setting("is_member", "true" if plan else "false")
     if isinstance(plan, dict):
         plan = plan.get("name") or plan.get("title") or plan.get("slug") or L(32028)
     credit = (profile.get("credit") or {}).get("current_balance")
@@ -181,9 +186,12 @@ def build_isa_listitem(playback):
     li = xbmcgui.ListItem(path=playback["manifest_url"])
     li.setProperty("inputstream", "inputstream.adaptive")
     if playback.get("license_url"):
-        li.setProperty("inputstream.adaptive.license_type", "com.widevine.alpha")
-        li.setProperty("inputstream.adaptive.license_key", "%s|%s|R{SSM}|" % (
-            playback["license_url"], _header_string(playback.get("license_headers"))))
+        # drm_legacy (ISA 21+, our minimum; plugin.video.tubitv uses the same):
+        # key system | licence URL | request headers. The raw challenge goes
+        # out and the raw licence comes back, as Brightcove's player does.
+        li.setProperty("inputstream.adaptive.drm_legacy", "|".join([
+            "com.widevine.alpha", playback["license_url"],
+            _header_string(playback.get("license_headers"))]))
     if playback.get("stream_headers"):
         li.setProperty("inputstream.adaptive.stream_headers",
                        _header_string(playback["stream_headers"]))

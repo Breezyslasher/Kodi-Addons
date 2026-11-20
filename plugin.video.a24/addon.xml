@@ -28,8 +28,8 @@ Rentals and purchases are made in the A24 app or website, never in Kodi. AAA24 m
 		</assets>
 		<news>v2026.11.20
 - Scaffold: menus, settings and recon tooling
-- Sign in with an emailed A24 code (no password stored); account status (awaiting test on a real box)
+- Sign in with an emailed A24 code (no password stored); account status
 - Screening Room: My Library, Store (rent/buy prices, "rent in the A24 app"), search, trailers and extras
-- Playback through Brightcove with Widevine (first build; awaiting a real-box test)</news>
+- Playback through Brightcove with Widevine (tested: an owned film plays, with resume)</news>
 	</extension>
 </addon>

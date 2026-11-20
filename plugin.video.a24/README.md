@@ -7,7 +7,7 @@ month, and filmmaker commentaries / member extras.
 
 ## Status
 
-**First working build, awaiting a real-box test.** The backend is known
+**Working: sign-in, library and playback tested on a real box.** The backend is known
 (A24's own API on `api.app.a24films.com`, video on Brightcove with Widevine).
 Sign-in, My Library, Store, search, extras and playback are built from
 captures and the app's code; Member Free still waits on a capture from an
@@ -16,9 +16,9 @@ AAA24 account. See [`docs/recon.md`](docs/recon.md).
 | Milestone | State |
 |---|---|
 | M0 Identify backend & capture | done: A24 API + Brightcove (Playback Restrictions) |
-| M1 Sign in / sign out | built: emailed code, then app tokens (no password) |
+| M1 Sign in / sign out | done (tested): emailed code, then app tokens (no password) |
 | M2 Library, Member Free, Store, Extras | Library, Store, Search, Extras built; Member Free needs a capture |
-| M3 Widevine playback, rental expiry | built (Brightcove + `BCOV-Auth` licence header); needs a real-box test |
+| M3 Widevine playback, rental expiry | done (tested): Brightcove + `BCOV-Auth`; rental expiry not yet seen live |
 | M4 Polish, release zip | not started |
 
 ## What it is not
