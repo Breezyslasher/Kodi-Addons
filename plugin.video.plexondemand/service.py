@@ -165,6 +165,13 @@ def run():
                 pass
         if time.time() - player.last_report >= INTERVAL:
             player._report("playing")
+    # Let go of the Player (and the Skip Buttons dialog it holds) before the
+    # interpreter ends, or Kodi logs "left several classes in memory".
+    if player.skip:
+        player.skip.reset()
+    player.skip = None
+    del player
+    del monitor
 
 
 if __name__ == "__main__":

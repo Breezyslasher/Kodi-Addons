@@ -160,7 +160,13 @@ def add_items(items, api=None, in_cw=False, in_wl=False, in_store=False, prices=
         if in_cw and kind == "episode" and m.get("grandparentTitle"):
             item.setLabel("%s - %s" % (m["grandparentTitle"], label))
         item.addContextMenuItems(_menu(m, in_cw, in_wl or rk in watchlisted))
-        if kind in ("movie", "episode"):
+        if kind in ("movie", "episode") and in_store and prices:
+            # Store rows: an action, not a playable item. Kodi reports
+            # "Playback failed" whenever a playable item is declined, which is
+            # what a not-rented title has to do; an action can just stop.
+            content = "movies" if kind == "movie" else "episodes"
+            xbmcplugin.addDirectoryItem(HANDLE, url(action="store_play", rk=rk), item, False)
+        elif kind in ("movie", "episode"):
             content = "movies" if kind == "movie" else "episodes"
             item.setProperty("IsPlayable", "true")
             xbmcplugin.addDirectoryItem(HANDLE, url(action="play", rk=rk), item, False)
@@ -245,7 +251,10 @@ def genres(media_type):
             query = {"action": "list", "key": g["key"]}
             if sort:
                 query["sort"] = sort
-            folder(g.get("title") or "?", query, art={"icon": g.get("icon") or ""})
+            icon = g.get("icon") or ""
+            if icon.lower().split("?")[0].endswith(".svg"):
+                icon = ""  # Kodi can't draw SVG, and Plex answers Kodi's fetch with 403
+            folder(g.get("title") or "?", query, art={"icon": icon} if icon else None)
     end("files")
 
 
@@ -421,24 +430,48 @@ def mark(rk, how, quiet=False):
     xbmc.executebuiltin("Container.Refresh")
 
 
+def _not_rented_dialog(m):
+    """Short lines, title as the heading: Kodi's OK dialog fits ~4 lines."""
+    offers = []
+    if m.get("rentalPrice"):
+        offers.append(L("rent_price") % (m["rentalPrice"], m.get("viewableDuration") or 48))
+    if m.get("purchasePriceLabel"):
+        offers.append(L("buy_price") % m["purchasePriceLabel"])
+    lines = [L("not_rented")]
+    if offers:
+        lines.append("   \u00b7   ".join(offers))
+    lines.append(L("rent_where") % "watch.plex.tv")
+    kodiutils.ok_dialog("[CR]".join(lines), heading=m.get("title") or None)
+
+
+def store_play(rk):
+    """A store-row title: play it if this account has rented/bought it,
+    otherwise say where to rent it - without Kodi's "Playback failed"."""
+    api = PlexVodApi()
+    try:
+        item = playback.build(api, rk)
+    except playback.NotRented as nr:
+        _not_rented_dialog(nr.item)
+        return
+    except playback.Blocked:
+        kodiutils.ok_dialog(L("vpn_blocked"))
+        return
+    except playback.DrmUnavailable:
+        kodiutils.ok_dialog(L("drm_unavailable"))
+        return
+    except Exception as exc:
+        kodiutils.log_error("store play %s failed: %s" % (rk, exc))
+        kodiutils.notify(L("playback_failed"), icon=xbmcgui.NOTIFICATION_ERROR)
+        return
+    xbmc.Player().play(item.getPath(), item)
+
+
 def play(rk):
     api = PlexVodApi()
     try:
         item = playback.build(api, rk)
     except playback.NotRented as nr:
-        m = nr.item
-        # Short lines, title as the heading: Kodi's OK dialog fits ~4 lines,
-        # and the full watch.plex.tv link used to be cut off.
-        offers = []
-        if m.get("rentalPrice"):
-            offers.append(L("rent_price") % (m["rentalPrice"], m.get("viewableDuration") or 48))
-        if m.get("purchasePriceLabel"):
-            offers.append(L("buy_price") % m["purchasePriceLabel"])
-        lines = [L("not_rented")]
-        if offers:
-            lines.append("   \u00b7   ".join(offers))
-        lines.append(L("rent_where") % "watch.plex.tv")
-        kodiutils.ok_dialog("[CR]".join(lines), heading=m.get("title") or None)
+        _not_rented_dialog(nr.item)
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
         return
     except playback.Blocked:
@@ -529,6 +562,8 @@ def router(paramstring):
             search_new()
         elif action == "search_forget":
             search_forget(p.get("query", ""))
+        elif action == "store_play":
+            store_play(p["rk"])
         elif action == "play":
             play(p["rk"])
         elif action == "sign_in":
