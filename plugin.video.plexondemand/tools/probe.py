@@ -1080,6 +1080,57 @@ def round13():
     return 0
 
 
+def round14():
+    """Do genre listings / search mix in store (rental) titles, and does any
+    parameter restrict them to free ones?"""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+
+    def priced(items):
+        return [m for m in items if m.get("rentalPrice") or m.get("purchasePrice") or m.get("price")]
+
+    for mtype in (1, 2):
+        _, g = req_json("GET", base + "/library/sections/movies/genre", headers=T, params={"type": mtype})
+        key = (mc(g).get("Directory") or [{}])[0].get("key")
+        print(f"\n######## type={mtype} {key}")
+        for extra in ({}, {"availability": "free"}, {"availabilityTypes": "free"}, {"availabilityType": "free"},
+                      {"availability": "avod"}, {"includeStore": 0}, {"store": 0}, {"free": 1},
+                      {"contentDirectoryID": "movies"}, {"tvod": 0}):
+            params = dict(extra, **{"X-Plex-Container-Size": 100})
+            st, d = req_json("GET", base + key, headers=T, params=params)
+            c = mc(d)
+            items = c.get("Metadata") or []
+            p = priced(items)
+            print(f"== {extra}: {st} total={c.get('totalSize')} page={len(items)} priced={len(p)} "
+                  f"e.g. {[(m.get('title'), m.get('rentalPrice')) for m in p[:2]]}")
+        # what distinguishes a priced item? keys present only on priced ones
+        st, d = req_json("GET", base + key, headers=T, params={"X-Plex-Container-Size": 100})
+        items = mc(d).get("Metadata") or []
+        p = priced(items); f = [m for m in items if m not in p]
+        if p and f:
+            only_p = set.intersection(*[set(m) for m in p]) - set.union(*[set(m) for m in f])
+            print("   keys only on priced items:", sorted(only_p))
+            print("   priced media drm:", [x.get("drm") for m in p[:3] for x in (m.get("Media") or [])][:6])
+            print("   priced availabilityTypes-ish:", [(m.get("availabilityId"), m.get("userState")) for m in p[:2]])
+    # hubs and search
+    _, hubs = req_json("GET", base + "/hubs", headers=T)
+    n_priced = 0
+    for h in (mc(hubs).get("Hub") or [])[:20]:
+        _, d = req_json("GET", base + h["key"], headers=T, params={"count": 50})
+        n_priced += len(priced(mc(d).get("Metadata") or []))
+    print("\n== priced items across first 20 home hubs:", n_priced)
+    _, sr = req_json("GET", "https://discover.provider.plex.tv/library/search", headers=T, params={
+        "query": "love", "searchTypes": "movies,tv", "searchProviders": "discover,plexAVOD", "includeMetadata": 1, "limit": 100})
+    for sec in mc(sr).get("SearchResults") or []:
+        if sec.get("id") == "plex":
+            ms = [r.get("Metadata") or {} for r in sec.get("SearchResult") or []]
+            print("== search 'plex' section:", len(ms), "priced:", len(priced(ms)),
+                  [(m.get("title"), m.get("rentalPrice")) for m in priced(ms)[:3]])
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -1091,5 +1142,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round13")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round14")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14}.get(mode, main)())
