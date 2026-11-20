@@ -52,7 +52,12 @@ class LiveApi(PlexVodApi):
     def filters(self):
         """[(title, key)]: Featured first, then Plex's genres."""
         out = []
-        for f in (self._get("/").get("MediaProvider") or {}).get("Feature") or []:
+        # The provider root is {"MediaProvider": ...} at the top level, not
+        # inside a MediaContainer like everything else (probe round 18).
+        resp = self.session.get(self.base + "/", headers=self.headers(), timeout=25)
+        data = resp.json() if resp.status_code == 200 else {}
+        provider = data.get("MediaProvider") or (data.get("MediaContainer") or {}).get("MediaProvider") or {}
+        for f in provider.get("Feature") or []:
             if f.get("type") != "grid":
                 continue
             for d in (f.get("PromotedGridChannelFilter") or []) + (f.get("GridChannelFilter") or []):
