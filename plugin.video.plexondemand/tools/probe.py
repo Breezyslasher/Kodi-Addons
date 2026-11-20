@@ -1321,6 +1321,35 @@ def round19():
     return 0
 
 
+def round20():
+    """Free movies that carry a credits marker (for a manual test)."""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    _, hubs = req_json("GET", base + "/hubs", headers=T)
+    seen, found = set(), []
+    for h in (mc(hubs).get("Hub") or [])[:25]:
+        _, row = req_json("GET", base + h["key"], headers=T, params={"X-Plex-Container-Size": 30})
+        for m in mc(row).get("Metadata") or []:
+            if m.get("type") != "movie" or m["ratingKey"] in seen:
+                continue
+            seen.add(m["ratingKey"])
+            _, md = req_json("GET", base + "/library/metadata/" + m["ratingKey"], headers=T, params={"includeMarkers": 1})
+            meta = (mc(md).get("Metadata") or [{}])[0]
+            cr = [mk for mk in meta.get("Marker") or [] if mk.get("type") == "credits"]
+            if cr:
+                start = max(int(c.get("startTimeOffset") or 0) for c in cr) // 1000
+                found.append((meta.get("title"), meta.get("year"), meta.get("duration", 0) // 60000, start // 60, start % 60))
+                print("== CREDITS %s (%s) runtime %d min, credits at %d:%02d" % found[-1])
+            if len(found) >= 10 or len(seen) >= 150:
+                break
+        if len(found) >= 10 or len(seen) >= 150:
+            break
+    print("== checked", len(seen), "movies, found", len(found))
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -1332,5 +1361,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round19")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14, "round15": round15, "round16": round16, "round17": round17, "round18": round18, "round19": round19}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round20")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14, "round15": round15, "round16": round16, "round17": round17, "round18": round18, "round19": round19, "round20": round20}.get(mode, main)())
