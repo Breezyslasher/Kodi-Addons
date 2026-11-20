@@ -17,9 +17,10 @@ The proxy in the cloud dev container blocks `a24films.com`, so captures come
 from your own machine. In a signed-in browser (DevTools → Network, "Preserve
 log" on, then "Save all as HAR"):
 
-1. **Sign-in HAR**: sign out, then sign in at `screeningroom.a24films.com`
+1. **Sign-in HAR** (done 2026-11-19, a24films.com): sign out, then sign in at `screeningroom.a24films.com`
    (and the AAA24 member area at `aaa24.a24films.com` if it signs in separately).
-2. **Browse HAR**: home, your library / rentals, the member free title, the
+2. **Browse HAR** (next; on `app.a24films.com` — the screening room, not the
+   a24films.com marketing site): home, your library / rentals, the member free title, the
    store, one title's detail page, its commentary/extras, a search.
 3. **Play HAR**: press Play on a title you own, rent, or get free as a member;
    let it run ~30 s. Must contain the play/decision call, the manifest and the
@@ -41,11 +42,12 @@ account-traceable session. Read a sanitized HAR before sharing it.
 | # | Unknown | Finding | HAR ref | Code |
 |---|---|---|---|---|
 | 0 | **Backend (the gate)** | **Lead (public recon, signed out, CI run 44644218234 — not yet confirmed by a Play HAR):** `screeningroom.a24films.com` → **`app.a24films.com`**, an Ionic/Capacitor SPA on S3 (`/assets/index-*.js`). Own REST API on **`api.app.a24films.com`** (`/api/v1/...`). The bundle names **Brightcove** (no `vhx`, `jwplayer` or `mux`) → expect Brightcove Playback API + Widevine; **VERIFY** account id / policy key and whether playback goes through A24's API first. Player route `/player/:productId`. Also `account.a24films.com`, Stripe/Shopify for purchases (out of scope), AAA24 site separate (`aaa24.a24films.com`, nginx). | `recon_public.py` | everything |
-| A | Sign-in | **Lead (bundle paths):** `POST /api/v1/auth/login/`, `/auth/logout/`, passwordless (`/auth/passwordless/request/`, `/validate/`), `/auth/email-code/validate/`, `/auth/code/generate/` (device-code link?), `/auth/authorize/`, `/auth/shopify-authorize/`; tokens via `/api/v1/account/tokens/?client_id=…` — so a `client_id` exists (hidden setting ready). **VERIFY** body fields, captcha, and token form from the Sign-in HAR. | `recon_public.py` | `A24Auth.sign_in`, `SIGN_IN_URL` |
-| A1 | Account / membership endpoints (leads) | `/api/v1/account/`, `/api/v1/all-access/membership/`, `/all-access/plans/user/`, `/all-access/settings/`. | `recon_public.py` | `account_status` |
+| A | Sign-in | **Confirmed (sign-in HAR, a24films.com, 2026-11-19).** Accounts on `account.a24films.com/api/v1/` (Django "nexus"). `GET account/exists/?email=` → `{exists, has_usable_password}`. `POST auth/passwordless/request/` JSON `{email, type: "otp_code"}` → 200 empty; A24 emails a 4-digit code. `POST auth/passwordless/validate/` JSON `{email, otp_code}` → account JSON + `Set-Cookie: nexussessionid` (32 chars, HttpOnly, `Domain=.a24films.com`, Max-Age 1209600 = 14 days) and `nexus_session_exists=1`. No CSRF header, no captcha (preflight asks only for `content-type`). Password login (`auth/login/`) exists in the bundle but is not used: Kodi never needs the password. | sign-in HAR #183, #193, #211 | `A24Auth.request_code`, `validate_code` |
+| A1 | Account / membership endpoints (leads) | `/api/v1/all-access/membership/`, `/all-access/plans/user/`, `/all-access/settings/` (bundle). Not captured yet. | `recon_public.py` | |
 | A2 | AAA24 vs Screening Room | **VERIFY** whether one account/session covers both, or the member area has its own sign-in. | | `A24Auth` |
-| A3 | Account / membership status | **VERIFY.** Call that says email, member tier, country. | | `A24Auth.account_status` |
-| B | Session | **VERIFY.** Bearer header vs cookie; lifetime; refresh call; sign-out/revoke call. | | `auth_headers`, `refresh`, `sign_out` |
+| A3 | Account status | **Confirmed.** `GET account/` with the cookie → `{has_usable_password, is_email_confirmed, current_plan, user_profile: {nexus_id, email, first_name, last_name, timezone, region, credit: {current_balance, last_increase, next_increase}, is_active, is_guest, ...}}`. `current_plan` is `null` on the captured account (no AAA24 plan) — **VERIFY** its shape on a member account. | sign-in HAR #217 | `A24Auth.account`, `do_account` |
+| B | Session | **Confirmed:** cookie `nexussessionid` on `.a24films.com` (so it also reaches `app.`/`api.app.a24films.com`), 14 days, no refresh call seen. Kodi stores it with its expiry and asks for a new code when it lapses. **VERIFY** whether the Screening Room API (`api.app.a24films.com`) takes the cookie directly or swaps it for a token via `account/tokens/?client_id=` (bundle). | sign-in HAR #211 | `A24Auth.request` |
+| B1 | Sign-out | `auth/logout/` in the bundle; not captured. Kodi signs out locally (forgets the cookie). | | `sign_out` |
 | C1 | Library | **VERIFY.** Owned titles + active rentals with expiry. | | `ENDPOINTS["library"]` |
 | C2 | Member free title | **VERIFY.** Current movie of the month (rotates monthly — never cache). | | `ENDPOINTS["member_free"]` |
 | C3 | Store | **VERIFY.** Rent/own titles with price. Decide whether to list unowned titles at all (they show "Rent in the A24 app" and don't play). | | `ENDPOINTS["store"]` |
