@@ -1,0 +1,54 @@
+name: A24 recon and art
+
+# plugin.video.a24 development helper. The cloud dev container cannot reach
+# a24films.com; GitHub's runners can. Two jobs:
+#   recon - signed-out scan of the Screening Room's public pages and bundles
+#           for the video platform behind it (docs/recon.md row 0). Report in
+#           the job summary. No account, no credentials.
+#   art   - builds icon.png / fanart.jpg from A24's official logo and commits
+#           them back to the branch that ran it.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/a24-recon.yml'
+      - 'plugin.video.a24/tools/recon_public.py'
+      - 'plugin.video.a24/tools/make_art.py'
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Public recon
+        run: |
+          python3 plugin.video.a24/tools/recon_public.py | tee recon.txt
+          { echo '```'; cat recon.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+  art:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Build icon and fanart
+        run: |
+          python3 -m pip install --quiet cairosvg pillow
+          python3 plugin.video.a24/tools/make_art.py
+      - name: Commit art
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add plugin.video.a24/resources/icon.png plugin.video.a24/resources/fanart.jpg
+          git diff --staged --quiet && exit 0
+          git commit -m "A24: official logo icon and fanart (built by a24-recon workflow)"
+          git push

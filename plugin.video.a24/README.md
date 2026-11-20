@@ -52,3 +52,10 @@ in M3.
 
 See [`docs/recon.md`](docs/recon.md). Every endpoint stays `VERIFY` until a
 capture proves it. Never commit a HAR. Date-based versions (`YYYY.M.D`).
+
+## Artwork
+
+`resources/icon.png` and `resources/fanart.jpg` are built by
+`tools/make_art.py` (run by the *A24 recon and art* workflow) from A24's
+official logo — public domain on Wikimedia Commons, a trademark of A24 —
+used only to identify the service this unofficial add-on plays.
