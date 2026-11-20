@@ -244,18 +244,18 @@ def store():
     end("files")
 
 
-def _directory_folders(rows, with_art=True):
-    """Brand / category folders, brands with their logo (resized)."""
+def _directory_folders(rows):
+    """Brand folders with their logo (resized)."""
     from lib.api import image
     for d in rows:
         if not d.get("key"):
             continue
         thumb = d.get("thumb") or ""
         art = None
-        if with_art and thumb and not thumb.lower().split("?")[0].endswith(".svg"):
+        if thumb and not thumb.lower().split("?")[0].endswith(".svg"):
             t = image(thumb, 400, 400)
             # icon/thumb only: with a poster set, Kodi's poster views show the
-            # picture without the name, and category art has no text in it.
+            # picture without the name.
             art = {"thumb": t, "icon": t}
         folder(d.get("title") or "?", {"action": "list", "key": d["key"]}, art=art)
     end("files")
@@ -265,10 +265,25 @@ def brands():
     _directory_folders(PlexVodApi().brands())
 
 
+def category_art(title):
+    """Bundled category art with the name drawn in (tools/make_category_art.py);
+    Plex's own is a bare gradient it prints the name over. None if not bundled."""
+    import os
+    import re
+    import unicodedata
+    plain = unicodedata.normalize("NFKD", title or "").encode("ascii", "ignore").decode()
+    name = re.sub(r"[^a-z0-9]+", "-", plain.lower()).strip("-")
+    path = os.path.join(kodiutils.addon().getAddonInfo("path"), "resources", "media", "categories", name + ".jpg")
+    return path if name and os.path.exists(path) else None
+
+
 def categories():
-    # Category art is a plain gradient; Plex prints the name over it on the
-    # web, the image has none. Without art they read like the genre folders.
-    _directory_folders(PlexVodApi().categories(), with_art=False)
+    for d in PlexVodApi().categories():
+        if d.get("key"):
+            t = category_art(d.get("title"))
+            folder(d.get("title") or "?", {"action": "list", "key": d["key"]},
+                   art={"thumb": t, "icon": t} if t else None)
+    end("files")
 
 
 def hubs():

@@ -6,6 +6,8 @@ Kodi (from GitHub Actions; plex hosts are blocked in the dev container).
 Usage: python3 tools/smoke_test.py   (needs `requests`)
 """
 import os
+import re
+import unicodedata
 import sys
 import types
 
@@ -241,6 +243,11 @@ cats = api.categories()
 check("categories list", len(cats) > 3, [c.get("title") for c in cats[:4]])
 ci, _ = api.listing(cats[0]["key"])
 check("a category's titles", len(ci) > 0 and not any(is_store_item(m) for m in ci), len(ci))
+missing = [d.get("title") for d in cats
+           if not os.path.exists(os.path.join(ROOT, "resources", "media", "categories",
+                                              re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", d.get("title") or "")
+                                                     .encode("ascii", "ignore").decode().lower()).strip("-") + ".jpg"))]
+print("INFO categories without bundled art (shown without; re-run tools/make_category_art.py): %s" % (missing or "none"))
 import requests as _rq2
 for label, row in (("brand", br[0]), ("category", cats[0])):
     t = row.get("thumb")

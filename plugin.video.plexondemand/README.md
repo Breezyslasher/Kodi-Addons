@@ -32,7 +32,7 @@ your real Plex account.
 | Not interested | `PUT {vod}/actions/addToDislikes` / `removeFromDislikes` `?ratingKey=`: accepted, but write-only (no list, not in userState) |
 | Store (rentals) | `GET {vod}/hubs/sections/store` (rows) and `/hubs/sections/store/myRentalsAndPurchases` (the account's); items carry `rentalPrice`, `purchasePriceLabel`, `viewableDuration`, `publicPagesURL`. Same Widevine DASH as free DRM titles; without a rental the manifest answers 404 "User has no active order for this rental" |
 | Brands | `GET {vod}/library/sections/channels/all` (Plex calls them channels) -> `/library/channels/<id>` (paged titles) |
-| Categories | `GET {vod}/library/sections/categories/all` -> ready keys (`type=99`, `availabilityType=free`) with PNG artwork |
+| Categories | `GET {vod}/library/sections/categories/all` -> ready keys (`type=99`, `availabilityType=free`) with PNG artwork. That artwork is a bare gradient (Plex prints the name over it), so the addon bundles copies with the name drawn in (`resources/media/categories/`, built by `tools/make_category_art.py` from probe round17); a category added later shows without art |
 | Watchlist | `PUT {vod}/actions/addToWatchlist`, `removeFromWatchlist` `?ratingKey=`; list `GET discover.provider.plex.tv/library/sections/watchlist/all` |
 | More like this | `GET {vod}/library/metadata/<rk>/similarTitles` and `/more-from-credits` (free titles; `/library/people/<id>` has no filmography) |
 | Artwork | `images.plex.tv/photo?url=&width=&height=` (no token; a 920 KB poster becomes about 29 KB) |
@@ -84,3 +84,6 @@ Pushes that touch these files or the addon's `lib/`/`service.py` run the matrix 
 - `tools/probe.py`: raw endpoint captures (`PROBE_MODE=round1`...). Plex hosts are only
   reachable from GitHub's runners, so to capture something new, add a temporary
   `script: plugin.video.plexondemand/tools/probe.py` entry to the matrix on a branch.
+- `tools/make_category_art.py`: rebuilds the bundled category art from a saved probe
+  round17 log (colour grid per category, name drawn in Inter Bold). Re-run when the
+  smoke test reports categories without bundled art.

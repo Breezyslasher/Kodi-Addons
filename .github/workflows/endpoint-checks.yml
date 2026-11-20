@@ -69,10 +69,6 @@ jobs:
             spec: ''
             script: plugin.video.plexondemand/tools/check_endpoints.py
             issue_label: plexondemand-endpoint
-          - name: Plex On Demand probe (temporary)
-            spec: ''
-            script: plugin.video.plexondemand/tools/probe.py
-            issue_label: plexondemand-probe
     uses: ./.github/workflows/endpoint-check.yml
     with:
       name: ${{ matrix.name }}
