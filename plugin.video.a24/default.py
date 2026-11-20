@@ -138,7 +138,10 @@ def after_account_action():
     # A settings action has no directory to end; a menu entry refreshes it.
     if HANDLE >= 0:
         xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
-    xbmc.executebuiltin("Container.Refresh")
+    # Only refresh our own listing: from Settings the current container is
+    # something else, and refreshing it logs "Unable to find plugin".
+    if xbmc.getInfoLabel("Container.FolderPath").startswith(BASE_URL.rstrip("/")):
+        xbmc.executebuiltin("Container.Refresh")
 
 
 # -- playback --------------------------------------------------------------

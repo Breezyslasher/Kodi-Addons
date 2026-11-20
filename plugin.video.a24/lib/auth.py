@@ -208,8 +208,11 @@ class A24Auth(object):
                 continue
             break
         if not code:
-            kodiutils.log_error("authorize: no code (HTTP %s, redirect host %s)" % (
-                resp.status_code, urlsplit(resp.headers.get("Location", "")).hostname))
+            # The error body names the OAuth problem (invalid_request etc.);
+            # it holds no secrets -- the code verifier never leaves Kodi.
+            kodiutils.log_error("authorize: no code (HTTP %s, redirect host %s, %s): %s" % (
+                resp.status_code, urlsplit(resp.headers.get("Location", "")).hostname,
+                resp.headers.get("Content-Type"), " ".join(resp.text.split())[:600]))
             raise A24AuthError(kodiutils.localize(32036), resp.status_code)
         self._token({"grant_type": "authorization_code", "code": code,
                      "client_id": CLIENT_ID, "code_verifier": verifier,
@@ -220,6 +223,8 @@ class A24Auth(object):
                                  headers={"Content-Type":
                                           "application/x-www-form-urlencoded;charset=UTF-8"})
         if not resp.ok:
+            kodiutils.log_error("auth/token %s: HTTP %d %s" % (
+                form.get("grant_type"), resp.status_code, " ".join(resp.text.split())[:400]))
             raise A24AuthError("%s (HTTP %d)" % (kodiutils.localize(32036),
                                                  resp.status_code), resp.status_code)
         self._save_tokens(resp.json())
