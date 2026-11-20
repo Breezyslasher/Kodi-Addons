@@ -22,6 +22,7 @@ on:
       - 'plugin.video.starz/tools/endpoints.json'
       - 'plugin.video.tubitv/tools/endpoints.json'
       - 'plugin.video.tubitv/tools/check_endpoints.py'
+      - 'plugin.video.plexondemand/tools/endpoints.json'
 
 permissions:
   contents: read
@@ -55,6 +56,10 @@ jobs:
             spec: ''
             script: plugin.video.tubitv/tools/check_endpoints.py
             issue_label: tubi-endpoint
+          - name: Plex On Demand
+            spec: plugin.video.plexondemand/tools/endpoints.json
+            script: ''
+            issue_label: plexondemand-endpoint
     uses: ./.github/workflows/endpoint-check.yml
     with:
       name: ${{ matrix.name }}
