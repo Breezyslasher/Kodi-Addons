@@ -1239,6 +1239,38 @@ def round17():
     return 0
 
 
+def round18():
+    """Live TV: which provider, its features, channels, a channel's stream and guide."""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    _, provs = req_json("GET", "https://plex.tv/media/providers", headers=T)
+    plist = provs if isinstance(provs, list) else (mc(provs).get("MediaProvider") or [])
+    for p in plist:
+        print(f"== provider {p.get('identifier')} title={p.get('title')!r} base={p.get('baseURL')} types={p.get('types')} proto={p.get('protocols')}")
+    live = [p for p in plist if "epg" in (p.get("identifier") or "") or "live" in (p.get("title") or "").lower()
+            or "tv" in str(p.get("types") or "") and "vod" not in (p.get("identifier") or "")]
+    for p in live:
+        base = (p.get("baseURL") or "").rstrip("/")
+        print(f"\n#### LIVE PROVIDER {p.get('identifier')} {base}")
+        st, root = req_json("GET", base + "/", headers=T)
+        print("== root", st)
+        for f in (mc(root).get("MediaProvider") or {}).get("Feature") or []:
+            print("== feature:", mask(json.dumps(f))[:1500])
+        for path in ("/hubs", "/lineups", "/channels", "/library/sections", "/grid"):
+            st, ct, body, _ = req("GET", base + path, headers=T)
+            print(f"== {path} -> {st} {ct} {mask(body[:600].decode('utf-8', 'replace'))}")
+        # channels via the content feature's keys
+        for f in (mc(root).get("MediaProvider") or {}).get("Feature") or []:
+            for d in f.get("Directory") or []:
+                k = d.get("key") or ""
+                if not k or k.startswith("http"):
+                    continue
+                st, ct, body, _ = req("GET", base + k, headers=T, params={"X-Plex-Container-Size": 3})
+                print(f"== dir {d.get('title')!r} {k} -> {st} {mask(body[:900].decode('utf-8', 'replace'))}")
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -1250,5 +1282,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round17")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14, "round15": round15, "round16": round16, "round17": round17}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round18")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14, "round15": round15, "round16": round16, "round17": round17, "round18": round18}.get(mode, main)())
