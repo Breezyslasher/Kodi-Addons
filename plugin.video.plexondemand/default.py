@@ -183,7 +183,10 @@ def root():
     _region_notice(api)
     folder(L("continue_watching"), {"action": "continue"})
     folder(L("watchlist"), {"action": "watchlist"})
-    folder(L("rentals"), {"action": "store"})
+    # Rentals only when signed in (an anonymous account can't own any) and
+    # the user hasn't hidden them (Settings > Browse > Show Rentals).
+    if api.auth.signed_in() and kodiutils.get_setting_bool("show_rentals", True):
+        folder(L("rentals"), {"action": "store"})
     folder(L("featured"), {"action": "hubs"})
     folder(L("movies"), {"action": "genres", "type": TYPE_MOVIE})
     folder(L("shows"), {"action": "genres", "type": TYPE_SHOW})
@@ -503,7 +506,7 @@ def router(paramstring):
             watchlist(int(p.get("start", 0)))
         elif action == "related":
             related(p["rk"], p.get("kind", "similarTitles"))
-        elif action == "store":
+        elif action == "store":  # still reachable from old links / favourites
             store()
         elif action == "hubs":
             hubs()

@@ -279,3 +279,7 @@ msgctxt "#32075"
 msgid "Removed from your Watchlist"
 msgstr ""
 
+msgctxt "#32076"
+msgid "Show Rentals (only when signed in)"
+msgstr ""
+
