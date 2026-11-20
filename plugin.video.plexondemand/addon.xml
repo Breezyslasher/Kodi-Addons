@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.20.8" provider-name="Breezyslasher">
+<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.20.9" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -28,7 +28,11 @@ Unofficial; not affiliated with or endorsed by Plex, Inc.</description>
 			<icon>resources/icon.png</icon>
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
-		<news>v2026.11.20.8
+		<news>v2026.11.20.9
+- Categories without the plain gradient artwork (it has no name on it); brand logos stay
+- Rentals store rows hide the few free titles Plex mixes in (rent/buy titles only)
+
+v2026.11.20.8
 - My Rentals &amp; Purchases is on the home menu (only when signed in and you have some), independent of the Rentals store setting
 
 v2026.11.20.7

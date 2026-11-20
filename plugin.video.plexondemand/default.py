@@ -244,15 +244,15 @@ def store():
     end("files")
 
 
-def _directory_folders(rows):
-    """Brand / category folders: their own PNG/JPG artwork (resized)."""
+def _directory_folders(rows, with_art=True):
+    """Brand / category folders, brands with their logo (resized)."""
     from lib.api import image
     for d in rows:
         if not d.get("key"):
             continue
         thumb = d.get("thumb") or ""
         art = None
-        if thumb and not thumb.lower().split("?")[0].endswith(".svg"):
+        if with_art and thumb and not thumb.lower().split("?")[0].endswith(".svg"):
             t = image(thumb, 400, 400)
             # icon/thumb only: with a poster set, Kodi's poster views show the
             # picture without the name, and category art has no text in it.
@@ -266,7 +266,9 @@ def brands():
 
 
 def categories():
-    _directory_folders(PlexVodApi().categories())
+    # Category art is a plain gradient; Plex prints the name over it on the
+    # web, the image has none. Without art they read like the genre folders.
+    _directory_folders(PlexVodApi().categories(), with_art=False)
 
 
 def hubs():
@@ -295,6 +297,10 @@ def genres(media_type):
 def listing(key, start=0, sort=None, in_store=False):
     api = PlexVodApi()
     items, total = api.listing(key, start, sort)
+    if in_store and key != MY_RENTALS:
+        # Plex mixes a few free titles into its store rows; the Rentals store
+        # shows only what is rented or bought (free ones are in the free menus).
+        items = [m for m in items if is_store_item(m)]
     if key == MY_RENTALS and not items and not start:
         kodiutils.notify(L("no_rentals"))
     # Prices only in the store rows, not in the account's own rentals.

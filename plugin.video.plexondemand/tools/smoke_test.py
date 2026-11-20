@@ -267,9 +267,18 @@ for h in sh:
         continue
     row = api.listing(h["key"])[0]
     free = [m.get("title") for m in row if not is_store_item(m)]
-    print("INFO store row %r: %d titles, %d free" % (h.get("title") or h["key"], len(row), len(free)))
+    print("INFO store row %r: %d titles, %d free (the addon hides those)" % (h.get("title") or h["key"], len(row), len(free)))
     free_in_store += free
-check("store rows hold only priced titles", not free_in_store, free_in_store[:5])
+    if free and len(free_in_store) == len(free):  # once: run the addon's own store listing on that row
+        sys.modules.setdefault("xbmcplugin", types.ModuleType("xbmcplugin"))
+        import default
+        seen = []
+        default.add_items = lambda its, *a, **k: seen.extend(its) or "movies"
+        default.add_next = lambda *a, **k: None
+        default.end = lambda *a, **k: None
+        default.listing(h["key"], in_store=True)
+        check("Rentals store row drops free titles", seen and all(is_store_item(m) for m in seen),
+              (len(row), len(seen)))
 try:
     playback.build(api, rentals[0]["ratingKey"])
     check("unrented title -> NotRented", False, "played without a rental?")
