@@ -88,16 +88,22 @@ def main_menu(auth):
 # -- account ---------------------------------------------------------------
 
 def do_sign_in(auth):
+    """Email -> A24 emails a code -> code typed here -> session cookie.
+    No password is asked for or stored."""
     # Personal-use scope is stated up front: the stream carries this account.
     kodiutils.ok_dialog(L(32070))
     email = xbmcgui.Dialog().input(L(32020), defaultt=auth.email or "")
+    email = (email or "").strip()
     if not email:
         return
-    password = kodiutils.input_text(L(32021), hidden=True)
-    if not password:
+    auth.request_code(email)
+    kodiutils.notify(L(32027))
+    code = kodiutils.input_numeric(L(32021))
+    if not code:
         return
-    auth.sign_in(email.strip(), password)
-    kodiutils.notify(L(32022) % email.strip())
+    account = auth.validate_code(email, code)
+    name = ((account.get("user_profile") or {}).get("first_name") or email)
+    kodiutils.notify(L(32022) % name)
 
 
 def do_sign_out(auth):
@@ -106,8 +112,23 @@ def do_sign_out(auth):
 
 
 def do_account(auth):
-    status = auth.account_status()
-    kodiutils.ok_dialog("\n".join("%s: %s" % (k, v) for k, v in status.items() if v))
+    if not auth.signed_in:
+        kodiutils.ok_dialog(L(32033))
+        return
+    account = auth.account()
+    profile = account.get("user_profile") or {}
+    plan = account.get("current_plan")
+    if isinstance(plan, dict):
+        plan = plan.get("name") or plan.get("title") or plan.get("slug") or L(32028)
+    credit = (profile.get("credit") or {}).get("current_balance")
+    lines = [
+        " ".join(n for n in (profile.get("first_name"), profile.get("last_name")) if n),
+        profile.get("email") or auth.email,
+        "%s: %s" % (L(32029), plan or L(32034)),
+    ]
+    if credit:
+        lines.append("%s: $%.2f" % (L(32035), float(credit)))
+    kodiutils.ok_dialog("\n".join(l for l in lines if l))
 
 
 def after_account_action():

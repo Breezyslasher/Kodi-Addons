@@ -60,7 +60,7 @@ msgid "A24 email address"
 msgstr ""
 
 msgctxt "#32021"
-msgid "Password"
+msgid "Code from the A24 email"
 msgstr ""
 
 msgctxt "#32022"
@@ -181,4 +181,36 @@ msgstr ""
 
 msgctxt "#32070"
 msgid "Personal playback only. A24 watermarks every stream, visibly and invisibly, to the signed-in account. Sign in with your own account and watch for yourself."
+msgstr ""
+
+msgctxt "#32024"
+msgid "No A24 account uses that email address. Create one at a24films.com first."
+msgstr ""
+
+msgctxt "#32025"
+msgid "A24 could not send a sign-in code"
+msgstr ""
+
+msgctxt "#32026"
+msgid "That code was not accepted. Codes expire quickly; sign in again for a new one."
+msgstr ""
+
+msgctxt "#32027"
+msgid "A24 has emailed you a sign-in code"
+msgstr ""
+
+msgctxt "#32028"
+msgid "Member"
+msgstr ""
+
+msgctxt "#32029"
+msgid "AAA24 membership"
+msgstr ""
+
+msgctxt "#32034"
+msgid "None"
+msgstr ""
+
+msgctxt "#32035"
+msgid "A24 credit"
 msgstr ""
