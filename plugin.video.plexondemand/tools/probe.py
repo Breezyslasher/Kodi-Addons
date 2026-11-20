@@ -1211,6 +1211,36 @@ def round16():
     return 0
 
 
+def round17():
+    """Category artwork: titles, keys and the backgrounds (base64, resized) so
+    names can be drawn into them offline."""
+    import base64
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    _, c = req_json("GET", "https://vod.provider.plex.tv/library/sections/categories/all", headers=T)
+    rows = mc(c).get("Directory") or []
+    print("== categories:", len(rows))
+    for i, d in enumerate(rows):
+        thumb = d.get("thumb") or ""
+        st, ct, body, _ = req("GET", thumb) if thumb.startswith("http") else (None, "", b"", "")
+        size = None
+        try:
+            import struct
+            if body[:8] == b"\x89PNG\r\n\x1a\n":
+                size = struct.unpack(">II", body[16:24])
+        except Exception:
+            pass
+        print(f"== CAT {i} title={d.get('title')!r} key={d.get('key')!r} thumb={mask(thumb)} orig={st} {ct} {len(body)}B size={size}")
+        st2, ct2, img, _ = req("GET", "https://images.plex.tv/photo",
+                               params={"url": thumb, "width": 800, "height": 450, "minSize": 1, "upscale": 1, "format": "jpeg", "quality": 90})
+        print(f"== CATIMG {i} -> {st2} {ct2} {len(img)}B")
+        b = base64.b64encode(img).decode()
+        for j in range(0, len(b), 3000):
+            print(f"B64 {i} {b[j:j+3000]}")
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -1222,5 +1252,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round16")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14, "round15": round15, "round16": round16}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round17")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14, "round15": round15, "round16": round16, "round17": round17}.get(mode, main)())
