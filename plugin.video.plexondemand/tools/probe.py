@@ -1131,6 +1131,40 @@ def round14():
     return 0
 
 
+def round15():
+    """Genre icons are SVG on provider-static.plex.tv (Kodi gets 403 and can't
+    draw SVG). Does images.plex.tv/photo rasterise them to PNG/JPEG?"""
+    _, anon = req_json("POST", "https://plex.tv/api/v2/users/anonymous")
+    tok = secret(anon.get("authToken"))
+    T = {"X-Plex-Token": tok}
+    base = "https://vod.provider.plex.tv"
+    _, g = req_json("GET", base + "/library/sections/movies/genre", headers=T, params={"type": 1})
+    icons = [d.get("icon") for d in (mc(g).get("Directory") or []) if d.get("icon")][:3]
+    print("icons:", icons)
+    for icon in icons[:2]:
+        for label, hdr in (("bare", {"User-Agent": "Kodi/21"}), ("browser", {"User-Agent": HEADERS["User-Agent"],
+                           "Referer": "https://app.plex.tv/", "Origin": "https://app.plex.tv"})):
+            r = urllib.request.Request(icon, headers=hdr)
+            try:
+                with urllib.request.urlopen(r, timeout=20) as resp:
+                    print(f"== direct {label} -> {resp.status} {resp.headers.get('Content-Type')}")
+            except urllib.error.HTTPError as e:
+                print(f"== direct {label} -> {e.code}")
+        for q in ({"url": icon, "width": 256, "height": 256},
+                  {"url": icon, "width": 256, "height": 256, "format": "png"},
+                  {"url": icon, "width": 256, "height": 256, "minSize": 1, "upscale": 1, "format": "png"}):
+            u = "https://images.plex.tv/photo?" + urllib.parse.urlencode(q)
+            r = urllib.request.Request(u, headers={"User-Agent": "Kodi/21"})
+            try:
+                with urllib.request.urlopen(r, timeout=20) as resp:
+                    body = resp.read()
+                    print(f"== transcoder {dict((k, v) for k, v in q.items() if k != 'url')} -> {resp.status} "
+                          f"{resp.headers.get('Content-Type')} {len(body)} bytes magic={body[:8]!r}")
+            except urllib.error.HTTPError as e:
+                print(f"== transcoder {dict((k, v) for k, v in q.items() if k != 'url')} -> {e.code} {e.read()[:120]!r}")
+    return 0
+
+
 def req_json(method, url, **kw):
     st, ct, body, _ = req(method, url, **kw)
     try:
@@ -1142,5 +1176,5 @@ def req_json(method, url, **kw):
 
 
 if __name__ == "__main__":
-    mode = os.environ.get("PROBE_MODE", "round14")
-    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14}.get(mode, main)())
+    mode = os.environ.get("PROBE_MODE", "round15")
+    sys.exit({"round3": round3, "round4": round4, "round5": round5, "round6": round6, "logo": logo, "full": main, "round7": round7, "round8": round8, "round9": round9, "round10": round10, "round11": round11, "round12": round12, "round13": round13, "round14": round14, "round15": round15}.get(mode, main)())
