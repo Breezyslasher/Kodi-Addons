@@ -65,11 +65,19 @@ buttons appear only after **Kodi is restarted** following that first install, be
 add-on's service has to reload with the module available.
 
 ## Endpoint check
-`.github/workflows/plexondemand-probe.yml` runs the offline service test and the live smoke
-test on every push to this branch, and daily from `main`. A failing scheduled run opens (or
-comments on) one issue labelled `plexondemand-endpoint`.
+Plex On Demand runs in the shared `.github/workflows/endpoint-checks.yml` matrix, three ways,
+all filing into one rolling issue labelled `plexondemand-endpoint` (scheduled runs only):
+- **Plex On Demand**: `tools/endpoints.json`, the declarative spec (token, PIN, providers,
+  hubs, genres and a genre's movies, store, search).
+- **Plex On Demand (addon code)**: `tools/smoke_test.py` drives the addon's own `lib/` against
+  the live service (playback incl. the DRM licence, watch state, watchlist, rentals, ...).
+- **Plex On Demand (service)**: `tools/test_service.py`, the service and Skip Buttons wiring
+  with Kodi stubbed (no network).
+
+Pushes that touch these files or the addon's `lib/`/`service.py` run the matrix too.
 
 ## Dev tools (not shipped in the zip)
 - `tools/smoke_test.py`: runs `lib/` against the live service with Kodi stubbed.
-- `tools/probe.py`: raw endpoint captures. Both run from
-  `.github/workflows/plexondemand-probe.yml` (push = smoke test; manual = probe too).
+- `tools/probe.py`: raw endpoint captures (`PROBE_MODE=round1`...). Plex hosts are only
+  reachable from GitHub's runners, so to capture something new, add a temporary
+  `script: plugin.video.plexondemand/tools/probe.py` entry to the matrix on a branch.
