@@ -280,6 +280,6 @@ msgid "Removed from your Watchlist"
 msgstr ""
 
 msgctxt "#32076"
-msgid "Show Rentals (only when signed in)"
+msgid "Show Rentals menu (requires sign-in)"
 msgstr ""
 
