@@ -13,6 +13,7 @@ Exits non-zero on the first broken step.
 """
 
 import os
+import re
 import sys
 import tempfile
 import types
