@@ -10,6 +10,7 @@ on:
     paths:
       - '.github/workflows/siblings-discover.yml'
       - '.github/sibling-recon/discover.py'
+      - '.github/sibling-recon/addon_probe.py'
 
 jobs:
   discover:
@@ -21,7 +22,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-      - name: Discover
+      - name: Add-on's own API against HappyKids
         run: |
-          python3 .github/sibling-recon/discover.py | tee discover.txt
-          { echo '```'; cat discover.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          python3 -m pip install --quiet requests
+          python3 .github/sibling-recon/addon_probe.py plugin.video.happykids peppa
