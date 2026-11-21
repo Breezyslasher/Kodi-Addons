@@ -285,6 +285,83 @@ class FawesomeApi(object):
     def queue_remove(self, node_id):
         return self._queue_change("removeQueue.php", node_id)
 
+    # -- next episode -----------------------------------------------------
+
+    def next_episode(self, item):
+        """node_id of the episode after `item`, found the way the web player's
+        continuousPlayback does: the show (detail's show_id, or the
+        "listoflist-<id>" in actionkey) -> shows.php seasons in order -> page
+        through each season's feed to this episode (by node_id, or season and
+        episode number) -> the next one; the last of a season leads to the
+        first of the next. None for a movie, an unknown show or the very last
+        episode (the website wraps around to the first; Kodi stops instead).
+        """
+        if not is_episode(item):
+            return None
+        show = item.get("show_id")
+        if not show:
+            m = re.search(r"listoflist-(\d+)", str(item.get("actionkey") or ""))
+            show = m.group(1) if m else None
+        if not show:
+            return None
+        data = self._get("shows.php", {"searchType": "listoflist", "keys": show})
+        seasons = data.get("channels") or data.get("results") or []
+        if isinstance(seasons, dict):
+            seasons = list(seasons.values())
+        feeds = [s.get("feed") or s.get("url") for s in seasons
+                 if isinstance(s, dict) and (s.get("feed") or s.get("url"))]
+        nid, season, episode = str(item.get("node_id")), _num(item.get("season")), _num(item.get("episode"))
+        found = False
+        for feed in feeds:
+            page = 0
+            while page < 50:
+                items, more = self.feed(feed, page)
+                for v in items:
+                    if kind(v) != "video":
+                        continue
+                    if found:
+                        return v.get("node_id")
+                    if str(v.get("node_id")) == nid or (
+                            _num(v.get("season")) == season and _num(v.get("episode")) == episode):
+                        found = True
+                if not more:
+                    break
+                page += 1
+        return None
+
+
+def _num(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def is_episode(item):
+    """An episode, as the web player decides it: a series with a season and episode."""
+    return bool(item.get("series_name")) and bool(_num(item.get("episode"))) \
+        and _num(item.get("season")) is not None
+
+
+def skip_markers(item):
+    """script.module.skipbuttons markers from a title's intro_st/intro_et and
+    endcredit_st/endcredit_et (seconds; 0 means unset), by the website's own
+    rules: Skip Intro while intro_st <= t < intro_et when intro_et > intro_st;
+    the up-next countdown at endcredit_st when both credit times are set.
+    Ranges under 5 s and a credits time within 5 s of the end are dropped
+    (the end itself already plays the next episode). ad_breaks are client-side
+    ad cue points, not markers; they are never used.
+    """
+    out = {}
+    runtime = _num(item.get("runtime"))
+    i_st, i_et = _num(item.get("intro_st")) or 0.0, _num(item.get("intro_et"))
+    if i_et and i_et - i_st >= 5:
+        out["intro"] = (i_st, i_et)
+    c_st, c_et = _num(item.get("endcredit_st")), _num(item.get("endcredit_et"))
+    if c_st and c_st > 0 and c_et and c_et > 0 and (not runtime or c_st < runtime - 5):
+        out["credits"] = c_st
+    return out
+
 
 def kind(item):
     """'video', 'folder' (series / list of lists / category) or None."""

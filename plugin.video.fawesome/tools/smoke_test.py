@@ -122,7 +122,17 @@ class Dialog(object):
 
 
 xbmcgui = _mod("xbmcgui")
-xbmcgui.ListItem, xbmcgui.Dialog = ListItem, Dialog
+PROPS = {}
+
+
+class Window(object):
+    def __init__(self, *a): pass
+    def setProperty(self, k, v): PROPS[k] = v
+    def getProperty(self, k): return PROPS.get(k, "")
+    def clearProperty(self, k): PROPS.pop(k, None)
+
+
+xbmcgui.ListItem, xbmcgui.Dialog, xbmcgui.Window = ListItem, Dialog, Window
 xbmcgui.NOTIFICATION_INFO = xbmcgui.NOTIFICATION_ERROR = 0
 xbmcgui.INPUT_ALPHANUM = xbmcgui.INPUT_NUMERIC = xbmcgui.ALPHANUM_HIDE_INPUT = 0
 
@@ -243,6 +253,60 @@ if any(f for u, _, f in show if "page=" not in u):  # ignore the Next-page item
 eurl, eli = first(show, folder=False)
 if eurl:
     check_play("  play %s" % eli.label[:22], eurl)
+
+# Skip Buttons hand-off: playing an episode tells service.py its markers and
+# the next episode (looked up live, as the web player does).
+import json  # noqa: E402
+looney = [u for u, li, f in step("show Best of Looney Tunes", run("action=search&q=looney"))
+          if f and "page=" not in u and "looney tunes" in li.label.lower()]
+if looney:
+    eps = run(q(looney[0])).get("items") or []
+    e1 = [u for u, li, f in eps if not f and li.label.startswith("S01 E01")]
+    e2 = [u for u, li, f in eps if not f and li.label.startswith("S01 E02")]
+    if e1 and e2:
+        run(q(e1[0]))
+        hand = json.loads(PROPS.get("fawesome.playing") or "{}")
+        want = re.search(r"nid=(\d+)", e2[0]).group(1)
+        ok = hand.get("next") == want and "intro" in (hand.get("marks") or {})
+        print("%s  hand-off S01E01                next=%s (want %s) marks=%s" % (
+            "OK  " if ok else "FAIL", hand.get("next"), want, hand.get("marks")))
+        if not ok:
+            failures.append("hand-off next/markers")
+    else:
+        print("FAIL  Looney Tunes S01E01/E02 not listed")
+        failures.append("hand-off listing")
+else:
+    print("FAIL  Best of Looney Tunes not found by search")
+    failures.append("hand-off search")
+
+# Next episode across a season boundary: Tarzan S01's last -> S02's first.
+api = default.get_api()
+tz = [it for it in api.search("tarzan")[0] if "shows.php" in str(it.get("url"))
+      and str(it.get("title")).strip().lower() == "tarzan"]
+if tz:
+    _, seasons, _ = api.series(tz[0]["url"])
+    s1, s2 = (seasons + [{}, {}])[:2]
+    s1_eps, page = [], 0
+    while True:
+        items, more = api.feed(s1.get("feed") or s1.get("url"), page)
+        s1_eps += [i for i in items if i.get("video_hls_url") or i.get("video_url")]
+        if not more or page > 20:
+            break
+        page += 1
+    first_s2 = [i for i in api.feed(s2.get("feed") or s2.get("url"))[0]
+                if i.get("video_hls_url") or i.get("video_url")][:1] if s2 else []
+    if s1_eps and first_s2:
+        last = api.detail(s1_eps[-1]["node_id"])
+        nxt = api.next_episode(last)
+        ok = nxt == first_s2[0]["node_id"]
+        print("%s  next across seasons (Tarzan)   S01 last %s -> %s (want S02E01 %s)" % (
+            "OK  " if ok else "FAIL", last.get("node_id"), nxt, first_s2[0]["node_id"]))
+        if not ok:
+            failures.append("next across seasons")
+    else:
+        print("NOTE  Tarzan seasons not as expected; season-boundary check skipped")
+else:
+    print("NOTE  Tarzan not found; season-boundary check skipped")
 
 found = step("search 'love'", run("action=search&q=love"))
 page2 = [u for u, li, f in found if "page=" in u]

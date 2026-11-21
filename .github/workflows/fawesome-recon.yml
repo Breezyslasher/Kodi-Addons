@@ -17,6 +17,8 @@ on:
       - '.github/workflows/fawesome-recon.yml'
       - 'plugin.video.fawesome/tools/**'
       - 'plugin.video.fawesome/default.py'
+      - 'plugin.video.fawesome/service.py'
+      - 'script.module.skipbuttons/lib/**'
       - 'plugin.video.fawesome/lib/**'
 
 concurrency:
@@ -62,6 +64,8 @@ jobs:
           { echo '```'; cat queue.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Fetch official logo candidates
         run: python3 plugin.video.fawesome/tools/fetch_logo.py "$OUT/art"
+      - name: Skip Buttons service, offline (real module, Kodi stubbed)
+        run: python3 plugin.video.fawesome/tools/test_service.py
       - name: Smoke test and endpoint check (fails the job on error)
         run: |
           python3 -m pip install --quiet requests
