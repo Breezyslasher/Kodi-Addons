@@ -136,7 +136,7 @@ def folder_item(item):
     return li
 
 
-def add_items(items):
+def add_items(items, in_mylist=False):
     """Add API items (videos and folders) to the directory; return content type."""
     episodes = movies = shows = 0
     for it in items:
@@ -145,6 +145,12 @@ def add_items(items):
             if not it.get("node_id"):
                 continue
             li = video_item(it)
+            if in_mylist:
+                li.addContextMenuItems([(ku.localize(32122), "RunPlugin(%s)"
+                                         % url_for(action="queue_remove", nid=it["node_id"]))])
+            else:
+                li.addContextMenuItems([(ku.localize(32121), "RunPlugin(%s)"
+                                         % url_for(action="queue_add", nid=it["node_id"]))])
             if _int(it.get("episode")):
                 episodes += 1
             else:
@@ -183,6 +189,9 @@ def root(api):
             continue
         li = xbmcgui.ListItem(sec["name"], offscreen=True)
         xbmcplugin.addDirectoryItem(HANDLE, url_for(action="section", parent=sec["name"]), li, True)
+    li = xbmcgui.ListItem(ku.localize(32120), offscreen=True)
+    li.setArt({"icon": "DefaultPlaylist.png"})
+    xbmcplugin.addDirectoryItem(HANDLE, url_for(action="mylist"), li, True)
     li = xbmcgui.ListItem(ku.localize(32101), offscreen=True)
     li.setArt({"icon": "DefaultAddonsSearch.png"})
     xbmcplugin.addDirectoryItem(HANDLE, url_for(action="search"), li, True)
@@ -227,6 +236,24 @@ def open_feed(api, url, page=0):
     if more:
         next_page(action="open", url=url, page=page + 1)
     end(content)
+
+
+def mylist(api):
+    items = api.queue_list()
+    if not items:
+        ku.notify(ku.localize(32125))
+    content = add_items(items, in_mylist=True)
+    end(content, cache=False)
+
+
+def queue_change(api, nid, add):
+    ok = api.queue_add(nid) if add else api.queue_remove(nid)
+    if ok:
+        ku.notify(ku.localize(32123 if add else 32124))
+        if not add:
+            xbmc.executebuiltin("Container.Refresh")  # drop it from the My List view
+    else:
+        ku.notify(ku.localize(32113), icon=xbmcgui.NOTIFICATION_ERROR)
 
 
 def search(api, query=None, page=0):
@@ -342,6 +369,9 @@ def main():
     action = params.get("action")
     if action == "reset_device":
         return reset_device()
+    # queue_add / queue_remove are invoked via RunPlugin (no directory handle),
+    # so they must not end a directory; the rest build one under HANDLE.
+    directory = action in (None, "section", "open", "search", "mylist")
     api = get_api()
     try:
         page = int(params.get("page") or 0)
@@ -353,8 +383,12 @@ def main():
             open_feed(api, params["url"], page)
         elif action == "search":
             search(api, params.get("q"), page)
+        elif action == "mylist":
+            mylist(api)
         elif action == "play":
             play(api, params["nid"])
+        elif action in ("queue_add", "queue_remove"):
+            queue_change(api, params["nid"], add=action == "queue_add")
         else:
             ku.log_error("unknown action %r" % action)
     except (FawesomeError, Exception) as exc:  # noqa: BLE001  surface, don't crash Kodi
@@ -362,7 +396,7 @@ def main():
         ku.notify(ku.localize(32113), icon=xbmcgui.NOTIFICATION_ERROR)
         if action == "play":
             xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
-        else:
+        elif directory:
             xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
     finally:
         save_state(api)

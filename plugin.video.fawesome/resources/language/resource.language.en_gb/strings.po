@@ -65,3 +65,28 @@ msgstr ""
 msgctxt "#32113"
 msgid "Fawesome is not responding -- see the Kodi log"
 msgstr ""
+
+# --- My List ---
+msgctxt "#32120"
+msgid "My List"
+msgstr ""
+
+msgctxt "#32121"
+msgid "Add to My List"
+msgstr ""
+
+msgctxt "#32122"
+msgid "Remove from My List"
+msgstr ""
+
+msgctxt "#32123"
+msgid "Added to My List"
+msgstr ""
+
+msgctxt "#32124"
+msgid "Removed from My List"
+msgstr ""
+
+msgctxt "#32125"
+msgid "My List is empty"
+msgstr ""

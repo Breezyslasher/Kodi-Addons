@@ -262,6 +262,29 @@ class FawesomeApi(object):
             raise FawesomeError("title %s not found" % node_id)
         return res[0]
 
+    # -- My List (queue) --------------------------------------------------
+    #
+    # Fawesome has no account; the queue is keyed by the generated deviceId
+    # (persisted in the add-on's settings). The id parameter is videoId (the
+    # node_id). An empty list answers status "fail", like an empty search.
+
+    def queue_list(self):
+        data = self._get("getQueuelist.php")
+        items = data.get("results") or []
+        if isinstance(items, dict):
+            items = list(items.values())
+        return items
+
+    def _queue_change(self, name, node_id):
+        data = self._get(name, {"videoId": node_id})
+        return str((data or {}).get("status", "")).lower() in ("ok", "true")
+
+    def queue_add(self, node_id):
+        return self._queue_change("addQueue.php", node_id)
+
+    def queue_remove(self, node_id):
+        return self._queue_change("removeQueue.php", node_id)
+
 
 def kind(item):
     """'video', 'folder' (series / list of lists / category) or None."""

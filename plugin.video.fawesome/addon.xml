@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.21.1" provider-name="Breezyslasher">
+<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.21.2" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -27,6 +27,10 @@ This add-on uses Fawesome's undocumented website API and may need updating when 
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.11.21 (.2) - My List
+- A "My List" row on the home screen, plus "Add to My List" / "Remove from
+  My List" on each title's context menu. Saved per device (Fawesome has no
+  account), using its own queue, so it persists on this install.
 2026.11.21 - First test build
 - Browse Fawesome's sections and rows, genre lists and collections, shows by
   season, and search; play titles as clear HLS through InputStream Adaptive.

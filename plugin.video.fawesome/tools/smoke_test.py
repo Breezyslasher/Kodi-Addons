@@ -245,6 +245,30 @@ page2 = [u for u, li, f in found if "page=" in u]
 if page2:
     step("search page 2", run(q(page2[0])))
 
+# My List: add a title, confirm it lists, remove it, confirm it's gone.
+nid = None
+for u, _, _ in found:
+    m = re.search(r"nid=(\d+)", u)
+    if m:
+        nid = m.group(1)
+        break
+if nid:
+    run("action=queue_add&nid=%s" % nid)
+    ml = step("My List (after add)", run("action=mylist"))
+    if not any("nid=%s" % nid in u for u, _, _ in ml):
+        print("FAIL  added title did not appear in My List")
+        failures.append("mylist add")
+    run("action=queue_remove&nid=%s" % nid)
+    ml2 = run("action=mylist").get("items") or []
+    if any("nid=%s" % nid in u for u, _, _ in ml2):
+        print("FAIL  removed title still in My List")
+        failures.append("mylist remove")
+    else:
+        print("OK    My List remove                cleared nid=%s" % nid)
+else:
+    print("FAIL  no node id from search to test My List")
+    failures.append("mylist nid")
+
 print("\nlog tail:")
 for line in LOG[-12:]:
     print("  " + line[:200])
