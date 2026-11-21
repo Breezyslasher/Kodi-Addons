@@ -1,0 +1,49 @@
+OK    root menu                      7 entries (7 folders) content=files  e.g. Home, Collections, Shows, Movies
+OK    section Movies                37 entries (37 folders) content=files  e.g. Browse Best Movies by Genre, Fawesome This Week, Browse New Arrivals by Genre, Best Movies
+OK      row Browse Best Movies by   16 entries (16 folders) content=videos  e.g. Best Horror Movies, Best Western Movies, Best Action Movies, Best Comedy Movies
+OK        open Best Horror Movies   24 entries (24 folders) content=seasons  e.g. Most Popular Horror Movies, Slasher Horror, Urban Legend Horror, Witchcraft Horror
+OK          open Most Popular Horro  21 entries (1 folders) content=movies  e.g. The Abandoned (2006) Limited Edition, Anthropophagous, The Untold Story, The Last Broadcast (Limited Edition)
+OK      play The Abandoned (2006) L 200 b'#EXTM3U' isa=inputstream.adaptive subs=1 https://ftmain.cachefly.net/files/a8wn4hw/vi/35/48/10876318/s10876318.m3u8
+OK    section Shows                 42 entries (42 folders) content=files  e.g. TV shows by Genre, Featured, BBC TV Shows, New Arrivals
+OK      row TV shows by Genre       16 entries (16 folders) content=videos  e.g. Best TV Shows, New Arrivals TV, Western TV, True Crime TV
+OK        open Best TV Shows        14 entries (14 folders) content=seasons  e.g. Most Popular TV Shows, Most Popular Western TV Shows, Most Popular Documentary TV Shows, Most Popular True Crime TV Shows
+OK          open Most Popular TV Sh  21 entries (21 folders) content=videos  e.g. Best of Looney Tunes, Cops Reloaded, Wild Boys, Tarzan
+OK      row Featured                21 entries (21 folders) content=videos  e.g. Best of Looney Tunes, Cops Reloaded, Wild Boys, Tarzan
+OK        open Best of Looney Tunes   1 entries (1 folders) content=seasons  e.g. Best of Looney Tunes S01
+OK          open Best of Looney Tun  15 entries (0 folders) content=episodes  e.g. S01 E01 - A Day at the Zoo - Best of Looney Tunes, S01 E02 - Farm Frolics - Best of Looney Tunes, S01 E03 - Fin'n Catty - Best of Looney Tunes, S01 E04 - Fire Cheese - Best of Looney Tunes
+OK      play S01 E01 - A Day at the 200 b'#EXTM3U' isa=inputstream.adaptive subs=1 https://ftmain.cachefly.net/files/a8wn4hw/vi/df/52/10389418/s10389418.m3u8
+OK    show Love (seasons)            1 entries (1 folders) content=seasons  e.g. Love S01
+OK      season 1 episodes           21 entries (1 folders) content=episodes  e.g. S01 E01 - Episode 1 - Love, S01 E02 - Episode 2 - Love, S01 E03 - Episode 3 - Love, S01 E04 - Episode 4 - Love
+OK      play S01 E01 - Episode 1 -  200 b'#EXTM3U' isa=inputstream.adaptive subs=1 https://ftmain.cachefly.net/files/a8wn4hw/vi/c1/ed/10866218/s10866218.m3u8
+OK    search 'love'                 21 entries (2 folders) content=movies  e.g. Love, Love, Love, Love
+OK    search page 2                 21 entries (1 folders) content=movies  e.g. Where Hands Touch, Princess For A Day, Navigating The Heart, Jackie & Ryan
+
+log tail:
+  [plugin.video.fawesome] play 10876318 (hls) https://ftmain.cachefly.net/files/a8wn4hw/vi/35/48/10876318/s10876318.m3u8
+  [plugin.video.fawesome] play 10389418 (hls) https://ftmain.cachefly.net/files/a8wn4hw/vi/df/52/10389418/s10389418.m3u8
+  [plugin.video.fawesome] play 10866218 (hls) https://ftmain.cachefly.net/files/a8wn4hw/vi/c1/ed/10866218/s10866218.m3u8
+All steps passed
+exit 0
+Fawesome (plugin.video.fawesome) endpoint check
+OK   build_version              HTTP 200, text/html, 21249 bytes
+::add-mask::GsOapgrbj0RCoOQKFxRoHGQwNTdEWTNkSk1ycHlaVVNPczdBbUZnN1JXVkF6Mk1hN0xjYnlUNm0xcXJtcXRySHFic3VsTks3ZURBZlRLNWU=
+OK   security_token             HTTP 200, text/html, 128 bytes
+::add-mask::2oc85obMESGpSUS0utrVY2VqTlpLRmxEdm52ZHJ4L2lnaE1OK01ZbndrVWFFU1hOdW43bldOaTNlUGxONlR5MUoxTHJCNTh5L0xYLzZxbW0=
+OK   home_sections              HTTP 200, text/html, 21585 bytes [status=ok, channels[0].name=Home]
+::add-mask::8DtD0R3w7VwyYZtQAqpOPTRXNm1FYXk0MEl2WGNTZmxLN2ZQdWR6L2Z5L0R0OVNNeXpIc094VHg1OVpYRElxYy9JM0gvN21jZDZVLzMveTU=
+OK   movies_rows                HTTP 200, text/html, 26158 bytes [channels[0].name=Browse Best Movies by Genre]
+::add-mask::yzU6XlLsoDzikoKcKG01K0t4OHpqQ1VodXovSm5uZnhIdUlJV1VmVGFZZ0ZaTk1Va0VDZk1EaEI2dnFrc0xpaVF1UTJqM215bjc5ZzIrTVg=
+::add-mask::10582221
+OK   search                     HTTP 200, text/html, 83353 bytes [count=100]
+::add-mask::bWX631/chF0XA4jtwkAxxit3VWtJNkhEanNVa1IxV3hpQTdmanQyZTI2d2RaaTF5cXpoMlE1NHZZcFFvU0ZZRFQyN21lTTF6OFRWWGUzSXA=
+OK   show_seasons               HTTP 200, text/html, 3675 bytes [showdetails.title=Love]
+::add-mask::YPZ7bgfHtTJkLGAwTa2quHVHOGQwUTZhMkd1b3duNE5LL2RGbU1lSlNZd0tzVWg4d3dIaW9BMXpmSUdlUm1tR1RmWUxGNjhHRkZqNHhKMEk=
+::add-mask::10582221
+::add-mask::https://ftmain.cachefly.net/files/a8wn4hw/vi/6f/13/10582221/s10582221.m3u8
+OK   title_detail               HTTP 200, text/html, 5158 bytes [results[0].drm=0, results[0].video_format=hls]
+::add-mask::2CW5jq/wrwONRYblztq4DkV4NzBrS0FKVkdTZEZZNTdydlk5NG95Nm9EUTdtRWZlYnZWbDJDc2ZsOGhwdUFsQzNxK1ByWUMvbHFiK2RQbDE=
+::add-mask::10582221
+::add-mask::https://ftmain.cachefly.net/files/a8wn4hw/vi/6f/13/10582221/s10582221.m3u8
+OK   hls_manifest               HTTP 200, application/vnd.apple.mpegurl, 153 bytes
+All checks passed
+exit 0
