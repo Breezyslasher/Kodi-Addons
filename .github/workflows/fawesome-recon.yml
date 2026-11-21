@@ -16,6 +16,7 @@ on:
       - 'plugin.video.fawesome/tools/probe_api.py'
       - 'plugin.video.fawesome/tools/smoke_test.py'
       - 'plugin.video.fawesome/tools/fetch_logo.py'
+      - 'plugin.video.fawesome/tools/probe_live.py'
       - 'plugin.video.fawesome/default.py'
       - 'plugin.video.fawesome/lib/**'
 
@@ -41,6 +42,10 @@ jobs:
         run: |
           python3 plugin.video.fawesome/tools/probe_api.py plugin.video.fawesome/docs/recon | tee api.txt
           { echo '```'; cat api.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Look for live (FAST) channels across the TV platforms
+        run: |
+          python3 plugin.video.fawesome/tools/probe_live.py plugin.video.fawesome/docs/recon/live | tee live.txt
+          { echo '```'; cat live.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Fetch official logo candidates
         run: |
           python3 plugin.video.fawesome/tools/fetch_logo.py plugin.video.fawesome/docs/recon/art | tee -a recon.txt
