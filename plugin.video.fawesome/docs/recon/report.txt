@@ -89,9 +89,9 @@
     Disallow: /v2/
     Allow:/
     Sitemap:https://fawesome.tv/sitemaps/sitemap_index.xml
-200  https://fawesome.tv/sitemap.xml  5671 bytes  text/html; charset=UTF-8
+200  https://fawesome.tv/sitemap.xml  5672 bytes  text/html; charset=UTF-8
     inline script (626 bytes): {     "@context": "https://schema.org",     "@type": "WebSite",     "@id": "https://fawesome.tv/#website",     "name": "Fawesome Website",     "url": "https://fawesome.tv/",     "inLanguage": "en-US",     "potentialAction": [         {             "@type": "SearchAction",             "target": {                 "@type": "EntryPoint",                 "urlTemplate": "https://fawesome.tv/search/{search_string}"             },             "query-input": {                 "@type": "PropertyValueSpecification",                 "valueRequired": true,                 "valueName": "search_string"             }         }     ] }
-    inline script (86 bytes):  		var cdnBaseUrl = "https://ftmain.cachefly.net"+"/"; 		var ip = "48.217.53.148"; 	  
+    inline script (87 bytes):  		var cdnBaseUrl = "https://ftmain.cachefly.net"+"/"; 		var ip = "20.115.230.159"; 	  
     inline script (294 bytes): !function(e,t,a,n){e[n]=e[n]||[],e[n].push({"gtm.start":(new Date).getTime(),event:"gtm.js"});var g=t.getElementsByTagName(a)[0],m=t.createElement(a);m.async=!0,m.src="https://www.googletagmanager.com/gtm.js?id=GTM-WQFF3P23",g.parentNode.insertBefore(m,g)}(window,document,"script","dataLayer")
     --- page head ---
     <!doctype html>
@@ -115,9 +115,9 @@
           <meta property="og:image:height" content="500"/>
           <meta property="og:site_name" content="Fawesome"/>
           <meta property="og:description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free str
-200  https://fawesome.tv/movies  5656 bytes  text/html; charset=UTF-8
+200  https://fawesome.tv/movies  5657 bytes  text/html; charset=UTF-8
     inline script (626 bytes): {     "@context": "https://schema.org",     "@type": "WebSite",     "@id": "https://fawesome.tv/#website",     "name": "Fawesome Website",     "url": "https://fawesome.tv/",     "inLanguage": "en-US",     "potentialAction": [         {             "@type": "SearchAction",             "target": {                 "@type": "EntryPoint",                 "urlTemplate": "https://fawesome.tv/search/{search_string}"             },             "query-input": {                 "@type": "PropertyValueSpecification",                 "valueRequired": true,                 "valueName": "search_string"             }         }     ] }
-    inline script (86 bytes):  		var cdnBaseUrl = "https://ftmain.cachefly.net"+"/"; 		var ip = "48.217.53.148"; 	  
+    inline script (87 bytes):  		var cdnBaseUrl = "https://ftmain.cachefly.net"+"/"; 		var ip = "20.115.230.159"; 	  
     inline script (294 bytes): !function(e,t,a,n){e[n]=e[n]||[],e[n].push({"gtm.start":(new Date).getTime(),event:"gtm.js"});var g=t.getElementsByTagName(a)[0],m=t.createElement(a);m.async=!0,m.src="https://www.googletagmanager.com/gtm.js?id=GTM-WQFF3P23",g.parentNode.insertBefore(m,g)}(window,document,"script","dataLayer")
     --- page head ---
     <!doctype html>
@@ -141,9 +141,9 @@
           <meta property="og:image:height" content="500"/>
           <meta property="og:site_name" content="Fawesome"/>
           <meta property="og:description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free streamin
-200  https://fawesome.tv/tv-shows  5662 bytes  text/html; charset=UTF-8
+200  https://fawesome.tv/tv-shows  5663 bytes  text/html; charset=UTF-8
     inline script (626 bytes): {     "@context": "https://schema.org",     "@type": "WebSite",     "@id": "https://fawesome.tv/#website",     "name": "Fawesome Website",     "url": "https://fawesome.tv/",     "inLanguage": "en-US",     "potentialAction": [         {             "@type": "SearchAction",             "target": {                 "@type": "EntryPoint",                 "urlTemplate": "https://fawesome.tv/search/{search_string}"             },             "query-input": {                 "@type": "PropertyValueSpecification",                 "valueRequired": true,                 "valueName": "search_string"             }         }     ] }
-    inline script (86 bytes):  		var cdnBaseUrl = "https://ftmain.cachefly.net"+"/"; 		var ip = "48.217.53.148"; 	  
+    inline script (87 bytes):  		var cdnBaseUrl = "https://ftmain.cachefly.net"+"/"; 		var ip = "20.115.230.159"; 	  
     inline script (294 bytes): !function(e,t,a,n){e[n]=e[n]||[],e[n].push({"gtm.start":(new Date).getTime(),event:"gtm.js"});var g=t.getElementsByTagName(a)[0],m=t.createElement(a);m.async=!0,m.src="https://www.googletagmanager.com/gtm.js?id=GTM-WQFF3P23",g.parentNode.insertBefore(m,g)}(window,document,"script","dataLayer")
     --- page head ---
     <!doctype html>
@@ -374,3 +374,6 @@
 
 == Probes (probe_urls.txt) ==
 200  text/html   21249 bytes  https://fawesome.tv/  -> 001_fawesome.tv_.txt
+200  applicati  756824 bytes  https://fawesome.tv/static/js/main.3fa3bab7.js  -> 002_fawesome.tv_static_js_main.3fa3bab7.js.txt
+200  applicati  461045 bytes  https://fawesome.tv/home/new/v469/assets/js/iptv-main.js?ver=1236  -> 003_fawesome.tv_home_new_v469_assets_js_iptv-main.js_ver_1236.txt
+200  text/xml      961 bytes  https://fawesome.tv/sitemaps/sitemap_index.xml  -> 004_fawesome.tv_sitemaps_sitemap_index.xml.txt
