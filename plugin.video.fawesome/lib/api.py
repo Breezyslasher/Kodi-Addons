@@ -320,7 +320,7 @@ class FawesomeApi(object):
                     if kind(v) != "video":
                         continue
                     if found:
-                        return v.get("node_id")
+                        return str(v.get("node_id"))
                     if str(v.get("node_id")) == nid or (
                             _num(v.get("season")) == season and _num(v.get("episode")) == episode):
                         found = True
