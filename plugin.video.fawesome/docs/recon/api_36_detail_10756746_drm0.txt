@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=nodeid&start-index=0&gridstyle=flat-movie&max-results=1&dltype=1&nid=10756746&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:47:11 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=nodeid&start-index=0&gridstyle=flat-movie&max-results=1&dltype=1&nid=10756746&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:52:53 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "result",
@@ -7,7 +7,7 @@
  "params": {
   "appId": "9",
   "siteId": "236",
-  "deviceId": "5497f1ec-b3e3-46a2-b482-8793ec593374",
+  "deviceId": "78a74f6e-1bf8-4dff-8afd-4d3e6a427c38",
   "old_deviceId": "",
   "version": "sv9.0",
   "categoryfilter": "",
@@ -29,17 +29,17 @@
   "gridstyle": "flat-movie",
   "profileId": "",
   "profileIdParam": "",
-  "ip_address": "52.225.120.116",
+  "ip_address": "3.42.157.171",
   "ip_details": {
-   "ip_from": 281471568904192,
-   "ip_to": 281471568936959,
+   "ip_from": 281470734860288,
+   "ip_to": 281470734893055,
    "country_code": "US",
    "country_name": "United States of America",
-   "region_name": "California",
-   "city_name": "San Francisco",
-   "latitude": 37.77493,
-   "longitude": -122.41942,
-   "zip_code": 94199,
+   "region_name": "Oregon",
+   "city_name": "Portland",
+   "latitude": 45.523459,
+   "longitude": -122.676465,
+   "zip_code": 97204,
    "time_zone": "-07:00"
   },
   "countryCode": "US",
@@ -49,9 +49,9 @@
   "order": "",
   "highlight": "",
   "playbackmode": "",
-  "state": "California",
-  "city": "San Francisco",
-  "zip_code": "94199",
+  "state": "Oregon",
+  "city": "Portland",
+  "zip_code": "97204",
   "nid": "10756746",
   "prevNode": "",
   "lastNode": "",
@@ -207,7 +207,7 @@
    "episode_title": "",
    "blockItem": "false",
    "likedislike": 0,
-   "deeplink_url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=105134&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&country=US&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&gridstyle=flat-movie&dltype=1&parent=&akp=",
+   "deeplink_url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=105134&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&country=US&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&gridstyle=flat-movie&dltype=1&parent=&akp=",
    "item_type": "movie",
    "itg_tag_id": "",
    "row_position": 0,

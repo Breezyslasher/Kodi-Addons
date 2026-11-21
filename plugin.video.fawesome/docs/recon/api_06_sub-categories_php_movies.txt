@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/sub-categories.php?parent=movies&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:47:02 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/sub-categories.php?parent=movies&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:52:43 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "categories",
@@ -7,7 +7,7 @@
   {
    "name": "Browse Best Movies by Genre",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=listoflist&keys=87000&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=&order=0&highlight=1&gridstyle=flat-movie&dltype=0&rowType=listoflist&akp=2918-86417&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=listoflist&keys=87000&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=&order=0&highlight=1&gridstyle=flat-movie&dltype=0&rowType=listoflist&akp=2918-86417&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 1,
@@ -27,7 +27,7 @@
   {
    "name": "Fawesome This Week",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=11498&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=&order=1&highlight=0&gridstyle=flat-movie&dltype=1&rowType=new-qid&akp=2918-93070&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=11498&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=&order=1&highlight=0&gridstyle=flat-movie&dltype=1&rowType=new-qid&akp=2918-93070&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -47,7 +47,7 @@
   {
    "name": "Browse New Arrivals by Genre",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=listoflist&keys=86938&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=&order=2&highlight=0&gridstyle=flat-movie&dltype=0&rowType=listoflist&akp=2918-93124&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=listoflist&keys=86938&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=&order=2&highlight=0&gridstyle=flat-movie&dltype=0&rowType=listoflist&akp=2918-93124&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -67,7 +67,7 @@
   {
    "name": "Best Movies",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=8395&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=&order=3&highlight=0&gridstyle=flat-movie&dltype=0&rowType=new-qid&akp=2918-83633&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=8395&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=&order=3&highlight=0&gridstyle=flat-movie&dltype=0&rowType=new-qid&akp=2918-83633&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -87,7 +87,7 @@
   {
    "name": "Horror",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10624461,10640639&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=4&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83176&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10624461,10640639&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=4&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83176&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -107,7 +107,7 @@
   {
    "name": "Against The Odds",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10726370,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=5&highlight=0&gridstyle=flat-movie&dltype=1&rowType=nodeid&akp=2918-91222&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10726370,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=5&highlight=0&gridstyle=flat-movie&dltype=1&rowType=nodeid&akp=2918-91222&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -127,7 +127,7 @@
   {
    "name": "Action",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10640635,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=6&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83174&contentType=mixed&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10640635,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=6&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83174&contentType=mixed&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -147,7 +147,7 @@
   {
    "name": "Blast From The Past",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10726404,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=7&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-91223&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10726404,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=7&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-91223&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -167,7 +167,7 @@
   {
    "name": "Cop Chronicles",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10324937,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=8&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-90724&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10324937,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=8&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-90724&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -187,7 +187,7 @@
   {
    "name": "Breaking Rules",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10726415,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=9&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-91224&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10726415,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=9&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-91224&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -207,7 +207,7 @@
   {
    "name": "Held Hostage",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10579624,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=10&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-90725&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10579624,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=10&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-90725&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -227,7 +227,7 @@
   {
    "name": "Controversial Life",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10726450,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=11&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-91225&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10726450,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=11&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-91225&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -247,7 +247,7 @@
   {
    "name": "Rom-Coms",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10325043,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=12&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-90726&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10325043,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=12&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-90726&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -267,7 +267,7 @@
   {
    "name": "Family Life Dramas",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10324687,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=13&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-90727&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10324687,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=13&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-90727&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -287,7 +287,7 @@
   {
    "name": "Found Footage Horror",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10257231,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=14&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-89258&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10257231,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=14&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-89258&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -307,7 +307,7 @@
   {
    "name": "Western",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10640645,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=15&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83175&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10640645,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=15&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83175&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -327,7 +327,7 @@
   {
    "name": "Psychological Thrillers",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10259035,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=16&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-85918&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10259035,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=16&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-85918&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -347,7 +347,7 @@
   {
    "name": "Serial Killer Movies",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10324078,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=17&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84697&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10324078,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=17&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84697&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -367,7 +367,7 @@
   {
    "name": "Disaster Action",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10259132,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=18&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83504&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10259132,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=18&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83504&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -387,7 +387,7 @@
   {
    "name": "True Crime",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10426387,919933,10640646,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=19&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83497&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10426387,919933,10640646,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=19&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83497&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -407,7 +407,7 @@
   {
    "name": "Comedy",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10640636,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=20&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83177&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10640636,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=20&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83177&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -427,7 +427,7 @@
   {
    "name": "Lifetime Movies",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=99263&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=21&highlight=0&gridstyle=flat-movie&dltype=0&rowType=new-qid&akp=2918-98011&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=99263&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=21&highlight=0&gridstyle=flat-movie&dltype=0&rowType=new-qid&akp=2918-98011&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -447,7 +447,7 @@
   {
    "name": "Korean Dramas",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10096925,10037914,919933&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=22&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84698&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10096925,10037914,919933&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=22&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84698&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -467,7 +467,7 @@
   {
    "name": "Spy Movies",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10259131,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=23&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84224&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10259131,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=23&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84224&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -487,7 +487,7 @@
   {
    "name": "Possession Horror",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10578333,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=24&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84399&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10578333,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=24&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84399&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -507,7 +507,7 @@
   {
    "name": "Thriller",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10624461,10640660&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=25&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83178&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10624461,10640660&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=25&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83178&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -527,7 +527,7 @@
   {
    "name": "Zombie Horror",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10578336,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=26&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84700&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10578336,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=26&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84700&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -547,7 +547,7 @@
   {
    "name": "Romantic",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10640638,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=27&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83179&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10640638,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=27&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83179&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -567,7 +567,7 @@
   {
    "name": "Inspirational Movies",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10534300,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=28&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84401&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10534300,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=28&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84401&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -587,7 +587,7 @@
   {
    "name": "Crime Documentary",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10328339,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=29&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83954&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10328339,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=29&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83954&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -607,7 +607,7 @@
   {
    "name": "Horror Comedies",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10327915,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=30&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84225&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10327915,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=30&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84225&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -627,7 +627,7 @@
   {
    "name": "Sports Movies",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10117418,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=31&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84041&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10117418,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=31&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-84041&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -647,7 +647,7 @@
   {
    "name": "Survival Thriller",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10263319,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=32&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83951&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10263319,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=32&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83951&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -667,7 +667,7 @@
   {
    "name": "Black Cinema",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10391971,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=33&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83663&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10391971,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=33&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83663&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -687,7 +687,7 @@
   {
    "name": "Vampire Horror",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10578338,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=34&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83952&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=10578338,919933,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=34&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83952&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -707,7 +707,7 @@
   {
    "name": "Faith",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10640640,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=pr&order=35&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83180&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=nodeid&keys=919933,10640640,10624461&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=35&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83180&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -727,7 +727,7 @@
   {
    "name": "General",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=general&keys=1&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&session-id=&sort_type=&order=36&highlight=0&gridstyle=flat-movie&dltype=&rowType=general&akp=-1&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=general&keys=1&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=&order=36&highlight=0&gridstyle=flat-movie&dltype=&rowType=general&akp=-1&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
