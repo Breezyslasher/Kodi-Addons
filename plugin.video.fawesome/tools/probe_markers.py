@@ -52,15 +52,22 @@ def collect():
     for term in ("love", "looney", "cops", "tarzan", "bbc", "crime", "western"):
         items, _ = a.search(term)
         shows += [it for it in items if api.kind(it) == "folder" and "shows.php" in str(it.get("url"))]
-    seen = set()
-    for sh in shows:
-        if sh["url"] in seen or len(seen) >= 12:
+    # Shows rows hold collections (lists of shows) as well as shows; walk
+    # through collections until real series (with seasons) turn up.
+    seen, queue, series_done = set(), list(shows), 0
+    while queue and series_done < 10 and len(seen) < 60:
+        sh = queue.pop(0)
+        if sh["url"] in seen:
             continue
         seen.add(sh["url"])
         _, seasons, items = a.series(sh["url"])
-        feeds = [s.get("feed") or s.get("url") for s in seasons[:2]] if seasons else []
-        for f in feeds:
-            got, _ = a.feed(f)
+        if not seasons:
+            queue += [it for it in items if api.kind(it) == "folder" and "shows.php" in str(it.get("url"))]
+            eps += [it for it in items if api.kind(it) == "video" and str(it.get("episode")) not in ("None", "0", "")]
+            continue
+        series_done += 1
+        for s in seasons[:2]:
+            got, _ = a.feed(s.get("feed") or s.get("url"))
             eps += [g for g in got if api.kind(g) == "video"]
     return eps, movies
 
