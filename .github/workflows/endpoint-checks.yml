@@ -21,6 +21,8 @@ on:
       - 'plugin.video.appletv/tools/endpoints.json'
       - 'plugin.video.starz/tools/endpoints.json'
       - 'plugin.video.fawesome/tools/endpoints.json'
+      - 'plugin.video.happykids/tools/endpoints.json'
+      - 'plugin.video.ifoodtv/tools/endpoints.json'
       - 'plugin.video.tubitv/tools/endpoints.json'
       - 'plugin.video.tubitv/tools/check_endpoints.py'
       - 'plugin.video.plexondemand/tools/endpoints.json'
@@ -53,6 +55,14 @@ jobs:
             spec: plugin.video.fawesome/tools/endpoints.json
             script: ''
             issue_label: fawesome-endpoint
+          - name: HappyKids
+            spec: plugin.video.happykids/tools/endpoints.json
+            script: ''
+            issue_label: happykids-endpoint
+          - name: iFood.tv
+            spec: plugin.video.ifoodtv/tools/endpoints.json
+            script: ''
+            issue_label: ifoodtv-endpoint
           # Tubi twice over, into the one rolling issue. The spec is the
           # cheap canary: it checks the auth handshake's first call, which
           # the whole addon hangs off, and that each content host still

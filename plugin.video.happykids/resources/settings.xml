@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="32000">
+        <setting id="use_isa" type="bool" label="32001" default="true" />
+        <setting id="subtitles" type="bool" label="32002" default="true" />
+    </category>
+    <category label="32010">
+        <setting id="debug_log" type="bool" label="32011" default="false" />
+        <setting id="reset_device" type="action" label="32012" action="RunPlugin(plugin://plugin.video.happykids/?action=reset_device)" />
+        <setting id="device_id" type="text" label="32013" option="hidden" default="" visible="false" />
+    </category>
+</settings>

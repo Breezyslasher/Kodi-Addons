@@ -22,6 +22,8 @@ ADDON_FOLDERS = [
     "plugin.video.tubitv",
     "plugin.video.starz",
     "plugin.video.fawesome",
+    "plugin.video.happykids",
+    "plugin.video.ifoodtv",
     "script.module.skipbuttons"
 ]
 
