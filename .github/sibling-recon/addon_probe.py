@@ -46,3 +46,43 @@ if show:
         if eps:
             print("  first episode keys:", json.dumps({k: str(v)[:60] for k, v in eps[0].items()
                                                          if v not in (None, "", "None", [], {})})[:1500])
+
+# --- where does a HappyKids 'post' get its stream? -------------------------
+import base64
+import re
+import urllib.parse
+
+
+def xor_b64(s, key="ft-iptv-website-#$#$"):
+    raw = base64.b64decode(s + "=" * (-len(s) % 4)).decode("latin-1")
+    return "".join(chr(ord(c) ^ ord(key[i % len(key)])) for i, c in enumerate(raw))
+
+
+for it in items[:2]:
+    nid = it.get("node_id")
+    print("\n== post %s %s web_url=%s" % (nid, it.get("title"), it.get("web_url")))
+    try:
+        d = a.detail(nid)
+        print("  detail stream-ish fields:", {k: str(v)[:120] for k, v in d.items()
+              if re.search(r"video|stream|hls|mp4|m3u8|flv|url|embed|source", k, re.I)
+              and v not in (None, "", "None")})
+    except Exception as exc:  # noqa: BLE001
+        print("  detail failed:", exc)
+    for path in (it.get("web_url"), "videos/%s" % nid):
+        if not path:
+            continue
+        page = urllib.parse.urljoin("https://happykids.tv/home/", str(path))
+        r = a.s.get(page, timeout=20)
+        html = r.text
+        print("  page %s -> HTTP %s %d bytes" % (page, r.status_code, len(html)))
+        for m in re.finditer(r"(dvvideo_url|video_url|video_hls_url|deeplinkMovieInfo)\s*[=:]\s*[\"']?([^\"';,\s]{0,200})", html):
+            print("    %s = %s" % (m.group(1), m.group(2)[:160]))
+        m = re.search(r"dvvideo_url\s*=\s*[\"']([^\"']+)", html)
+        if m:
+            try:
+                print("    decoded dvvideo_url ->", xor_b64(m.group(1))[:200])
+            except Exception as exc:  # noqa: BLE001
+                print("    decode failed:", exc)
+        for u in sorted(set(re.findall(r"https?://[^\"'\s<>]+\.(?:m3u8|mp4)[^\"'\s<>]*", html)))[:5]:
+            print("    media url in page:", u[:160])
+        break
