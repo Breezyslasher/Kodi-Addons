@@ -1,0 +1,27 @@
+name: Siblings discover
+
+# One-off discovery for Fawesome's Future Today sibling sites (HappyKids,
+# iFood.tv). The cloud dev container cannot reach them; GitHub's runners can.
+# Prints each site's build, client ids and home sections to the job summary.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/siblings-discover.yml'
+      - '.github/sibling-recon/discover.py'
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Discover
+        run: |
+          python3 .github/sibling-recon/discover.py | tee discover.txt
+          { echo '```'; cat discover.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
