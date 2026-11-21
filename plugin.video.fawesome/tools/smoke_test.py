@@ -267,7 +267,7 @@ if looney:
         run(q(e1[0]))
         hand = json.loads(PROPS.get("fawesome.playing") or "{}")
         want = re.search(r"nid=(\d+)", e2[0]).group(1)
-        ok = hand.get("next") == want and "intro" in (hand.get("marks") or {})
+        ok = str(hand.get("next")) == want and "intro" in (hand.get("marks") or {})
         print("%s  hand-off S01E01                next=%s (want %s) marks=%s" % (
             "OK  " if ok else "FAIL", hand.get("next"), want, hand.get("marks")))
         if not ok:
@@ -298,7 +298,7 @@ if tz:
     if s1_eps and first_s2:
         last = api.detail(s1_eps[-1]["node_id"])
         nxt = api.next_episode(last)
-        ok = nxt == first_s2[0]["node_id"]
+        ok = nxt == str(first_s2[0]["node_id"])   # the API gives numbers; next_episode strings
         print("%s  next across seasons (Tarzan)   S01 last %s -> %s (want S02E01 %s)" % (
             "OK  " if ok else "FAIL", last.get("node_id"), nxt, first_s2[0]["node_id"]))
         if not ok:
