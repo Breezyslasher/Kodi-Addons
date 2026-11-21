@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=11498&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=b2145561-e13f-42df-9a7d-ac93d8145de4&session-id=&sort_type=&order=1&highlight=0&gridstyle=flat-movie&dltype=1&rowType=new-qid&akp=2918-93070&userType=new&apiEnv=production&start-index=20&max-results=20
-# {"date": "Sat, 21 Nov 2026 21:19:52 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=11498&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=bfd940ff-04a9-40fc-8638-3ba5fef14bb3&session-id=&sort_type=&order=1&highlight=0&gridstyle=flat-movie&dltype=1&rowType=new-qid&akp=2918-93070&userType=new&apiEnv=production&start-index=20&max-results=20
+# {"date": "Sat, 21 Nov 2026 21:22:21 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "fail",
  "type": "error",

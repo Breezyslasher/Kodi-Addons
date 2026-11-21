@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=116586&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&deviceId=b2145561-e13f-42df-9a7d-ac93d8145de4&parent=Home&akp=-116586&gridstyle=flat-movie&logic=&userType=&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:19:52 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=116586&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&deviceId=bfd940ff-04a9-40fc-8638-3ba5fef14bb3&parent=Home&akp=-116586&gridstyle=flat-movie&logic=&userType=&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:22:21 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "result",
@@ -7,7 +7,7 @@
  "params": {
   "appId": "9",
   "siteId": "236",
-  "deviceId": "b2145561-e13f-42df-9a7d-ac93d8145de4",
+  "deviceId": "bfd940ff-04a9-40fc-8638-3ba5fef14bb3",
   "old_deviceId": "",
   "version": "sv9.0",
   "categoryfilter": "",
@@ -29,17 +29,17 @@
   "gridstyle": "flat-movie",
   "profileId": "",
   "profileIdParam": "",
-  "ip_address": "40.76.238.179",
+  "ip_address": "172.206.95.34",
   "ip_details": {
-   "ip_from": 281471357812736,
-   "ip_to": 281471357878271,
+   "ip_from": 281473580924928,
+   "ip_to": 281473580957695,
    "country_code": "US",
    "country_name": "United States of America",
    "region_name": "Virginia",
-   "city_name": "Dulles",
-   "latitude": 38.951667,
-   "longitude": -77.448056,
-   "zip_code": 20166,
+   "city_name": "Boydton",
+   "latitude": 36.66764,
+   "longitude": -78.3875,
+   "zip_code": 23917,
    "time_zone": "-04:00"
   },
   "countryCode": "US",
@@ -50,8 +50,8 @@
   "highlight": "",
   "playbackmode": "",
   "state": "Virginia",
-  "city": "Dulles",
-  "zip_code": "20166",
+  "city": "Boydton",
+  "zip_code": "23917",
   "nid": "",
   "prevNode": "",
   "lastNode": "",
