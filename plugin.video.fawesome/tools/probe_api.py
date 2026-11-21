@@ -29,7 +29,7 @@ UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/131.0.0.0 Safari/537.36")
 APP_ID, SITE_ID, PLATFORM_ID = "9", "236", "1217575"
 DEVICE_ID = str(uuid.uuid4())
-MAX_FEEDS = 10
+MAX_FEEDS = 14
 
 n = 0
 out_dir = "."
@@ -147,15 +147,56 @@ def main():
         data = save(path.split("?")[0] + "_" + path.split("=")[-1], url, *http(url, hdr))
         walk_urls(data, feeds)
 
-    seen = set()
+    def local(u):
+        """The player's rewrite: rapi.ifood.tv/<x>.php?q -> <api base><x>.php?q."""
+        sp = urllib.parse.urlsplit(u)
+        q = sp.query
+        if "deviceId=" not in q:
+            q += "&deviceId=" + DEVICE_ID
+        return api + sp.path.rsplit("/", 1)[-1] + "?" + q + "&apiEnv=production"
+
+    # Menu sections the web player shows (index.php 'channels').
+    for parent in ("Home", "Live", "Collections", "Handpicked", "En Español"):
+        url = api + "sub-categories.php?parent=%s&%s" % (urllib.parse.quote(parent), common())
+        data = save("section_" + parent, url, *http(url, hdr))
+        walk_urls(data, feeds)
+
+    seen, kinds = set(), {}
     for title, furl in feeds:
         if len(seen) >= MAX_FEEDS:
             break
-        if furl in seen or not re.search(r"ifood\.tv|fawesome\.tv", furl):
+        if not re.search(r"ifood\.tv|fawesome\.tv", furl) or "springserve" in furl:
             continue
+        kind = re.search(r"searchType=([a-z-]+)", furl)
+        kind = (re.search(r"/([a-zA-Z-]+)\.php", furl).group(1) + ":" + (kind.group(1) if kind else ""))
+        if kinds.get(kind, 0) >= 2 or furl in seen:
+            continue
+        kinds[kind] = kinds.get(kind, 0) + 1
         seen.add(furl)
-        data = save("feed_" + str(title), furl, *http(furl, hdr))
+        data = save("feed_%s_%s" % (kind, title), local(furl), *http(local(furl), hdr))
         walk_videos(data, videos)
+        if kind.endswith("listoflist"):
+            sub = []
+            walk_urls(data, sub)
+            for st, su in sub[:2]:
+                d2 = save("sub_%s" % st, local(su), *http(local(su), hdr))
+                walk_videos(d2, videos)
+
+    # Pagination: same row, second page.
+    for title, furl in feeds:
+        if "new-qid" in furl:
+            u = re.sub(r"&start-index=\d+", "", local(furl)) + "&start-index=20&max-results=20"
+            save("page2_" + str(title), u, *http(u, hdr))
+            break
+
+    # A series: list of seasons, then a season's episodes.
+    url = api + "shows.php?&searchType=listoflist&keys=116587&" + common()
+    data = save("series_116587", url, *http(url, hdr))
+    sub = []
+    walk_urls(data, sub)
+    for st, su in sub[:1]:
+        d2 = save("season_%s" % st, local(su), *http(local(su), hdr))
+        walk_videos(d2, videos)
 
     url = api + "recipes.php?searchType=search&keys=love&start-index=0&max-results=10&" + common()
     data = save("search_love", url, *http(url, hdr))
