@@ -4,17 +4,15 @@
 Usage:
     python3 discover.py
 
-HappyKids and iFood.tv run the same Future Today jQuery player as Fawesome
-(iptv-main.js: appConfig.appId / siteId / platform_id, API base
-/home/new/<build>/api/). For each candidate site this finds the build and the
-player bundle, extracts the client ids, then calls getSecurityToken.php and
-index.php?parent=home to confirm the API answers and prints the home sections
-and a sample title's stream fields. Read-only; prints everything. Stdlib only.
+For each site's player page: read the bundle's own appInfo.buildVersion and
+apiBaseUrl construction, the hardcoded rapi.ifood.tv URLs (which carry the real
+appId / siteId / auth-token), then call getSecurityToken.php, index.php and
+sub-categories.php with every candidate id set, printing raw response heads.
+Read-only. Stdlib only.
 """
 
 import json
 import re
-import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,9 +21,10 @@ import uuid
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/131.0.0.0 Safari/537.36")
 DEV = str(uuid.uuid4())
-SITES = {
-    "happykids": ["https://www.happykids.tv/", "https://happykids.tv/"],
-    "ifoodtv": ["https://www.ifood.tv/", "https://ifood.tv/"],
+PLAYERS = {
+    "happykids": "https://happykids.tv/home/",
+    "ifoodtv": "https://ifood.tv/",
+    "fawesome (reference)": "https://fawesome.tv/",
 }
 
 
@@ -48,108 +47,76 @@ def js(t):
         return None
 
 
-def find(bundle, name):
-    m = re.search(r"appConfig\.%s\s*=\s*[\"']?([0-9A-Za-z._-]+)" % name, bundle)
-    return m.group(1) if m else None
+def ctx(blob, needle, before=150, after=300, limit=3):
+    out, i = [], blob.find(needle)
+    while i != -1 and len(out) < limit:
+        out.append(" ".join(blob[max(0, i - before):i + after].split()))
+        i = blob.find(needle, i + 1)
+    return out
 
 
-def probe(label, urls):
-    print("\n################ %s ################" % label)
-    home_url = home = None
-    for u in urls:
-        st, final, body = http(u)
-        print("GET %-32s -> %s %s (%d bytes)" % (u, st, final, len(body)))
-        if st == 200 and len(body) > 500:
-            home_url, home = final, body
-            break
-    if not home:
-        print("  no reachable home page")
-        return
-    m = re.search(r"/home/new/(v\d+)/", home)
-    build = m.group(1) if m else None
+def probe(label, page):
+    print("\n################ %s  %s ################" % (label, page))
+    st, final, home = http(page)
+    print("page: HTTP %s -> %s (%d bytes)" % (st, final, len(home)))
     mb = re.search(r'src="([^"]*iptv-main\.js[^"]*)"', home)
-    print("  build=%s  iptv-main=%s" % (build, bool(mb)))
     if not mb:
-        # Maybe a different structure; show script srcs for a lead.
-        print("  scripts:", re.findall(r'<script[^>]+src="([^"]+)"', home)[:12])
-        links = sorted(set(re.findall(r'href="([^"#]+)"', home)))
-        print("  candidate app links:", [l for l in links if re.search(r"watch|home/new|app|play|tv\.|stream|kids", l, re.I)][:30])
-        for extra in ("home/new/", "watch/", "app/", "home/", "robots.txt"):
-            st2, fin2, b2 = http(urllib.parse.urljoin(home_url, extra))
-            m2 = re.search(r"/home/new/(v\d+)/", b2 or "")
-            print("  GET %-12s -> %s %s %d bytes build=%s iptv=%s" % (
-                extra, st2, fin2, len(b2 or ""), m2.group(1) if m2 else None, "iptv-main" in (b2 or "")))
-            if extra == "robots.txt":
-                print("    ", (b2 or "")[:300].replace("\n", " | "))
+        print("  no iptv-main bundle; scripts:", re.findall(r'<script[^>]+src="([^"]+)"', home)[:15])
         return
-    bundle_url = urllib.parse.urljoin(home_url, mb.group(1))
+    bundle_url = urllib.parse.urljoin(final, mb.group(1))
     _, _, bundle = http(bundle_url)
-    app_id, site_id, pid = find(bundle, "appId"), find(bundle, "siteId"), find(bundle, "platform_id")
-    print("  bundle defaults: appId=%s siteId=%s platform_id=%s" % (app_id, site_id, pid))
-    for blob, where in ((home, "page"), (bundle, "bundle")):
-        sids = sorted(set(re.findall(r"siteId[\"'=:\s]+(\d+)", blob)))
-        aids = sorted(set(re.findall(r"appId[\"'=:\s]+(\d+)", blob)))
-        toks = sorted(set(re.findall(r"auth-token[\"'=:\s]+(\d+)", blob)))
-        print("  %s literals: siteId=%s appId=%s auth-token=%s" % (where, sids[:12], aids[:12], toks[:12]))
+    print("  bundle:", bundle_url, len(bundle), "bytes")
+    for s in ctx(bundle, "buildVersion:", 40, 120, 2):
+        print("  appInfo:", s)
+    for s in ctx(bundle, "apiBaseUrl=window.location", 80, 260, 3):
+        print("  apiBaseUrl:", s)
+    for s in ctx(bundle, 'appConfig.siteId=', 60, 160, 3):
+        print("  siteId set:", s)
+    # Inline config on the page.
     for sc in re.findall(r"<script(?![^>]*src)[^>]*>(.*?)</script>", home, re.S):
-        if re.search(r"siteId|appId|platform|baseAppId", sc):
-            print("  inline:", " ".join(sc.split())[:400])
-    # Try the candidate combinations until index.php answers ok.
-    cands = []
-    page_sids = sorted(set(re.findall(r"siteId[\"'=:\s]+(\d+)", home + bundle)))
-    page_aids = sorted(set(re.findall(r"appId[\"'=:\s]+(\d+)", home + bundle))) or [app_id]
-    page_toks = sorted(set(re.findall(r"auth-token[\"'=:\s]+(\d+)", home + bundle))) or [pid]
-    for a in page_aids[:4]:
-        for si in page_sids[:8]:
-            for t in page_toks[:4]:
-                cands.append((a, si, t))
+        if re.search(r"siteId|appId|platform|buildVersion|apiBase", sc):
+            print("  inline:", " ".join(sc.split())[:500])
+    rapi = sorted(set(re.findall(r"https?://rapi\.ifood\.tv/[^\"'\s]+", bundle)))
+    print("  rapi URLs in bundle:", rapi[:8])
 
-    base = re.search(r"https?://[^/]+", home_url).group(0)
-    api = "%s/home/new/%s/api/" % (base, build or "v469")
-    d, tok, common = {}, None, ""
-    for a, si, t in cands or [(app_id, site_id, pid)]:
-        common = "appId=%s&siteId=%s&auth-token=%s&platform_id=%s&deviceId=%s&apiEnv=production" % (
-            a, si, t, t, DEV)
-        st, _, tb = http(api + "getSecurityToken.php?" + common)
-        tok = (js(tb) or {}).get("securityToken")
-        if not tok:
-            print("  try appId=%s siteId=%s tok=%s: no token (%s)" % (a, si, t, (tb or "")[:80]))
-            continue
-        st, _, ib = http(api + "index.php?parent=home&" + common, {"token": tok})
-        d = js(ib) or {}
-        print("  try appId=%s siteId=%s auth-token=%s: index status=%s %s" % (
-            a, si, t, d.get("status"), "" if d else (ib or "")[:120].replace("\n", " ")))
-        if d.get("status") == "ok":
-            print("  >> WORKING IDS appId=%s siteId=%s auth-token=%s" % (a, si, t))
-            break
-    if not tok:
-        return
-    chans = d.get("channels") or []
-    if isinstance(chans, dict):
-        chans = list(chans.values())
-    print("  index.php status=%s sections=%s" % (
-        d.get("status"), [c.get("name") for c in chans if isinstance(c, dict)]))
-    # A sample feed -> a title, to see the content/stream shape.
-    feed = next((c.get("url") for c in chans if isinstance(c, dict) and c.get("url")), None)
-    if feed:
-        sp = urllib.parse.urlsplit(feed)
-        furl = api + sp.path.rsplit("/", 1)[-1] + "?" + sp.query + "&deviceId=" + DEV
-        _, _, fb = http(furl, {"token": tok})
-        fd = js(fb) or {}
-        res = fd.get("results") or []
-        if isinstance(res, dict):
-            res = list(res.values())
-        print("  first feed '%s': %d results" % (sp.path, len(res)))
-        if res and isinstance(res[0], dict):
-            it = res[0]
-            print("  sample item:", {k: str(it.get(k))[:70] for k in
-                  ("title", "type", "feed_type", "video_hls_url", "video_url",
-                   "video_format", "drm", "content_genre", "runtime") if k in it})
+    m = re.search(r'buildVersion:"(v\d+)"', bundle)
+    build = m.group(1) if m else (re.search(r"/home/new/(v\d+)/", home) or [None, None])[1]
+    origin = re.search(r"https?://[^/]+", final).group(0)
+    bases = ["%s/home/new/%s/api/" % (origin, build)] if build else []
+    bases += ["%s/home/api/" % origin, "%s/api/" % origin]
+
+    cands = set()
+    for u in rapi:
+        q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(u).query))
+        if q.get("appId") and q.get("siteId") and q.get("auth-token"):
+            cands.add((q["appId"], q["siteId"], q["auth-token"]))
+    cands.add(("9", "236", "1217575"))
+    print("  id candidates:", sorted(cands))
+
+    for base in bases:
+        for a, si, t in sorted(cands):
+            common = "appId=%s&siteId=%s&auth-token=%s&platform_id=%s&deviceId=%s&apiEnv=production" % (
+                a, si, t, t, DEV)
+            st, _, tb = http(base + "getSecurityToken.php?" + common)
+            tok = (js(tb) or {}).get("securityToken")
+            if not tok:
+                print("  [%s] ids %s/%s/%s: token HTTP %s %r" % (base, a, si, t, st, (tb or "")[:80]))
+                continue
+            for call in ("index.php?parent=home", "sub-categories.php?parent=Home"):
+                st, _, ib = http(base + call + "&" + common, {"token": tok})
+                d = js(ib) or {}
+                ch = d.get("channels") or []
+                if isinstance(ch, dict):
+                    ch = list(ch.values())
+                names = [c.get("name") for c in ch if isinstance(c, dict)][:12]
+                print("  [%s] ids %s/%s/%s %s: HTTP %s status=%s names=%s raw=%r" % (
+                    base, a, si, t, call.split("?")[0], st, d.get("status"), names,
+                    "" if d else (ib or "")[:160]))
 
 
 def main():
-    for label, urls in SITES.items():
-        probe(label, urls)
+    for label, page in PLAYERS.items():
+        probe(label, page)
     print("\nDONE")
 
 
