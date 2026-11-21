@@ -159,7 +159,7 @@ def add_items(items):
         return "movies"
     if shows:
         return "tvshows"
-    return "videos"
+    return "files"
 
 
 def next_page(**kw):
@@ -211,7 +211,7 @@ def open_feed(api, url, page=0):
                 it["title"] = s.get("title") or s.get("name") or ""
                 li = folder_item(it)
                 xbmcplugin.addDirectoryItem(HANDLE, url_for(action="open", url=it["url"], title=it["title"]), li, True)
-            return end("seasons")
+            return end("seasons" if any(s.get("season_no") for s in seasons) else "files")
         if items:
             return end(add_items(items))
     items, more = api.feed(url, page)
