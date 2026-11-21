@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=116586&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&parent=Home&akp=-116586&gridstyle=flat-movie&logic=&userType=&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:28:55 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=116586&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&parent=Home&akp=-116586&gridstyle=flat-movie&logic=&userType=&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:47:10 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "result",
@@ -7,7 +7,7 @@
  "params": {
   "appId": "9",
   "siteId": "236",
-  "deviceId": "00ce7dae-0909-4adb-bf52-36dfcd30bec0",
+  "deviceId": "5497f1ec-b3e3-46a2-b482-8793ec593374",
   "old_deviceId": "",
   "version": "sv9.0",
   "categoryfilter": "",
@@ -29,18 +29,18 @@
   "gridstyle": "flat-movie",
   "profileId": "",
   "profileIdParam": "",
-  "ip_address": "52.165.101.18",
+  "ip_address": "52.225.120.116",
   "ip_details": {
-   "ip_from": 281471564986368,
-   "ip_to": 281471564998911,
+   "ip_from": 281471568904192,
+   "ip_to": 281471568936959,
    "country_code": "US",
    "country_name": "United States of America",
-   "region_name": "Iowa",
-   "city_name": "Des Moines",
-   "latitude": 41.60045,
-   "longitude": -93.609114,
-   "zip_code": 50319,
-   "time_zone": "-05:00"
+   "region_name": "California",
+   "city_name": "San Francisco",
+   "latitude": 37.77493,
+   "longitude": -122.41942,
+   "zip_code": 94199,
+   "time_zone": "-07:00"
   },
   "countryCode": "US",
   "country": "US",
@@ -49,9 +49,9 @@
   "order": "",
   "highlight": "",
   "playbackmode": "",
-  "state": "Iowa",
-  "city": "Des Moines",
-  "zip_code": "50319",
+  "state": "California",
+  "city": "San Francisco",
+  "zip_code": "94199",
   "nid": "",
   "prevNode": "",
   "lastNode": "",

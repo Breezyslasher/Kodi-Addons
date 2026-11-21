@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/getSecurityToken.php?&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:28:50 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/getSecurityToken.php?&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:47:01 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
- "securityToken": "4z/uA981vLH191LIfyplZ2JlUUN4THBaR2FBQWk2bGYxemRORG4zTEsweXpwRFR6ekRoVGRqNWhUSmtPTnljTUErOVlWek80MDgyZ0RzK1U="
+ "securityToken": "ly5ySdALQ7CtFUxfosGTAHRtTkhpRWFpdlFMYXQ5ZzV4eWh1NWhQSTYxY0F1Z1VsVjUzVjVsMWZaSHhQMGh1VGdiWnl0TmkyR2tJajFGZVA="
 }

@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/shows.php?&searchType=listoflist&keys=116587&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:28:55 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/shows.php?&searchType=listoflist&keys=116587&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:47:10 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "categories",
@@ -8,7 +8,7 @@
    "title": "Love S01",
    "feed_type": "show",
    "description": "List of Love S01 videos",
-   "feed": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=116586&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&parent=Home&akp=-116586&gridstyle=flat-movie&logic=&userType=",
+   "feed": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=116586&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&parent=Home&akp=-116586&gridstyle=flat-movie&logic=&userType=",
    "sd_image": "",
    "hd_image": "",
    "actiontype": "child-category",
@@ -27,7 +27,7 @@
   "publisher": "",
   "uid": 0,
   "date": "31 December 1969 - 07:00 pm",
-  "url": "https://rapi.ifood.tv/shows.php?searchType=listoflist&keys=116587&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=&deviceModel=&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&parent=&akp=",
+  "url": "https://rapi.ifood.tv/shows.php?searchType=listoflist&keys=116587&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=&deviceModel=&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&parent=&akp=",
   "description": "Con problemas económicos, Azra y Kerem fingen una amistad con Sebnem, quien padece una enfermedad terminal, para acceder a su fortuna.",
   "hd_image": "https://ftmain.cachefly.net/files/styles/hd_movie_image/public/a8wn4hw/im/iptv/4f/ca/b9e9f94bf05bf76fee480b3a9333eda8.jpg",
   "sd_image": "https://ftmain.cachefly.net/files/styles/sd_movie_image/public/a8wn4hw/im/iptv/4f/ca/b9e9f94bf05bf76fee480b3a9333eda8.jpg",
@@ -51,7 +51,7 @@
   "bg_image": "https://ftmain.cachefly.net/files/styles/hd_movie_image/public/images/iptv/default-video-image.png",
   "feed_type": "category",
   "actiontype": "category",
-  "feed": "https://rapi.ifood.tv/shows.php?searchType=listoflist&keys=116587&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=&deviceModel=&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&parent=&akp=",
+  "feed": "https://rapi.ifood.tv/shows.php?searchType=listoflist&keys=116587&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=&deviceModel=&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&parent=&akp=",
   "actionkey": "listoflist-116587=0",
   "catId": "",
   "subCatId": "",
