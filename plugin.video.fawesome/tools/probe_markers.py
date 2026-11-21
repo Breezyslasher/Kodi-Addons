@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Does Fawesome say where intros and credits are? (Skip Buttons step 1.)
+
+Usage:
+    python3 probe_markers.py
+
+Title records carry intro_st / intro_et / endcredit_st / endcredit_et (and
+shorts_*, ad_breaks). This samples episodes from several shows and a batch of
+movies -- both from feed listings and from the detail call -- and reports how
+often each field is filled, sample values next to the runtime (to work out the
+units), and the web player's own code that reads them (skip intro / up next),
+so the add-on uses them the way the website does. Read-only; prints only.
+"""
+
+import json
+import os
+import re
+import sys
+import urllib.parse
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), "lib"))
+import api  # noqa: E402
+
+FIELDS = ("intro_st", "intro_et", "endcredit_st", "endcredit_et",
+          "shorts_st", "shorts_et", "recap_st", "recap_et", "ad_breaks")
+a = api.FawesomeApi("markers-probe-0000", log=lambda m: None)
+
+
+def filled(v):
+    return v not in (None, "", "None", "null", "0", 0, "0.0", [], {})
+
+
+def marker_keys(it):
+    return sorted(k for k in it if re.search(r"intro|credit|recap|skip|outro|cue|marker|shorts|next", k, re.I))
+
+
+def collect():
+    eps, movies = [], []
+    shows = []
+    for parent in ("Shows", "Movies"):
+        for row in a.rows(parent=parent)[:8]:
+            items, _ = a.feed(row["url"]) if "shows.php" not in row["url"] else ([], False)
+            for it in items:
+                k = api.kind(it)
+                if k == "video" and not it.get("episode") or (k == "video" and str(it.get("episode")) in ("None", "0", "")):
+                    movies.append(it)
+                elif k == "folder" and "shows.php" in str(it.get("url")):
+                    shows.append(it)
+                elif k == "video":
+                    eps.append(it)
+    seen = set()
+    for sh in shows:
+        if sh["url"] in seen or len(seen) >= 8:
+            continue
+        seen.add(sh["url"])
+        _, seasons, items = a.series(sh["url"])
+        feeds = [s.get("feed") or s.get("url") for s in seasons[:2]] if seasons else []
+        for f in feeds:
+            got, _ = a.feed(f)
+            eps += [g for g in got if api.kind(g) == "video"]
+    return eps, movies
+
+
+def report(label, items):
+    print("\n== %s: %d sampled ==" % (label, len(items)))
+    if not items:
+        return
+    print("  marker-ish keys present:", marker_keys(items[0]))
+    for f in FIELDS:
+        n = sum(1 for it in items if filled(it.get(f)))
+        print("  %-13s filled in %3d / %d" % (f, n, len(items)))
+    shown = 0
+    for it in items:
+        if any(filled(it.get(f)) for f in FIELDS[:4]) and shown < 8:
+            shown += 1
+            print("   %-45s runtime=%-6s intro=%s-%s credits=%s-%s ad_breaks=%s" % (
+                str(it.get("title"))[:45], it.get("runtime"), it.get("intro_st"), it.get("intro_et"),
+                it.get("endcredit_st"), it.get("endcredit_et"), str(it.get("ad_breaks"))[:40]))
+
+
+def detail_check(items, label):
+    print("\n== detail call vs listing (%s) ==" % label)
+    for it in items[:4]:
+        d = a.detail(it["node_id"])
+        print("  %s %s" % (it["node_id"], str(it.get("title"))[:40]))
+        print("     list  :", {f: it.get(f) for f in FIELDS[:4]})
+        print("     detail:", {f: d.get(f) for f in FIELDS[:4]},
+              "| show link:", {k: str(d.get(k))[:80] for k in ("show_id", "series_id", "parent", "bookmark_feed",
+                                                              "deeplink_url", "path_alias", "catId", "subCatId")
+                               if filled(d.get(k))})
+
+
+def player_code():
+    print("\n== web player code using the markers ==")
+    r = a.s.get(api.SITE, timeout=20)
+    m = re.search(r'src="([^"]*iptv-main\.js[^"]*)"', r.text)
+    bundle = a.s.get(urllib.parse.urljoin(api.SITE, m.group(1)), timeout=30).text
+    for needle in ("intro_st", "intro_et", "endcredit_st", "skipIntro", "skip-intro", "SkipIntro",
+                   "watch-next", "continuousPlayback={", "countdownSeconds"):
+        hits = [i.start() for i in re.finditer(re.escape(needle), bundle)][:2]
+        for i in hits:
+            print("  [%s] %s" % (needle, " ".join(bundle[max(0, i - 220):i + 320].split())))
+        if not hits:
+            print("  [%s] not found" % needle)
+
+
+def main():
+    eps, movies = collect()
+    report("episodes (from season feeds)", eps)
+    report("movies (from rows)", movies)
+    detail_check(eps, "episodes")
+    detail_check(movies, "movies")
+    player_code()
+    print("\nDONE")
+
+
+if __name__ == "__main__":
+    main()

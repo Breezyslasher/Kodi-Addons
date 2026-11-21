@@ -51,6 +51,11 @@ jobs:
         run: |
           python3 plugin.video.fawesome/tools/probe_live.py "$OUT/live" | tee live.txt
           { echo '```'; cat live.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Skip markers (intro / credits fields) and the player's use of them
+        run: |
+          python3 -m pip install --quiet requests
+          python3 plugin.video.fawesome/tools/probe_markers.py | tee markers.txt
+          { echo '```'; cat markers.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Probe the queue (My List) endpoints
         run: |
           python3 plugin.video.fawesome/tools/probe_queue.py "$OUT/queue" | tee queue.txt
