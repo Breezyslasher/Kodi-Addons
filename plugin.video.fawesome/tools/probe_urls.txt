@@ -4,6 +4,5 @@
 # plugin.video.fawesome/docs/recon/.
 https://fawesome.tv/
 # Round 2: the app bundles (appConfig, rapi.ifood.tv calls) and the sitemap.
-https://fawesome.tv/static/js/main.3fa3bab7.js
 https://fawesome.tv/home/new/v469/assets/js/iptv-main.js?ver=1236
 https://fawesome.tv/sitemaps/sitemap_index.xml

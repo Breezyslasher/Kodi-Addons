@@ -13,6 +13,7 @@ on:
       - '.github/workflows/fawesome-recon.yml'
       - 'plugin.video.fawesome/tools/recon.py'
       - 'plugin.video.fawesome/tools/probe_urls.txt'
+      - 'plugin.video.fawesome/tools/probe_api.py'
 
 concurrency:
   group: fawesome-recon-${{ github.ref }}
@@ -32,6 +33,10 @@ jobs:
         run: |
           python3 plugin.video.fawesome/tools/recon.py plugin.video.fawesome/docs/recon | tee recon.txt
           { echo '```'; head -c 900000 recon.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: API walk (token, home, feeds, a title, its manifests)
+        run: |
+          python3 plugin.video.fawesome/tools/probe_api.py plugin.video.fawesome/docs/recon | tee api.txt
+          { echo '```'; cat api.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Commit results
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
