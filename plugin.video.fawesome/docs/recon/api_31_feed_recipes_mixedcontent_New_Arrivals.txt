@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=mixedcontent&keys=9760&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=c1764c39-0deb-4a43-9cae-33a1c5fc1e75&session-id=&sort_type=&order=2&highlight=0&gridstyle=flat-movie&dltype=0&rowType=mixedcontent&akp=958-67827&userType=new&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 22:02:08 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=mixedcontent&keys=9760&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=bbc2b5d5-637d-4b69-84df-6feab07beca4&session-id=&sort_type=&order=2&highlight=0&gridstyle=flat-movie&dltype=0&rowType=mixedcontent&akp=958-67827&userType=new&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 22:09:22 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "result",
@@ -7,7 +7,7 @@
  "params": {
   "appId": "9",
   "siteId": "236",
-  "deviceId": "c1764c39-0deb-4a43-9cae-33a1c5fc1e75",
+  "deviceId": "bbc2b5d5-637d-4b69-84df-6feab07beca4",
   "old_deviceId": "",
   "version": "sv9.0",
   "categoryfilter": "",
@@ -29,17 +29,17 @@
   "gridstyle": "flat-movie",
   "profileId": "",
   "profileIdParam": "",
-  "ip_address": "20.29.55.11",
+  "ip_address": "20.59.253.40",
   "ip_details": {
-   "ip_from": 281471019188224,
-   "ip_to": 281471019220991,
+   "ip_from": 281471021203456,
+   "ip_to": 281471021219839,
    "country_code": "US",
    "country_name": "United States of America",
-   "region_name": "Iowa",
-   "city_name": "Des Moines",
-   "latitude": 41.60045,
-   "longitude": -93.609114,
-   "zip_code": 50319,
+   "region_name": "Illinois",
+   "city_name": "Chicago",
+   "latitude": 41.875772,
+   "longitude": -87.620606,
+   "zip_code": 60608,
    "time_zone": "-05:00"
   },
   "countryCode": "US",
@@ -49,9 +49,9 @@
   "order": "2",
   "highlight": "",
   "playbackmode": "",
-  "state": "Iowa",
-  "city": "Des Moines",
-  "zip_code": "50319",
+  "state": "Illinois",
+  "city": "Chicago",
+  "zip_code": "60608",
   "nid": "",
   "prevNode": "",
   "lastNode": "",
@@ -116,9 +116,9 @@
    "updated": "Oct. 27, 2026",
    "date": "May. 08, 2024",
    "uid": 0,
-   "url": "https://rapi.ifood.tv/shows.php?searchType=listoflist&keys=81799&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=&deviceModel=&deviceId=c1764c39-0deb-4a43-9cae-33a1c5fc1e75&parent=&akp=958-67827-81799&gridstyle=flat-movie&userType=new&baction-key=&bepisode=",
+   "url": "https://rapi.ifood.tv/shows.php?searchType=listoflist&keys=81799&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=&deviceModel=&deviceId=bbc2b5d5-637d-4b69-84df-6feab07beca4&parent=&akp=958-67827-81799&gridstyle=flat-movie&userType=new&baction-key=&bepisode=",
    "web_url": "category/81799/all-new-movies",
-   "path_alias": "https://rapi.ifood.tv/shows.php?searchType=listoflist&keys=81799&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=&deviceModel=&deviceId=c1764c39-0deb-4a43-9cae-33a1c5fc1e75&parent=&akp=958-67827-81799&gridstyle=flat-movie&userType=new&baction-key=&bepisode=",
+   "path_alias": "https://rapi.ifood.tv/shows.php?searchType=listoflist&keys=81799&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=&deviceModel=&deviceId=bbc2b5d5-637d-4b69-84df-6feab07beca4&parent=&akp=958-67827-81799&gridstyle=flat-movie&userType=new&baction-key=&bepisode=",
    "bgimage": "https://ftmain.cachefly.net/files/styles//public/",
    "picture": "https://ftmain.cachefly.net/files/styles/sd_movie_image/public/a8wn4hw/im/iptv/7b/75/3d9f3cc2214dcbddffca43d42253af7e.png",
    "main_picture": "https://ftmain.cachefly.net/files/styles/hd_movie_image/public/a8wn4hw/im/iptv/7b/75/3d9f3cc2214dcbddffca43d42253af7e.png",
@@ -399,7 +399,7 @@
      "id": 152,
      "name": "Sean Young",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=3abf5b06-3bbf-5c99-b8bf-57e039bf5973&parent=&akp=958-67827&userType=new&deviceFwVer=&id=152",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=67c21683-66c2-54f0-a9c2-19a968c21816&parent=&akp=958-67827&userType=new&deviceFwVer=&id=152",
      "imageUrl": "https://ftmain.cachefly.net/files/a8wn4hw/im/iptv/ec/9d/cast_cc0b9f36a0a55b92ec7415ae248626bd.jpg",
      "description": "Rachael, the replicant who does not know she is one, gave Sean Young her defining screen role in Ridley Scott's Blade Runner (1982). Trained at the Interlochen Arts Academy and the School of America.."
     }
@@ -1168,7 +1168,7 @@
      "id": 167,
      "name": "David Carradine",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=3abf5b06-3bbf-5c99-b8bf-57e039bf5973&parent=&akp=958-67827&userType=new&deviceFwVer=&id=167",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=67c21683-66c2-54f0-a9c2-19a968c21816&parent=&akp=958-67827&userType=new&deviceFwVer=&id=167",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/141.jpg",
      "description": "Kwai Chang Caine, the Shaolin monk wandering the American West in the television series Kung Fu (1972 to 1975), brought David Carradine an Emmy nomination and a wide audience. He had first made his .."
     }

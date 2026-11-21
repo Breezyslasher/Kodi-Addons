@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=116586&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&deviceId=c1764c39-0deb-4a43-9cae-33a1c5fc1e75&parent=Home&akp=-116586&gridstyle=flat-movie&logic=&userType=&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 22:02:08 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=116586&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&deviceId=bbc2b5d5-637d-4b69-84df-6feab07beca4&parent=Home&akp=-116586&gridstyle=flat-movie&logic=&userType=&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 22:09:22 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "result",
@@ -7,7 +7,7 @@
  "params": {
   "appId": "9",
   "siteId": "236",
-  "deviceId": "c1764c39-0deb-4a43-9cae-33a1c5fc1e75",
+  "deviceId": "bbc2b5d5-637d-4b69-84df-6feab07beca4",
   "old_deviceId": "",
   "version": "sv9.0",
   "categoryfilter": "",
@@ -29,17 +29,17 @@
   "gridstyle": "flat-movie",
   "profileId": "",
   "profileIdParam": "",
-  "ip_address": "20.29.55.11",
+  "ip_address": "20.59.253.40",
   "ip_details": {
-   "ip_from": 281471019188224,
-   "ip_to": 281471019220991,
+   "ip_from": 281471021203456,
+   "ip_to": 281471021219839,
    "country_code": "US",
    "country_name": "United States of America",
-   "region_name": "Iowa",
-   "city_name": "Des Moines",
-   "latitude": 41.60045,
-   "longitude": -93.609114,
-   "zip_code": 50319,
+   "region_name": "Illinois",
+   "city_name": "Chicago",
+   "latitude": 41.875772,
+   "longitude": -87.620606,
+   "zip_code": 60608,
    "time_zone": "-05:00"
   },
   "countryCode": "US",
@@ -49,9 +49,9 @@
   "order": "",
   "highlight": "",
   "playbackmode": "",
-  "state": "Iowa",
-  "city": "Des Moines",
-  "zip_code": "50319",
+  "state": "Illinois",
+  "city": "Chicago",
+  "zip_code": "60608",
   "nid": "",
   "prevNode": "",
   "lastNode": "",
