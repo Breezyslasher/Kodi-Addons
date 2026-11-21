@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=8395&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=38d3c254-37d5-4e69-b57a-46dd2900cb8d&session-id=&sort_type=&order=3&highlight=0&gridstyle=flat-movie&dltype=0&rowType=new-qid&akp=2918-83633&userType=new&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 22:15:12 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=8395&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=3f15a2e4-3f3c-4509-a7a0-7443dfc6202a&session-id=&sort_type=&order=3&highlight=0&gridstyle=flat-movie&dltype=0&rowType=new-qid&akp=2918-83633&userType=new&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 22:19:44 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "result",
@@ -7,7 +7,7 @@
  "params": {
   "appId": "9",
   "siteId": "236",
-  "deviceId": "38d3c254-37d5-4e69-b57a-46dd2900cb8d",
+  "deviceId": "3f15a2e4-3f3c-4509-a7a0-7443dfc6202a",
   "old_deviceId": "",
   "version": "sv9.0",
   "categoryfilter": "",
@@ -29,18 +29,18 @@
   "gridstyle": "flat-movie",
   "profileId": "",
   "profileIdParam": "",
-  "ip_address": "20.120.253.64",
+  "ip_address": "145.132.99.24",
   "ip_details": {
-   "ip_from": 281471025184768,
-   "ip_to": 281471025217535,
+   "ip_from": 281473123090432,
+   "ip_to": 281473123123199,
    "country_code": "US",
    "country_name": "United States of America",
-   "region_name": "Washington",
-   "city_name": "Quincy",
-   "latitude": 47.234464,
-   "longitude": -119.852575,
-   "zip_code": 98848,
-   "time_zone": "-07:00"
+   "region_name": "Virginia",
+   "city_name": "Boydton",
+   "latitude": 36.66764,
+   "longitude": -78.3875,
+   "zip_code": 23917,
+   "time_zone": "-04:00"
   },
   "countryCode": "US",
   "country": "US",
@@ -49,9 +49,9 @@
   "order": "3",
   "highlight": "",
   "playbackmode": "",
-  "state": "Washington",
-  "city": "Quincy",
-  "zip_code": "98848",
+  "state": "Virginia",
+  "city": "Boydton",
+  "zip_code": "23917",
   "nid": "",
   "prevNode": "",
   "lastNode": "",
@@ -332,7 +332,7 @@
      "id": 143,
      "name": "John Wayne",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=143",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=143",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/4165.jpg",
      "description": "Starting as a prop man and extra at Fox Film Corporation in the late 1920s, Marion Morrison, renamed John Wayne for his first lead in 1930, spent most of the following decade in low-budget westerns..."
     }
@@ -588,7 +588,7 @@
      "id": 159,
      "name": "Tom Sizemore",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=159",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=159",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/3197.jpg",
      "description": "Detroit native Tom Sizemore earned a theatre degree from Wayne State University and a master's from Temple University before entering film with small roles. Through the 1990s he played police office.."
     }
@@ -844,7 +844,7 @@
      "id": 143,
      "name": "John Wayne",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=143",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=143",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/4165.jpg",
      "description": "Starting as a prop man and extra at Fox Film Corporation in the late 1920s, Marion Morrison, renamed John Wayne for his first lead in 1930, spent most of the following decade in low-budget westerns..."
     },
@@ -852,7 +852,7 @@
      "id": 176,
      "name": "Maureen O'Hara",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=176",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=176",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/70035.jpg",
      "description": "It was Charles Laughton who put Maureen O'Hara under contract after her early training at Dublin's Abbey Theatre, and he cast her as Esmeralda opposite his Quasimodo in The Hunchback of Notre Dame i.."
     },
@@ -860,7 +860,7 @@
      "id": 200,
      "name": "Barry Fitzgerald",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=200",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=200",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/13820.jpg",
      "description": "Barry Fitzgerald was 41 before he left Ireland's civil service to act full time, though he had used his stage name at Dublin's Abbey Theatre since 1915. At the Abbey he appeared in the premiere of S.."
     },
@@ -868,7 +868,7 @@
      "id": 230,
      "name": "John Ford",
      "role": "director",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=230",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=230",
      "imageUrl": "https://ftmain.cachefly.net/files/a8wn4hw/im/iptv/ee/5b/cast_da2656c1bf5575f90a639d4b3f2bdc79.jpg",
      "description": "John Ford won four Academy Awards for Best Director, for The Informer, The Grapes of Wrath, How Green Was My Valley and The Quiet Man. His Stagecoach and The Searchers are among the best-known Weste.."
     }
@@ -1003,7 +1003,7 @@
      "id": 157,
      "name": "Scott Glenn",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=157",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=157",
      "imageUrl": "https://ftmain.cachefly.net/files/a8wn4hw/im/iptv/ee/2a/cast_85304315ee2c6a832cf27ec7ff3e2eb2.jpg",
      "description": "Three years in the Marine Corps Reserve and a stint as a newspaper reporter in Wisconsin came before Scott Glenn's acting career, which took shape after he joined the Actors Studio in 1968. He drew .."
     }
@@ -1254,7 +1254,7 @@
      "id": 71,
      "name": "Robert De Niro",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=71",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=71",
      "imageUrl": "https://ftmain.cachefly.net/files/ftp_v4/encode_v4/uploadfiles/Sheeja_Images_Actor_Director/Cast_Images_JPEG/380.jpg",
      "description": "Robert De Niro's collaboration with director Martin Scorsese began with Mean Streets (1973), following early training under Stella Adler and Lee Strasberg. He won the Academy Award for Best Supporti.."
     },
@@ -1262,7 +1262,7 @@
      "id": 136,
      "name": "Sean Connery",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=136",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=136",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/738.jpg",
      "description": "Sean Connery was the first actor to play James Bond on film, beginning with Dr. No in 1962 and returning to the role in six more films through 1983. Before acting, the Edinburgh-born performer compe.."
     }
@@ -1399,7 +1399,7 @@
      "id": 109,
      "name": "Madeleine Stowe",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=109",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=109",
      "imageUrl": "https://ftmain.cachefly.net/files/ftp_v4/encode_v4/uploadfiles/Sheeja_Images_Actor_Director/Cast_Images_JPEG/289.jpg",
      "description": "Robert Altman's Short Cuts, Michael Mann's The Last of the Mohicans, and the science-fiction thriller Twelve Monkeys anchor Madeleine Stowe's film career; her performance in Short Cuts won the Natio.."
     }
@@ -1534,7 +1534,7 @@
      "id": 156,
      "name": "Gregory Peck",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=156",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=156",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/8487.jpg",
      "description": "As Atticus Finch in To Kill a Mockingbird (1962), Gregory Peck won the Academy Award for Best Actor after four earlier nominations. He trained under Sanford Meisner at the Neighborhood Playhouse, re.."
     }
@@ -1664,7 +1664,7 @@
      "id": 67,
      "name": "Leonardo DiCaprio",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=67",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=67",
      "imageUrl": "https://ftmain.cachefly.net/files/ftp_v4/encode_v4/uploadfiles/Sheeja_Images_Actor_Director/Cast_Images_JPEG/6193.jpg",
      "description": "Leonardo DiCaprio started as a child actor in television commercials and the sitcom Growing Pains before earning an Academy Award nomination for Best Supporting Actor at age 19 for What's Eating Gil.."
     }
@@ -2156,7 +2156,7 @@
      "id": 143,
      "name": "John Wayne",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=143",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=143",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/4165.jpg",
      "description": "Starting as a prop man and extra at Fox Film Corporation in the late 1920s, Marion Morrison, renamed John Wayne for his first lead in 1930, spent most of the following decade in low-budget westerns..."
     },
@@ -2164,7 +2164,7 @@
      "id": 176,
      "name": "Maureen O'Hara",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=176",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=176",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/70035.jpg",
      "description": "It was Charles Laughton who put Maureen O'Hara under contract after her early training at Dublin's Abbey Theatre, and he cast her as Esmeralda opposite his Quasimodo in The Hunchback of Notre Dame i.."
     },
@@ -2172,7 +2172,7 @@
      "id": 182,
      "name": "Patrick Wayne",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=182",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=182",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/30560.jpg",
      "description": "Patrick Wayne first appeared on screen as a child in films directed by John Ford and starring his father, John Wayne, including The Quiet Man. His role as the young cavalry lieutenant Greenhill in T.."
     },
@@ -2180,7 +2180,7 @@
      "id": 181,
      "name": "Stefanie Powers",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=181",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=181",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/39762.jpg",
      "description": "As Jennifer Hart, the freelance journalist who solved crimes with her husband Jonathan in Hart to Hart, Stefanie Powers earned two Primetime Emmy nominations and five Golden Globe nominations during.."
     },
@@ -2188,7 +2188,7 @@
      "id": 198,
      "name": "Jack Kruschen",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=198",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=198",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/4094.jpg",
      "description": "Radio gave Jack Kruschen his start: he began performing on a Los Angeles station at 16 and worked with the Armed Forces Radio Service during World War II before becoming a regular voice on network d.."
     }
@@ -2323,7 +2323,7 @@
      "id": 74,
      "name": "Denzel Washington",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=74",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=74",
      "imageUrl": "https://ftmain.cachefly.net/files/ftp_v4/encode_v4/uploadfiles/Sheeja_Images_Actor_Director/Cast_Images_JPEG/5292.jpg",
      "description": "Two competitive Oscars, for Glory and Training Day, anchor a film career built on roles that span historical drama, action, and Shakespearean adaptation. Denzel Washington broke through with Glory (.."
     }
@@ -2567,7 +2567,7 @@
      "id": 143,
      "name": "John Wayne",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=143",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=143",
      "imageUrl": "https://ftmain.cachefly.net/files/tmp/30_new/4165.jpg",
      "description": "Starting as a prop man and extra at Fox Film Corporation in the late 1920s, Marion Morrison, renamed John Wayne for his first lead in 1930, spent most of the following decade in low-budget westerns..."
     }
@@ -2698,7 +2698,7 @@
      "id": 121,
      "name": "Arnold Schwarzenegger",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=121",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=121",
      "imageUrl": "https://ftmain.cachefly.net/files/a8wn4hw/im/iptv/c1/25/cast_bb879412ac2cb9dde2fd7a7f110e03b2.jpg",
      "description": "Seven Mr. Olympia bodybuilding titles came before Arnold Schwarzenegger&#39;s film career took off. After a 1970 screen debut, he won a Golden Globe for New Star of the Year in 1977 and broke throug.."
     },
@@ -2706,7 +2706,7 @@
      "id": 149,
      "name": "Forest Whitaker",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=c6d442a7-c5d4-5114-88d4-45cdc7d4443a&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=149",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=17b5462d-16b5-549a-95b5-430714b54174&parent=&akp=2918-83633&userType=new&deviceFwVer=&id=149",
      "imageUrl": "https://ftmain.cachefly.net/files/a8wn4hw/im/iptv/b1/a2/cast_6364cf93684bca1a48e979e03f1987d1.jpg",
      "description": "With his portrayal of Ugandan dictator Idi Amin in The Last King of Scotland (2006), Forest Whitaker won the Academy Award for Best Actor as well as the Golden Globe, BAFTA and Screen Actors Guild a.."
     }
