@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/index.php?parent=home&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:52:42 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/index.php?parent=home&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=998816bc-15c3-4689-a387-fc88e21f191c&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:56:09 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "fail",
  "type": "error",
