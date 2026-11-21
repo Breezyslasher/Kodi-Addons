@@ -179,17 +179,18 @@ def check_play(name, url):
                          timeout=20, stream=True)
         head = next(r.iter_content(256), b"")
         ok = r.status_code == 200 and (head.startswith(b"#EXTM3U") or b"ftyp" in head[:16])
-        # Subtitles are the caption URLs in preference order; verify the first
-        # (the one Kodi auto-selects) is a real WEBVTT. Audio is labelled.
-        import requests as _rq
-        if li.subs:
-            body = _rq.get(li.subs[0], timeout=20).text if li.subs[0].startswith("http") else ""
-            if body and not body.lstrip().startswith("WEBVTT"):
+        # Subtitles are local <lang>.vtt files (so Kodi labels them), preferred
+        # language first; each a real WEBVTT. Audio track labelled too.
+        sub_langs = [os.path.splitext(os.path.basename(p))[0] for p in li.subs]
+        for p in li.subs:
+            if not (os.path.isfile(p) and open(p, encoding="utf-8").read(16).lstrip().startswith("WEBVTT")):
                 ok = False
+        if "en" in sub_langs and sub_langs[0] != "en":
+            ok = False
         audio = [i.get("language") for k, i in getattr(li, "streams", []) if k == "audio"]
-        detail = "%s %s isa=%s subs=%d audio=%s %s" % (
+        detail = "%s %s isa=%s subs=%s audio=%s %s" % (
             r.status_code, head[:7], li.props.get("inputstream"),
-            len(li.subs), audio or "none", stream[:70])
+            sub_langs or "none", audio or "none", stream[:70])
     print("%s  %-28s %s" % ("OK  " if ok else "FAIL", name, detail or "not resolved"))
     if not ok:
         failures.append(name)

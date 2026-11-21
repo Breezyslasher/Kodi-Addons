@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.23" provider-name="Breezyslasher">
+<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.24" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -27,6 +27,13 @@ This add-on uses Fawesome's undocumented website API and may need updating when 
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.11.24 - Subtitles labelled by language again
+- Subtitles are downloaded as language-named files so Kodi shows "English",
+  "Spanish" etc. in the menu and auto-selects your language. Kodi's
+  setSubtitles has no language argument and reads the language only from the
+  filename, and Fawesome's caption URLs carry no language, so a per-play
+  download (a few KB) is the only way to label them. Reverts the URL-only
+  approach from 2026.11.23, which could not be labelled.
 2026.11.23 - Subtitles without a download
 - Subtitles are now handed to Kodi as the caption URLs directly, in
   preference order (your Kodi language, then English, first), instead of
