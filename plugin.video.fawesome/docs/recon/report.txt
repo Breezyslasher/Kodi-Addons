@@ -1,0 +1,376 @@
+== Pages and scripts fetched ==
+200  https://fawesome.tv/  21249 bytes  text/html; charset=UTF-8
+    inline script (1225 bytes): {     "@context": "https://schema.org",     "@graph": [         {             "@type": "WebSite",             "@id": "https://fawesome.tv/#website",             "name": "Fawesome Website",             "url": "https://fawesome.tv/",             "inLanguage": "en-US",             "potentialAction": [                 {                     "@type": "SearchAction",                     "target": {                         "@type": "EntryPoint",                         "urlTemplate": "https://fawesome.tv/search/{search_string}"                     },                     "query-input": {                         "@type": "PropertyValueSpecification",                         "valueRequired": true,                         "valueName": "search_string"                     }                 }            
+    --- page head ---
+    <!doctype html>
+    <html lang="en">
+    
+    <head>
+       <link rel="dns-prefetch" href="https://ftmain.cachefly.net" />
+       <link rel="canonical" href="https://fawesome.tv/" />
+       <meta charset="utf-8" />
+       <meta http-equiv="Access-Control-Allow-Origin" content="*">
+          <!-- OG Tags -->
+       <meta property="og:site_name" content="Fawesome">
+       <meta property="og:title" content="Watch Free Movies &amp; TV Shows Online | Free Streaming | Fawesome TV" />
+       <meta property="og:url" content="https://fawesome.tv/">
+       <meta property="og:type" content="movie" />
+       <meta property="og:description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free streaming videos." />
+       <meta property="og:image" content="https://fawesome.tv/home/new/v469/assets/img/fawesome-W.png" />
+       <meta property="og:width" content="300" />
+       <meta property="og:height" content="450" />
+    
+    
+    
+       <!-- Twitter Card Meta Tags -->
+       <meta name="twitter:card" content="summary">
+       <meta name="twitter:title" content="Watch Free Movies &amp; TV Shows Online | Free Streaming | Fawesome TV">
+       <meta name="twitter:description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free streaming videos.">
+       <meta name="twitter:image" content="https://fawesome.tv/home/new/v469/assets/img/fawesome-W.png">
+       <meta name="twitter:url" content="https://fawesome.tv/">
+    
+       <!-- Required meta tags -->
+       <meta name="description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free streaming videos." />
+       <meta property="keywords" content="Watch Free Movies, Watch Free TV, Full Length Movies, Full TV Series, Online Movies, Streaming Movies, HD Movies, Best free streaming site, Free streaming movies, movies on youtube, free action movies, free western movies, free horror movies, free classic western movies, what to watch, new movies, television show, good movies to watch, free movie wesbites, new movies to stream, free streaming services, best movies streaming now" />
+       <meta name="author" content="Fawesome">
+    
+       <!-- Required meta tags -->
+       <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    
+       <title>Watch Free Movies &amp; TV Shows Online | Free Streaming | Fawesome TV</title>
+       <script type="application/ld+json">{
+        "@c
+200  https://fawesome.tv/  21249 bytes  text/html; charset=UTF-8
+    inline script (1225 bytes): {     "@context": "https://schema.org",     "@graph": [         {             "@type": "WebSite",             "@id": "https://fawesome.tv/#website",             "name": "Fawesome Website",             "url": "https://fawesome.tv/",             "inLanguage": "en-US",             "potentialAction": [                 {                     "@type": "SearchAction",                     "target": {                         "@type": "EntryPoint",                         "urlTemplate": "https://fawesome.tv/search/{search_string}"                     },                     "query-input": {                         "@type": "PropertyValueSpecification",                         "valueRequired": true,                         "valueName": "search_string"                     }                 }            
+    --- page head ---
+    <!doctype html>
+    <html lang="en">
+    
+    <head>
+       <link rel="dns-prefetch" href="https://ftmain.cachefly.net" />
+       <link rel="canonical" href="https://fawesome.tv/" />
+       <meta charset="utf-8" />
+       <meta http-equiv="Access-Control-Allow-Origin" content="*">
+          <!-- OG Tags -->
+       <meta property="og:site_name" content="Fawesome">
+       <meta property="og:title" content="Watch Free Movies &amp; TV Shows Online | Free Streaming | Fawesome TV" />
+       <meta property="og:url" content="https://fawesome.tv/">
+       <meta property="og:type" content="movie" />
+       <meta property="og:description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free streaming videos." />
+       <meta property="og:image" content="https://fawesome.tv/home/new/v469/assets/img/fawesome-W.png" />
+       <meta property="og:width" content="300" />
+       <meta property="og:height" content="450" />
+    
+    
+    
+       <!-- Twitter Card Meta Tags -->
+       <meta name="twitter:card" content="summary">
+       <meta name="twitter:title" content="Watch Free Movies &amp; TV Shows Online | Free Streaming | Fawesome TV">
+       <meta name="twitter:description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free streaming videos.">
+       <meta name="twitter:image" content="https://fawesome.tv/home/new/v469/assets/img/fawesome-W.png">
+       <meta name="twitter:url" content="https://fawesome.tv/">
+    
+       <!-- Required meta tags -->
+       <meta name="description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free streaming videos." />
+       <meta property="keywords" content="Watch Free Movies, Watch Free TV, Full Length Movies, Full TV Series, Online Movies, Streaming Movies, HD Movies, Best free streaming site, Free streaming movies, movies on youtube, free action movies, free western movies, free horror movies, free classic western movies, what to watch, new movies, television show, good movies to watch, free movie wesbites, new movies to stream, free streaming services, best movies streaming now" />
+       <meta name="author" content="Fawesome">
+    
+       <!-- Required meta tags -->
+       <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    
+       <title>Watch Free Movies &amp; TV Shows Online | Free Streaming | Fawesome TV</title>
+       <script type="application/ld+json">{
+        "@c
+200  https://fawesome.tv/robots.txt  149 bytes  text/plain; charset=UTF-8
+    --- page head ---
+    # https://www.robotstxt.org/robotstxt.html
+    User-agent: *
+    Disallow: /v1/
+    Disallow: /v2/
+    Allow:/
+    Sitemap:https://fawesome.tv/sitemaps/sitemap_index.xml
+200  https://fawesome.tv/sitemap.xml  5671 bytes  text/html; charset=UTF-8
+    inline script (626 bytes): {     "@context": "https://schema.org",     "@type": "WebSite",     "@id": "https://fawesome.tv/#website",     "name": "Fawesome Website",     "url": "https://fawesome.tv/",     "inLanguage": "en-US",     "potentialAction": [         {             "@type": "SearchAction",             "target": {                 "@type": "EntryPoint",                 "urlTemplate": "https://fawesome.tv/search/{search_string}"             },             "query-input": {                 "@type": "PropertyValueSpecification",                 "valueRequired": true,                 "valueName": "search_string"             }         }     ] }
+    inline script (86 bytes):  		var cdnBaseUrl = "https://ftmain.cachefly.net"+"/"; 		var ip = "48.217.53.148"; 	  
+    inline script (294 bytes): !function(e,t,a,n){e[n]=e[n]||[],e[n].push({"gtm.start":(new Date).getTime(),event:"gtm.js"});var g=t.getElementsByTagName(a)[0],m=t.createElement(a);m.async=!0,m.src="https://www.googletagmanager.com/gtm.js?id=GTM-WQFF3P23",g.parentNode.insertBefore(m,g)}(window,document,"script","dataLayer")
+    --- page head ---
+    <!doctype html>
+    <html lang="en">
+       <head>
+          <base href="/"/>
+    	  <link rel="dns-prefetch" href="https://ftmain.cachefly.net"/>
+          <meta charset="utf-8"/>
+    	        <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no"/>
+          <meta name="description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free streaming videos."/>
+          <meta content="Watch Free Movies, Watch Free TV, Full Length Movies, Full TV Series, Online Movies, Streaming Movies, HD Movies, Best free streaming site, Free streaming movies &amp; shows, christmas movies, best christmas movies, classic christmas movies, christmas movies 2024, new christmas movies 2024, black christmas movies, good christmas movies, hallmark christmas movies, youtube christmas movies free, the holiday streaming, white christmas movie, christmas carol movie, netflix christmas movies, a christmas carol movie, family christmas movies, free christmas movies, last christmas movie, christmas movies on netflix, funny christmas movies, free hallmark christmas movies, youtube christmas movies free, free christmas movies on tubi, biltmore christmas movie, christmas and movies, new movies to stream 2024, scary christmas movies, disney christmas movies, best christmas movies on netflix, new christmas movies, top 10 christmas movies, best christmas movies of all time, christmas movie trivia, christmas movies on hulu, free christmas movies, new movies to stream free, free christmas movies on youtube" name="keywords"/>
+          <meta name="author" content="Future Today, Inc."/>
+          <meta name="generator" content="Hugo 0.88.1"/>
+          <meta name="docsearch:language" content="en"/>
+          <meta name="docsearch:version" content="5.1"/>
+          <meta property="og:title" content="Watch Free Movies &amp; TV Shows Online | Free Streaming | Fawesome TV" />	  	  
+          <meta property="og:type" content="Movies"/>
+          <meta property="og:url" content="https://fawesome.tv/sitemap.xml">
+          <meta property="og:image" content="https://fawesome.tv/assets/images/fawesome-W.png"/>
+          <meta property="og:image:width" content="500"/>
+          <meta property="og:image:height" content="500"/>
+          <meta property="og:site_name" content="Fawesome"/>
+          <meta property="og:description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free str
+200  https://fawesome.tv/movies  5656 bytes  text/html; charset=UTF-8
+    inline script (626 bytes): {     "@context": "https://schema.org",     "@type": "WebSite",     "@id": "https://fawesome.tv/#website",     "name": "Fawesome Website",     "url": "https://fawesome.tv/",     "inLanguage": "en-US",     "potentialAction": [         {             "@type": "SearchAction",             "target": {                 "@type": "EntryPoint",                 "urlTemplate": "https://fawesome.tv/search/{search_string}"             },             "query-input": {                 "@type": "PropertyValueSpecification",                 "valueRequired": true,                 "valueName": "search_string"             }         }     ] }
+    inline script (86 bytes):  		var cdnBaseUrl = "https://ftmain.cachefly.net"+"/"; 		var ip = "48.217.53.148"; 	  
+    inline script (294 bytes): !function(e,t,a,n){e[n]=e[n]||[],e[n].push({"gtm.start":(new Date).getTime(),event:"gtm.js"});var g=t.getElementsByTagName(a)[0],m=t.createElement(a);m.async=!0,m.src="https://www.googletagmanager.com/gtm.js?id=GTM-WQFF3P23",g.parentNode.insertBefore(m,g)}(window,document,"script","dataLayer")
+    --- page head ---
+    <!doctype html>
+    <html lang="en">
+       <head>
+          <base href="/"/>
+    	  <link rel="dns-prefetch" href="https://ftmain.cachefly.net"/>
+          <meta charset="utf-8"/>
+    	        <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no"/>
+          <meta name="description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free streaming videos."/>
+          <meta content="Watch Free Movies, Watch Free TV, Full Length Movies, Full TV Series, Online Movies, Streaming Movies, HD Movies, Best free streaming site, Free streaming movies &amp; shows, christmas movies, best christmas movies, classic christmas movies, christmas movies 2024, new christmas movies 2024, black christmas movies, good christmas movies, hallmark christmas movies, youtube christmas movies free, the holiday streaming, white christmas movie, christmas carol movie, netflix christmas movies, a christmas carol movie, family christmas movies, free christmas movies, last christmas movie, christmas movies on netflix, funny christmas movies, free hallmark christmas movies, youtube christmas movies free, free christmas movies on tubi, biltmore christmas movie, christmas and movies, new movies to stream 2024, scary christmas movies, disney christmas movies, best christmas movies on netflix, new christmas movies, top 10 christmas movies, best christmas movies of all time, christmas movie trivia, christmas movies on hulu, free christmas movies, new movies to stream free, free christmas movies on youtube" name="keywords"/>
+          <meta name="author" content="Future Today, Inc."/>
+          <meta name="generator" content="Hugo 0.88.1"/>
+          <meta name="docsearch:language" content="en"/>
+          <meta name="docsearch:version" content="5.1"/>
+          <meta property="og:title" content="Watch Free Movies &amp; TV Shows Online | Free Streaming | Fawesome TV" />	  	  
+          <meta property="og:type" content="Movies"/>
+          <meta property="og:url" content="https://fawesome.tv/movies">
+          <meta property="og:image" content="https://fawesome.tv/assets/images/fawesome-W.png"/>
+          <meta property="og:image:width" content="500"/>
+          <meta property="og:image:height" content="500"/>
+          <meta property="og:site_name" content="Fawesome"/>
+          <meta property="og:description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free streamin
+200  https://fawesome.tv/tv-shows  5662 bytes  text/html; charset=UTF-8
+    inline script (626 bytes): {     "@context": "https://schema.org",     "@type": "WebSite",     "@id": "https://fawesome.tv/#website",     "name": "Fawesome Website",     "url": "https://fawesome.tv/",     "inLanguage": "en-US",     "potentialAction": [         {             "@type": "SearchAction",             "target": {                 "@type": "EntryPoint",                 "urlTemplate": "https://fawesome.tv/search/{search_string}"             },             "query-input": {                 "@type": "PropertyValueSpecification",                 "valueRequired": true,                 "valueName": "search_string"             }         }     ] }
+    inline script (86 bytes):  		var cdnBaseUrl = "https://ftmain.cachefly.net"+"/"; 		var ip = "48.217.53.148"; 	  
+    inline script (294 bytes): !function(e,t,a,n){e[n]=e[n]||[],e[n].push({"gtm.start":(new Date).getTime(),event:"gtm.js"});var g=t.getElementsByTagName(a)[0],m=t.createElement(a);m.async=!0,m.src="https://www.googletagmanager.com/gtm.js?id=GTM-WQFF3P23",g.parentNode.insertBefore(m,g)}(window,document,"script","dataLayer")
+    --- page head ---
+    <!doctype html>
+    <html lang="en">
+       <head>
+          <base href="/"/>
+    	  <link rel="dns-prefetch" href="https://ftmain.cachefly.net"/>
+          <meta charset="utf-8"/>
+    	        <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no"/>
+          <meta name="description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free streaming videos."/>
+          <meta content="Watch Free Movies, Watch Free TV, Full Length Movies, Full TV Series, Online Movies, Streaming Movies, HD Movies, Best free streaming site, Free streaming movies &amp; shows, christmas movies, best christmas movies, classic christmas movies, christmas movies 2024, new christmas movies 2024, black christmas movies, good christmas movies, hallmark christmas movies, youtube christmas movies free, the holiday streaming, white christmas movie, christmas carol movie, netflix christmas movies, a christmas carol movie, family christmas movies, free christmas movies, last christmas movie, christmas movies on netflix, funny christmas movies, free hallmark christmas movies, youtube christmas movies free, free christmas movies on tubi, biltmore christmas movie, christmas and movies, new movies to stream 2024, scary christmas movies, disney christmas movies, best christmas movies on netflix, new christmas movies, top 10 christmas movies, best christmas movies of all time, christmas movie trivia, christmas movies on hulu, free christmas movies, new movies to stream free, free christmas movies on youtube" name="keywords"/>
+          <meta name="author" content="Future Today, Inc."/>
+          <meta name="generator" content="Hugo 0.88.1"/>
+          <meta name="docsearch:language" content="en"/>
+          <meta name="docsearch:version" content="5.1"/>
+          <meta property="og:title" content="Watch Free Movies &amp; TV Shows Online | Free Streaming | Fawesome TV" />	  	  
+          <meta property="og:type" content="Movies"/>
+          <meta property="og:url" content="https://fawesome.tv/tv-shows">
+          <meta property="og:image" content="https://fawesome.tv/assets/images/fawesome-W.png"/>
+          <meta property="og:image:width" content="500"/>
+          <meta property="og:image:height" content="500"/>
+          <meta property="og:site_name" content="Fawesome"/>
+          <meta property="og:description" content="Watch free movies &amp; tv shows on Fawesome. Watch full length HD movies and tv series for free. The best free movies site for free stream
+200  https://fawesome.tv/home/new/v469/assets/js/includes/jquery-3.2.1.min.js  86659 bytes  application/javascript
+200  https://fawesome.tv/home/new/v469/assets/js/includes/slick.min.js  42863 bytes  application/javascript
+200  https://fawesome.tv/home/new/v469/assets/js/includes/bootstrap.bundle.min.js  78743 bytes  application/javascript
+200  https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js  78743 bytes  application/javascript; charset=utf-8
+200  https://fawesome.tv/home/new/v469/assets/js/iptv-main.js?ver=1236  461045 bytes  application/javascript
+200  https://fawesome.tv/static/js/main.3fa3bab7.js  756824 bytes  application/javascript
+
+== Hosts referenced (top 80) ==
+    52  fawesome.tv
+    36  www.w3.org
+    22  futuretodayinc.com
+    15  apps.apple.com
+    15  play.google.com
+    10  www.googletagmanager.com
+     9  fonts.googleapis.com
+     9  www.amazon.com
+     8  ftmain.cachefly.net
+     7  www.facebook.com
+     7  rapi.ifood.tv
+     6  www.microsoft.com
+     5  schema.org
+     5  channelstore.roku.com
+     5  us.lgappstv.com
+     4  cdn.jsdelivr.net
+     4  github.com
+     4  popper.js.org
+     4  twitter.com
+     4  www.linkedin.com
+     4  api.whatsapp.com
+     4  reactjs.org
+     3  www.youtube.com
+     3  www.instagram.com
+     3  x.com
+     3  letterboxd.com
+     3  fonts.gstatic.com
+     3  www.vizio.com
+     2  getbootstrap.com
+     2  iptv.ifoodcareers.com
+     2  website.freeawesometv.com
+     2  apps.microsoft.com
+     1  www.robotstxt.org
+     1  a8g4i9g5y.ssl.hwcdn.net
+     1  thumbs.ifood.tv
+     1  wv-keyos.licensekeyserver.com
+     1  pr-keyos.licensekeyserver.com
+     1  testing2.freeawesometv.com
+     1  assets.springserve.com
+     1  iptv.fawesome.tv
+     1  fb.me
+     1  assets8.lottiefiles.com
+     1  script.google.com
+     1  log.ifood.tv
+
+== Absolute URLs referenced (non-asset, top 150) ==
+    20  http://www.w3.org/2000/svg
+    13  https://fawesome.tv/
+     8  https://ftmain.cachefly.net
+     8  https://futuretodayinc.com/privacy
+     8  https://play.google.com/store/apps/details?id=com.future.moviesByFawesomeAndroidTV&hl=en_US&gl=US
+     8  http://www.w3.org/1999/xlink
+     5  https://schema.org
+     5  https://fawesome.tv/#website
+     5  https://fawesome.tv/search/{search_string}
+     5  https://channelstore.roku.com/details/c54dacc6b0b084f18629f8c6cbc4de3e:e29d4786bf1083e800ab864570452e28/fawesome-free-movies-and-tv-shows
+     5  https://apps.apple.com/us/app/fawesome/id1063891742?platform=appleTV
+     5  https://apps.apple.com/us/app/fawesome/id1063891742?platform=iOS
+     5  https://play.google.com/store/search?q=fawesome&c=apps
+     5  https://us.lgappstv.com/main/tvapp/detail?appId=458741
+     4  https://popper.js.org
+     4  https://www.amazon.com/Future-Today-Inc-Movies-Fawesome-tv/dp/B076X8FKXP/
+     4  https://www.amazon.com/Future-Today-Inc-Movies-Fawesome-tv/dp/B076X8FKXP
+     4  http://www.w3.org/1999/xhtml
+     3  https://futuretodayinc.com/about-us
+     3  https://www.youtube.com/@fawesometv
+     3  https://www.instagram.com/fawesome_tv/
+     3  https://www.facebook.com/profile.php?id=61562666679680
+     3  https://x.com/fawesome_tv
+     3  https://letterboxd.com/Fawesome_tv/
+     3  https://fawesome.tv/sitemap.xml
+     3  https://fonts.googleapis.com
+     3  https://fonts.gstatic.com
+     3  https://fonts.googleapis.com/css2?family=Archivo+Black&family=Lato:ital,wght@0,100;0,400;1,100;1,400;1,900&display=swap
+     3  https://fonts.googleapis.com/css?family=Lato:300,400,700|Oswald:700&display=swap
+     3  https://www.googletagmanager.com/gtm.js?id=GTM-WQFF3P23
+     3  https://www.googletagmanager.com/ns.html?id=GTM-WQFF3P23
+     3  https://fawesome.tv/movies
+     3  https://fawesome.tv/tv-shows
+     3  https://www.microsoft.com/en-us/p/movies-by-fawesome/9p55dw09xk2d?activetab=pivot:overviewtab
+     3  https://www.vizio.com/en/smart-tv-apps?appName=fawesome&appId=vizio.fawesome
+     3  https://apps.apple.com/us/app/fawesome/id1063891742?utm_source=ios&utm_medium=mobile&utm_campaign=install+app&utm_id=App+Download+&utm_term=download+the+app&utm_content=watch+free
+     3  https://www.microsoft.com/en-us/p/fawesome/9p55dw09xk2d?activetab=pivot%3Aoverviewtab&utm_source=windows&utm_medium=mobile&utm_campaign=install+app&utm_id=App+Download+&utm_term=download+the+app&utm_c
+     3  http://www.w3.org/XML/1998/namespace
+     2  https://futuretodayinc.com/contact-us
+     2  https://futuretodayinc.com/terms
+     2  https://fawesome.tv/my-privacy-choices/
+     2  https://futuretodayinc.com/advertise-with-us
+     2  https://futuretodayinc.com/distribute-your-content
+     2  https://fawesome.tv/partnerships/
+     2  https://fawesome.tv/blogs/
+     2  https://fawesome.tv/fawesome-in-news/
+     2  https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js
+     2  https://getbootstrap.com/
+     2  https://github.com/twbs/bootstrap/graphs/contributors
+     2  https://github.com/twbs/bootstrap/blob/main/LICENSE
+     2  https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(
+     2  https://twitter.com/intent/tweet?url=${encodeURIComponent(
+     2  https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(
+     2  http://iptv.ifoodcareers.com/vmap-create.php
+     2  https://play.google.com/store/apps/details?id=com.future.moviesByFawesomeAndroidTV&referrer=utm_source%3Dandroid%26utm_medium%3Dinstalls%26utm_term%3Ddownloadapp%26utm_content%3Dwatchfree%26utm_campai
+     2  https://www.googletagmanager.com/gtm.js?id=
+     2  https://www.googletagmanager.com/ns.html?id=
+     2  https://reactjs.org/docs/error-decoder.html?invariant=
+     2  https://reactjs.org/link/react-polyfills
+     2  https://apps.apple.com/us/app/fawesome/id1063891742#?platform=iphone
+     2  https://rapi.ifood.tv/blogs.php?searchType=blogs&appId=9&siteId=236&deviceId=&auth-token=1217575&version=6.0
+     1  https://www.robotstxt.org/robotstxt.html
+     1  https://fawesome.tv/sitemaps/sitemap_index.xml
+     1  http://a8g4i9g5y.ssl.hwcdn.net/
+     1  https://wv-keyos.licensekeyserver.com/
+     1  https://pr-keyos.licensekeyserver.com/core/rightsmanager.asmx
+     1  https://testing2.freeawesometv.com/samsung/config/testad/ad-poded-all-filled.xml
+     1  https://www.facebook.com/sharer/sharer.php?u=${t}
+     1  https://twitter.com/intent/tweet?url=${t}&text=${a}
+     1  https://www.linkedin.com/sharing/share-offsite/?url=${t}
+     1  https://api.whatsapp.com/send?text=${a}:%20${t}
+     1  https://api.whatsapp.com/send?text=${i}:%20${encodeURIComponent(
+     1  https://api.whatsapp.com/send?text=${o}:%20${encodeURIComponent(
+     1  https://rapi.ifood.tv/sub-categories.php?parent=partnerships&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=&session-id=&default-cat=
+     1  https://rapi.ifood.tv/sub-categories.php?parent=games&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=&session-id=&default-cat=
+     1  http://rapi.ifood.tv/index.php?appId=2&auth-token=1217563&version=sv7.0&siteId=40
+     1  http://rapi.ifood.tv/shows.php?searchType=listoflist&keys=
+     1  http://futuretodayinc.com/about-us/
+     1  https://futuretodayinc.com/terms.html
+     1  https://futuretodayinc.com/privacy.html
+     1  https://assets.springserve.com/video_creatives/000/857/485/6632892.mp4
+     1  https://iptv.fawesome.tv/vmap-create.php
+     1  https://website.freeawesometv.com/open?target=
+     1  https://website.freeawesometv.com/open/?target=${T}
+     1  http://fb.me/use-check-prop-types
+     1  http://www.w3.org/1998/Math/MathML
+     1  https://www.amazon.com/Future-Today-Inc-Movies-Fawesome-tv/dp/B076X8FKXP/s
+     1  https://apps.microsoft.com/detail/9p55dw09xk2d?amp%3Bgl=US&hl=en-us&gl=US
+     1  https://assets8.lottiefiles.com/packages/lf20_m4fmwm28/bm2/images/
+     1  https://www.facebook.com/sharer/sharer.php?u=
+     1  https://twitter.com/intent/tweet?url=
+     1  https://www.linkedin.com/sharing/share-offsite/?url=
+     1  https://api.whatsapp.com/send?text=
+     1  https://script.google.com/macros/s/AKfycbz9l56bh4J3s-oGg9w3ZHE-Ne0iWdsUUH7HDGD6GL0ykr22_PVU1y5JYNiMgHgvoYbl/exec
+     1  https://rapi.ifood.tv/blogs.php?searchType=blogdetail&appId=9&siteId=236&deviceId=&auth-token=1217575&version=6.0&id=
+     1  https://log.ifood.tv/applogger.php?
+     1  https://apps.microsoft.com/detail/9p55dw09xk2d?hl=en-us&gl=US
+
+== API-looking paths (top 120) ==
+     4  /search/
+     3  /api/
+     2  /home/new/
+     1  /category/
+     1  /categories/shows
+     1  /categories/movies
+     1  /categories/collections
+     1  /categories/handpicked
+     1  /categories/en-espa\xf1ol
+     1  /shows/
+     1  /movies/
+
+== Key / id assignments (top 60) ==
+    20  appId="+appConfig.appId+"
+     7  token="+appConfig.platform_id+"
+     3  appId="+helper.urlParam("
+     3  token="+helper.urlParam("
+     3  token=").concat(a,"
+     3  appid=").concat(s,"
+     3  appId=").concat("
+     1  token="+appConfig.platform_id,e+="
+     1  appid="+appConfig.currentDeviceId,e+="
+     1  token="+appConfig.platform_id;logger.printLog("
+     1  token="+appConfig.platform_id,i+="
+     1  appid="+appConfig.currentDeviceId,i+="
+     1  token="+appConfig.platform_id,r=dataManagerObj.fetchData("
+     1  token="+appConfig.platform_id,a={};a.token=appConfig.securityToken,$.ajax({url:o,type:"
+     1  token="+appConfig.platform_id}(e)),t&&$("
+     1  token="+appConfig.platform_id,s="
+     1  token="+appConfig.platform_id,helper.getCookie("
+     1  token="+appConfig.platform_id;if(1==appConfig.debugapi&&(i+="
+     1  token="+appConfig.platform_id;return await dataManagerObj.fetchData("
+     1  token="+appConfig.platform_id;return t&&(o+="
+
+== Keywords ==
+   204  react
+    51  drm
+    38  vmap
+    34  deviceid
+    22  futuretoday
+    17  roku
+    10  playready
+     9  license
+     7  vast
+     6  future today
+     5  widevine
+     4  uuid
+     2  device_id
+     1  videojs
+     1  imasdk
+     1  springserve
+
+== Probes (probe_urls.txt) ==
+200  text/html   21249 bytes  https://fawesome.tv/  -> 001_fawesome.tv_.txt
