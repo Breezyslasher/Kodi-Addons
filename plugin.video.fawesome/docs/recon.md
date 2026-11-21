@@ -98,3 +98,29 @@ description.
 - `tools/smoke_test.py`: the add-on's router against the live API, Kodi stubbed.
 - `tools/endpoints.json`: the daily endpoint check (`Fawesome` in
   `.github/workflows/endpoint-checks.yml`).
+
+## Skip markers (Skip Buttons)
+
+Confirmed live 2026-11-21 (`tools/probe_markers.py`, research job):
+
+- Every title record -- listing, search, detail and My List alike -- carries
+  `intro_st`, `intro_et`, `endcredit_st`, `endcredit_et` in **seconds**;
+  `0` means unset (an intro starting at 0 is normal). Also `shorts_*` and
+  `ad_breaks` (client-side ad cue points -- **not** markers, never used).
+- Sampled 202 episodes from 8 series: intro end set on 96, credits on 113.
+  120 movies: intro end on 86, credits on 98. No recap field is ever set.
+  E.g. Looney Tunes S01E04: runtime 407, intro 0-45, credits 402-407;
+  *Revenge*: runtime 7423, intro 1-57, credits 7228-7422.
+- The web player (`iptv-main.js`): Skip Intro while
+  `intro_st <= t < intro_et` (when `intro_et > intro_st`), seeking to
+  `intro_et`; at `endcredit_st` (both credit times set) a 10 s "Watch Next"
+  countdown with "Watch Credits" for episodes; without credit times it falls
+  back to 10 s before the end. The add-on follows the first two and skips
+  the guessed fallback: a no-marker episode plays the next one at its end.
+- Next episode: the detail call gives `show_id` (listings do not); the player
+  loads `shows.php?searchType=listoflist&keys=<show_id>`, takes the seasons'
+  feeds in order and pages to this episode (by `node_id`, or season and
+  episode number) -> the next; the last of a season -> the next season's
+  first. Confirmed: Looney Tunes S01E01 -> E02 (10389419); Tarzan S01's last
+  -> S02E01 (10382633). The website wraps from the last episode to the first;
+  the add-on stops instead.
