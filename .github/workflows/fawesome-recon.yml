@@ -51,6 +51,10 @@ jobs:
         run: |
           python3 plugin.video.fawesome/tools/probe_live.py "$OUT/live" | tee live.txt
           { echo '```'; cat live.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Probe the queue (My List) endpoints
+        run: |
+          python3 plugin.video.fawesome/tools/probe_queue.py "$OUT/queue" | tee queue.txt
+          { echo '```'; cat queue.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Fetch official logo candidates
         run: python3 plugin.video.fawesome/tools/fetch_logo.py "$OUT/art"
       - name: Smoke test and endpoint check (fails the job on error)
