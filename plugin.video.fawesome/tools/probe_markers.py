@@ -57,7 +57,7 @@ def collect():
     print("[debug] shows queued from rows+search: %d; first: %s" % (
         len(shows), [(x.get("title"), str(x.get("url"))[:60]) for x in shows[:3]]))
     seen, queue, series_done = set(), list(shows), 0
-    while queue and series_done < 10 and len(seen) < 60:
+    while queue and series_done < 8 and len(seen) < 80:
         sh = queue.pop(0)
         if sh["url"] in seen:
             continue
@@ -68,13 +68,18 @@ def collect():
             queue += [it for it in items if api.kind(it) == "folder" and "shows.php" in str(it.get("url"))]
             eps += [it for it in items if api.kind(it) == "video" and str(it.get("episode")) not in ("None", "0", "")]
             continue
-        series_done += 1
-        for s in seasons[:2]:
+        real = False
+        for s in seasons[:3]:
             got, _ = a.feed(s.get("feed") or s.get("url"))
-            print("[debug]   season %-26s items=%d videos=%d eps=%d" % (
-                str(s.get("title"))[:26], len(got), sum(1 for g in got if api.kind(g) == "video"),
-                sum(1 for g in got if str(g.get("episode")) not in ("None", "0", ""))))
-            eps += [g for g in got if api.kind(g) == "video"]
+            vids = [g for g in got if api.kind(g) == "video" and str(g.get("episode")) not in ("None", "0", "")]
+            print("[debug]   season %-26s items=%d episodes=%d" % (str(s.get("title"))[:26], len(got), len(vids)))
+            if vids:
+                real = True
+                eps += vids
+            else:   # a collection's sub-list: its items are shows -> walk them
+                queue += [g for g in got if api.kind(g) == "folder" and "shows.php" in str(g.get("url"))]
+        if real:
+            series_done += 1
     return eps, movies
 
 
