@@ -1,6 +1,6 @@
 # 200 https://fawesome.tv/sitemaps/sitemap_index.xml
 # final: https://fawesome.tv/sitemaps/sitemap_index.xml
-# {"date": "Sat, 21 Nov 2026 22:19:41 GMT", "server": "Apache", "x-frame-options": "SAMEORIGIN", "last-modified": "Tue, 22 Sep 2026 12:33:29 GMT", "etag": "\"3c1-65c1192ea6c5e-gzip\"", "accept-ranges": "bytes", "vary": "Accept-Encoding", "content-encoding": "gzip", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "content-length": "223", "content-type": "text/xml", "connection": "close"}
+# {"date": "Sat, 21 Nov 2026 22:21:16 GMT", "server": "Apache", "x-frame-options": "SAMEORIGIN", "last-modified": "Tue, 22 Sep 2026 12:33:29 GMT", "etag": "\"3c1-65c1192ea6c5e-gzip\"", "accept-ranges": "bytes", "vary": "Accept-Encoding", "content-encoding": "gzip", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "content-length": "223", "content-type": "text/xml", "connection": "close"}
 <?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 	<sitemap>

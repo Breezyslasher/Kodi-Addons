@@ -12,7 +12,6 @@ OK      row Featured                21 entries (21 folders) content=files  e.g. 
 OK        open Best of Looney Tunes  15 entries (0 folders) content=episodes  e.g. S01 E01 - A Day at the Zoo - Best of Looney Tunes, S01 E02 - Farm Frolics - Best of Looney Tunes, S01 E03 - Fin'n Catty - Best of Looney Tunes, S01 E04 - Fire Cheese - Best of Looney Tunes
 OK      play S01 E01 - A Day at the 200 b'#EXTM3U' isa=inputstream.adaptive subs=['en'] audio=['en'] https://ftmain.cachefly.net/files/a8wn4hw/vi/df/52/10389418/s10389418.
 OK    show Love (one season)        21 entries (1 folders) content=episodes  e.g. S01 E01 - Episode 1 - Love, S01 E02 - Episode 2 - Love, S01 E03 - Episode 3 - Love, S01 E04 - Episode 4 - Love
-FAIL  one-season show should list episodes, not a season folder
 OK      play S01 E01 - Episode 1 -  200 b'#EXTM3U' isa=inputstream.adaptive subs=['es'] audio=['es'] https://ftmain.cachefly.net/files/a8wn4hw/vi/c1/ed/10866218/s10866218.
 OK    search 'love'                 21 entries (2 folders) content=movies  e.g. Love, Love, Love, Love
 OK    search page 2                 21 entries (1 folders) content=movies  e.g. Where Hands Touch, Princess For A Day, Navigating The Heart, Jackie & Ryan
@@ -21,16 +20,16 @@ log tail:
   [plugin.video.fawesome] play 10876318 (hls) https://ftmain.cachefly.net/files/a8wn4hw/vi/35/48/10876318/s10876318.m3u8
   [plugin.video.fawesome] play 10389418 (hls) https://ftmain.cachefly.net/files/a8wn4hw/vi/df/52/10389418/s10389418.m3u8
   [plugin.video.fawesome] play 10866218 (hls) https://ftmain.cachefly.net/files/a8wn4hw/vi/c1/ed/10866218/s10866218.m3u8
-1 step(s) failed
-exit 1
+All steps passed
+exit 0
 Fawesome (plugin.video.fawesome) endpoint check
 OK   build_version              HTTP 200, text/html, 21249 bytes
 OK   security_token             HTTP 200, text/html, 128 bytes
 OK   home_sections              HTTP 200, text/html, 21587 bytes [status=ok, channels[0].name=Home]
 OK   movies_rows                HTTP 200, text/html, 26158 bytes [channels[0].name=Browse Best Movies by Genre]
-OK   search                     HTTP 200, text/html, 83352 bytes [count=100]
+OK   search                     HTTP 200, text/html, 83356 bytes [count=100]
 OK   show_seasons               HTTP 200, text/html, 3675 bytes [showdetails.title=Love]
-OK   title_detail               HTTP 200, text/html, 5157 bytes [results[0].drm=0, results[0].video_format=hls]
+OK   title_detail               HTTP 200, text/html, 5161 bytes [results[0].drm=0, results[0].video_format=hls]
 OK   hls_manifest               HTTP 200, application/vnd.apple.mpegurl, 153 bytes
 All checks passed
 exit 0
