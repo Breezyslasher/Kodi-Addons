@@ -106,14 +106,26 @@ class FawesomeApi(object):
         if not refresh and self.state.get("token") and \
                 now - self.state.get("token_at", 0) < TOKEN_TTL:
             return self.state["token"]
-        r = self.s.get(self.api_base() + "getSecurityToken.php",
-                       params=self.common_params(), timeout=20)
-        r.raise_for_status()
-        tok = (r.json() or {}).get("securityToken")
-        if not tok:
-            raise FawesomeError("no security token in response")
-        self.state.update(token=tok, token_at=now)
-        return tok
+        # getSecurityToken.php lives under /home/new/<build>/, so it 404s too
+        # when the build has moved -- and it runs before _get's own recovery.
+        # Recover the build here as well, or a build change with an expired
+        # token would break everything until the build cache lapsed.
+        for build_try in (0, 1):
+            r = self.s.get(self.api_base() + "getSecurityToken.php",
+                           params=self.common_params(), timeout=20)
+            if r.status_code == 404 and build_try == 0:
+                self.log("getSecurityToken 404 at build %s; refreshing build"
+                         % self.state.get("build"))
+                self.state.pop("build", None)
+                self.state.pop("build_at", None)
+                continue
+            r.raise_for_status()
+            tok = (r.json() or {}).get("securityToken")
+            if not tok:
+                raise FawesomeError("no security token in response")
+            self.state.update(token=tok, token_at=now)
+            return tok
+        raise FawesomeError("getSecurityToken unavailable (build %s)" % self.state.get("build"))
 
     def local_url(self, url):
         """The web player's rewrite: rapi.ifood.tv/<file>?<q> -> <api base><file>?<q>."""
@@ -190,6 +202,20 @@ class FawesomeApi(object):
             out.append({"name": ch["name"], "url": u, "image": ch.get("image") or ""})
         return out
 
+    @staticmethod
+    def _has_more(data, page):
+        """Whether a paged response has a page after this one, using the page
+        size the response itself reports (params.limit), not an assumed 20."""
+        try:
+            count = int(data.get("count") or 0)
+        except (TypeError, ValueError):
+            count = 0
+        try:
+            limit = int(((data.get("params") or {}).get("limit")) or PAGE_SIZE)
+        except (TypeError, ValueError):
+            limit = PAGE_SIZE
+        return bool(count) and (page + 1) * max(limit, 1) < count
+
     def feed(self, url, page=0):
         """One page of a row: (items, has_more).
 
@@ -201,16 +227,7 @@ class FawesomeApi(object):
         items = data.get("results") or []
         if isinstance(items, dict):
             items = list(items.values())
-        try:
-            count = int(data.get("count") or 0)
-        except (TypeError, ValueError):
-            count = 0
-        limit = PAGE_SIZE
-        try:
-            limit = int(((data.get("params") or {}).get("limit")) or PAGE_SIZE)
-        except (TypeError, ValueError):
-            pass
-        return items, bool(count) and (page + 1) * limit < count
+        return items, self._has_more(data, page)
 
     def series(self, url):
         """A show (shows.php listoflist): (showdetails, seasons, items).
@@ -232,11 +249,9 @@ class FawesomeApi(object):
         if data.get("status") == "fail":
             return [], False
         items = data.get("results") or []
-        try:
-            count = int(data.get("count") or 0)
-        except (TypeError, ValueError):
-            count = 0
-        return items, bool(count) and (page + 1) * PAGE_SIZE < count
+        if isinstance(items, dict):
+            items = list(items.values())
+        return items, self._has_more(data, page)
 
     def detail(self, node_id):
         data = self._get("recipes.php", {"searchType": "nodeid", "nid": node_id,

@@ -1,8 +1,0 @@
-titles gathered: 400 (checking up to 120 manifests)
-api base: https://fawesome.tv/home/new/v469/api/
-
-single muxed audio: 120
-multiple audio tracks: 0
-manifest errors/skipped: 0
-
-(no title with an alternate audio track was found)

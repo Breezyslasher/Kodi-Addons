@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.27" provider-name="Breezyslasher">
+<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.21.1" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
-		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="inputstream.adaptive" version="20.0.0"/>
 	</requires>
 	<extension point="xbmc.python.pluginsource" library="default.py">
 		<provides>video</provides>
@@ -27,45 +27,16 @@ This add-on uses Fawesome's undocumented website API and may need updating when 
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
-2026.11.27 - One-season shows open straight to episodes
-- A show with a single season no longer makes you click through a lone
-  "Season 1" folder -- opening it lists the episodes directly. Multi-season
-  shows are unchanged.
-2026.11.26 - Survive a Fawesome site update
-- FIX: when Fawesome ships a new site build, the add-on's cached API path
-  (/home/new/<build>/) could 404 every call for up to a day. A 404 now
-  drops the cached build, re-reads the current one and retries, so a site
-  update no longer breaks browsing until the cache expires.
-2026.11.25 - Search no longer re-asks after playback
-- FIX: playing a result from Search and then stopping no longer re-opened the
-  search keyboard. The results now live at a URL that carries the query, so
-  Kodi refreshes the same results instead of prompting again.
-2026.11.24 - Subtitles labelled by language again
-- Subtitles are downloaded as language-named files so Kodi shows "English",
-  "Spanish" etc. in the menu and auto-selects your language. Kodi's
-  setSubtitles has no language argument and reads the language only from the
-  filename, and Fawesome's caption URLs carry no language, so a per-play
-  download (a few KB) is the only way to label them. Reverts the URL-only
-  approach from 2026.11.23, which could not be labelled.
-2026.11.23 - Subtitles without a download
-- Subtitles are now handed to Kodi as the caption URLs directly, in
-  preference order (your Kodi language, then English, first), instead of
-  being downloaded first. The one Kodi auto-selects is your preferred
-  language when the title offers it. Fawesome's filenames carry no language,
-  so tracks are unlabelled in the menu but correctly ordered.
-2026.11.22 - Subtitle languages and audio label
-- FIX: subtitles are now labelled by language and offered English (or your
-  Kodi language) first. Before, only the title's own-language caption was
-  attached with no label, so a Spanish or Portuguese title showed its native
-  subtitles with no way to tell or switch. Each available track (the title's
-  own, plus Fawesome's extra Spanish/French ones) is now downloaded as a
-  language-named file so Kodi names them and you can choose.
-- The single (muxed) audio track is now labelled with the title's language
-  instead of "Unknown". Fawesome's streams carry only one audio track, so
-  there is still nothing to switch between.
 2026.11.21 - First test build
-- Browse Fawesome's sections and rows, open shows by season, search, and play
-  titles (clear HLS through InputStream Adaptive) with subtitles.
+- Browse Fawesome's sections and rows, genre lists and collections, shows by
+  season, and search; play titles as clear HLS through InputStream Adaptive.
+- Subtitles are labelled by language and offered in your Kodi language, then
+  English, first (downloaded as language-named files, since Fawesome's caption
+  URLs carry no language). One-season shows open straight to their episodes.
+- Robust against Fawesome shipping a new site build: an API 404 re-reads the
+  current build and retries, instead of breaking until the cache expires.
+- Known gaps: one muxed audio track per title (no alternate audio exists);
+  ad insertion and the TV apps' FAST channels are not included.
 		</news>
 	</extension>
 </addon>
