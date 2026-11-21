@@ -1,0 +1,86 @@
+{
+  "name": "Fawesome (plugin.video.fawesome)",
+  "defaults": {
+    "timeout": 25,
+    "headers": {
+      "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+      "Accept": "application/json, text/plain, */*",
+      "Origin": "https://fawesome.tv",
+      "Referer": "https://fawesome.tv/"
+    }
+  },
+  "vars": {
+    "device_id": "{random_hex32}",
+    "ids": "appId=9&siteId=236&auth-token=1217575&platform_id=1217575&apiEnv=production"
+  },
+  "checks": [
+    {
+      "id": "build_version",
+      "url": "https://fawesome.tv/",
+      "headers": {"Accept": "text/html"},
+      "expect": {"content_type": "text/html"},
+      "save": {"build": "regex:/home/new/(v\\d+)/"},
+      "note": "The API base is /home/new/<build>/api/; the addon reads <build> from this page."
+    },
+    {
+      "id": "security_token",
+      "uses": ["build_version"],
+      "url": "https://fawesome.tv/home/new/{build}/api/getSecurityToken.php?{ids}&deviceId={device_id}",
+      "expect": {"json_paths": ["securityToken"]},
+      "save": {"token": "json:securityToken"},
+      "note": "Every other API call sends this in a 'token' header."
+    },
+    {
+      "id": "home_sections",
+      "uses": ["security_token"],
+      "url": "https://fawesome.tv/home/new/{build}/api/index.php?parent=home&{ids}&deviceId={device_id}",
+      "headers": {"token": "{token}"},
+      "expect": {"json_paths": ["channels[0].name", "channels[0].url"]},
+      "print": ["status", "channels[0].name"]
+    },
+    {
+      "id": "movies_rows",
+      "uses": ["security_token"],
+      "url": "https://fawesome.tv/home/new/{build}/api/sub-categories.php?parent=Movies&{ids}&deviceId={device_id}",
+      "headers": {"token": "{token}"},
+      "expect": {"json_paths": ["channels[0].name", "channels[0].url"]},
+      "print": ["channels[0].name"]
+    },
+    {
+      "id": "search",
+      "uses": ["security_token"],
+      "url": "https://fawesome.tv/home/new/{build}/api/recipes.php?searchType=search&keys=love&start-index=0&{ids}&deviceId={device_id}",
+      "headers": {"token": "{token}"},
+      "expect": {"json_paths": ["results[0].title", "count"]},
+      "save": {"nid": "regex:\"node_id\"\\s*:\\s*\"?(\\d+)"},
+      "print": ["count"]
+    },
+    {
+      "id": "show_seasons",
+      "uses": ["security_token"],
+      "url": "https://fawesome.tv/home/new/{build}/api/shows.php?searchType=listoflist&keys=116587&{ids}&deviceId={device_id}",
+      "headers": {"token": "{token}"},
+      "expect": {"json_paths": ["channels", "showdetails.title"]},
+      "print": ["showdetails.title"],
+      "report_only": true,
+      "note": "A fixed show (Love, keys=116587); it may leave the catalogue, so this only reports."
+    },
+    {
+      "id": "title_detail",
+      "uses": ["search"],
+      "url": "https://fawesome.tv/home/new/{build}/api/recipes.php?searchType=nodeid&nid={nid}&gridstyle=flat-movie&max-results=1&dltype=1&start-index=0&{ids}&deviceId={device_id}",
+      "headers": {"token": "{token}"},
+      "expect": {"json_paths": ["results[0].title", "results[0].video_hls_url"]},
+      "save": {"hls": "json:results[0].video_hls_url"},
+      "print": ["results[0].drm", "results[0].video_format"]
+    },
+    {
+      "id": "hls_manifest",
+      "uses": ["title_detail"],
+      "url": "{hls}",
+      "headers": {"Accept": "*/*"},
+      "expect": {"text_prefix": "#EXTM3U"},
+      "note": "The addon plays this clear HLS rendition."
+    }
+  ]
+}

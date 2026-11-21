@@ -14,6 +14,9 @@ on:
       - 'plugin.video.fawesome/tools/recon.py'
       - 'plugin.video.fawesome/tools/probe_urls.txt'
       - 'plugin.video.fawesome/tools/probe_api.py'
+      - 'plugin.video.fawesome/tools/smoke_test.py'
+      - 'plugin.video.fawesome/default.py'
+      - 'plugin.video.fawesome/lib/**'
 
 concurrency:
   group: fawesome-recon-${{ github.ref }}
@@ -37,6 +40,17 @@ jobs:
         run: |
           python3 plugin.video.fawesome/tools/probe_api.py plugin.video.fawesome/docs/recon | tee api.txt
           { echo '```'; cat api.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      # The add-on's own router against the live API, with Kodi stubbed.
+      # Recorded rather than failing the job, so the results still commit.
+      - name: Smoke test the add-on
+        run: |
+          python3 -m pip install --quiet requests
+          set +e
+          python3 plugin.video.fawesome/tools/smoke_test.py > plugin.video.fawesome/docs/recon/smoke.txt 2>&1
+          echo "exit $?" >> plugin.video.fawesome/docs/recon/smoke.txt
+          python3 .github/endpoint-check/check_endpoints.py plugin.video.fawesome/tools/endpoints.json >> plugin.video.fawesome/docs/recon/smoke.txt 2>&1
+          echo "exit $?" >> plugin.video.fawesome/docs/recon/smoke.txt
+          { echo '```'; cat plugin.video.fawesome/docs/recon/smoke.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
       - name: Commit results
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
