@@ -1,0 +1,2 @@
+# 200 https://fawesome.tv/home/new/v469/api/getFTNlAds.php?appId=9&siteId=236&type=bugAd&auth-token=1217575&version=v2.0&nid=1&deviceId=58aab96c-2fa0-4f9a-a023-00f335d0e220&country=US&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:14:45 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "vary": "Origin", "content-length": "0", "content-type": "text/html; charset=UTF-8", "connection": "close"}

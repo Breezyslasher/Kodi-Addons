@@ -1,7 +1,0 @@
-# 200 https://ftmain.cachefly.net/files/a8wn4hw/vi/6f/13/10582221/s10582221.m3u8
-# {"date": "Sat, 21 Nov 2026 21:12:52 GMT", "content-type": "application/vnd.apple.mpegurl", "content-length": "153", "access-control-allow-origin": "*", "cache-control": "max-age=86400", "x-cff": "B", "last-modified": "Thu, 18 Apr 2024 03:51:27 GMT", "etag": "\"662098bf-99\"", "x-cf3": "M", "cf4age": "0", "x-cf-tsc": "1795295573", "cf4ttl": "25920000.000", "x-cf2": "M", "accept-ranges": "bytes", "server": "CFS 1124", "x-cf1": "43085:fG.sea1:co:1738598425:cacheN.sea1-01:M", "x-cf-reqid": "07edb5bf90f727612f66f55fd3ee1200", "connection": "close"}
-#EXTM3U
-#EXT-X-STREAM-INF:PROGRAM-ID=1, BANDWIDTH=5000000
-hls-hi/s10582221.m3u8
-#EXT-X-STREAM-INF:PROGRAM-ID=1, BANDWIDTH=2000000
-hls-xlo/s10582221.m3u8

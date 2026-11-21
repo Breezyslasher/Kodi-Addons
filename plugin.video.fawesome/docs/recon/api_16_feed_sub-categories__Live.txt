@@ -1,0 +1,28 @@
+# 200 https://fawesome.tv/home/new/v469/api/sub-categories.php?parent=Live&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=58aab96c-2fa0-4f9a-a023-00f335d0e220&session-id=&default-cat=&l1id=2814&recData=2&userType=&country=US&state=Oregon&city=Portland&is_live=1&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:14:46 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+{
+ "status": "ok",
+ "type": "categories",
+ "channels": [
+  {
+   "name": "General",
+   "description": null,
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=general&keys=1&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=58aab96c-2fa0-4f9a-a023-00f335d0e220&session-id=&sort_type=&order=0&highlight=1&gridstyle=flat-movie&dltype=&rowType=general&akp=-1&userType=new",
+   "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
+   "feed_type": "show",
+   "highlight": 1,
+   "actiontype": "child-category",
+   "actionkey": "",
+   "rowstyle": "flat-movie",
+   "row_type": "general",
+   "row_sub_type": "",
+   "row_position": "",
+   "row_item_width": 226,
+   "row_item_height": 285,
+   "row_height": 354,
+   "dynamic_deeplink": "false",
+   "isNumberRow": false,
+   "title_image": ""
+  }
+ ]
+}
