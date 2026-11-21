@@ -229,15 +229,16 @@ for wanted in ("Movies", "Shows"):
         print("FAIL  no playable title reached in %s" % wanted)
         failures.append("play " + wanted)
 
-# A known show with seasons (keys from docs/recon.md), then its first season.
-show = step("show Love (seasons)", run("action=open&" + urllib.parse.urlencode(
+# A known show (keys from docs/recon.md). It has one season, so opening it
+# should descend straight to the episodes (no pointless single-season folder).
+show = step("show Love (one season)", run("action=open&" + urllib.parse.urlencode(
     {"url": "https://rapi.ifood.tv/shows.php?searchType=listoflist&keys=116587"})))
-surl, _ = first(show, folder=True)
-if surl:
-    eps = step("  season 1 episodes", run(q(surl)))
-    eurl, eli = first(eps, folder=False)
-    if eurl:
-        check_play("  play %s" % eli.label[:22], eurl)
+if any(f for _, _, f in show):
+    print("FAIL  one-season show should list episodes, not a season folder")
+    failures.append("single-season descend")
+eurl, eli = first(show, folder=False)
+if eurl:
+    check_play("  play %s" % eli.label[:22], eurl)
 
 found = step("search 'love'", run("action=search&q=love"))
 page2 = [u for u, li, f in found if "page=" in u]

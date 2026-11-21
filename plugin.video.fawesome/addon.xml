@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.26" provider-name="Breezyslasher">
+<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.27" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -27,6 +27,10 @@ This add-on uses Fawesome's undocumented website API and may need updating when 
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.11.27 - One-season shows open straight to episodes
+- A show with a single season no longer makes you click through a lone
+  "Season 1" folder -- opening it lists the episodes directly. Multi-season
+  shows are unchanged.
 2026.11.26 - Survive a Fawesome site update
 - FIX: when Fawesome ships a new site build, the add-on's cached API path
   (/home/new/<build>/) could 404 every call for up to a day. A 404 now

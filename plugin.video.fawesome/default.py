@@ -207,6 +207,11 @@ def open_feed(api, url, page=0):
     if "shows.php" in url:
         details, seasons, items = api.series(url)
         if seasons:
+            if len(seasons) == 1:
+                # A one-season show: skip the pointless single "Season 1" folder
+                # and list its episodes directly.
+                only = seasons[0]
+                return open_feed(api, only.get("feed") or only.get("url"), page)
             for s in seasons:
                 it = dict(details)
                 it.update((k, v) for k, v in s.items() if v not in ("", None))
