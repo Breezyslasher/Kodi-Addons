@@ -1,48 +1,28 @@
 #!/usr/bin/env python3
-"""Build resources/icon.png (512x512) and fanart.jpg (1920x1080).
+"""Build resources/icon.png (512x512) and fanart.jpg (1920x1080) from
+Fawesome's official artwork, downloaded by tools/fetch_logo.py (the
+fawesome-recon workflow) into docs/recon/art/:
 
-Self-made, deliberately not Fawesome's logo: a plain play mark and the name
-set in DejaVu Sans. Needs Pillow and the DejaVu fonts.
+* icon   -- the App Store app icon (current W-mark brand), 1024 -> 512.
+* fanart -- the site's share card (fawesome-W.png, 1200x630: W mark and
+            wordmark on the brand's navy gradient), scaled to 1080 high and
+            centre-cropped to 1920 (the card's sides are plain gradient).
+
+Needs Pillow.
 """
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
-OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "resources")
-FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-TOP, BOTTOM, ACCENT = (24, 18, 48), (70, 22, 74), (255, 176, 59)
+ADDON = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ART = os.path.join(ADDON, "docs", "recon", "art")
+OUT = os.path.join(ADDON, "resources")
 
+icon = Image.open(os.path.join(ART, "store-apple-icon.png")).convert("RGBA")
+icon.resize((512, 512), Image.LANCZOS).save(os.path.join(OUT, "icon.png"), optimize=True)
 
-def gradient(w, h):
-    img = Image.new("RGB", (w, h))
-    px = img.load()
-    for y in range(h):
-        t = y / (h - 1)
-        c = tuple(int(TOP[i] + (BOTTOM[i] - TOP[i]) * t) for i in range(3))
-        for x in range(w):
-            px[x, y] = c
-    return img
-
-
-def play(d, cx, cy, r):
-    d.ellipse((cx - r, cy - r, cx + r, cy + r), outline=ACCENT, width=max(4, r // 9))
-    s = r * 0.5
-    d.polygon([(cx - s * 0.7, cy - s), (cx - s * 0.7, cy + s), (cx + s, cy)], fill=ACCENT)
-
-
-def text(d, xy, s, size, anchor="mm"):
-    d.text(xy, s, font=ImageFont.truetype(FONT, size), fill=(255, 255, 255), anchor=anchor)
-
-
-icon = gradient(512, 512)
-d = ImageDraw.Draw(icon)
-play(d, 256, 210, 120)
-text(d, (256, 415), "FAWESOME", 66)
-icon.save(os.path.join(OUT, "icon.png"), optimize=True)
-
-fan = gradient(1920, 1080)
-d = ImageDraw.Draw(fan)
-play(d, 960, 430, 220)
-text(d, (960, 780), "FAWESOME", 150)
-text(d, (960, 900), "free movies & TV", 54)
-fan.save(os.path.join(OUT, "fanart.jpg"), quality=88, optimize=True)
-print("wrote icon.png and fanart.jpg")
+card = Image.open(os.path.join(ART, "site-fawesome-W.png")).convert("RGB")
+w = round(card.width * 1080 / card.height)
+card = card.resize((w, 1080), Image.LANCZOS)
+left = (w - 1920) // 2
+card.crop((left, 0, left + 1920, 1080)).save(os.path.join(OUT, "fanart.jpg"), quality=90, optimize=True)
+print("wrote icon.png and fanart.jpg from the official artwork")

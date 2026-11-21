@@ -209,7 +209,8 @@ def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "recon-out"
     os.makedirs(out_dir, exist_ok=True)
     for f in os.listdir(out_dir):
-        os.remove(os.path.join(out_dir, f))
+        if os.path.isfile(os.path.join(out_dir, f)):
+            os.remove(os.path.join(out_dir, f))
     out = []
     crawl(out)
     probe(out, out_dir)
