@@ -26,12 +26,12 @@ All steps passed
 exit 0
 Fawesome (plugin.video.fawesome) endpoint check
 OK   build_version              HTTP 200, text/html, 21249 bytes
-OK   security_token             HTTP 200, text/html, 131 bytes
+OK   security_token             HTTP 200, text/html, 128 bytes
 OK   home_sections              HTTP 200, text/html, 21585 bytes [status=ok, channels[0].name=Home]
 OK   movies_rows                HTTP 200, text/html, 26158 bytes [channels[0].name=Browse Best Movies by Genre]
-OK   search                     HTTP 200, text/html, 83354 bytes [count=100]
+OK   search                     HTTP 200, text/html, 83352 bytes [count=100]
 OK   show_seasons               HTTP 200, text/html, 3675 bytes [showdetails.title=Love]
-OK   title_detail               HTTP 200, text/html, 5159 bytes [results[0].drm=0, results[0].video_format=hls]
+OK   title_detail               HTTP 200, text/html, 5157 bytes [results[0].drm=0, results[0].video_format=hls]
 OK   hls_manifest               HTTP 200, application/vnd.apple.mpegurl, 153 bytes
 All checks passed
 exit 0

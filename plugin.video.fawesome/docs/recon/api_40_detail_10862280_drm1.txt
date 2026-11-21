@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=nodeid&start-index=0&gridstyle=flat-movie&max-results=1&dltype=1&nid=10862280&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=6f754c40-bc89-43f3-ada1-cbcf265dc808&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:23:52 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=nodeid&start-index=0&gridstyle=flat-movie&max-results=1&dltype=1&nid=10862280&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:28:56 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "result",
@@ -7,7 +7,7 @@
  "params": {
   "appId": "9",
   "siteId": "236",
-  "deviceId": "6f754c40-bc89-43f3-ada1-cbcf265dc808",
+  "deviceId": "00ce7dae-0909-4adb-bf52-36dfcd30bec0",
   "old_deviceId": "",
   "version": "sv9.0",
   "categoryfilter": "",
@@ -29,18 +29,18 @@
   "gridstyle": "flat-movie",
   "profileId": "",
   "profileIdParam": "",
-  "ip_address": "52.186.175.104",
+  "ip_address": "52.165.101.18",
   "ip_details": {
-   "ip_from": 281471566348288,
-   "ip_to": 281471566413823,
+   "ip_from": 281471564986368,
+   "ip_to": 281471564998911,
    "country_code": "US",
    "country_name": "United States of America",
-   "region_name": "Virginia",
-   "city_name": "Dulles",
-   "latitude": 38.951667,
-   "longitude": -77.448056,
-   "zip_code": 20166,
-   "time_zone": "-04:00"
+   "region_name": "Iowa",
+   "city_name": "Des Moines",
+   "latitude": 41.60045,
+   "longitude": -93.609114,
+   "zip_code": 50319,
+   "time_zone": "-05:00"
   },
   "countryCode": "US",
   "country": "US",
@@ -49,9 +49,9 @@
   "order": "",
   "highlight": "",
   "playbackmode": "",
-  "state": "Virginia",
-  "city": "Dulles",
-  "zip_code": "20166",
+  "state": "Iowa",
+  "city": "Des Moines",
+  "zip_code": "50319",
   "nid": "10862280",
   "prevNode": "",
   "lastNode": "",
@@ -217,7 +217,7 @@
      "id": 109,
      "name": "Madeleine Stowe",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=bfd940ff-04a9-40fc-8638-3ba5fef14bb3&parent=&akp=&userType=&deviceFwVer=&id=109",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=f5583eb1-f458-5d1e-b358-3b8bf25839f8&parent=&akp=&userType=&deviceFwVer=&id=109",
      "imageUrl": "https://ftmain.cachefly.net/files/ftp_v4/encode_v4/uploadfiles/Sheeja_Images_Actor_Director/Cast_Images_JPEG/289.jpg",
      "description": "Robert Altman's Short Cuts, Michael Mann's The Last of the Mohicans, and the science-fiction thriller Twelve Monkeys anchor Madeleine Stowe's film career; her performance in Short Cuts won the Natio.."
     }
@@ -228,7 +228,7 @@
    "episode_title": "",
    "blockItem": "false",
    "likedislike": 0,
-   "deeplink_url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=116579&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&country=US&deviceId=6f754c40-bc89-43f3-ada1-cbcf265dc808&gridstyle=flat-movie&dltype=1&parent=&akp=",
+   "deeplink_url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=116579&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&country=US&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&gridstyle=flat-movie&dltype=1&parent=&akp=",
    "item_type": "movie",
    "itg_tag_id": "",
    "row_position": 0,

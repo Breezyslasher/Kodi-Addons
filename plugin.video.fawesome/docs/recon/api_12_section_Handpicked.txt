@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/sub-categories.php?parent=Handpicked&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=6f754c40-bc89-43f3-ada1-cbcf265dc808&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:23:50 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/sub-categories.php?parent=Handpicked&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:28:52 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "categories",
@@ -7,7 +7,7 @@
   {
    "name": "Letterboxd Picks",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=listoflist&keys=94643&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=6f754c40-bc89-43f3-ada1-cbcf265dc808&session-id=&sort_type=&order=0&highlight=1&gridstyle=flat-movie&dltype=0&rowType=listoflist&akp=3146-89632&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=listoflist&keys=94643&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&session-id=&sort_type=&order=0&highlight=1&gridstyle=flat-movie&dltype=0&rowType=listoflist&akp=3146-89632&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 1,
@@ -27,7 +27,7 @@
   {
    "name": "Must-See Hits: Don’t Miss Out",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=mixedcontent&keys=94551&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=6f754c40-bc89-43f3-ada1-cbcf265dc808&session-id=&sort_type=&order=1&highlight=0&gridstyle=flat-movie&dltype=0&rowType=mixedcontent&akp=3146-89633&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=mixedcontent&keys=94551&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&session-id=&sort_type=&order=1&highlight=0&gridstyle=flat-movie&dltype=0&rowType=mixedcontent&akp=3146-89633&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
@@ -47,7 +47,7 @@
   {
    "name": "General",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=general&keys=1&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=6f754c40-bc89-43f3-ada1-cbcf265dc808&session-id=&sort_type=&order=2&highlight=0&gridstyle=flat-movie&dltype=&rowType=general&akp=-1&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=general&keys=1&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=00ce7dae-0909-4adb-bf52-36dfcd30bec0&session-id=&sort_type=&order=2&highlight=0&gridstyle=flat-movie&dltype=&rowType=general&akp=-1&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 0,
