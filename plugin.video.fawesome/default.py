@@ -1,5 +1,6 @@
 """Fawesome for Kodi: router and ListItem building."""
 
+import os
 import re
 import sys
 import urllib.parse
@@ -10,7 +11,9 @@ import xbmcgui
 import xbmcplugin
 
 from lib import kodiutils as ku
-from lib.api import FawesomeApi, FawesomeError, kind, stream_for
+from lib.api import FawesomeApi, FawesomeError, kind, stream_for, subtitle_tracks
+
+SUBTITLE_DIR = "subtitles"
 
 HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 else -1
 BASE = sys.argv[0] if sys.argv else "plugin://plugin.video.fawesome/"
@@ -258,12 +261,61 @@ def play(api, nid):
         li.setMimeType("video/mp4")
         li.setContentLookup(False)
         li.setPath(url + "|" + headers)
+    # Audio: Fawesome's HLS carries one muxed audio track (no alternate audio
+    # renditions), so there is nothing to pick -- label that one track with the
+    # title's language so Kodi shows it instead of "Unknown".
+    audio_lang = item.get("content_language_iso2") or item.get("content_language")
+    if audio_lang:
+        try:
+            li.addStreamInfo("audio", {"language": str(audio_lang)[:3], "channels": 2})
+        except Exception:
+            pass
     if ku.get_setting_bool("subtitles", True):
-        subs = [item.get("cc_path")] if (item.get("cc_path") or "").startswith("http") else []
+        subs = fetch_subtitles(api, item)
         if subs:
             li.setSubtitles(subs)
     ku.log("play %s (%s) %s" % (nid, how, url))
     xbmcplugin.setResolvedUrl(HANDLE, True, li)
+
+
+def fetch_subtitles(api, item):
+    """Download the title's WebVTT tracks as <code>.vtt files so Kodi labels
+    them by language, preferred language (Kodi's, then English) first.
+
+    Fawesome's caption URLs are hashed filenames with no language in them, so
+    passing the URLs straight to Kodi would leave every track unlabelled -- and
+    the title's own `cc_path` is in its native language (often Spanish or
+    Portuguese), which is what showed up as "not English". Saving each as
+    <iso>.vtt lets Kodi name them and the viewer choose.
+    """
+    tracks = subtitle_tracks(item)
+    if not tracks:
+        return []
+    want = ku.subtitle_languages()  # Kodi's language, then 'en'
+    tracks.sort(key=lambda t: want.index(t[0]) if t[0] in want else len(want))
+    sub_dir = os.path.join(ku.profile_dir(), SUBTITLE_DIR)
+    try:
+        os.makedirs(sub_dir, exist_ok=True)
+        for old in os.listdir(sub_dir):  # last play's tracks, so stale langs don't linger
+            if old.endswith(".vtt"):
+                os.remove(os.path.join(sub_dir, old))
+    except Exception:
+        pass
+    out, used = [], set()
+    for code, url in tracks:
+        if code in used:  # one track per language; Kodi reads the lang from "<iso>.vtt"
+            continue
+        path = os.path.join(sub_dir, "%s.vtt" % code)
+        try:
+            r = api.s.get(url, timeout=20)
+            r.raise_for_status()
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(r.text)
+            out.append(path)
+            used.add(code)
+        except Exception as exc:
+            ku.log_error("subtitle %s failed: %s" % (code, exc))
+    return out
 
 
 def reset_device():

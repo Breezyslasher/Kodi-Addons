@@ -20,11 +20,24 @@ docs/recon.md. In short:
 This module has no Kodi imports so tools/ can drive it from plain Python.
 """
 
+import json
 import re
 import time
 import urllib.parse
 
 import requests
+
+# Fawesome names subtitle languages in English ("Spanish", "French"); map the
+# ones it ships to ISO 639-1 so Kodi can label and group the tracks.
+LANG_ISO = {
+    "english": "en", "spanish": "es", "french": "fr", "portuguese": "pt",
+    "german": "de", "italian": "it", "dutch": "nl", "russian": "ru",
+    "hindi": "hi", "arabic": "ar", "japanese": "ja", "korean": "ko",
+    "chinese": "zh", "mandarin": "zh", "turkish": "tr", "polish": "pl",
+    "swedish": "sv", "norwegian": "no", "danish": "da", "finnish": "fi",
+    "greek": "el", "hebrew": "he", "thai": "th", "vietnamese": "vi",
+    "indonesian": "id", "tagalog": "tl", "filipino": "tl",
+}
 
 SITE = "https://fawesome.tv/"
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -248,3 +261,42 @@ def stream_for(item):
             return vod, "mp4"
         return None, "drm"
     return None, "missing"
+
+
+def _iso(name):
+    """A Fawesome language name or code -> ISO 639-1 (lower, letters only)."""
+    name = (name or "").strip().lower()
+    if name in LANG_ISO:
+        return LANG_ISO[name]
+    code = re.sub(r"[^a-z]", "", name.split("-")[0])[:3]
+    return {"eng": "en", "spa": "es", "fre": "fr", "fra": "fr", "por": "pt"}.get(code, code[:2])
+
+
+def subtitle_tracks(item):
+    """[(iso2, url)] of the title's WebVTT subtitles, native language first.
+
+    `cc_path` is the title's own-language caption (its language is
+    `content_language_iso2`, which is en/es/pt -- NOT always English);
+    `cc_path_multi_lang` adds the rest (Spanish, French ...). De-duplicated by
+    URL, so a title with no extra tracks still yields its one caption.
+    """
+    out, seen = [], set()
+
+    def add(code, url):
+        code = _iso(code)
+        if url and str(url).startswith("http") and code and url not in seen:
+            seen.add(url)
+            out.append((code, url))
+
+    add(item.get("content_language_iso2") or item.get("content_language"),
+        item.get("cc_path"))
+    extra = item.get("cc_path_multi_lang")
+    if isinstance(extra, str):
+        try:
+            extra = json.loads(extra)
+        except ValueError:
+            extra = None
+    for entry in extra or []:
+        if isinstance(entry, dict):
+            add(entry.get("language"), entry.get("file_path") or entry.get("url"))
+    return out

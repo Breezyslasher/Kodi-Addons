@@ -101,6 +101,9 @@ class ListItem(object):
     def setSubtitles(self, s):
         self.subs = s
 
+    def addStreamInfo(self, kind, info):
+        self.__dict__.setdefault("streams", []).append((kind, info))
+
 
 class Dialog(object):
     def notification(self, *a, **k):
@@ -176,8 +179,18 @@ def check_play(name, url):
                          timeout=20, stream=True)
         head = next(r.iter_content(256), b"")
         ok = r.status_code == 200 and (head.startswith(b"#EXTM3U") or b"ftyp" in head[:16])
-        detail = "%s %s isa=%s subs=%d %s" % (r.status_code, head[:7], li.props.get("inputstream"),
-                                              len(li.subs), stream[:90])
+        # Subtitles must be real local <lang>.vtt files (so Kodi labels them),
+        # with English first when present; audio track labelled with a language.
+        sub_langs = [os.path.splitext(os.path.basename(p))[0] for p in li.subs]
+        for p in li.subs:
+            if not (os.path.isfile(p) and open(p, encoding="utf-8").read(16).lstrip().startswith("WEBVTT")):
+                ok = False
+        if "en" in sub_langs and sub_langs[0] != "en":
+            ok = False
+        audio = [i.get("language") for k, i in getattr(li, "streams", []) if k == "audio"]
+        detail = "%s %s isa=%s subs=%s audio=%s %s" % (
+            r.status_code, head[:7], li.props.get("inputstream"),
+            sub_langs or "none", audio or "none", stream[:70])
     print("%s  %-28s %s" % ("OK  " if ok else "FAIL", name, detail or "not resolved"))
     if not ok:
         failures.append(name)
