@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/sub-categories.php?parent=Live&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=bbc2b5d5-637d-4b69-84df-6feab07beca4&session-id=&default-cat=&l1id=2814&recData=2&userType=&country=US&state=Illinois&city=Chicago&is_live=1&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 22:09:20 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/sub-categories.php?parent=Live&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=38d3c254-37d5-4e69-b57a-46dd2900cb8d&session-id=&default-cat=&l1id=2814&recData=2&userType=&country=US&state=Washington&city=Quincy&is_live=1&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 22:15:10 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "categories",
@@ -7,7 +7,7 @@
   {
    "name": "General",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=general&keys=1&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=bbc2b5d5-637d-4b69-84df-6feab07beca4&session-id=&sort_type=&order=0&highlight=1&gridstyle=flat-movie&dltype=&rowType=general&akp=-1&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=general&keys=1&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=38d3c254-37d5-4e69-b57a-46dd2900cb8d&session-id=&sort_type=&order=0&highlight=1&gridstyle=flat-movie&dltype=&rowType=general&akp=-1&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 1,
