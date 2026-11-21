@@ -43,11 +43,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.x'
+      - name: Install requests (the add-on's API client uses it)
+        run: python3 -m pip install --quiet requests
       - name: Skip Buttons service, offline (real module, Kodi stubbed)
         run: python3 plugin.video.fawesome/tools/test_service.py
       - name: Smoke test and endpoint check (fails the job on error)
         run: |
-          python3 -m pip install --quiet requests
           set +e
           python3 plugin.video.fawesome/tools/smoke_test.py | tee smoke.txt; smoke=${PIPESTATUS[0]}
           # The endpoint check prints ::add-mask:: lines for tokens; drop them.
