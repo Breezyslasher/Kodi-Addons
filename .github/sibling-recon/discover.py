@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Discover the Future Today API config for Fawesome's sibling sites.
+"""Confirm HappyKids and iFood.tv end to end on the shared Future Today API.
 
 Usage:
     python3 discover.py
 
-For each site's player page: read the bundle's own appInfo.buildVersion and
-apiBaseUrl construction, the hardcoded rapi.ifood.tv URLs (which carry the real
-appId / siteId / auth-token), then call getSecurityToken.php, index.php and
-sub-categories.php with every candidate id set, printing raw response heads.
-Read-only. Stdlib only.
+Findings so far (runs 1-4): one backend, the service chosen by siteId; the API
+answers an empty body without the site's Referer/Origin. HappyKids is siteId 40
+on happykids.tv/home/new/<build>/api/. iFood.tv's player picks siteId from the
+hostname (ifood -> 1) and loads assets/data/config_<siteId>.json for the
+platform id. This pass reads that config, then for each service walks
+token -> home -> section rows -> a row -> a title's detail -> its HLS manifest
+(checking for EXT-X-KEY), and a search. Read-only. Stdlib only.
 """
 
 import json
@@ -21,18 +23,10 @@ import uuid
 UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/131.0.0.0 Safari/537.36")
 DEV = str(uuid.uuid4())
-PLAYERS = {
-    "happykids": "https://happykids.tv/home/",
-    "ifoodtv": "https://ifood.tv/",
-    "fawesome (reference)": "https://fawesome.tv/",
-}
-
-
 REF = {"v": ""}
 
 
 def http(url, headers=None):
-    # The API answers an empty body without the site's Referer/Origin.
     h = {"User-Agent": UA, "Accept": "application/json, text/plain, */*"}
     if REF["v"]:
         h.update({"Referer": REF["v"] + "/", "Origin": REF["v"]})
@@ -53,81 +47,114 @@ def js(t):
         return None
 
 
-def ctx(blob, needle, before=150, after=300, limit=3):
-    out, i = [], blob.find(needle)
-    while i != -1 and len(out) < limit:
-        out.append(" ".join(blob[max(0, i - before):i + after].split()))
-        i = blob.find(needle, i + 1)
-    return out
+def lst(v):
+    if isinstance(v, dict):
+        return list(v.values())
+    return v if isinstance(v, list) else []
 
 
-def probe(label, page):
-    print("\n################ %s  %s ################" % (label, page))
-    REF["v"] = re.search(r"https?://[^/]+", page).group(0)
+def site(label, page):
+    print("\n################ %s ################" % label)
+    origin = re.search(r"https?://[^/]+", page).group(0)
+    REF["v"] = origin
     st, final, home = http(page)
-    print("page: HTTP %s -> %s (%d bytes)" % (st, final, len(home)))
     mb = re.search(r'src="([^"]*iptv-main\.js[^"]*)"', home)
-    if not mb:
-        print("  no iptv-main bundle; scripts:", re.findall(r'<script[^>]+src="([^"]+)"', home)[:15])
-        return
     bundle_url = urllib.parse.urljoin(final, mb.group(1))
     _, _, bundle = http(bundle_url)
-    print("  bundle:", bundle_url, len(bundle), "bytes")
-    for s in ctx(bundle, "buildVersion:", 40, 120, 2):
-        print("  appInfo:", s)
-    for s in ctx(bundle, "apiBaseUrl=window.location", 80, 260, 3):
-        print("  apiBaseUrl:", s)
-    for s in ctx(bundle, 'appConfig.siteId=', 60, 160, 3):
-        print("  siteId set:", s)
-    # Inline config on the page.
-    for sc in re.findall(r"<script(?![^>]*src)[^>]*>(.*?)</script>", home, re.S):
-        if re.search(r"siteId|appId|platform|buildVersion|apiBase", sc):
-            print("  inline:", " ".join(sc.split())[:500])
-    for s2 in ctx(bundle, "initApp(", 300, 200, 4):
-        print("  initApp call:", s2)
-    for s2 in ctx(bundle, "site_id", 200, 120, 4):
-        print("  site_id:", s2)
-    rapi = sorted(set(re.findall(r"https?://rapi\.ifood\.tv/[^\"'\s]+", bundle)))
-    print("  rapi URLs in bundle:", rapi[:8])
+    build = re.search(r'buildVersion:"(v\d+)"', bundle).group(1)
+    assets = "%s/home/new/%s/" % (origin, build)
+    api = assets + "api/"
+    print("page %s -> build %s, api %s" % (final, build, api))
 
-    m = re.search(r'buildVersion:"(v\d+)"', bundle)
-    build = m.group(1) if m else (re.search(r"/home/new/(v\d+)/", home) or [None, None])[1]
-    origin = re.search(r"https?://[^/]+", final).group(0)
-    bases = ["%s/home/new/%s/api/" % (origin, build)] if build else []
-    bases += ["%s/home/api/" % origin, "%s/api/" % origin]
+    # Hostname -> siteId map + config_<id>.json, as the player does.
+    m = re.search(r"const e=window\.location\.hostname;let t=1;(.{0,400}?)loadAppConfig", bundle)
+    if m:
+        print("  hostname map:", m.group(1)[:300])
+    return origin, assets, api
 
-    cands = set()
-    for u in rapi:
-        q = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(u).query))
-        if q.get("appId") and q.get("siteId") and q.get("auth-token"):
-            cands.add((q["appId"], q["siteId"], q["auth-token"]))
-    cands.add(("9", "236", "1217575"))
-    print("  id candidates:", sorted(cands))
 
-    for base in bases:
-        for a, si, t in sorted(cands):
-            common = "appId=%s&siteId=%s&auth-token=%s&platform_id=%s&deviceId=%s&apiEnv=production" % (
-                a, si, t, t, DEV)
-            st, _, tb = http(base + "getSecurityToken.php?" + common)
-            tok = (js(tb) or {}).get("securityToken")
-            if not tok:
-                print("  [%s] ids %s/%s/%s: token HTTP %s %r" % (base, a, si, t, st, (tb or "")[:80]))
+def walk(label, api, app_id, site_id, pid, search_term):
+    common = "appId=%s&siteId=%s&auth-token=%s&platform_id=%s&deviceId=%s&apiEnv=production" % (
+        app_id, site_id, pid, pid, DEV)
+    print("  ids appId=%s siteId=%s auth-token=%s" % (app_id, site_id, pid))
+    tok = (js(http(api + "getSecurityToken.php?" + common)[2]) or {}).get("securityToken")
+    print("  token:", bool(tok))
+    if not tok:
+        return
+    H = {"token": tok}
+
+    def get(path):
+        if path.startswith("http"):
+            sp = urllib.parse.urlsplit(path)
+            path = sp.path.rsplit("/", 1)[-1] + "?" + sp.query
+        url = api + path + ("&" if "?" in path else "?") + common
+        return js(http(url, H)[2]) or {}
+
+    d = get("index.php?parent=home")
+    secs = [c for c in lst(d.get("channels")) if isinstance(c, dict)]
+    print("  sections:", [(c.get("name"), c.get("feed_type")) for c in secs])
+    first_video = None
+    for sec in secs[:3]:
+        rows = [c for c in lst(get("sub-categories.php?parent=%s" % urllib.parse.quote(sec["name"])).get("channels"))
+                if isinstance(c, dict)]
+        print("  section %-12s rows=%d e.g. %s" % (sec["name"], len(rows), [r.get("name") for r in rows[:5]]))
+        for row in rows[:4]:
+            u = row.get("url") or ""
+            if not re.search(r"recipes\.php|shows\.php", u):
                 continue
-            for call in ("index.php?parent=home", "sub-categories.php?parent=Home"):
-                st, _, ib = http(base + call + "&" + common, {"token": tok})
-                d = js(ib) or {}
-                ch = d.get("channels") or []
-                if isinstance(ch, dict):
-                    ch = list(ch.values())
-                names = [c.get("name") for c in ch if isinstance(c, dict)][:12]
-                print("  [%s] ids %s/%s/%s %s: HTTP %s status=%s names=%s raw=%r" % (
-                    base, a, si, t, call.split("?")[0], st, d.get("status"), names,
-                    "" if d else (ib or "")[:160]))
+            fd = get(u)
+            res = [r for r in lst(fd.get("results")) if isinstance(r, dict)]
+            vids = [r for r in res if r.get("video_hls_url") or r.get("video_url")]
+            print("    row %-30s results=%d videos=%d count=%s" % (row.get("name"), len(res), len(vids), fd.get("count")))
+            if vids and not first_video:
+                first_video = vids[0]
+        if first_video:
+            break
+    if first_video:
+        v = first_video
+        print("  sample title:", {k: str(v.get(k))[:80] for k in (
+            "node_id", "title", "type", "video_format", "drm", "video_hls_url", "video_url",
+            "runtime", "content_genre", "cc_path", "series_name", "season", "episode")})
+        det = get("recipes.php?searchType=nodeid&nid=%s&gridstyle=flat-movie&max-results=1&dltype=1&start-index=0"
+                  % v.get("node_id"))
+        dv = (lst(det.get("results")) or [v])[0]
+        hls = dv.get("video_hls_url") or ""
+        if hls.startswith("http"):
+            st, _, body = http(hls, {"Accept": "*/*"})
+            print("  manifest HTTP %s head=%r" % (st, body[:24]))
+            var = re.search(r"^(?!#)(\S+\.m3u8\S*)$", body, re.M)
+            if var:
+                vurl = urllib.parse.urljoin(hls, var.group(1))
+                st2, _, vb = http(vurl, {"Accept": "*/*"})
+                print("  variant HTTP %s EXT-X-KEY=%s segments=%d" % (
+                    st2, "EXT-X-KEY" in vb, vb.count("#EXTINF")))
+        else:
+            print("  no video_hls_url; video_url=%s fmt=%s drm=%s" % (
+                str(dv.get("video_url"))[:80], dv.get("video_format"), dv.get("drm")))
+    sr = get("recipes.php?searchType=search&keys=%s&start-index=0" % search_term)
+    print("  search '%s': status=%s count=%s first=%s" % (
+        search_term, sr.get("status"), sr.get("count"),
+        [r.get("title") for r in lst(sr.get("results"))[:4] if isinstance(r, dict)]))
+    queue = get("getQueuelist.php")
+    print("  queue (My List) endpoint: status=%s" % queue.get("status"))
 
 
 def main():
-    for label, page in PLAYERS.items():
-        probe(label, page)
+    # HappyKids: siteId 40 (confirmed run 4).
+    origin, assets, api = site("HappyKids", "https://happykids.tv/home/")
+    walk("HappyKids", api, "9", "40", "1217575", "peppa")
+
+    # iFood.tv: siteId from hostname (ifood -> 1), platform from config_1.json.
+    origin, assets, api = site("iFood.tv", "https://ifood.tv/")
+    st, _, cfg_txt = http(assets + "assets/data/config_1.json")
+    cfg = js(cfg_txt) or {}
+    print("  config_1.json HTTP %s keys=%s" % (st, sorted(cfg)[:40]))
+    print("  config:", {k: cfg.get(k) for k in ("site_id", "platform_id", "app_id", "appId", "site_name",
+                                                  "siteName", "name", "title", "logo", "apiEnv") if k in cfg})
+    pid = str(cfg.get("platform_id") or "1217575")
+    sid = str(cfg.get("site_id") or "1")
+    aid = str(cfg.get("app_id") or cfg.get("appId") or "9")
+    walk("iFood.tv", api, aid, sid, pid, "chicken")
     print("\nDONE")
 
 
