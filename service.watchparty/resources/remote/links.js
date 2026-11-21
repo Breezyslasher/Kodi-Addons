@@ -26,6 +26,7 @@ const SERVICES = [
   ['starz.com', 'starz'],
   ['plex.tv', 'plex'],
   ['discoveryplus.com', 'discoveryplus'],
+  ['fawesome.tv', 'fawesome'],
 ];
 
 /** An Android app for each service, sent with what a browser shares: Watch
@@ -56,7 +57,7 @@ export const SERVICE_NAMES = {
   netflix: 'Netflix', disneyplus: 'Disney+', hbomax: 'HBO Max', primevideo: 'Prime Video',
   hulu: 'Hulu', peacock: 'Peacock', paramountplus: 'Paramount+', appletv: 'Apple TV',
   youtube: 'YouTube', crunchyroll: 'Crunchyroll', tubi: 'Tubi', pluto: 'Pluto TV',
-  starz: 'Starz', plex: 'Plex', discoveryplus: 'Discovery+',
+  starz: 'Starz', plex: 'Plex', discoveryplus: 'Discovery+', fawesome: 'Fawesome',
 };
 
 function host(url) {
@@ -256,6 +257,7 @@ const ADDON_HOSTS = {
   'plugin.video.starz': ['starz.com'],
   'plugin.video.plutotv': ['pluto.tv'],
   'plugin.video.plexondemand': ['watch.plex.tv'],
+  'plugin.video.fawesome': ['fawesome.tv'],
 };
 
 /** The addon in a plugin:// path ("plugin://slyguy.hulu/?…" → "slyguy.hulu"). */
@@ -359,6 +361,12 @@ export function pluginLink(plugin, type) {
       const kind = (arg('item_type') || '').toLowerCase();
       if (!id || !/^umc\.[A-Za-z0-9.]+$/.test(id) || !['movie', 'episode'].includes(kind)) return null;
       return `https://tv.apple.com/${kind}/${id}`;
+    }
+    case 'plugin.video.fawesome': {
+      // Breezyslasher's addon (Kodi-Addons branch plugin.video.fawesome): the node id.
+      // Any name after it gives the title's page; the number alone an empty shell.
+      const id = arg('action') === 'play' ? arg('nid') : null;
+      return id && /^\d+$/.test(id) ? `https://fawesome.tv/${type === 'movie' ? 'movies' : 'tv-shows'}/${id}/watch` : null;
     }
     case 'plugin.video.crunchyroll': {
       if (path[0] !== 'video') return null;

@@ -50,6 +50,20 @@ class AddonPathTest(unittest.TestCase):
                      'https://watch.plex.tv/movie/the-terminator'):
             self.assertEqual(addon_links.addon_path(link), (None, None))
 
+    def test_fawesome(self):
+        play = 'plugin://plugin.video.fawesome/?action=play&nid=%s'
+        # JustWatch's links: a movie and an episode
+        self.assertEqual(addon_links.addon_path(
+            'https://fawesome.tv/movies/10809157/the-little-shop-of-horrors?utm_source=justwatch&utm_medium=feed'),
+            ('plugin.video.fawesome', play % '10809157'))
+        self.assertEqual(addon_links.addon_path(
+            'https://fawesome.tv/tv-shows/10241098/s01-e01-the-disappearance-of-helle-crafts-forensic-files', 'episode'),
+            ('plugin.video.fawesome', play % '10241098'))
+        self.assertEqual(addon_links.addon_path('https://fawesome.tv/tv-shows/10241098'),
+                         ('plugin.video.fawesome', play % '10241098'))
+        for link in ('https://fawesome.tv/', 'https://fawesome.tv/movies', 'https://fawesome.tv/live/123/x'):
+            self.assertEqual(addon_links.addon_path(link), (None, None))
+
     def test_crunchyroll(self):
         # One Piece Film Red (the link the Android app and extension share)
         for link in ('https://www.crunchyroll.com/watch/GZ7UV2MZK/one-piece-film-red',

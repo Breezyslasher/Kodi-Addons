@@ -28,6 +28,7 @@ import xbmc
 import common
 from addon_links import addon_path
 from addon_search import WBD_ADDONS, find_by_show, find_episode
+import fawesome
 import pluto
 from client import PROTOCOL_VERSION, RelayClient, RelayError
 from relay import redact_url
@@ -467,11 +468,23 @@ def _pluto_ref(item):
     return {'file': url} if url else None
 
 
-def _fetch_text(url):
+def _fawesome_ref(item):
+    """A Fawesome link's stream, which Kodi plays itself (fawesome.py): after
+    the Fawesome addon, or instead of it when it isn't installed.
+    {'file': url}, or None."""
+    link = item.get('file') or ''
+    if item.get('plugin') or not fawesome.target(link):
+        return None
+    url = fawesome.resolve(link, _fetch_text)
+    common.log('fawesome %s: %s' % (link, 'stream found' if url else 'not found'))
+    return {'file': url} if url else None
+
+
+def _fetch_text(url, headers=None):
     import gzip
     import urllib.request
-    req = urllib.request.Request(url, headers={
-        'User-Agent': 'WatchParty/1.0 (Kodi addon)', 'Accept-Encoding': 'gzip'})
+    req = urllib.request.Request(url, headers=dict({
+        'User-Agent': 'WatchParty/1.0 (Kodi addon)', 'Accept-Encoding': 'gzip'}, **(headers or {})))
     with urllib.request.urlopen(req, timeout=20) as resp:
         data = resp.read()
         if resp.headers.get('Content-Encoding') == 'gzip':
@@ -1383,6 +1396,9 @@ class SyncEngine:
             pluto_ref = _pluto_ref(item)
             if pluto_ref:
                 candidates.append(pluto_ref)
+            fawesome_ref = _fawesome_ref(item)
+            if fawesome_ref:
+                candidates.append(fawesome_ref)
             plain = _playable_url(item)
             if plain and plain != item.get('plugin'):
                 candidates.append({'file': plain})

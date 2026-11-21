@@ -79,6 +79,12 @@ addon's own source (2026-11-15):
   Files S1 E1-2 and Forensic Files II S1 E1 looked up as those episodes
   (WatchParty's tools/probe/plex_vod.py, 2026-11-19). A link without it, and
   Plex's live TV (/live-tv/), aren't titles.
+- Fawesome, plugin.video.fawesome (Breezyslasher's, Kodi-Addons branch
+  plugin.video.fawesome): ?action=play&nid=<node id> (its default.py play:
+  api.detail by node id) — the number in JustWatch's links,
+  fawesome.tv/movies/<id>/<name> and /tv-shows/<id>/s01-e01-<name> (an
+  episode; Forensic Files S1 E1 is node 10241098, the id in its page's
+  window.nodeId; WatchParty's page probe, 2026-11-21).
 
 SlyGuy's paths are built as SlyGuy's router builds them (route in "_",
 arguments sorted); the addons parse them the same way.
@@ -185,6 +191,11 @@ def addon_path(link, media_type=''):
         if m:
             return ('plugin.video.crunchyroll',
                     'plugin://plugin.video.crunchyroll/video/%s/%s' % (m.group(1), m.group(1)))
+    elif on('fawesome.tv'):
+        m = re.match(r'^/(?:movies|tv-shows)/(\d+)(?:/|$)', path)
+        if m:
+            return ('plugin.video.fawesome', 'plugin://plugin.video.fawesome/?' + urlencode(
+                [('action', 'play'), ('nid', m.group(1))]))
     elif on('tubitv.com'):
         m = re.match(r'^/(?:movies|tv-shows)/(\d+)', path)
         if m:

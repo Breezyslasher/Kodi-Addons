@@ -1,4 +1,4 @@
-Copied from Breezyslasher/WatchParty at dbc6d8f by tools/vendor-kodi.sh,
+Copied from Breezyslasher/WatchParty at a2d117b by tools/vendor-kodi.sh,
 with resources/lib/relay.py (watchparty-relay/relay.py): remote.html,
 remote.js and remote.css (watchparty-relay/remote/), and the browser
 extension's links.js justwatch.js hbomax.js relay.js ui.js screens.js
