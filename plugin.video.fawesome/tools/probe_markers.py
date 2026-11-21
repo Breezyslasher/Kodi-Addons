@@ -49,9 +49,12 @@ def collect():
                     shows.append(it)
                 elif k == "video":
                     eps.append(it)
+    for term in ("love", "looney", "cops", "tarzan", "bbc", "crime", "western"):
+        items, _ = a.search(term)
+        shows += [it for it in items if api.kind(it) == "folder" and "shows.php" in str(it.get("url"))]
     seen = set()
     for sh in shows:
-        if sh["url"] in seen or len(seen) >= 8:
+        if sh["url"] in seen or len(seen) >= 12:
             continue
         seen.add(sh["url"])
         _, seasons, items = a.series(sh["url"])
@@ -79,6 +82,14 @@ def report(label, items):
                 it.get("endcredit_st"), it.get("endcredit_et"), str(it.get("ad_breaks"))[:40]))
 
 
+def episode_links(items):
+    print("\n== episode -> show link fields ==")
+    for it in items[:6]:
+        print("  %-40s S%sE%s show_id=%s actionkey=%s bookmark_feed=%s series=%s" % (
+            str(it.get("title"))[:40], it.get("season"), it.get("episode"), it.get("show_id"),
+            it.get("actionkey"), str(it.get("bookmark_feed"))[:70], it.get("series_name")))
+
+
 def detail_check(items, label):
     print("\n== detail call vs listing (%s) ==" % label)
     for it in items[:4]:
@@ -96,19 +107,22 @@ def player_code():
     r = a.s.get(api.SITE, timeout=20)
     m = re.search(r'src="([^"]*iptv-main\.js[^"]*)"', r.text)
     bundle = a.s.get(urllib.parse.urljoin(api.SITE, m.group(1)), timeout=30).text
-    for needle in ("intro_st", "intro_et", "endcredit_st", "skipIntro", "skip-intro", "SkipIntro",
-                   "watch-next", "continuousPlayback={", "countdownSeconds"):
+    for needle in ("checkIntroSkipVisibility:function", "endcredit_st)", "_triggeredBy=",
+                   "_fetchNextEpisodeFromAPI:function", "_getShowId:function", "_searchSeasons:function",
+                   "earlyOverlay"):
         hits = [i.start() for i in re.finditer(re.escape(needle), bundle)][:2]
         for i in hits:
-            print("  [%s] %s" % (needle, " ".join(bundle[max(0, i - 220):i + 320].split())))
+            print("  [%s] %s" % (needle, " ".join(bundle[max(0, i - 120):i + 900].split())))
         if not hits:
             print("  [%s] not found" % needle)
 
 
 def main():
     eps, movies = collect()
+    movies = movies[:0] if eps else movies   # this pass is about episodes
     report("episodes (from season feeds)", eps)
     report("movies (from rows)", movies)
+    episode_links(eps)
     detail_check(eps, "episodes")
     detail_check(movies, "movies")
     player_code()
