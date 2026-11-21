@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=nodeid&keys=919933,10624461,10640639&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&session-id=&sort_type=pr&order=4&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83176&userType=new&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:52:49 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=nodeid&keys=919933,10624461,10640639&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=998816bc-15c3-4689-a387-fc88e21f191c&session-id=&sort_type=pr&order=4&highlight=0&gridstyle=flat-movie&dltype=0&rowType=nodeid&akp=2918-83176&userType=new&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:56:15 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "result",
@@ -7,7 +7,7 @@
  "params": {
   "appId": "9",
   "siteId": "236",
-  "deviceId": "78a74f6e-1bf8-4dff-8afd-4d3e6a427c38",
+  "deviceId": "998816bc-15c3-4689-a387-fc88e21f191c",
   "old_deviceId": "",
   "version": "sv9.0",
   "categoryfilter": "",
@@ -29,17 +29,17 @@
   "gridstyle": "flat-movie",
   "profileId": "",
   "profileIdParam": "",
-  "ip_address": "3.42.157.171",
+  "ip_address": "4.246.63.48",
   "ip_details": {
-   "ip_from": 281470734860288,
-   "ip_to": 281470734893055,
+   "ip_from": 281470764974080,
+   "ip_to": 281470765006847,
    "country_code": "US",
    "country_name": "United States of America",
-   "region_name": "Oregon",
-   "city_name": "Portland",
-   "latitude": 45.523459,
-   "longitude": -122.676465,
-   "zip_code": 97204,
+   "region_name": "Washington",
+   "city_name": "Quincy",
+   "latitude": 47.234464,
+   "longitude": -119.852575,
+   "zip_code": 98848,
    "time_zone": "-07:00"
   },
   "countryCode": "US",
@@ -49,9 +49,9 @@
   "order": "4",
   "highlight": "",
   "playbackmode": "",
-  "state": "Oregon",
-  "city": "Portland",
-  "zip_code": "97204",
+  "state": "Washington",
+  "city": "Quincy",
+  "zip_code": "98848",
   "nid": "",
   "prevNode": "",
   "lastNode": "",
@@ -750,7 +750,7 @@
      "id": 135,
      "name": "Eric Bana",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=6d3fb551-6c3f-53be-ab3f-b22b6a3fb098&parent=Home&akp=-919933%2C10624461%2C10640639&userType=&deviceFwVer=&id=135",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=3e121095-3d12-5f02-bc12-0d6f3b120bdc&parent=Home&akp=-919933%2C10624461%2C10640639&userType=&deviceFwVer=&id=135",
      "imageUrl": "https://ftmain.cachefly.net/files/a8wn4hw/im/iptv/35/a7/cast_8b256caf0aeee1e886cefae0f5aa6fb8.jpg",
      "description": "Sketch comedy came first for Eric Bana, who wrote and performed on Australian television in the mid-1990s and briefly hosted a sketch show under his own name. His dramatic turn as the criminal Mark .."
     }
@@ -1797,7 +1797,7 @@
      "id": 71,
      "name": "Robert De Niro",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=6d3fb551-6c3f-53be-ab3f-b22b6a3fb098&parent=Home&akp=-919933%2C10624461%2C10640639&userType=&deviceFwVer=&id=71",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=3e121095-3d12-5f02-bc12-0d6f3b120bdc&parent=Home&akp=-919933%2C10624461%2C10640639&userType=&deviceFwVer=&id=71",
      "imageUrl": "https://ftmain.cachefly.net/files/ftp_v4/encode_v4/uploadfiles/Sheeja_Images_Actor_Director/Cast_Images_JPEG/380.jpg",
      "description": "Robert De Niro's collaboration with director Martin Scorsese began with Mean Streets (1973), following early training under Stella Adler and Lee Strasberg. He won the Academy Award for Best Supporti.."
     }

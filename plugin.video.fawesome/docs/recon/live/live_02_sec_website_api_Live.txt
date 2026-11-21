@@ -1,4 +1,4 @@
-# 200 https://fawesome.tv/home/new/v469/api/sub-categories.php?parent=Live&appId=9&siteId=236&deviceId=b614d76d-a2e1-472a-a628-47df55839aa6&apiEnv=production&version=sv9.0&auth-token=1217575&platform_id=1217575
+# 200 https://fawesome.tv/home/new/v469/api/sub-categories.php?parent=Live&appId=9&siteId=236&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&apiEnv=production&version=sv9.0&auth-token=1217575&platform_id=1217575
 {
  "status": "ok",
  "type": "categories",
@@ -6,7 +6,7 @@
   {
    "name": "General",
    "description": null,
-   "url": "https://rapi.ifood.tv/recipes.php?searchType=general&keys=1&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=b614d76d-a2e1-472a-a628-47df55839aa6&session-id=&sort_type=&order=0&highlight=1&gridstyle=flat-movie&dltype=&rowType=general&akp=-1&userType=new",
+   "url": "https://rapi.ifood.tv/recipes.php?searchType=general&keys=1&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&session-id=&sort_type=&order=0&highlight=1&gridstyle=flat-movie&dltype=&rowType=general&akp=-1&userType=new",
    "image": "https://ftmain.cachefly.net/files/styles/sd_image/public/",
    "feed_type": "show",
    "highlight": 1,

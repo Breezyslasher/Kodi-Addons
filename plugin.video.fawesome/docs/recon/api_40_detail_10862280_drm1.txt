@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=nodeid&start-index=0&gridstyle=flat-movie&max-results=1&dltype=1&nid=10862280&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:52:53 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=nodeid&start-index=0&gridstyle=flat-movie&max-results=1&dltype=1&nid=10862280&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=998816bc-15c3-4689-a387-fc88e21f191c&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:56:19 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "result",
@@ -7,7 +7,7 @@
  "params": {
   "appId": "9",
   "siteId": "236",
-  "deviceId": "78a74f6e-1bf8-4dff-8afd-4d3e6a427c38",
+  "deviceId": "998816bc-15c3-4689-a387-fc88e21f191c",
   "old_deviceId": "",
   "version": "sv9.0",
   "categoryfilter": "",
@@ -29,17 +29,17 @@
   "gridstyle": "flat-movie",
   "profileId": "",
   "profileIdParam": "",
-  "ip_address": "3.42.157.171",
+  "ip_address": "4.246.63.48",
   "ip_details": {
-   "ip_from": 281470734860288,
-   "ip_to": 281470734893055,
+   "ip_from": 281470764974080,
+   "ip_to": 281470765006847,
    "country_code": "US",
    "country_name": "United States of America",
-   "region_name": "Oregon",
-   "city_name": "Portland",
-   "latitude": 45.523459,
-   "longitude": -122.676465,
-   "zip_code": 97204,
+   "region_name": "Washington",
+   "city_name": "Quincy",
+   "latitude": 47.234464,
+   "longitude": -119.852575,
+   "zip_code": 98848,
    "time_zone": "-07:00"
   },
   "countryCode": "US",
@@ -49,9 +49,9 @@
   "order": "",
   "highlight": "",
   "playbackmode": "",
-  "state": "Oregon",
-  "city": "Portland",
-  "zip_code": "97204",
+  "state": "Washington",
+  "city": "Quincy",
+  "zip_code": "98848",
   "nid": "10862280",
   "prevNode": "",
   "lastNode": "",
@@ -103,7 +103,7 @@
   "deviceType": "website",
   "rokuFeed": false
  },
- "cache_status": false,
+ "cache_status": true,
  "results": [
   {
    "id": "200000010862280",
@@ -217,7 +217,7 @@
      "id": 109,
      "name": "Madeleine Stowe",
      "role": "actor",
-     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&parent=&akp=&userType=&deviceFwVer=&id=109",
+     "feed": "https://rapi.ifood.tv/castdetail.php?searchType=castdetail&appId=9&siteId=236&auth-token=1217575&version=sv9.0&country=US&deviceId=5497f1ec-b3e3-46a2-b482-8793ec593374&parent=&akp=&userType=&deviceFwVer=&id=109",
      "imageUrl": "https://ftmain.cachefly.net/files/ftp_v4/encode_v4/uploadfiles/Sheeja_Images_Actor_Director/Cast_Images_JPEG/289.jpg",
      "description": "Robert Altman's Short Cuts, Michael Mann's The Last of the Mohicans, and the science-fiction thriller Twelve Monkeys anchor Madeleine Stowe's film career; her performance in Short Cuts won the Natio.."
     }
@@ -228,7 +228,7 @@
    "episode_title": "",
    "blockItem": "false",
    "likedislike": 0,
-   "deeplink_url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=116579&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&country=US&deviceId=78a74f6e-1bf8-4dff-8afd-4d3e6a427c38&gridstyle=flat-movie&dltype=1&parent=&akp=",
+   "deeplink_url": "https://rapi.ifood.tv/recipes.php?searchType=new-qid&keys=116579&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&country=US&deviceId=998816bc-15c3-4689-a387-fc88e21f191c&gridstyle=flat-movie&dltype=1&parent=&akp=",
    "item_type": "movie",
    "itg_tag_id": "",
    "row_position": 0,
