@@ -1,5 +1,5 @@
 # 200 https://ftmain.cachefly.net/files/a8wn4hw/vi/97/1f/10862280/s10862280.m3u8
-# {"date": "Sat, 21 Nov 2026 21:22:21 GMT", "content-type": "application/vnd.apple.mpegurl", "content-length": "296", "access-control-allow-origin": "*", "cache-control": "max-age=86400", "x-cff": "B", "last-modified": "Thu, 22 Oct 2026 17:42:35 GMT", "etag": "\"6ada4b0b-128\"", "x-cf3": "H", "cf4age": "0", "x-cf-tsc": "1793917790", "cf4ttl": "25781880.000", "x-cf2": "H", "server": "CFS 1124", "x-cf1": "43085:fM.iad2:co:1738598425:cacheN.iad2-01:M", "x-cf-reqid": "b42cfa95e4bce0e31d7288daa229f145", "accept-ranges": "bytes", "connection": "close"}
+# {"date": "Sat, 21 Nov 2026 21:23:52 GMT", "content-type": "application/vnd.apple.mpegurl", "content-length": "296", "access-control-allow-origin": "*", "cache-control": "max-age=86400", "x-cff": "B", "last-modified": "Thu, 22 Oct 2026 17:42:35 GMT", "etag": "\"6ada4b0b-128\"", "x-cf3": "H", "cf4age": "0", "x-cf-tsc": "1793917790", "cf4ttl": "25781880.000", "x-cf2": "H", "accept-ranges": "bytes", "server": "CFS 1124", "x-cf1": "43085:fO.iad2:co:1738598425:cacheN.iad2-01:M", "x-cf-reqid": "3221d9f565516f17327b11b0dbe72f0d", "connection": "close"}
 #EXTM3U
 #EXT-X-STREAM-INF:PROGRAM-ID=1, BANDWIDTH=2755994
 hls-hi/s10862280.m3u8
