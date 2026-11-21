@@ -1,4 +1,4 @@
-# 200 https://fawesome.tv/home/new/v469/api/index.php?parent=home&appId=9&siteId=236&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&apiEnv=production&version=sv9.0&auth-token=1217575&platform_id=1217575
+# 200 https://fawesome.tv/home/new/v469/api/index.php?parent=home&appId=9&siteId=236&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&apiEnv=production&version=sv9.0&auth-token=1217575&platform_id=1217575
 {
  "status": "ok",
  "type": "channels",
@@ -15,7 +15,7 @@
  "showadvancedsearch": "false",
  "isunifiedapp": "false",
  "unifiedappIndex": 0,
- "unifiedappurl": "https://rapi.ifood.tv/promoapps.php?appId=9&auth-token=1217575&siteId=236&version=sv9.0&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&lineUp=",
+ "unifiedappurl": "https://rapi.ifood.tv/promoapps.php?appId=9&auth-token=1217575&siteId=236&version=sv9.0&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&lineUp=",
  "header_logo": "https://d8mvsutu6vcns.cloudfront.net/files/a8wn4hw/im/iptv/7d/8e/6e49727fa74fef6c0733a06a128bb0f7.png",
  "ccastappid": "2F7A5D3B",
  "enablesuggestions": "true",
@@ -31,8 +31,8 @@
  "enableCuePts": "true",
  "countryCode": "US",
  "countryName": "United States of America",
- "regionName": "Washington",
- "cityName": "Quincy",
+ "regionName": "Iowa",
+ "cityName": "Des Moines",
  "gridstyle": "flat-movie",
  "playlistSwitchingStrategy": "continuous",
  "bugadenabled": "false",
@@ -86,7 +86,7 @@
     "name": "futuretodayinc-bugad",
     "priority": "0",
     "type": "popup",
-    "url": "https://rapi.ifood.tv/getFTNlAds.php?appId=9&siteId=236&type=bugAd&auth-token=1217575&version=v2.0&nid=1&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&country=US",
+    "url": "https://rapi.ifood.tv/getFTNlAds.php?appId=9&siteId=236&type=bugAd&auth-token=1217575&version=v2.0&nid=1&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&country=US",
     "id": "ifoodtv"
    }
   }
@@ -125,7 +125,7 @@
   {
    "name": "Home",
    "description": "Please select this option to see the newest movies and customized collections for this channel.",
-   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Home&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&session-id=&default-cat=&homecat=true&l1id=958&recData=2&userType=",
+   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Home&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&session-id=&default-cat=&homecat=true&l1id=958&recData=2&userType=",
    "feed_type": "category",
    "actiontype": "parent-category",
    "actionkey": null,
@@ -146,7 +146,7 @@
    "targetage": "0",
    "isLivetv": false,
    "myzone": false,
-   "multiplebannerad_image": "https://rapi.ifood.tv/getMultiBanners.php?appId=9&siteId=236&type=banner&auth-token=1217575&version=sv9.0&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&bucketId=10&country=US",
+   "multiplebannerad_image": "https://rapi.ifood.tv/getMultiBanners.php?appId=9&siteId=236&type=banner&auth-token=1217575&version=sv9.0&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&bucketId=10&country=US",
    "adsdklist": [],
    "bgcolor": "0D0D1D",
    "textcolor": "ffffff",
@@ -155,7 +155,7 @@
   {
    "name": "Live",
    "description": "Please select this option to see the Live TV show programming.",
-   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Live&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&session-id=&default-cat=&l1id=2814&recData=2&userType=&country=US&state=Washington&city=Quincy&is_live=1",
+   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Live&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&session-id=&default-cat=&l1id=2814&recData=2&userType=&country=US&state=Iowa&city=Des+Moines&is_live=1",
    "feed_type": "category",
    "actiontype": "parent-category",
    "actionkey": null,
@@ -185,7 +185,7 @@
   {
    "name": "Collections",
    "description": "Please select this option to see the latest library of collections.",
-   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Collections&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&session-id=&default-cat=&l1id=2672&recData=0&userType=",
+   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Collections&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&session-id=&default-cat=&l1id=2672&recData=0&userType=",
    "feed_type": "category",
    "actiontype": "parent-category",
    "actionkey": null,
@@ -215,7 +215,7 @@
   {
    "name": "Shows",
    "description": "Please select this option to see the latest collection of TV series.",
-   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Shows&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&session-id=&default-cat=&l1id=2026&recData=1&userType=",
+   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Shows&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&session-id=&default-cat=&l1id=2026&recData=1&userType=",
    "feed_type": "category",
    "actiontype": "parent-category",
    "actionkey": null,
@@ -245,7 +245,7 @@
   {
    "name": "Movies",
    "description": "Please select this option to see the Best 100 Movies by genre.",
-   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Movies&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&session-id=&default-cat=&l1id=2918&recData=0&userType=",
+   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Movies&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&session-id=&default-cat=&l1id=2918&recData=0&userType=",
    "feed_type": "category",
    "actiontype": "parent-category",
    "actionkey": null,
@@ -275,7 +275,7 @@
   {
    "name": "En Español",
    "description": "Please select this option to see the movies and TV shows in Spanish",
-   "url": "https://rapi.ifood.tv/sub-categories.php?parent=En%20Espa%C3%B1ol&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&session-id=&default-cat=&l1id=3013&recData=1&userType=",
+   "url": "https://rapi.ifood.tv/sub-categories.php?parent=En%20Espa%C3%B1ol&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&session-id=&default-cat=&l1id=3013&recData=1&userType=",
    "feed_type": "category",
    "actiontype": "parent-category",
    "actionkey": null,
@@ -305,7 +305,7 @@
   {
    "name": "Handpicked",
    "description": "",
-   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Handpicked&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&session-id=&default-cat=&l1id=3146&recData=0&userType=",
+   "url": "https://rapi.ifood.tv/sub-categories.php?parent=Handpicked&appId=9&siteId=236&auth-token=1217575&version=sv9.0&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&session-id=&default-cat=&l1id=3146&recData=0&userType=",
    "feed_type": "category",
    "actiontype": "parent-category",
    "actionkey": null,
@@ -446,7 +446,7 @@
   "name": "futuretodayinc-screensaver",
   "priority": 1,
   "type": "popup",
-  "url": "https://rapi.ifood.tv/getFTIScreensaver.php?appId=9&siteId=236&type=screensaver&auth-token=1217575&version=v1.0&deviceId=39a201ee-7933-48a7-9675-e4e91f0cfc20&screensaverId=8",
+  "url": "https://rapi.ifood.tv/getFTIScreensaver.php?appId=9&siteId=236&type=screensaver&auth-token=1217575&version=v1.0&deviceId=ada361a2-73fe-4819-a0fd-0977ece71d2c&screensaverId=8",
   "id": "ifoodtv"
  },
  "userType": ""

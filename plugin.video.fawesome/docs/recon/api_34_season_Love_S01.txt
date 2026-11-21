@@ -1,5 +1,5 @@
-# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=116586&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&deviceId=998816bc-15c3-4689-a387-fc88e21f191c&parent=Home&akp=-116586&gridstyle=flat-movie&logic=&userType=&apiEnv=production
-# {"date": "Sat, 21 Nov 2026 21:56:18 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+# 200 https://fawesome.tv/home/new/v469/api/recipes.php?searchType=new-qid&keys=116586&appId=9&siteId=236&auth-token=1217575&version=sv9.0&sort_type=&order=0&deviceModel=&deviceId=c1764c39-0deb-4a43-9cae-33a1c5fc1e75&parent=Home&akp=-116586&gridstyle=flat-movie&logic=&userType=&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 22:02:08 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
 {
  "status": "ok",
  "type": "result",
@@ -7,7 +7,7 @@
  "params": {
   "appId": "9",
   "siteId": "236",
-  "deviceId": "998816bc-15c3-4689-a387-fc88e21f191c",
+  "deviceId": "c1764c39-0deb-4a43-9cae-33a1c5fc1e75",
   "old_deviceId": "",
   "version": "sv9.0",
   "categoryfilter": "",
@@ -29,18 +29,18 @@
   "gridstyle": "flat-movie",
   "profileId": "",
   "profileIdParam": "",
-  "ip_address": "4.246.63.48",
+  "ip_address": "20.29.55.11",
   "ip_details": {
-   "ip_from": 281470764974080,
-   "ip_to": 281470765006847,
+   "ip_from": 281471019188224,
+   "ip_to": 281471019220991,
    "country_code": "US",
    "country_name": "United States of America",
-   "region_name": "Washington",
-   "city_name": "Quincy",
-   "latitude": 47.234464,
-   "longitude": -119.852575,
-   "zip_code": 98848,
-   "time_zone": "-07:00"
+   "region_name": "Iowa",
+   "city_name": "Des Moines",
+   "latitude": 41.60045,
+   "longitude": -93.609114,
+   "zip_code": 50319,
+   "time_zone": "-05:00"
   },
   "countryCode": "US",
   "country": "US",
@@ -49,9 +49,9 @@
   "order": "",
   "highlight": "",
   "playbackmode": "",
-  "state": "Washington",
-  "city": "Quincy",
-  "zip_code": "98848",
+  "state": "Iowa",
+  "city": "Des Moines",
+  "zip_code": "50319",
   "nid": "",
   "prevNode": "",
   "lastNode": "",
@@ -103,7 +103,7 @@
   "deviceType": "website",
   "rokuFeed": false
  },
- "cache_status": false,
+ "cache_status": true,
  "results": [
   {
    "id": "200000010866218",
