@@ -1,0 +1,28 @@
+# 200 https://rapi.ifood.tv/getFTNlAds.php?appId=9&siteId=236&type=bugAd&auth-token=1217575&version=v2.0&nid=1&deviceId=d6be3d2e-edf2-40d1-a191-b67f262516c2&country=US
+# {"date": "Sat, 21 Nov 2026 21:12:50 GMT", "server": "Apache", "access-control-allow-methods": "GET, POST, OPTIONS", "access-control-allow-headers": "Content-Type, Authorization, token, login-user-id, session-id", "access-control-allow-origin": "*", "vary": "Accept-Encoding", "transfer-encoding": "chunked", "content-type": "text/xml; charset=utf-8", "connection": "close"}
+<VAST version="2.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="vast2.xsd">
+<Ad id="1">
+<InLine>
+<AdSystem>DART</AdSystem>
+<AdTitle>Bug Ad</AdTitle>
+<Description>Display Bug Ads over videos.</Description>
+<Impression><![CDATA[https://log.ifood.tv/applogger.php?isAd=true&siteId=236&appid=d6be3d2e-edf2-40d1-a191-b67f262516c2&id=1&type=bugAd&auth-token=1217575&event=impression]]></Impression>
+<Creatives>
+<Creative AdID="1">
+<NonLinearAds>
+<minSuggestedDuration>00:00:15</minSuggestedDuration>
+<TrackingEvents>
+<Tracking event="start"><![CDATA[https://log.ifood.tv/applogger.php?isAd=true&siteId=236&appid=d6be3d2e-edf2-40d1-a191-b67f262516c2&id=1&type=bugAd&auth-token=1217575&event=start]]></Tracking>
+<Tracking event="midpoint"><![CDATA[https://log.ifood.tv/applogger.php?isAd=true&siteId=236&appid=d6be3d2e-edf2-40d1-a191-b67f262516c2&id=1&type=bugAd&auth-token=1217575&event=midpoint]]></Tracking>
+<Tracking event="complete"><![CDATA[https://log.ifood.tv/applogger.php?isAd=true&siteId=236&appid=d6be3d2e-edf2-40d1-a191-b67f262516c2&id=1&type=bugAd&auth-token=1217575&event=complete]]></Tracking>
+</TrackingEvents>
+<NonLinearClickTracking><![CDATA[https://log.ifood.tv/applogger.php?isAd=true&siteId=236&appid=d6be3d2e-edf2-40d1-a191-b67f262516c2&id=1&type=bugAd&auth-token=1217575&event=clicked]]></NonLinearClickTracking>
+<NonLinear width="480" height="90">
+<IFrameResource><![CDATA[https://rapi.ifood.tv/getFTAdIfR.php?siteId=236&appId=9&nid=1&type=bugAd&deviceId=d6be3d2e-edf2-40d1-a191-b67f262516c2&auth-token=1217575&version=v2.0&country=US]]></IFrameResource>
+</NonLinear>
+</NonLinearAds>
+</Creative>
+</Creatives>
+</InLine>
+</Ad>
+</VAST>

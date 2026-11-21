@@ -1,0 +1,11 @@
+# 200 https://fawesome.tv/home/new/v469/api/index.php?parent=home&appId=9&siteId=236&auth-token=1217575&platform_id=1217575&deviceId=d6be3d2e-edf2-40d1-a191-b67f262516c2&apiEnv=production
+# {"date": "Sat, 21 Nov 2026 21:12:48 GMT", "server": "Apache", "x-powered-by": "PHP/8.4.27", "x-frame-options": "SAMEORIGIN", "vary": "Accept-Encoding,Origin", "x-content-type-options": "nosniff", "strict-transport-security": "max-age=10886400; includeSubDomains; preload", "transfer-encoding": "chunked", "content-type": "text/html; charset=UTF-8", "connection": "close"}
+{
+ "status": "fail",
+ "type": "error",
+ "data": {
+  "code": "5002",
+  "description": "Unauthorized access."
+ },
+ "results": []
+}
