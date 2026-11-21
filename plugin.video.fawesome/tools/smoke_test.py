@@ -105,6 +105,9 @@ class ListItem(object):
     def addStreamInfo(self, kind, info):
         self.__dict__.setdefault("streams", []).append((kind, info))
 
+    def addContextMenuItems(self, items, replaceItems=False):
+        self.__dict__.setdefault("context", []).extend(items)
+
 
 class Dialog(object):
     def notification(self, *a, **k):
