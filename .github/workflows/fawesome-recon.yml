@@ -1,0 +1,43 @@
+name: Fawesome recon
+
+# plugin.video.fawesome development helper. The cloud dev container cannot
+# reach fawesome.tv; GitHub's runners can. Crawls the public site for the
+# content feed API, fetches every URL in tools/probe_urls.txt, and commits the
+# report and response bodies to plugin.video.fawesome/docs/recon/ on the branch
+# that ran it. No account exists on Fawesome, so there are no credentials.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/fawesome-recon.yml'
+      - 'plugin.video.fawesome/tools/recon.py'
+      - 'plugin.video.fawesome/tools/probe_urls.txt'
+
+concurrency:
+  group: fawesome-recon-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Recon and probes
+        run: |
+          python3 plugin.video.fawesome/tools/recon.py plugin.video.fawesome/docs/recon | tee recon.txt
+          { echo '```'; head -c 900000 recon.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit results
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add -A plugin.video.fawesome/docs/recon
+          git diff --staged --quiet && exit 0
+          git commit -m "Fawesome: recon results (fawesome-recon workflow)"
+          git pull --rebase --autostash
+          git push

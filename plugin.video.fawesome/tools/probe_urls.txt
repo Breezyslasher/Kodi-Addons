@@ -1,0 +1,5 @@
+# URLs the recon workflow fetches and saves (one per line; '#' comments).
+# Optional headers:  URL | Header: value | Header: value
+# Add a lead here and push: the fawesome-recon workflow commits the bodies to
+# plugin.video.fawesome/docs/recon/.
+https://fawesome.tv/
