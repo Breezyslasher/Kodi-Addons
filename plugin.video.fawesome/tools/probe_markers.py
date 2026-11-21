@@ -54,6 +54,8 @@ def collect():
         shows += [it for it in items if api.kind(it) == "folder" and "shows.php" in str(it.get("url"))]
     # Shows rows hold collections (lists of shows) as well as shows; walk
     # through collections until real series (with seasons) turn up.
+    print("[debug] shows queued from rows+search: %d; first: %s" % (
+        len(shows), [(x.get("title"), str(x.get("url"))[:60]) for x in shows[:3]]))
     seen, queue, series_done = set(), list(shows), 0
     while queue and series_done < 10 and len(seen) < 60:
         sh = queue.pop(0)
@@ -61,6 +63,7 @@ def collect():
             continue
         seen.add(sh["url"])
         _, seasons, items = a.series(sh["url"])
+        print("[debug] series %-30s seasons=%d items=%d" % (str(sh.get("title"))[:30], len(seasons), len(items)))
         if not seasons:
             queue += [it for it in items if api.kind(it) == "folder" and "shows.php" in str(it.get("url"))]
             eps += [it for it in items if api.kind(it) == "video" and str(it.get("episode")) not in ("None", "0", "")]
@@ -68,6 +71,9 @@ def collect():
         series_done += 1
         for s in seasons[:2]:
             got, _ = a.feed(s.get("feed") or s.get("url"))
+            print("[debug]   season %-26s items=%d videos=%d eps=%d" % (
+                str(s.get("title"))[:26], len(got), sum(1 for g in got if api.kind(g) == "video"),
+                sum(1 for g in got if str(g.get("episode")) not in ("None", "0", ""))))
             eps += [g for g in got if api.kind(g) == "video"]
     return eps, movies
 
