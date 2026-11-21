@@ -1,0 +1,79 @@
+name: Fawesome recon
+
+# plugin.video.fawesome development helper. The cloud dev container cannot
+# reach fawesome.tv; GitHub's runners can. It crawls the public site for the
+# content feed API, walks the API, checks for live channels and multiple audio
+# tracks, and drives the add-on's own router against the live service (Kodi
+# stubbed). No account exists on Fawesome, so there are no credentials.
+#
+# The captures are dev research, not part of the add-on, so they are uploaded
+# as a build artifact rather than committed -- they must never bloat the repo
+# or the user zip. The job fails if the smoke test or endpoint check fails.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/fawesome-recon.yml'
+      - 'plugin.video.fawesome/tools/**'
+      - 'plugin.video.fawesome/default.py'
+      - 'plugin.video.fawesome/lib/**'
+
+concurrency:
+  group: fawesome-recon-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recon:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      OUT: plugin.video.fawesome/docs/recon
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Recon and probes
+        run: |
+          python3 plugin.video.fawesome/tools/recon.py "$OUT" | tee recon.txt
+          { echo '```'; head -c 900000 recon.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: API walk (token, home, feeds, a title, its manifests)
+        run: |
+          python3 plugin.video.fawesome/tools/probe_api.py "$OUT" | tee api.txt
+          { echo '```'; cat api.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Do any titles have multiple audio tracks
+        run: |
+          python3 plugin.video.fawesome/tools/probe_audio.py "$OUT/audio" | tee audio.txt
+          { echo '```'; cat audio.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Look for live (FAST) channels across the TV platforms
+        run: |
+          python3 plugin.video.fawesome/tools/probe_live.py "$OUT/live" | tee live.txt
+          { echo '```'; cat live.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Probe the queue (My List) endpoints
+        run: |
+          python3 plugin.video.fawesome/tools/probe_queue.py "$OUT/queue" | tee queue.txt
+          { echo '```'; cat queue.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: Fetch official logo candidates
+        run: python3 plugin.video.fawesome/tools/fetch_logo.py "$OUT/art"
+      - name: Smoke test and endpoint check (fails the job on error)
+        run: |
+          python3 -m pip install --quiet requests
+          set +e
+          python3 plugin.video.fawesome/tools/smoke_test.py | tee "$OUT/smoke.txt"; smoke=${PIPESTATUS[0]}
+          # The endpoint check prints ::add-mask:: lines for tokens; drop them
+          # so the token values never reach the committed/summarised output.
+          python3 .github/endpoint-check/check_endpoints.py \
+            plugin.video.fawesome/tools/endpoints.json 2>&1 \
+            | grep -v '::add-mask::' | tee -a "$OUT/smoke.txt"; ep=${PIPESTATUS[0]}
+          { echo '```'; cat "$OUT/smoke.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          [ "$smoke" -gt "$ep" ] && exit "$smoke" || exit "$ep"
+      - name: Upload recon captures (not committed -- dev research only)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fawesome-recon
+          path: plugin.video.fawesome/docs/recon
+          retention-days: 14
+          if-no-files-found: ignore
