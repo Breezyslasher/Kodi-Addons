@@ -121,8 +121,8 @@ class FawesomeApi(object):
         name = sp.path.rsplit("/", 1)[-1]
         return self.api_base() + name + ("?" + sp.query if sp.query else "")
 
-    def _get(self, url, params=None):
-        """GET an API URL (absolute, or a file name under the API base)."""
+    def _build_url(self, url, params):
+        """Resolve a name/URL to a full API URL with the common query merged."""
         if not url.startswith("http"):
             url = self.api_base() + url
         elif "fawesome.tv/home/new/" not in url:
@@ -136,21 +136,37 @@ class FawesomeApi(object):
         query["deviceId"] = self.device_id
         query["apiEnv"] = "production"
         query.update((k, str(v)) for k, v in (params or {}).items())
-        url = urllib.parse.urlunsplit((sp.scheme, sp.netloc, sp.path,
-                                       urllib.parse.urlencode(query), ""))
-        for attempt in (0, 1):
-            r = self.s.get(url, headers={"token": self.token(refresh=attempt > 0)}, timeout=25)
-            r.raise_for_status()
-            try:
-                data = r.json()
-            except ValueError:
-                raise FawesomeError("not JSON from %s" % sp.path)
-            code = str(((data or {}).get("data") or {}).get("code") or "")
-            if data.get("status") == "fail" and code in TOKEN_ERRORS and attempt == 0:
-                self.log("token refused (%s); refreshing" % code)
-                continue
-            return data
-        return data
+        return urllib.parse.urlunsplit((sp.scheme, sp.netloc, sp.path,
+                                        urllib.parse.urlencode(query), ""))
+
+    def _get(self, url, params=None):
+        """GET an API URL (absolute, or a file name under the API base).
+
+        Self-heals two moving parts: an expired token (5002/5003 -> refresh and
+        retry) and a moved site build (the API path 404s when Fawesome ships a
+        new /home/new/<build>/ -- drop the cached build, re-read it, retry once)."""
+        for build_try in (0, 1):
+            full = self._build_url(url, params)
+            for attempt in (0, 1):
+                r = self.s.get(full, headers={"token": self.token(refresh=attempt > 0)},
+                               timeout=25)
+                if r.status_code == 404 and build_try == 0:
+                    # The site build likely moved; drop it, re-read it, retry.
+                    self.log("API 404 at build %s; refreshing build" % self.state.get("build"))
+                    self.state.pop("build", None)
+                    self.state.pop("build_at", None)
+                    break  # -> outer loop rebuilds the URL with the fresh build
+                r.raise_for_status()
+                try:
+                    data = r.json()
+                except ValueError:
+                    raise FawesomeError("not JSON from %s" % url)
+                code = str(((data or {}).get("data") or {}).get("code") or "")
+                if data.get("status") == "fail" and code in TOKEN_ERRORS and attempt == 0:
+                    self.log("token refused (%s); refreshing" % code)
+                    continue
+                return data
+        raise FawesomeError("API unavailable (build %s)" % self.state.get("build"))
 
     # -- catalogue --------------------------------------------------------
 
