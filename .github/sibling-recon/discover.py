@@ -139,7 +139,41 @@ def walk(label, api, app_id, site_id, pid, search_term):
     print("  queue (My List) endpoint: status=%s" % queue.get("status"))
 
 
+def dump_happykids():
+    """Print every non-empty field of a few HappyKids titles (search + a season)."""
+    origin, assets, api = site("HappyKids items", "https://happykids.tv/home/")
+    common = "appId=9&siteId=40&auth-token=1217575&platform_id=1217575&deviceId=%s&apiEnv=production" % DEV
+    tok = (js(http(api + "getSecurityToken.php?" + common)[2]) or {}).get("securityToken")
+    H = {"token": tok}
+    sr = js(http(api + "recipes.php?searchType=search&keys=blippi&start-index=0&" + common, H)[2]) or {}
+    res = [r for r in lst(sr.get("results")) if isinstance(r, dict)]
+    print("  search results:", len(res), "types:", sorted({str(r.get("type")) for r in res}))
+    for it in res[:3]:
+        print("  --- item %s" % it.get("node_id"))
+        for k in sorted(it):
+            v = it[k]
+            if v not in (None, "", [], {}, "None", "0", 0) and not k.startswith(("meta_", "description")):
+                print("     %-24s %s" % (k, str(v)[:150]))
+        nid = it.get("node_id")
+        if nid:
+            d = js(http(api + "recipes.php?searchType=nodeid&nid=%s&gridstyle=flat-movie&max-results=1&dltype=1&start-index=0&%s"
+                        % (nid, common), H)[2]) or {}
+            dv = (lst(d.get("results")) or [{}])[0]
+            print("     detail stream fields:", {k: str(dv.get(k))[:150] for k in dv
+                  if re.search(r"video|url|stream|youtube|yt|hls|mp4|m3u8|embed|source|play", k, re.I)
+                  and dv.get(k) not in (None, "", "None")})
+    # The web player's play path for such items.
+    _, _, home = http("https://happykids.tv/home/")
+    mb = re.search(r'src="([^"]*iptv-main\.js[^"]*)"', home)
+    _, _, bundle = http(urllib.parse.urljoin("https://happykids.tv/home/", mb.group(1)))
+    for needle in ("youtube", "ytId", "youtube_id", "isLicencedForWeb", "video_flv_url"):
+        i = bundle.find(needle)
+        print("  bundle %-16s %s" % (needle, " ".join(bundle[max(0, i-150):i+250].split()) if i >= 0 else "not found"))
+
+
 def main():
+    dump_happykids()
+    return
     # HappyKids: siteId 40 (confirmed run 4).
     origin, assets, api = site("HappyKids", "https://happykids.tv/home/")
     walk("HappyKids", api, "9", "40", "1217575", "peppa")
