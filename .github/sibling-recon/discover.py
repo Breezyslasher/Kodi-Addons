@@ -28,8 +28,14 @@ PLAYERS = {
 }
 
 
+REF = {"v": ""}
+
+
 def http(url, headers=None):
-    h = {"User-Agent": UA, "Accept": "*/*"}
+    # The API answers an empty body without the site's Referer/Origin.
+    h = {"User-Agent": UA, "Accept": "application/json, text/plain, */*"}
+    if REF["v"]:
+        h.update({"Referer": REF["v"] + "/", "Origin": REF["v"]})
     h.update(headers or {})
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=25) as r:
@@ -57,6 +63,7 @@ def ctx(blob, needle, before=150, after=300, limit=3):
 
 def probe(label, page):
     print("\n################ %s  %s ################" % (label, page))
+    REF["v"] = re.search(r"https?://[^/]+", page).group(0)
     st, final, home = http(page)
     print("page: HTTP %s -> %s (%d bytes)" % (st, final, len(home)))
     mb = re.search(r'src="([^"]*iptv-main\.js[^"]*)"', home)
@@ -76,6 +83,10 @@ def probe(label, page):
     for sc in re.findall(r"<script(?![^>]*src)[^>]*>(.*?)</script>", home, re.S):
         if re.search(r"siteId|appId|platform|buildVersion|apiBase", sc):
             print("  inline:", " ".join(sc.split())[:500])
+    for s2 in ctx(bundle, "initApp(", 300, 200, 4):
+        print("  initApp call:", s2)
+    for s2 in ctx(bundle, "site_id", 200, 120, 4):
+        print("  site_id:", s2)
     rapi = sorted(set(re.findall(r"https?://rapi\.ifood\.tv/[^\"'\s]+", bundle)))
     print("  rapi URLs in bundle:", rapi[:8])
 
