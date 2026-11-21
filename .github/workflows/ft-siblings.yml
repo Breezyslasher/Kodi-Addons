@@ -1,7 +1,7 @@
 name: Future Today siblings
 
-# plugin.video.happykids and plugin.video.ifoodtv: the Fawesome add-on with
-# another Future Today site's constants. The cloud dev container cannot reach
+# plugin.video.ifoodtv: the Fawesome add-on with another Future Today site's
+# constants (more siblings can join the matrix the same way). The cloud dev container cannot reach
 # these sites; GitHub's runners can.
 #   check -- drives each add-on's own router against the live service (Kodi
 #            stubbed) and runs its endpoint spec; fails the job on error.
@@ -14,9 +14,6 @@ on:
   push:
     paths:
       - '.github/workflows/ft-siblings.yml'
-      - 'plugin.video.happykids/default.py'
-      - 'plugin.video.happykids/lib/**'
-      - 'plugin.video.happykids/tools/**'
       - 'plugin.video.ifoodtv/default.py'
       - 'plugin.video.ifoodtv/lib/**'
       - 'plugin.video.ifoodtv/tools/**'
@@ -33,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        addon: [plugin.video.happykids, plugin.video.ifoodtv]
+        addon: [plugin.video.ifoodtv]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -66,7 +63,7 @@ jobs:
       - name: Build icon and fanart from the official artwork
         run: |
           python3 -m pip install --quiet pillow
-          for a in plugin.video.happykids plugin.video.ifoodtv; do
+          for a in plugin.video.ifoodtv; do
             echo "== $a"
             python3 "$a/tools/fetch_logo.py" "$a/docs/recon/art"
             python3 "$a/tools/make_art.py" "$a/docs/recon/art"
@@ -75,9 +72,8 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add plugin.video.happykids/resources/icon.png plugin.video.happykids/resources/fanart.jpg \
-                  plugin.video.ifoodtv/resources/icon.png plugin.video.ifoodtv/resources/fanart.jpg
+          git add plugin.video.ifoodtv/resources/icon.png plugin.video.ifoodtv/resources/fanart.jpg
           git diff --staged --quiet && exit 0
-          git commit -m "HappyKids, iFood.tv: official icon and fanart (ft-siblings workflow)"
+          git commit -m "iFood.tv: official icon and fanart (ft-siblings workflow)"
           git pull --rebase --autostash
           git push

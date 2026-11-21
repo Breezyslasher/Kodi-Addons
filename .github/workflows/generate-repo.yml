@@ -79,7 +79,6 @@ jobs:
             'script.module.skipbuttons',
             'plugin.video.plexondemand',
             'plugin.video.fawesome',
-            'plugin.video.happykids',
             'plugin.video.ifoodtv'
         ]
         

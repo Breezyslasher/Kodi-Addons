@@ -21,7 +21,6 @@ on:
       - 'plugin.video.appletv/tools/endpoints.json'
       - 'plugin.video.starz/tools/endpoints.json'
       - 'plugin.video.fawesome/tools/endpoints.json'
-      - 'plugin.video.happykids/tools/endpoints.json'
       - 'plugin.video.ifoodtv/tools/endpoints.json'
       - 'plugin.video.tubitv/tools/endpoints.json'
       - 'plugin.video.tubitv/tools/check_endpoints.py'
@@ -55,10 +54,6 @@ jobs:
             spec: plugin.video.fawesome/tools/endpoints.json
             script: ''
             issue_label: fawesome-endpoint
-          - name: HappyKids
-            spec: plugin.video.happykids/tools/endpoints.json
-            script: ''
-            issue_label: happykids-endpoint
           - name: iFood.tv
             spec: plugin.video.ifoodtv/tools/endpoints.json
             script: ''

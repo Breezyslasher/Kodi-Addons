@@ -3,6 +3,9 @@
 service's official artwork, downloaded by tools/fetch_logo.py into ART_DIR:
 
 * icon   -- the App Store icon (else the Google Play icon), resized to 512.
+            ifood.tv links to no store page, so without one the icon is the
+            logo band of the site's share image (LOGO_BAND, as fractions of
+            the fanart) on a blur of its own orange backdrop.
 * fanart -- the site's share image (og:image) fitted into 1920x1080 over a
             blurred, darkened copy of itself, so any aspect ratio fills the
             frame without stretching.
@@ -15,10 +18,11 @@ import glob
 import os
 import sys
 
-from PIL import Image, ImageFilter, ImageEnhance
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 
 ADDON = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ADDON, "resources")
+LOGO_BAND = (0.240, 0.050, 0.770, 0.275)   # where splash-1.jpg carries the logo
 
 
 def pick(art, *names):
@@ -47,6 +51,18 @@ def main():
         bg.paste(fg, ((1920 - fg.width) // 2, (1080 - fg.height) // 2))
         bg.save(os.path.join(OUT, "fanart.jpg"), quality=90, optimize=True)
         print("fanart from", os.path.basename(src))
+    if not icon_src and share_src:
+        fan = Image.open(os.path.join(OUT, "fanart.jpg")).convert("RGB")
+        w, h = fan.size
+        band = fan.crop(tuple(int(f * d) for f, d in zip(LOGO_BAND, (w, h, w, h))))
+        icon = band.resize((512, 512), Image.LANCZOS).filter(ImageFilter.GaussianBlur(90))
+        logo = band.resize((470, round(band.height * 470 / band.width)), Image.LANCZOS)
+        mask = Image.new("L", logo.size, 0)
+        ImageDraw.Draw(mask).rectangle((14, 14, logo.width - 14, logo.height - 14), fill=255)
+        icon.paste(logo, ((512 - logo.width) // 2, (512 - logo.height) // 2),
+                   mask.filter(ImageFilter.GaussianBlur(7)))
+        icon.save(os.path.join(OUT, "icon.png"), optimize=True)
+        print("icon from the share image's logo band")
 
 
 if __name__ == "__main__":
