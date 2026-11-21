@@ -37,6 +37,7 @@ xbmc = _mod("xbmc")
 xbmc.LOGINFO, xbmc.LOGERROR, xbmc.LOGDEBUG, xbmc.ISO_639_1 = 1, 3, 0, 0
 xbmc.log = lambda msg, level=1: LOG.append(msg)
 xbmc.getLanguage = lambda *a: "en"
+xbmc.executebuiltin = lambda cmd, *a: LOG.append("BUILTIN %s" % cmd)
 
 
 class Actor(object):

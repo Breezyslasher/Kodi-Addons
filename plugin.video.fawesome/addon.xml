@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.24" provider-name="Breezyslasher">
+<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.25" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -27,6 +27,10 @@ This add-on uses Fawesome's undocumented website API and may need updating when 
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.11.25 - Search no longer re-asks after playback
+- FIX: playing a result from Search and then stopping no longer re-opened the
+  search keyboard. The results now live at a URL that carries the query, so
+  Kodi refreshes the same results instead of prompting again.
 2026.11.24 - Subtitles labelled by language again
 - Subtitles are downloaded as language-named files so Kodi shows "English",
   "Spanish" etc. in the menu and auto-selects your language. Kodi's

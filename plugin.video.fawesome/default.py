@@ -226,9 +226,16 @@ def open_feed(api, url, page=0):
 
 def search(api, query=None, page=0):
     if query is None:
-        query = ku.input_text(ku.localize(32101))
-        if not query:
-            return end("files", cache=False)
+        # Prompt, then redirect into a results folder whose URL carries the
+        # query. Listing the results under this parameter-less folder instead
+        # would make Kodi re-open the keyboard every time the folder refreshes
+        # -- e.g. when you come back from playing a result.
+        text = ku.input_text(ku.localize(32101))
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+        if text:
+            xbmc.executebuiltin("Container.Update(%s,replace)"
+                                % url_for(action="search", q=text))
+        return
     items, more = api.search(query, page)
     content = add_items(items)
     if more:
