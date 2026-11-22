@@ -2165,6 +2165,61 @@ v2026.11.19
 - Next episode countdown at the credits (Skip Buttons), autoplay setting</news>
 	</extension>
 </addon>
+<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.21.3" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="20.0.0"/>
+		<import addon="script.module.skipbuttons" version="1.0.1"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Free movies and TV shows from Fawesome (unofficial)</summary>
+		<description lang="en_GB">Browse and play Fawesome's free, on-demand catalogue of movies and TV shows: Home, Collections, Shows, Movies, En Español and Handpicked rows, with search, seasons and episodes, and subtitles where Fawesome has them. No account or sign-up -- Fawesome has none.
+
+Streams are plain HLS played through InputStream Adaptive; no DRM module is needed.
+
+Known gaps: Fawesome is ad-supported and its web player requests ads separately from the video (client-side VMAP). This add-on plays the programme stream only and does not insert those ads. The FAST linear channels on Fawesome's TV apps are not included. Fawesome is US-centric; its catalogue may differ or be unavailable elsewhere.
+
+This add-on uses Fawesome's undocumented website API and may need updating when the site changes.</description>
+		<disclaimer lang="en_GB">Unofficial. Not affiliated with or endorsed by Future Today Inc. Fawesome is a trademark of Future Today Inc.</disclaimer>
+		<language>en</language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>
+2026.11.21 (.3) - Skip intro and Next episode
+- Skip intro while a title's intro plays, and at the credits of an episode a
+  Next episode countdown with Watch credits -- from Fawesome's own intro and
+  credits times, the way its website does it (Skip Buttons module).
+- Episodes without a credits time play the next episode when they end. Turn
+  this off with "Autoplay next episode" in the settings.
+- Restart Kodi once after installing or updating so the new background
+  service starts.
+2026.11.21 (.2) - My List
+- A "My List" row on the home screen, plus "Add to My List" / "Remove from
+  My List" on each title's context menu. Saved per device (Fawesome has no
+  account), using its own queue, so it persists on this install.
+2026.11.21 - First test build
+- Browse Fawesome's sections and rows, genre lists and collections, shows by
+  season, and search; play titles as clear HLS through InputStream Adaptive.
+- Subtitles are labelled by language and offered in your Kodi language, then
+  English, first (downloaded as language-named files, since Fawesome's caption
+  URLs carry no language). One-season shows open straight to their episodes.
+- Robust against Fawesome shipping a new site build: an API 404 re-reads the
+  current build and retries, instead of breaking until the cache expires.
+- Known gaps: one muxed audio track per title (no alternate audio exists);
+  ad insertion and the TV apps' FAST channels are not included.
+		</news>
+	</extension>
+</addon>
 <addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.21.2" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
@@ -2192,22 +2247,6 @@ This add-on uses Fawesome's undocumented website API and may need updating when 
 			<icon>resources/icon.png</icon>
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
-		<news>
-2026.11.21 (.2) - My List
-- A "My List" row on the home screen, plus "Add to My List" / "Remove from
-  My List" on each title's context menu. Saved per device (Fawesome has no
-  account), using its own queue, so it persists on this install.
-2026.11.21 - First test build
-- Browse Fawesome's sections and rows, genre lists and collections, shows by
-  season, and search; play titles as clear HLS through InputStream Adaptive.
-- Subtitles are labelled by language and offered in your Kodi language, then
-  English, first (downloaded as language-named files, since Fawesome's caption
-  URLs carry no language). One-season shows open straight to their episodes.
-- Robust against Fawesome shipping a new site build: an API 404 re-reads the
-  current build and retries, instead of breaking until the cache expires.
-- Known gaps: one muxed audio track per title (no alternate audio exists);
-  ad insertion and the TV apps' FAST channels are not included.
-		</news>
 	</extension>
 </addon>
 </addons>
