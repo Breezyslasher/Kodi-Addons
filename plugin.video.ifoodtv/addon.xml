@@ -27,6 +27,15 @@ Known gaps: the service is ad-supported and its web player requests ads separate
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.11.22 - Skip intro and Next episode
+- Shows and movies in Movies &amp; Shows: a Next episode countdown with Watch
+  credits when an episode's credits start, and Skip intro where the service
+  gives an intro time (rare) -- the same Skip Buttons as the Fawesome add-on.
+  Recipe clips have no such times, so they play as before.
+- Episodes without a credits time play the next episode when they end. Turn
+  this off with "Autoplay next episode" in the settings.
+- Restart Kodi once after installing or updating so the new background
+  service starts.
 2026.11.21 - First test build
 - Browse iFood.tv's recipe sections (dish, cuisine, ingredient, method...), search, and play.
 - My List (watchlist), search, subtitles where available, and a self-heal

@@ -10,6 +10,18 @@ no account or sign-up: the service has none.
 - Recipe videos are plain MP4 (some HLS); no DRM module needed
 - Posters, fanart, plot, runtime and genres
 
+## Skip intro and Next episode
+
+For the shows and movies in *Movies & Shows*: at the credits of an episode a
+**Next episode** countdown with **Watch credits**, and **Skip intro** where
+the service gives an intro time (few titles do) -- from iFood.tv's own
+credits and intro times, the same way as the [Fawesome](../plugin.video.fawesome/)
+add-on (needs `script.module.skipbuttons`, installed automatically). Recipe
+clips carry no such times and play as before. Episodes without a credits
+time play the next episode when they end; turn this off with *Autoplay next
+episode* in the settings. **Restart Kodi once after installing or updating**
+so the background service starts.
+
 ## Known gaps
 
 - **Ads:** the web player requests ads separately from the video (client-side

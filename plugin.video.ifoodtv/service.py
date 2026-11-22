@@ -3,7 +3,8 @@
 
 What the markers are (confirmed live, docs/recon.md "Skip markers"): every
 title record carries intro_st / intro_et / endcredit_st / endcredit_et in
-seconds, filled on about half the episodes and most movies; 0 means unset.
+seconds; 0 means unset. On iFood.tv only the shows and movies have them
+(credits on about a third, intro rarely); recipe clips have none.
 default.py hands this service the title, its markers and the next episode's
 node_id through a home-window property just before playback starts; nothing
 here touches the network.

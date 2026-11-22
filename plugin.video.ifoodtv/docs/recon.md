@@ -21,3 +21,20 @@ How the ids were found: the shared player bundle (`iptv-main.js`) defaults to
 Future Today service (siteId 236 on this host returns Fawesome's catalogue).
 
 Sections on 2026-11-21: Home, Top Youtubers, Movies & Shows, Dish, Fun With Food, Ingredients, Cuisine, Healthy, Method, Speciality, Taste.
+
+## Skip markers (Skip Buttons)
+
+Same fields and rules as Fawesome (`plugin.video.fawesome/docs/recon.md`,
+"Skip markers"). Sampled live 2026-11-22 (`tools/probe_markers.py`, run by
+the ft-siblings workflow):
+
+| sample | intro set | credits set |
+|---|---|---|
+| 55 recipe clips (Home, Top Youtubers) | 0 | 0 |
+| 61 episodes from 5 series (Movies & Shows) | 0 | 21 |
+| 20 movies (Movies & Shows) | 2 | 10 |
+
+E.g. *Generation Cooks* S01E02: runtime 1377, credits 1347-1377; *Mask of
+Deception*: intro 0-10, credits 5609-5730. Next episode works the same way
+(detail `show_id` -> seasons -> next): *Generation Cooks* S01E01 -> 10758284,
+checked by `tools/smoke_test.py`.
