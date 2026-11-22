@@ -64,11 +64,11 @@ class AudioBookShelfService:
 		headers = {"Content-Type": "application/json"}
 		if extra_headers:
 			headers.update(extra_headers)
-		response = requests.post(url, headers=headers, json=payload)
+		response = requests.post(url, headers=headers, json=payload, timeout=(5, 30))
 		response.raise_for_status()
 		return response.json()
 
 	def _get(self, url):
-		response = requests.get(url)
+		response = requests.get(url, timeout=(5, 30))
 		response.raise_for_status()
 		return response.json()

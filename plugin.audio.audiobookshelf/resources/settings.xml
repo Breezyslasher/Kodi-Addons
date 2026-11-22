@@ -16,7 +16,7 @@
         <setting id="enable_downloads" type="bool" label="30009" default="true" />
         <setting id="download_path" type="folder" label="30010" default="" enable="eq(-1,true)" />
 
-        <setting id="delete_all_downloads" type="action" label="30011" action="RunPlugin(plugin://plugin.audio.audiobookshelf/?action=delete_all_downloads)" enable="eq(-3,true)" />
+        <setting id="delete_all_downloads" type="action" label="30011" action="RunPlugin(plugin://plugin.audio.audiobookshelf/?action=delete_all_downloads)" enable="eq(-2,true)" />
         <setting id="podcast_download_mode" type="select" label="30012" default="0" lvalues="30013|30014|30015" />
     </category>
     <category label="30016">

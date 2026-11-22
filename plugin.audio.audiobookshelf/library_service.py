@@ -1,6 +1,15 @@
+import re
+import time
 import requests
 import xbmc
 import json
+
+TIMEOUT = (5, 30)  # connect, read
+
+
+def redact(url):
+	"""Hide the token in a URL before logging it."""
+	return re.sub(r'token=[^&]+', 'token=***', url)
 
 class AudioBookShelfLibraryService:
 	"""Library service for Audiobookshelf API - Kodi 21 compatible"""
@@ -13,6 +22,17 @@ class AudioBookShelfLibraryService:
 			"Content-Type": "application/json",
 			"Authorization": f"Bearer {token}"
 		}
+		self._progress_cache = None  # {(item_id, episode_id): progress} once prefetched
+
+	def prefetch_progress(self):
+		"""Load all progress with one /api/me request; get_media_progress then uses it."""
+		response = requests.get(f"{self.base_url}/api/me", headers=self.headers, timeout=TIMEOUT)
+		response.raise_for_status()
+		cache = {}
+		for p in response.json().get('mediaProgress', []) or []:
+			cache[(p.get('libraryItemId'), p.get('episodeId') or None)] = p
+		self._progress_cache = cache
+		return cache
 
 	@staticmethod
 	def _json_or_ok(response):
@@ -27,7 +47,7 @@ class AudioBookShelfLibraryService:
 	def get_all_libraries(self):
 		"""Get all available libraries from the server"""
 		url = f"{self.base_url}/api/libraries"
-		response = requests.get(url, headers=self.headers)
+		response = requests.get(url, headers=self.headers, timeout=TIMEOUT)
 		response.raise_for_status()
 		return response.json()
 
@@ -38,7 +58,7 @@ class AudioBookShelfLibraryService:
 		if include_filterdata:
 			params["include"] = "filterdata"
 		
-		response = requests.get(url, headers=self.headers, params=params)
+		response = requests.get(url, headers=self.headers, params=params, timeout=TIMEOUT)
 		response.raise_for_status()
 		return response.json()
 
@@ -65,7 +85,7 @@ class AudioBookShelfLibraryService:
 		if include is not None:
 			params["include"] = include
 			
-		response = requests.get(url, headers=self.headers, params=params)
+		response = requests.get(url, headers=self.headers, params=params, timeout=TIMEOUT)
 		response.raise_for_status()
 		return response.json()
 
@@ -81,7 +101,7 @@ class AudioBookShelfLibraryService:
 		if episode is not None:
 			params["episode"] = episode
 		
-		response = requests.get(url, headers=self.headers, params=params)
+		response = requests.get(url, headers=self.headers, params=params, timeout=TIMEOUT)
 		response.raise_for_status()
 		return response.json()
 
@@ -106,7 +126,7 @@ class AudioBookShelfLibraryService:
 		if supported_mime_types:
 			payload["supportedMimeTypes"] = supported_mime_types
 
-		response = requests.post(url, headers=self.headers, json=payload)
+		response = requests.post(url, headers=self.headers, json=payload, timeout=TIMEOUT)
 		response.raise_for_status()
 		return response.json()
 
@@ -137,7 +157,7 @@ class AudioBookShelfLibraryService:
 						
 						if ino:
 							direct_url = f"{self.base_url}/api/items/{iid}/file/{ino}?token={self.token}"
-							xbmc.log(f"Using direct episode file URL: {direct_url}", xbmc.LOGINFO)
+							xbmc.log(f"Using direct episode file URL: {redact(direct_url)}", xbmc.LOGINFO)
 							return direct_url
 					
 					# Episode exists but no audio file - not downloaded on server
@@ -157,7 +177,7 @@ class AudioBookShelfLibraryService:
 				
 				if ino:
 					direct_url = f"{self.base_url}/api/items/{iid}/file/{ino}?token={self.token}"
-					xbmc.log(f"Using direct file URL: {direct_url}", xbmc.LOGINFO)
+					xbmc.log(f"Using direct file URL: {redact(direct_url)}", xbmc.LOGINFO)
 					return direct_url
 			
 			# Check for tracks (single file audiobooks like m4b)
@@ -167,7 +187,7 @@ class AudioBookShelfLibraryService:
 				content_url = tracks[0].get('contentUrl')
 				if content_url:
 					direct_url = f"{self.base_url}{content_url}?token={self.token}"
-					xbmc.log(f"Using track content URL: {direct_url}", xbmc.LOGINFO)
+					xbmc.log(f"Using track content URL: {redact(direct_url)}", xbmc.LOGINFO)
 					return direct_url
 			
 			# Fallback to play session API
@@ -183,7 +203,7 @@ class AudioBookShelfLibraryService:
 				if "audioTracks" in response and len(response["audioTracks"]) > 0:
 					relative_content_url = response["audioTracks"][0]["contentUrl"]
 					full_content_url = f"{self.base_url}{relative_content_url}?token={self.token}"
-					xbmc.log(f"Using audioTrack URL: {full_content_url}", xbmc.LOGINFO)
+					xbmc.log(f"Using audioTrack URL: {redact(full_content_url)}", xbmc.LOGINFO)
 					return full_content_url
 			except Exception as play_err:
 				xbmc.log(f"Play session API error: {str(play_err)}", xbmc.LOGDEBUG)
@@ -196,12 +216,14 @@ class AudioBookShelfLibraryService:
 
 	def get_media_progress(self, library_item_id, episode_id=None):
 		"""Get playback progress for a library item"""
+		if self._progress_cache is not None:
+			return self._progress_cache.get((library_item_id, episode_id or None))
 		endpoint = f"/api/me/progress/{library_item_id}"
 		if episode_id:
 			endpoint += f"/{episode_id}"
 
 		try:
-			response = requests.get(self.base_url + endpoint, headers=self.headers)
+			response = requests.get(self.base_url + endpoint, headers=self.headers, timeout=TIMEOUT)
 			
 			# 404 means no progress saved yet (not an error)
 			if response.status_code == 404:
@@ -230,15 +252,18 @@ class AudioBookShelfLibraryService:
 
 		data = {
 			"currentTime": current_time,
-			"duration": duration,
 			"isFinished": is_finished,
-			"progress": (current_time / duration) if duration > 0 else 0
 		}
-		
-		xbmc.log(f"[SYNC] Sending to {endpoint}: currentTime={current_time:.1f}, duration={duration:.1f}, progress={data['progress']*100:.1f}%, isFinished={is_finished}", xbmc.LOGINFO)
+		# Only send duration/progress when known; a placeholder like 1s would
+		# make the server show the item as complete.
+		if duration and duration > 1:
+			data["duration"] = duration
+			data["progress"] = min(current_time / duration, 1.0)
+
+		xbmc.log(f"[SYNC] Sending to {endpoint}: {data}", xbmc.LOGINFO)
 		
 		try:
-			response = requests.patch(self.base_url + endpoint, headers=self.headers, json=data)
+			response = requests.patch(self.base_url + endpoint, headers=self.headers, json=data, timeout=TIMEOUT)
 			xbmc.log(f"[SYNC] Response status: {response.status_code}", xbmc.LOGINFO)
 			response.raise_for_status()
 
@@ -251,14 +276,16 @@ class AudioBookShelfLibraryService:
 			# think the upload failed and retry it forever.
 			if not response.content:
 				xbmc.log(f"[SYNC] Success (empty response)", xbmc.LOGINFO)
+				self._remember_progress(library_item_id, episode_id, data)
 				return {"success": True}
 			try:
 				result = response.json()
 				xbmc.log(f"[SYNC] Success: Progress saved to server", xbmc.LOGINFO)
-				return result
 			except ValueError:
 				xbmc.log(f"[SYNC] Success (non-JSON response)", xbmc.LOGINFO)
-				return {"success": True}
+				result = {"success": True}
+			self._remember_progress(library_item_id, episode_id, data)
+			return result
 				
 		except requests.exceptions.HTTPError as e:
 			xbmc.log(f"[SYNC] HTTP Error: {e.response.status_code} - {e.response.text[:100]}", xbmc.LOGERROR)
@@ -267,6 +294,16 @@ class AudioBookShelfLibraryService:
 			xbmc.log(f"[SYNC] Error updating media progress: {str(e)}", xbmc.LOGERROR)
 			return None
 	
+	def _remember_progress(self, library_item_id, episode_id, data):
+		"""Keep the prefetched progress in step with what we just uploaded."""
+		if self._progress_cache is None:
+			return
+		key = (library_item_id, episode_id or None)
+		entry = dict(self._progress_cache.get(key) or {}, libraryItemId=library_item_id, episodeId=episode_id)
+		entry.update(data)
+		entry["lastUpdate"] = int(time.time() * 1000)
+		self._progress_cache[key] = entry
+
 	def start_playback_session(self, library_item_id, episode_id=None):
 		"""Start a playback session via POST /api/items/{id}/play."""
 		try:
@@ -292,12 +329,13 @@ class AudioBookShelfLibraryService:
 
 		data = {
 			"currentTime": current_time,
-			"duration": duration,
 			"timeListened": time_listened
 		}
+		if duration and duration > 1:
+			data["duration"] = duration
 
 		try:
-			response = requests.post(self.base_url + endpoint, headers=self.headers, json=data)
+			response = requests.post(self.base_url + endpoint, headers=self.headers, json=data, timeout=TIMEOUT)
 			response.raise_for_status()
 			# The server answers with 200 and no JSON body on success.
 			if not response.content:
@@ -315,7 +353,7 @@ class AudioBookShelfLibraryService:
 		endpoint = f"/api/session/{session_id}/close"
 
 		payload = None
-		if current_time is not None and duration:
+		if current_time is not None and duration and duration > 1:
 			payload = {
 				"currentTime": current_time,
 				"duration": duration,
@@ -323,7 +361,7 @@ class AudioBookShelfLibraryService:
 			}
 
 		try:
-			response = requests.post(self.base_url + endpoint, headers=self.headers, json=payload)
+			response = requests.post(self.base_url + endpoint, headers=self.headers, json=payload, timeout=TIMEOUT)
 			response.raise_for_status()
 			xbmc.log(f"Closed playback session: {session_id}", xbmc.LOGINFO)
 			return True

@@ -10,13 +10,10 @@ from urllib.parse import urlencode, parse_qsl, quote, unquote
 from library_service import AudioBookShelfLibraryService
 from playback_monitor import (PlaybackMonitor, get_best_resume_position, 
                               sync_all_to_server, get_local_progress, save_local_progress)
-from sync_manager import (get_sync_manager, startup_sync, on_network_reconnect, 
-                          mark_offline, stop_background_sync)
-from download_manager import DownloadManager, is_network_available
-try:
-    from urllib.request import urlretrieve
-except ImportError:
-    from urllib import urlretrieve
+from sync_manager import (get_sync_manager, startup_sync, on_network_reconnect,
+                          mark_offline, reached_finish)
+from download_manager import DownloadManager, is_network_available, is_local_path
+import requests
 
 ADDON = xbmcaddon.Addon()
 ADDON_HANDLE = int(sys.argv[1])
@@ -84,16 +81,17 @@ def get_setting_int(setting_id, default=0):
 
 
 def get_finished_threshold():
-    """Get the finished threshold from settings (0=90%, 1=95%, 2=last 30s, 3=last 60s)"""
+    """Finished threshold: a fraction (90%/95%) or seconds before the end (30/60)."""
     idx = get_setting_int('mark_podcast_finished_threshold', 1)
-    if idx == 0:
-        return 0.90
-    elif idx == 1:
-        return 0.95
-    elif idx == 2:
-        return 0.97  # ~last 30s of typical podcast
-    else:
-        return 0.95  # default
+    return {0: 0.90, 1: 0.95, 2: 30, 3: 60}.get(idx, 0.95)
+
+
+def prefetch_progress(library_service):
+    """Fetch all progress in one request so listings don't ask once per item."""
+    try:
+        library_service.prefetch_progress()
+    except Exception as e:
+        xbmc.log(f"Progress prefetch failed, falling back to per-item requests: {e}", xbmc.LOGDEBUG)
 
 
 def get_sync_interval(is_podcast=False):
@@ -114,6 +112,11 @@ def check_download_path():
         path = get_setting('download_path')
         if not path or path.strip() == '':
             return False
+    if not is_local_path(xbmcvfs.translatePath(path)):
+        xbmcgui.Dialog().ok('Local Folder Required',
+                            'Network folders (smb://, nfs://) are not supported for downloads.\n'
+                            'Choose a folder on this device.')
+        return False
     return True
 
 
@@ -145,18 +148,18 @@ def build_server_url(address, port):
 
 def get_library_service():
     """Get authenticated library service with caching"""
-    if not is_network_available():
-        if get_setting_bool('enable_downloads') and has_downloads():
-            mark_offline()  # Mark that we're going offline
-            return None, None, None, True
-        xbmcgui.Dialog().ok('No Network', 'No network connection available')
-        return None, None, None, False
-    
     url = build_server_url(get_setting('ipaddress'), get_setting('port', '13378'))
 
     if not url:
         xbmcgui.Dialog().ok('Setup Required', 'Please configure server settings')
         ADDON.openSettings()
+        return None, None, None, False
+
+    if not is_network_available(url):
+        if get_setting_bool('enable_downloads') and has_downloads():
+            mark_offline()  # Mark that we're going offline
+            return None, None, None, True
+        xbmcgui.Dialog().ok('Server Unreachable', f'Could not reach {url}')
         return None, None, None, False
 
     # API key auth: an Audiobookshelf API key is a long-lived bearer token, so
@@ -167,9 +170,7 @@ def get_library_service():
         xbmc.log("Using API key auth", xbmc.LOGINFO)
         lib_service = AudioBookShelfLibraryService(url, api_key)
         try:
-            sync_mgr = get_sync_manager()
-            sync_mgr.set_library_service(lib_service)
-            sync_mgr.start_background_sync()
+            get_sync_manager().set_library_service(lib_service)
         except Exception as e:
             xbmc.log(f"Sync manager setup error: {e}", xbmc.LOGDEBUG)
         return lib_service, url, api_key, False
@@ -182,12 +183,8 @@ def get_library_service():
         xbmc.log("Using cached access token", xbmc.LOGINFO)
         lib_service = AudioBookShelfLibraryService(url, token_cache['access_token'])
 
-        # Run startup sync with the library service
         try:
-            sync_mgr = get_sync_manager()
-            sync_mgr.set_library_service(lib_service)
-            # Start background sync if not already running
-            sync_mgr.start_background_sync()
+            get_sync_manager().set_library_service(lib_service)
         except Exception as e:
             xbmc.log(f"Sync manager setup error: {e}", xbmc.LOGDEBUG)
 
@@ -277,8 +274,11 @@ def download_cover(url, item_id):
         cache_file = os.path.join(cache_dir, f"{item_id}.jpg")
         if os.path.exists(cache_file):
             return cache_file
-        urlretrieve(url, cache_file)
-        return cache_file if os.path.exists(cache_file) else None
+        response = requests.get(url, timeout=(5, 15))
+        response.raise_for_status()
+        with open(cache_file, 'wb') as f:
+            f.write(response.content)
+        return cache_file
     except:
         return None
 
@@ -351,7 +351,8 @@ def count_finished_episodes(library_service, item_id, episodes):
                 if progress:
                     if progress.get('isFinished'):
                         finished += 1
-                    elif progress.get('progress', 0) >= finished_threshold:
+                    elif reached_finish(progress.get('currentTime', 0), progress.get('duration', 0),
+                                        finished_threshold):
                         finished += 1
             except:
                 pass
@@ -374,14 +375,17 @@ def clear_progress(item_id, episode_id=None):
     sync_mgr = get_sync_manager()
     key = f"{item_id}_{episode_id}" if episode_id else item_id
     
-    # Save zero progress locally
-    sync_mgr.save_local_progress(item_id, episode_id, 0, 1, is_finished=False, needs_upload=True)
+    # Save zero progress locally, keeping the known duration
+    local = sync_mgr.get_local_progress(item_id, episode_id)
+    duration = (local or {}).get('duration') or 0
+    sync_mgr.save_local_progress(item_id, episode_id, 0, duration, is_finished=False, needs_upload=True)
     
-    # Update server if online
+    # Update server if online (duration 0 = unknown, so it isn't sent)
     if library_service:
         try:
-            library_service.update_media_progress(item_id, 0, 1, is_finished=False, episode_id=episode_id)
-            sync_mgr.mark_uploaded(item_id, episode_id)
+            if library_service.update_media_progress(item_id, 0, duration, is_finished=False,
+                                                     episode_id=episode_id) is not None:
+                sync_mgr.mark_uploaded(item_id, episode_id)
             xbmc.log(f"[PROGRESS] Cleared progress on server: {key}", xbmc.LOGINFO)
         except Exception as e:
             xbmc.log(f"[PROGRESS] Error clearing server progress: {e}", xbmc.LOGERROR)
@@ -407,7 +411,7 @@ def mark_as_finished(item_id, episode_id=None, finished=True):
     
     # Get current progress to preserve duration
     local = sync_mgr.get_local_progress(item_id, episode_id)
-    duration = local.get('duration', 1) if local else 1
+    duration = (local or {}).get('duration') or 0
     current_time = duration if finished else 0
     
     # Save locally
@@ -417,9 +421,9 @@ def mark_as_finished(item_id, episode_id=None, finished=True):
     # Update server if online
     if library_service:
         try:
-            library_service.update_media_progress(item_id, current_time, duration, 
-                                                 is_finished=finished, episode_id=episode_id)
-            sync_mgr.mark_uploaded(item_id, episode_id)
+            if library_service.update_media_progress(item_id, current_time, duration,
+                                                     is_finished=finished, episode_id=episode_id) is not None:
+                sync_mgr.mark_uploaded(item_id, episode_id)
             xbmc.log(f"[PROGRESS] Marked {'finished' if finished else 'unfinished'} on server: {key}", xbmc.LOGINFO)
         except Exception as e:
             xbmc.log(f"[PROGRESS] Error updating server: {e}", xbmc.LOGERROR)
@@ -496,6 +500,7 @@ def list_audiobooks_combined(book_libs=None):
         
         show_markers = get_setting_bool('show_progress_markers', True)
         finished_threshold = get_finished_threshold()
+        prefetch_progress(library_service)
         
         all_items = []
         for lib in book_libs:
@@ -608,6 +613,7 @@ def list_podcasts_combined(podcast_libs=None):
         
         show_markers = get_setting_bool('show_progress_markers', True)
         finished_threshold = get_finished_threshold()
+        prefetch_progress(library_service)
         
         all_items = []
         for lib in podcast_libs:
@@ -1090,6 +1096,7 @@ def list_library_items(library_id, is_podcast=False):
         
         show_markers = get_setting_bool('show_progress_markers', True)
         finished_threshold = get_finished_threshold()
+        prefetch_progress(library_service)
         
         for item in items.get('results', []):
             media = item.get('media', {})
@@ -1119,9 +1126,9 @@ def list_library_items(library_id, is_podcast=False):
             duration = media.get('duration', 0)
             
             # Also save cover to download folder for offline use
-            if local_cover and get_setting_bool('enable_downloads'):
+            if local_cover and is_downloaded:
                 try:
-                    download_path = get_setting('download_path', '')
+                    download_path = download_manager.download_path
                     if download_path:
                         item_folder = os.path.join(download_path, item_id)
                         if not os.path.exists(item_folder):
@@ -1251,6 +1258,7 @@ def list_episodes(item_id, sort_by='date'):
         min_for_sort = get_setting_int('min_episodes_for_sort', 10)
         autoplay_next = get_setting_bool('autoplay_next_episode', False)
         finished_threshold = get_finished_threshold()
+        prefetch_progress(library_service)
         
         # Find New Episodes option
         if feed_url:
@@ -1313,7 +1321,8 @@ def list_episodes(item_id, sort_by='date'):
                     if progress:
                         server_finished = progress.get('isFinished', False)
                         server_pct = progress.get('progress', 0) * 100
-                        if server_finished or server_pct >= finished_threshold * 100:
+                        if server_finished or reached_finish(progress.get('currentTime', 0),
+                                                             progress.get('duration', 0), finished_threshold):
                             is_finished = True
                         elif server_pct > progress_pct:
                             progress_pct = server_pct
@@ -1819,14 +1828,21 @@ def download_episode_to_server(item_id, episode_id):
         return
     
     try:
-        import requests
-        response = requests.post(f"{url}/api/podcasts/{item_id}/download-episodes",
-                                headers=library_service.headers, json=[episode_id], timeout=30)
-        
-        if response.status_code == 200:
-            xbmcgui.Dialog().notification('Download Started', 'Server downloading...', xbmcgui.NOTIFICATION_INFO)
-        else:
-            xbmcgui.Dialog().notification('Failed', f'Error {response.status_code}', xbmcgui.NOTIFICATION_ERROR)
+        # The endpoint takes RSS episode objects (with an enclosure URL), not episode ids.
+        item = library_service.get_library_item_by_id(item_id, expanded=1)
+        episode = next((ep for ep in item.get('media', {}).get('episodes', [])
+                        if ep.get('id') == episode_id), None)
+        enclosure = (episode or {}).get('enclosure') or {}
+        if not enclosure.get('url'):
+            xbmcgui.Dialog().notification('Failed', 'Episode has no download URL', xbmcgui.NOTIFICATION_ERROR)
+            return
+        episode_data = {key: episode.get(key) for key in
+                        ('title', 'subtitle', 'description', 'pubDate', 'publishedAt', 'season',
+                         'episode', 'episodeType', 'guid', 'chapters')
+                        if episode.get(key) not in (None, '')}
+        episode_data['enclosure'] = enclosure
+        library_service.download_podcast_episodes_with_data(item_id, episode_data)
+        xbmcgui.Dialog().notification('Download Started', 'Server downloading...', xbmcgui.NOTIFICATION_INFO)
     except Exception as e:
         xbmcgui.Dialog().notification('Error', str(e)[:50], xbmcgui.NOTIFICATION_ERROR)
 
@@ -1904,15 +1920,18 @@ def search_podcasts():
     library_service, url, token, offline = get_library_service()
     if not library_service or offline:
         xbmcgui.Dialog().notification('Error', 'Requires network', xbmcgui.NOTIFICATION_ERROR)
+        xbmcplugin.endOfDirectory(ADDON_HANDLE, succeeded=False)
         return
     
     keyboard = xbmc.Keyboard('', 'Search Podcasts')
     keyboard.doModal()
     if not keyboard.isConfirmed():
+        xbmcplugin.endOfDirectory(ADDON_HANDLE, succeeded=False)
         return
     
     query = keyboard.getText()
     if not query:
+        xbmcplugin.endOfDirectory(ADDON_HANDLE, succeeded=False)
         return
     
     try:
@@ -1922,6 +1941,7 @@ def search_podcasts():
         
         if not results.get('results'):
             xbmcgui.Dialog().notification('No Results', 'No podcasts found', xbmcgui.NOTIFICATION_INFO)
+            xbmcplugin.endOfDirectory(ADDON_HANDLE, succeeded=False)
             return
         
         xbmcplugin.setContent(ADDON_HANDLE, 'albums')
@@ -1947,6 +1967,7 @@ def search_podcasts():
         
     except Exception as e:
         xbmcgui.Dialog().notification('Error', str(e)[:50], xbmcgui.NOTIFICATION_ERROR)
+        xbmcplugin.endOfDirectory(ADDON_HANDLE, succeeded=False)
 
 
 def add_podcast_to_library(feed_url, name):
@@ -2127,11 +2148,11 @@ def play_audio(play_url, title, duration, library_service, item_id, episode_id=N
     finished_threshold = get_finished_threshold()
     
     _active_monitor = PlaybackMonitor(
-        library_service, item_id, duration if duration > 0 else 1,
+        library_service, item_id, duration,
         episode_id=episode_id,
         sync_enabled=sync_enabled, sync_on_stop=sync_on_stop, 
         sync_interval=sync_interval, finished_threshold=finished_threshold,
-        file_offset=file_offset
+        file_offset=file_offset, expected_file=play_url
     )
     _active_monitor.start_monitoring_async(start_position)
 
@@ -2351,12 +2372,14 @@ def play_podcast_queue(item_id, start_episode_id):
     attaches its own progress monitor - so item identity and sync are handled
     per episode for free.
     """
+    # This runs from a non-playable list item, so there is no handle to resolve:
+    # every path, even a single episode, has to start playback through a playlist.
     library_service, url, token, offline = get_library_service()
 
     # Fully offline: build the queue from downloaded episodes only.
     if not library_service:
         if not _play_offline_podcast_queue(item_id, start_episode_id):
-            play_offline_item(item_id, start_episode_id, queued=True)
+            _play_episode_via_playlist(item_id, start_episode_id)
         return
 
     try:
@@ -2371,17 +2394,11 @@ def play_podcast_queue(item_id, start_episode_id):
         ids = [ep.get('id') for ep in playable]
 
         if start_episode_id not in ids:
-            # Selected episode has no server audio and no download - play single.
-            play_episode(item_id, start_episode_id, queued=True)
+            xbmcgui.Dialog().notification('Not Available', 'Not on server', xbmcgui.NOTIFICATION_WARNING)
             return
 
         start_idx = ids.index(start_episode_id)
-        queue = playable[start_idx:start_idx + 100]  # cap runaway feeds
-
-        if len(queue) <= 1:
-            # Nothing to advance into - just play the one episode.
-            play_episode(item_id, start_episode_id, queued=True)
-            return
+        queue = playable[start_idx:start_idx + 100]  # cap runaway feeds; may be just one
 
         metadata = item.get('media', {}).get('metadata', {})
         creator = metadata.get('author') or metadata.get('title', '')
@@ -2416,7 +2433,17 @@ def play_podcast_queue(item_id, start_episode_id):
     except Exception as e:
         xbmc.log(f"[QUEUE] Failed to build podcast queue: {e}", xbmc.LOGERROR)
         # Fall back to single play so the click still does something.
-        play_episode(item_id, start_episode_id, queued=True)
+        _play_episode_via_playlist(item_id, start_episode_id)
+
+
+def _play_episode_via_playlist(item_id, episode_id):
+    """Play one episode from a non-playable item (handle -1) via a one-entry playlist."""
+    li = xbmcgui.ListItem(label='Episode')
+    li.setProperty('IsPlayable', 'true')
+    pl = xbmc.PlayList(xbmc.PLAYLIST_MUSIC)
+    pl.clear()
+    pl.add(build_url(action='play_episode', item_id=item_id, episode_id=episode_id), li)
+    xbmc.Player().play(pl)
 
 
 def _play_offline_podcast_queue(item_id, start_episode_id):
@@ -2601,14 +2628,15 @@ def play_offline_item(item_id, episode_id=None, seek_position=None, queued=False
     
     _active_monitor = PlaybackMonitor(
         library_service,  # Pass library service for server sync
-        item_id, 
-        duration if duration > 0 else 1,
+        item_id,
+        duration,
         episode_id=episode_id,
         sync_enabled=True,  # Always enable sync
         sync_on_stop=True,
         sync_interval=get_sync_interval(is_podcast),
         finished_threshold=finished_threshold,
-        file_offset=file_offset  # Pass file offset for correct overall time calculation
+        file_offset=file_offset,  # Pass file offset for correct overall time calculation
+        expected_file=file_path
     )
     _active_monitor.start_monitoring_async(start_pos)
 
@@ -2671,6 +2699,8 @@ def download_podcast(item_id):
         # Filter episodes based on download mode setting
         download_mode = get_setting_int('podcast_download_mode', 0)
         episodes = []
+        if download_mode != 0:
+            prefetch_progress(library_service)
         
         if download_mode == 0:  # All Episodes
             episodes = all_episodes
@@ -2738,6 +2768,7 @@ def download_podcast(item_id):
                     'podcast_title': podcast_title,
                     'duration': ep.get('duration', 0),
                     'publishedAt': ep.get('publishedAt', 0),
+                    'audio_file': ep.get('audioFile'),
                     'cover_url': f"{url}/api/items/{item_id}/cover?token={token}"
                 }
                 download_manager.download_item(item_id, item_data, library_service, episode_id=ep_id, show_progress=False)
@@ -2775,6 +2806,7 @@ def download_episode(item_id, episode_id):
             'podcast_title': podcast_title,
             'duration': episode.get('duration', 0),
             'publishedAt': episode.get('publishedAt', 0),
+            'audio_file': episode.get('audioFile'),
             'cover_url': f"{url}/api/items/{item_id}/cover?token={token}"
         }
 

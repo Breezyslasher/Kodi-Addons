@@ -10,11 +10,18 @@ from datetime import datetime
 
 
 # Constants
-SYNC_CHECK_INTERVAL = 60  # Check for sync every 60 seconds when idle
-SERVER_POLL_INTERVAL = 300  # Poll server for updates every 5 minutes
 PROGRESS_THRESHOLD = 5  # Minimum seconds difference to trigger sync
 FINISHED_THRESHOLD_DEFAULT = 0.95
-SYNC_RETRY_DELAY = 30  # Wait 30 seconds before retry on failure
+
+
+def reached_finish(position, duration, threshold=FINISHED_THRESHOLD_DEFAULT):
+    """True when position counts as finished. threshold <= 1 is a fraction of the
+    duration; a larger value is a number of seconds before the end."""
+    if not duration or duration <= 1:
+        return False
+    if threshold > 1:
+        return position >= duration - threshold
+    return position / duration >= threshold
 
 
 class SyncManager:
@@ -54,11 +61,8 @@ class SyncManager:
         self._progress_data = self._load_progress()
         self._sync_state = self._load_sync_state()
         self._library_service = None
-        self._background_thread = None
-        self._stop_background = threading.Event()
-        self._last_server_poll = 0
         self._is_online = False
-        self._pending_sync_items = set()  # Items that need immediate sync
+        self._dirty = set()  # Keys changed by this process, merged into the file on save
         
         # Migrate from old files
         self._migrate_old_progress()
@@ -71,17 +75,26 @@ class SyncManager:
             if os.path.exists(self.progress_file):
                 with open(self.progress_file, 'r') as f:
                     data = json.load(f)
-                    xbmc.log(f"[SYNC_MGR] Loaded {len(data)} progress entries", xbmc.LOGINFO)
+                    xbmc.log(f"[SYNC_MGR] Loaded {len(data)} progress entries", xbmc.LOGDEBUG)
                     return data
         except Exception as e:
             xbmc.log(f"[SYNC_MGR] Error loading progress: {e}", xbmc.LOGERROR)
         return {}
     
     def _save_progress(self):
-        """Save all progress data to unified file"""
+        """Write only the keys this process changed, so other processes' progress isn't lost."""
         try:
-            with open(self.progress_file, 'w') as f:
-                json.dump(self._progress_data, f, indent=2)
+            with self._lock:
+                data = self._load_progress()
+                for key in self._dirty:
+                    if key in self._progress_data:
+                        data[key] = self._progress_data[key]
+                self._dirty.clear()
+                tmp = f"{self.progress_file}.{os.getpid()}.tmp"
+                with open(tmp, 'w') as f:
+                    json.dump(data, f, indent=2)
+                os.replace(tmp, self.progress_file)
+                self._progress_data = data
         except Exception as e:
             xbmc.log(f"[SYNC_MGR] Error saving progress: {e}", xbmc.LOGERROR)
     
@@ -134,6 +147,7 @@ class SyncManager:
                     xbmc.log(f"[SYNC_MGR] Error migrating {filename}: {e}", xbmc.LOGERROR)
         
         if migrated > 0:
+            self._dirty.update(self._progress_data.keys())
             self._save_progress()
             xbmc.log(f"[SYNC_MGR] Total migrated: {migrated} entries", xbmc.LOGINFO)
     
@@ -227,14 +241,14 @@ class SyncManager:
         
         if library_service and was_offline:
             xbmc.log("[SYNC_MGR] Library service connected - going online", xbmc.LOGINFO)
-            
-            # Check if we were offline and now online
+
             if self._sync_state.get('was_offline', False):
-                xbmc.log("[SYNC_MGR] Network reconnected - triggering sync", xbmc.LOGINFO)
+                xbmc.log("[SYNC_MGR] Network reconnected - syncing", xbmc.LOGINFO)
                 self._sync_state['was_offline'] = False
                 self._save_sync_state()
-                # Schedule reconnection sync
-                threading.Thread(target=self._sync_on_reconnect_async, daemon=True).start()
+                self._sync_on_reconnect_async()
+            elif self.get_pending_uploads():
+                self.sync_all_pending_uploads()
     
     def mark_offline(self):
         """Mark that we're going offline (e.g., entering download mode)"""
@@ -257,8 +271,8 @@ class SyncManager:
         key = self.get_progress_key(item_id, episode_id)
         return self._progress_data.get(key)
     
-    def save_local_progress(self, item_id, episode_id, current_time, duration, 
-                           is_finished=False, needs_upload=True, from_server=False):
+    def save_local_progress(self, item_id, episode_id, current_time, duration,
+                           is_finished=False, needs_upload=True, from_server=False, updated_at=None):
         """
         Save progress locally.
         
@@ -270,6 +284,7 @@ class SyncManager:
             is_finished: Whether the item is finished
             needs_upload: Whether this needs to be synced to server
             from_server: If True, this data came from server (don't mark for upload)
+            updated_at: When the change happened (defaults to now)
         """
         key = self.get_progress_key(item_id, episode_id)
         
@@ -284,12 +299,12 @@ class SyncManager:
             'duration': duration,
             'progress': progress_pct,
             'is_finished': is_finished,
-            'updated_at': time.time(),
+            'updated_at': updated_at or time.time(),
             'needs_upload': needs_upload and not from_server,
             'server_time': existing.get('server_time', 0) if not from_server else current_time,
             'last_synced': time.time() if from_server else existing.get('last_synced', 0)
         }
-        
+        self._dirty.add(key)
         self._save_progress()
         
         # Add to known items
@@ -310,6 +325,7 @@ class SyncManager:
             self._progress_data[key]['needs_upload'] = False
             self._progress_data[key]['last_synced'] = time.time()
             self._progress_data[key]['server_time'] = self._progress_data[key]['current_time']
+            self._dirty.add(key)
             self._save_progress()
             xbmc.log(f"[SYNC_MGR] Marked uploaded: {key}", xbmc.LOGINFO)
     
@@ -371,87 +387,64 @@ class SyncManager:
     # BIDIRECTIONAL SYNC OPERATIONS
     # =========================================================================
     
+    def _resolve(self, local, server):
+        """'pull' (server wins), 'push' (local wins) or None. Already-uploaded local
+        data never beats the server; otherwise the most recent change wins."""
+        if not server:
+            return 'push' if local and local.get('needs_upload') else None
+        if not local:
+            return 'pull'
+        same = (bool(server.get('isFinished')) == bool(local.get('is_finished')) and
+                abs((server.get('currentTime') or 0) - (local.get('current_time') or 0)) <= PROGRESS_THRESHOLD)
+        if same:
+            return None
+        if not local.get('needs_upload'):
+            return 'pull'
+        server_updated = (server.get('lastUpdate') or 0) / 1000.0
+        return 'push' if (local.get('updated_at') or 0) >= server_updated else 'pull'
+
+    def _sync_item(self, item_id, episode_id, finished_threshold):
+        """Sync one item both ways. Returns (local_state, pulled, pushed)."""
+        local = self.get_local_progress(item_id, episode_id)
+        server = self.get_server_progress(item_id, episode_id) if self._library_service else None
+        duration = max((local or {}).get('duration') or 0, (server or {}).get('duration') or 0)
+        action = self._resolve(local, server)
+        key = self.get_progress_key(item_id, episode_id)
+        xbmc.log(f"[SYNC_MGR] {key}: local={local and local.get('current_time')} "
+                 f"server={server and server.get('currentTime')} -> {action}", xbmc.LOGINFO)
+
+        if action == 'pull':
+            server_time = server.get('currentTime') or 0
+            finished = bool(server.get('isFinished')) or reached_finish(server_time, duration, finished_threshold)
+            self.save_local_progress(item_id, episode_id, server_time, duration, is_finished=finished,
+                                     needs_upload=False, from_server=True,
+                                     updated_at=(server.get('lastUpdate') or 0) / 1000.0 or None)
+            return self.get_local_progress(item_id, episode_id), True, False
+        if action == 'push':
+            pushed = self.upload_progress_to_server(item_id, episode_id, local.get('current_time', 0),
+                                                    duration, local.get('is_finished', False))
+            return local, False, pushed
+        if local and local.get('needs_upload') and server:
+            self.mark_uploaded(item_id, episode_id)  # Already matches the server
+        if local:
+            return local, False, False
+        return None, False, False
+
     def get_best_resume_position(self, item_id, episode_id=None, finished_threshold=None):
         """
-        Get the best resume position by comparing local and server progress.
-        Updates local if server is ahead, uploads if local is ahead.
-        
-        This is the main entry point for getting playback position.
-        
+        Get the resume position after syncing local and server progress.
         Returns: (position, is_finished, duration)
         """
         if finished_threshold is None:
             finished_threshold = FINISHED_THRESHOLD_DEFAULT
-        
-        key = self.get_progress_key(item_id, episode_id)
-        
-        # Get local progress
-        local = self.get_local_progress(item_id, episode_id)
-        local_time = local.get('current_time', 0) if local else 0
-        local_finished = local.get('is_finished', False) if local else False
-        local_duration = local.get('duration', 0) if local else 0
-        local_updated = local.get('updated_at', 0) if local else 0
-        
-        # Get server progress (if online)
-        server_time = 0
-        server_finished = False
-        server_duration = 0
-        
-        if self._library_service:
-            server_progress = self.get_server_progress(item_id, episode_id)
-            if server_progress:
-                server_time = server_progress.get('currentTime', 0)
-                server_finished = server_progress.get('isFinished', False)
-                server_duration = server_progress.get('duration', 0)
-        
-        # Use best duration
-        duration = max(local_duration, server_duration)
-        
-        xbmc.log(f"[SYNC_MGR] Resume comparison for {key}: "
-                f"local={local_time:.1f}s (finished={local_finished}), "
-                f"server={server_time:.1f}s (finished={server_finished}), "
-                f"duration={duration:.1f}s", xbmc.LOGINFO)
-        
-        # Handle finished states first
-        if server_finished and not local_finished:
-            # Server says finished, update local
-            xbmc.log(f"[SYNC_MGR] Server marked as finished, updating local", xbmc.LOGINFO)
-            self.save_local_progress(item_id, episode_id, server_time, duration, 
-                                    is_finished=True, needs_upload=False, from_server=True)
+        state, _, _ = self._sync_item(item_id, episode_id, finished_threshold)
+        if not state:
+            return 0, False, 0
+        duration = state.get('duration') or 0
+        if state.get('is_finished'):
             return 0, True, duration
-        
-        if local_finished and not server_finished:
-            # Local is finished but server isn't - upload to server
-            xbmc.log(f"[SYNC_MGR] Local finished, server not - uploading", xbmc.LOGINFO)
-            if self._library_service and duration > 0:
-                self.upload_progress_to_server(item_id, episode_id, local_time, duration, is_finished=True)
-            return 0, True, duration
-        
-        if local_finished and server_finished:
-            return 0, True, duration
-        
-        # Compare times and sync appropriately
-        time_diff = abs(local_time - server_time)
-        
-        if server_time > local_time and time_diff > PROGRESS_THRESHOLD:
-            # Server is ahead - update local from server
-            xbmc.log(f"[SYNC_MGR] Server ahead by {time_diff:.1f}s, updating local", xbmc.LOGINFO)
-            is_finished = (server_time / duration >= finished_threshold) if duration > 0 else False
-            self.save_local_progress(item_id, episode_id, server_time, duration,
-                                    is_finished=is_finished, needs_upload=False, from_server=True)
-            return server_time, is_finished, duration
-        
-        elif local_time > server_time and time_diff > PROGRESS_THRESHOLD:
-            # Local is ahead - upload to server
-            xbmc.log(f"[SYNC_MGR] Local ahead by {time_diff:.1f}s, uploading to server", xbmc.LOGINFO)
-            if self._library_service:
-                self.upload_progress_to_server(item_id, episode_id, local_time, duration, local_finished)
-            return local_time, local_finished, duration
-        
-        # Times are similar, use the furthest
-        best_time = max(local_time, server_time)
-        return best_time, False, duration
-    
+        return state.get('current_time') or 0, False, duration
+
     def sync_item_bidirectional(self, item_id, episode_id=None, finished_threshold=None):
         """
         Perform bidirectional sync for a single item.
@@ -459,58 +452,9 @@ class SyncManager:
         """
         if finished_threshold is None:
             finished_threshold = FINISHED_THRESHOLD_DEFAULT
-        
-        key = self.get_progress_key(item_id, episode_id)
-        
-        local = self.get_local_progress(item_id, episode_id)
-        server = self.get_server_progress(item_id, episode_id)
-        
-        local_time = local.get('current_time', 0) if local else 0
-        local_finished = local.get('is_finished', False) if local else False
-        local_duration = local.get('duration', 0) if local else 0
-        
-        server_time = server.get('currentTime', 0) if server else 0
-        server_finished = server.get('isFinished', False) if server else False
-        server_duration = server.get('duration', 0) if server else 0
-        
-        duration = max(local_duration, server_duration)
-        
-        synced_from_server = False
-        uploaded_to_server = False
-        
-        # No data anywhere - nothing to sync
-        if duration == 0 and local_time == 0 and server_time == 0:
-            return False, False
-        
-        # Handle finished states
-        if server_finished and not local_finished:
-            self.save_local_progress(item_id, episode_id, server_time, duration,
-                                    is_finished=True, needs_upload=False, from_server=True)
-            synced_from_server = True
-            xbmc.log(f"[SYNC_MGR] Synced finished state from server: {key}", xbmc.LOGINFO)
-        
-        elif local_finished and not server_finished:
-            if self.upload_progress_to_server(item_id, episode_id, local_time, duration, is_finished=True):
-                uploaded_to_server = True
-            xbmc.log(f"[SYNC_MGR] Uploaded finished state to server: {key}", xbmc.LOGINFO)
-        
-        elif not local_finished and not server_finished:
-            time_diff = abs(local_time - server_time)
-            
-            if server_time > local_time and time_diff > PROGRESS_THRESHOLD:
-                is_finished = (server_time / duration >= finished_threshold) if duration > 0 else False
-                self.save_local_progress(item_id, episode_id, server_time, duration,
-                                        is_finished=is_finished, needs_upload=False, from_server=True)
-                synced_from_server = True
-                xbmc.log(f"[SYNC_MGR] Downloaded progress from server: {key} = {server_time:.1f}s", xbmc.LOGINFO)
-            
-            elif local_time > server_time and time_diff > PROGRESS_THRESHOLD:
-                if self.upload_progress_to_server(item_id, episode_id, local_time, duration, local_finished):
-                    uploaded_to_server = True
-                xbmc.log(f"[SYNC_MGR] Uploaded progress to server: {key} = {local_time:.1f}s", xbmc.LOGINFO)
-        
-        return synced_from_server, uploaded_to_server
-    
+        _, pulled, pushed = self._sync_item(item_id, episode_id, finished_threshold)
+        return pulled, pushed
+
     def sync_all_pending_uploads(self):
         """Upload all pending progress to server"""
         if not self._library_service:
@@ -552,7 +496,8 @@ class SyncManager:
             return 0, 0
         
         xbmc.log("[SYNC_MGR] Starting reconnection sync", xbmc.LOGINFO)
-        
+        self._prefetch_server_progress()
+
         # First, upload all pending local progress
         uploaded = self.sync_all_pending_uploads()
         
@@ -603,6 +548,7 @@ class SyncManager:
             return 0, 0
         
         xbmc.log("[SYNC_MGR] Starting startup sync", xbmc.LOGINFO)
+        self._prefetch_server_progress()
         
         uploaded = 0
         downloaded = 0
@@ -636,105 +582,14 @@ class SyncManager:
         
         return uploaded, downloaded
     
-    # =========================================================================
-    # BACKGROUND SYNC
-    # =========================================================================
-    
-    def start_background_sync(self):
-        """Start background sync thread"""
-        if self._background_thread and self._background_thread.is_alive():
-            return
-        
-        self._stop_background.clear()
-        self._background_thread = threading.Thread(target=self._background_sync_worker, daemon=True)
-        self._background_thread.start()
-        xbmc.log("[SYNC_MGR] Background sync started", xbmc.LOGINFO)
-    
-    def stop_background_sync(self):
-        """Stop background sync thread"""
-        self._stop_background.set()
-        if self._background_thread:
-            self._background_thread.join(timeout=5)
-        xbmc.log("[SYNC_MGR] Background sync stopped", xbmc.LOGINFO)
-    
-    def _background_sync_worker(self):
-        """Background worker that periodically syncs with server"""
-        xbmc.log("[SYNC_MGR] Background sync worker started", xbmc.LOGINFO)
-        
-        while not self._stop_background.is_set():
-            try:
-                # Check if we should poll server
-                if self._library_service:
-                    current_time = time.time()
-                    
-                    # Poll server periodically for updates
-                    if current_time - self._last_server_poll > SERVER_POLL_INTERVAL:
-                        xbmc.log("[SYNC_MGR] Periodic server poll", xbmc.LOGDEBUG)
-                        self._poll_server_for_updates()
-                        self._last_server_poll = current_time
-                    
-                    # Upload any pending progress
-                    pending = self.get_pending_uploads()
-                    if pending:
-                        xbmc.log(f"[SYNC_MGR] Background uploading {len(pending)} pending items", xbmc.LOGDEBUG)
-                        self.sync_all_pending_uploads()
-                
-            except Exception as e:
-                xbmc.log(f"[SYNC_MGR] Background sync error: {e}", xbmc.LOGERROR)
-            
-            # Wait for next check (but check stop signal more frequently)
-            for _ in range(SYNC_CHECK_INTERVAL):
-                if self._stop_background.is_set():
-                    break
-                time.sleep(1)
-        
-        xbmc.log("[SYNC_MGR] Background sync worker stopped", xbmc.LOGINFO)
-    
-    def _poll_server_for_updates(self):
-        """Poll server for any progress updates (e.g., from other devices)"""
-        if not self._library_service:
-            return
-        
-        updated = 0
-        for key, local_data in list(self._progress_data.items()):
-            item_id = local_data.get('item_id')
-            episode_id = local_data.get('episode_id')
-            
-            if not item_id:
-                continue
-            
-            try:
-                server = self.get_server_progress(item_id, episode_id)
-                if not server:
-                    continue
-                
-                server_time = server.get('currentTime', 0)
-                server_finished = server.get('isFinished', False)
-                server_duration = server.get('duration', 0)
-                
-                local_time = local_data.get('current_time', 0)
-                local_finished = local_data.get('is_finished', False)
-                local_duration = local_data.get('duration', 0)
-                
-                duration = max(local_duration, server_duration)
-                
-                # If server is ahead, update local
-                if server_finished and not local_finished:
-                    self.save_local_progress(item_id, episode_id, server_time, duration,
-                                            is_finished=True, needs_upload=False, from_server=True)
-                    updated += 1
-                elif server_time > local_time + PROGRESS_THRESHOLD and not local_finished:
-                    is_finished = (server_time / duration >= FINISHED_THRESHOLD_DEFAULT) if duration > 0 else False
-                    self.save_local_progress(item_id, episode_id, server_time, duration,
-                                            is_finished=is_finished, needs_upload=False, from_server=True)
-                    updated += 1
-                    
-            except Exception as e:
-                xbmc.log(f"[SYNC_MGR] Poll error for {key}: {e}", xbmc.LOGDEBUG)
-        
-        if updated > 0:
-            xbmc.log(f"[SYNC_MGR] Poll updated {updated} items from server", xbmc.LOGINFO)
-    
+    def _prefetch_server_progress(self):
+        """Load all server progress in one request before syncing many items."""
+        try:
+            if self._library_service and hasattr(self._library_service, 'prefetch_progress'):
+                self._library_service.prefetch_progress()
+        except Exception as e:
+            xbmc.log(f"[SYNC_MGR] Progress prefetch failed: {e}", xbmc.LOGDEBUG)
+
     # =========================================================================
     # PLAYBACK INTEGRATION
     # =========================================================================
@@ -830,12 +685,10 @@ def mark_synced(item_id, episode_id=None):
 
 
 def startup_sync(library_service):
-    """Perform startup sync and start background sync"""
+    """Perform startup sync"""
     sync_mgr = get_sync_manager()
     sync_mgr.set_library_service(library_service)
-    result = sync_mgr.startup_sync()
-    sync_mgr.start_background_sync()
-    return result
+    return sync_mgr.startup_sync()
 
 
 def on_network_reconnect(library_service):
@@ -849,7 +702,3 @@ def mark_offline():
     """Mark that we're going offline"""
     get_sync_manager().mark_offline()
 
-
-def stop_background_sync():
-    """Stop background sync when addon exits"""
-    get_sync_manager().stop_background_sync()

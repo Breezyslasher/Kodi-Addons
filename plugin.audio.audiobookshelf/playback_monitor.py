@@ -10,7 +10,8 @@ from sync_manager import (
     save_local_progress, 
     get_best_resume_position,
     sync_all_to_server,
-    mark_synced
+    mark_synced,
+    reached_finish
 )
 
 
@@ -19,7 +20,7 @@ class PlaybackMonitor:
     
     def __init__(self, library_service, item_id, duration, episode_id=None,
                  sync_enabled=True, sync_on_stop=True, sync_interval=15,
-                 finished_threshold=0.95, file_offset=0):
+                 finished_threshold=0.95, file_offset=0, expected_file=None):
         """
         Initialize playback monitor.
         
@@ -34,11 +35,13 @@ class PlaybackMonitor:
             finished_threshold: Progress percentage to mark as finished
             file_offset: For multi-file audiobooks, where this file starts in the 
                         overall timeline. Added to player position for sync.
+            expected_file: Path or URL this monitor is for, so it doesn't attach
+                        to the previous playlist item while Kodi switches over.
         """
         self.library_service = library_service
         self.item_id = item_id
         self.episode_id = episode_id
-        self.duration = max(duration, 1)
+        self.duration = duration if duration and duration > 1 else 0  # 0 = unknown
         self.player = xbmc.Player()
         self.session_id = None
         self.is_monitoring = False
@@ -54,7 +57,12 @@ class PlaybackMonitor:
         self.is_finished = False
         # File this monitor tracks; stop when the playlist moves on.
         self.playing_file = None
-        
+        self.expected_file = expected_file
+        try:
+            self.previous_file = self.player.getPlayingFile() if self.player.isPlaying() else None
+        except Exception:
+            self.previous_file = None
+
         # Initialize sync manager with library service
         self.sync_mgr = get_sync_manager()
         self.sync_mgr.set_library_service(library_service)
@@ -76,14 +84,8 @@ class PlaybackMonitor:
     def _monitor_worker(self):
         """Background monitoring worker"""
         try:
-            # Wait for player to start
-            wait_count = 0
-            while not self.player.isPlaying() and wait_count < 60:
-                xbmc.sleep(500)
-                wait_count += 1
-            
-            if not self.player.isPlaying():
-                xbmc.log("[MONITOR] Player never started", xbmc.LOGWARNING)
+            if not self._wait_for_our_file():
+                xbmc.log("[MONITOR] Our file never started playing", xbmc.LOGWARNING)
                 return
             
             xbmc.sleep(1500)
@@ -200,6 +202,24 @@ class PlaybackMonitor:
         except Exception as e:
             xbmc.log(f"[MONITOR] Worker error: {str(e)}", xbmc.LOGERROR)
     
+    def _current_file(self):
+        try:
+            return (self.player.getPlayingFile() or '').split('|')[0] if self.player.isPlaying() else None
+        except Exception:
+            return None
+
+    def _wait_for_our_file(self, timeout=30):
+        """Wait until the player is on this monitor's file, not the item before it."""
+        expected = (self.expected_file or '').split('|')[0]
+        for _ in range(timeout * 2):
+            current = self._current_file()
+            if current and (current == expected or (not expected and current != self.previous_file)):
+                return True
+            xbmc.sleep(500)
+        # Path didn't match exactly (e.g. Kodi rewrote the URL): accept a new file.
+        current = self._current_file()
+        return bool(current) and current != self.previous_file
+
     def _listened_since_last_sync(self, current_time):
         """Seconds listened since the last sync: min(position delta, wall-clock time)."""
         overall_time = current_time + self.file_offset
@@ -231,14 +251,13 @@ class PlaybackMonitor:
             # file_offset is where this file starts in the overall audiobook
             overall_time = current_time + self.file_offset
             
-            # Calculate progress percentage using overall time
             progress_pct = overall_time / self.duration if self.duration > 0 else 0
-            
-            # Determine if finished - only on final sync and if past threshold
-            finished = False
-            if is_final and progress_pct >= self.finished_threshold:
-                finished = True
-                xbmc.log(f"[MONITOR] Marking as finished: {progress_pct*100:.1f}% >= {self.finished_threshold*100:.1f}%", xbmc.LOGINFO)
+
+            # Only the final save can mark finished, and only with a known duration
+            finished = is_final and reached_finish(overall_time, self.duration, self.finished_threshold)
+            if finished:
+                xbmc.log(f"[MONITOR] Marking as finished at {overall_time:.1f}s of {self.duration:.1f}s "
+                         f"(threshold {self.finished_threshold})", xbmc.LOGINFO)
             
             if finished:
                 self.is_finished = True
