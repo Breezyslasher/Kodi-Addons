@@ -26,7 +26,7 @@ NAME = "iFood.tv"
 SECTIONS = ('Home', 'Dish')   # root sections to walk to a playable title
 SEARCH = "chicken"
 PROFILE = tempfile.mkdtemp(prefix="ifoodtv-profile-")
-SETTINGS = {"use_isa": "true", "subtitles": "true", "debug_log": "true"}
+SETTINGS = {"use_isa": "true", "subtitles": "true", "autoplay_next": "true", "debug_log": "true"}
 LOG = []
 
 
@@ -126,7 +126,17 @@ class Dialog(object):
 
 
 xbmcgui = _mod("xbmcgui")
-xbmcgui.ListItem, xbmcgui.Dialog = ListItem, Dialog
+PROPS = {}
+
+
+class Window(object):
+    def __init__(self, *a): pass
+    def setProperty(self, k, v): PROPS[k] = v
+    def getProperty(self, k): return PROPS.get(k, "")
+    def clearProperty(self, k): PROPS.pop(k, None)
+
+
+xbmcgui.ListItem, xbmcgui.Dialog, xbmcgui.Window = ListItem, Dialog, Window
 xbmcgui.NOTIFICATION_INFO = xbmcgui.NOTIFICATION_ERROR = 0
 xbmcgui.INPUT_ALPHANUM = xbmcgui.INPUT_NUMERIC = xbmcgui.ALPHANUM_HIDE_INPUT = 0
 
@@ -139,6 +149,7 @@ xbmcplugin.setResolvedUrl = lambda h, ok, li: RESULT.update(resolved=ok, li=li)
 
 sys.path.insert(0, ADDON)
 import default  # noqa: E402
+from lib.api import is_episode, kind  # noqa: E402
 
 
 def run(query):
@@ -236,6 +247,56 @@ for wanted in SECTIONS:
     if not played:
         print("FAIL  no playable title reached in %s" % wanted)
         failures.append("play " + wanted)
+
+# Skip Buttons hand-off: playing a title tells service.py its markers and,
+# for an episode, the next one. Every play hands off; the first episode of a show in "Movies & Shows" gets its second episode.
+import json  # noqa: E402
+if PROPS.get("ifoodtv.playing"):
+    hand = json.loads(PROPS["ifoodtv.playing"])
+    ok = bool(hand.get("url") and hand.get("nid"))
+    print("%s  hand-off last played title           nid=%s next=%s marks=%s" % (
+        "OK  " if ok else "FAIL", hand.get("nid"), hand.get("next"), hand.get("marks")))
+    if not ok:
+        failures.append("hand-off recipe")
+else:
+    print("FAIL  no hand-off after play")
+    failures.append("hand-off missing")
+
+api = default.get_api()
+show_secs = [s["name"] for s in api.sections() if re.search(r"show", s["name"], re.I)]
+pair, queue, seen = None, [], set()
+for name in show_secs:
+    for row in api.rows(parent=name)[:6]:
+        if "shows.php" in row["url"]:
+            queue.append(row["url"])
+        else:
+            queue += [i["url"] for i in api.feed(row["url"])[0]
+                      if kind(i) == "folder" and "shows.php" in str(i.get("url"))]
+while queue and not pair and len(seen) < 15:
+    u = queue.pop(0)
+    if u in seen:
+        continue
+    seen.add(u)
+    _, seasons, items = api.series(u)
+    if not seasons:
+        queue += [i["url"] for i in items if kind(i) == "folder" and "shows.php" in str(i.get("url"))]
+        continue
+    vids = [v for v in api.feed(seasons[0].get("feed") or seasons[0].get("url"))[0]
+            if kind(v) == "video" and is_episode(v)]
+    if len(vids) >= 2:
+        pair = vids[:2]
+if pair:
+    PROPS.clear()
+    run("action=play&nid=%s" % pair[0]["node_id"])
+    hand = json.loads(PROPS.get("ifoodtv.playing") or "{}")
+    ok = str(hand.get("next")) == str(pair[1]["node_id"])
+    print("%s  hand-off episode %-13s next=%s (want %s) marks=%s" % (
+        "OK  " if ok else "FAIL", str(pair[0].get("series_name"))[:13], hand.get("next"),
+        pair[1]["node_id"], hand.get("marks")))
+    if not ok:
+        failures.append("hand-off next episode")
+else:
+    print("NOTE  no show with two episodes found in %s; next-episode check skipped" % show_secs)
 
 found = step("search %r" % SEARCH, run("action=search&q=" + urllib.parse.quote(SEARCH)))
 page2 = [u for u, li, f in found if "page=" in u]

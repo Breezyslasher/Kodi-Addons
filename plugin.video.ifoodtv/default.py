@@ -1,5 +1,6 @@
 """iFood.tv for Kodi: router and ListItem building."""
 
+import json
 import os
 import re
 import sys
@@ -11,9 +12,13 @@ import xbmcgui
 import xbmcplugin
 
 from lib import kodiutils as ku
-from lib.api import FtApi, ApiError, kind, stream_for, subtitle_tracks
+from lib.api import (FtApi, ApiError, is_episode, kind, skip_markers, stream_for,
+                     subtitle_tracks)
 
 SUBTITLE_DIR = "subtitles"
+# Hand-off to service.py (Skip Buttons): the title now starting, its intro /
+# credits markers and the next episode's node_id.
+PLAYING_PROP = "ifoodtv.playing"
 
 HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 else -1
 BASE = sys.argv[0] if sys.argv else "plugin://plugin.video.ifoodtv/"
@@ -313,8 +318,24 @@ def play(api, nid):
         subs = fetch_subtitles(api, item)
         if subs:
             li.setSubtitles(subs)
+    hand_off(api, nid, item, url)
     ku.log("play %s (%s) %s" % (nid, how, url))
     xbmcplugin.setResolvedUrl(HANDLE, True, li)
+
+
+def hand_off(api, nid, item, url):
+    """Tell service.py what is starting: markers for Skip intro / the credits
+    countdown, and (for an episode) the next one -- looked up now, while the
+    plugin still runs, so the service never blocks on the network."""
+    nxt = None
+    if is_episode(item) and ku.get_setting_bool("autoplay_next", True):
+        try:
+            nxt = api.next_episode(item)
+        except Exception as exc:  # noqa: BLE001  never fail playback over it
+            ku.log("next episode lookup failed: %r" % (exc,))
+    marks = {k: list(v) if isinstance(v, tuple) else v for k, v in skip_markers(item).items()}
+    xbmcgui.Window(10000).setProperty(PLAYING_PROP, json.dumps(
+        {"nid": str(nid), "url": url, "marks": marks, "next": nxt}))
 
 
 def fetch_subtitles(api, item):

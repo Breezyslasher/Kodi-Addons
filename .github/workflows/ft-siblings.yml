@@ -15,8 +15,10 @@ on:
     paths:
       - '.github/workflows/ft-siblings.yml'
       - 'plugin.video.ifoodtv/default.py'
+      - 'plugin.video.ifoodtv/service.py'
       - 'plugin.video.ifoodtv/lib/**'
       - 'plugin.video.ifoodtv/tools/**'
+      - 'script.module.skipbuttons/lib/**'
 
 concurrency:
   group: ft-siblings-${{ github.ref }}
@@ -41,6 +43,8 @@ jobs:
           ADDON: ${{ matrix.addon }}
         run: |
           python3 -m pip install --quiet requests
+          # Skip Buttons service, offline (real module, Kodi stubbed).
+          python3 "$ADDON/tools/test_service.py" || exit 1
           set +e
           python3 "$ADDON/tools/smoke_test.py" | tee smoke.txt; smoke=${PIPESTATUS[0]}
           # The endpoint check prints ::add-mask:: lines for tokens; drop them.
@@ -48,6 +52,14 @@ jobs:
             | grep -v '::add-mask::' | tee -a smoke.txt; ep=${PIPESTATUS[0]}
           { echo "### $ADDON"; echo '```'; cat smoke.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           [ "$smoke" -gt "$ep" ] && exit "$smoke" || exit "$ep"
+      - name: Skip markers probe (research; never fails the job)
+        if: always()
+        env:
+          ADDON: ${{ matrix.addon }}
+        run: |
+          [ -f "$ADDON/tools/probe_markers.py" ] || exit 0
+          python3 "$ADDON/tools/probe_markers.py" | tee markers.txt || true
+          { echo "### $ADDON skip markers"; echo '```'; cat markers.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
   art:
     runs-on: ubuntu-latest
