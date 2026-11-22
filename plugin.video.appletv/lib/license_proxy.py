@@ -170,6 +170,28 @@ def widevine_level():
     return _WV_LEVEL
 
 
+def encrypted_height_cap(live):
+    """The height ceiling the manifest proxy applies to the encrypted path.
+
+    Shared with api.py's key collection so a key is only collected from a tier
+    that will actually be served. The two MUST agree: when they diverged (key
+    collection capped at 360/540 while the proxy served the L1 1080 tier) an L1
+    device asked to decrypt a tier whose key was never collected -> kNoKey.
+
+        on-demand  L3 -> max_height (default 540)
+        on-demand  L1 -> 1080 when the cap is in the SD range (<=540)
+        live          -> live_max_height (default 1080), the single licensed band
+    """
+    if live:
+        return kodiutils.get_setting_int("live_max_height", 1080)
+    max_h = kodiutils.get_setting_int("max_height", 540)
+    # Hardware (L1) Widevine is granted the HD tiers, so lift an SD-range cap
+    # (the 540 default, or a 360 saved by an older build) to the 1080 tier.
+    if max_h and max_h <= 540 and widevine_level() == "L1":
+        max_h = 1080
+    return max_h
+
+
 def hdcp_allowed():
     """Which HDCP-LEVEL tiers the current Widevine level can actually play.
 
@@ -672,33 +694,18 @@ class _Handler(BaseHTTPRequestHandler):
             max_h, avc_only = 0, False
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
         else:
-            # A live event's SD key is refused (-1004); its HD H.264 band is the
-            # tier the web client plays and the only one Apple licenses, so cap
-            # higher for live than for on-demand, where the SD tier is correct.
-            if _is_live(_context()):
-                max_h = kodiutils.get_setting_int("live_max_height", 1080)
-            else:
-                max_h = kodiutils.get_setting_int("max_height", 540)
+            # The height ceiling for the encrypted path, computed once in
+            # encrypted_height_cap() so api.py's key collection uses the exact
+            # same number -- a key is only collected from a tier that will be
+            # served (L3 ~540, L1 up to 1080, live its single licensed band).
+            # 540 is the on-demand L3 default because that is the ceiling the
+            # software CDM can use: Apple grants the higher tiers but flags
+            # their keys output-restricted (OnSessionKeysChange status 3) so an
+            # L3 CDM refuses them; the 540 tier's key comes back usable. On L1,
+            # the HD tiers licence, so the cap lifts to 1080.
+            max_h = encrypted_height_cap(_is_live(_context()))
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
             avc_only = kodiutils.get_setting_bool("avc_only", True)
-            # 540 is the on-demand default because that is the ceiling the
-            # software (L3) CDM can actually use: Apple grants the licence for
-            # the higher tiers too, but flags their keys output-restricted
-            # (OnSessionKeysChange status 3) so an L3 CDM refuses them and the
-            # DRM session fails; the 540 tier's key comes back usable (status
-            # 1) and plays. Verified on desktop L3 -- 540 plays, 720 is
-            # output-restricted -- matching the usual "no HDCP required at or
-            # below 540p" policy. This ceiling is Apple's alone: the Netflix
-            # add-on licenses and plays 720p on the same L3 desktop.
-            #
-            # Hardware (L1) Widevine is granted the HD tiers, so on L1 lift any
-            # SD-range cap (the 540 default or a 360 saved by an older build)
-            # to the H.264/SDR 1080 tier verified to licence, decode and
-            # render. A deliberately higher cap is respected; HEVC/4K stays
-            # opt-in via the settings.
-            if max_h and max_h <= 540 and widevine_level() == "L1":
-                max_h = 1080
-                kodiutils.log("Widevine L1: auto HD, height cap -> 1080")
             # Cap by the manifest's own HDCP-LEVEL tags too, so the ceiling is
             # what the CDM can decode rather than a fixed number: L3 keeps NONE
             # (~540p), L1 keeps NONE+TYPE-0 (up to 1080p). On-demand only.
@@ -874,7 +881,10 @@ class _Handler(BaseHTTPRequestHandler):
         # sent a stale uri and earned -1002/-1004. Discovered keys only fill a
         # gap the up-front collection missed, never replace a fresh key.
         wv_keys = dict(ctx.get("wv_keys") or {})
-        for kid, uri in _DISCOVERED_KEYS.items():
+        # Snapshot: _DISCOVERED_KEYS is mutated by other variant-serving threads
+        # during live key rotation, and iterating it live raised RuntimeError
+        # here -> an intermittent licence 500.
+        for kid, uri in list(_DISCOVERED_KEYS.items()):
             wv_keys.setdefault(kid, uri)
 
         candidates = []

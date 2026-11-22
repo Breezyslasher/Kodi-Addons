@@ -3636,13 +3636,10 @@ class AppleTVApi(object):
             # Read keys from the variants that will actually be played: Apple
             # keys each tier separately, so a key taken from a tier the proxy
             # drops is never the one InputStream Adaptive asks to decrypt.
-            # A live event's HD H.264 band is the only tier Apple licenses (its
-            # SD key answers -1004), so collect this play's keys from that band,
-            # matching the tier the manifest proxy will actually serve.
-            if live:
-                max_h = kodiutils.get_setting_int("live_max_height", 1080)
-            else:
-                max_h = kodiutils.get_setting_int("max_height", 360)
+            # Use the proxy's own ceiling (not a separate default) so the two
+            # never diverge: when this capped at 360 while the proxy served the
+            # L1 1080 tier, that tier's key was never collected -> kNoKey on L1.
+            max_h = license_proxy.encrypted_height_cap(live)
             sdr_only = kodiutils.get_setting_bool("sdr_only", True)
             avc_only = kodiutils.get_setting_bool("avc_only", True)
             # Keep the same HDCP-LEVEL ceiling the manifest proxy applies, so a

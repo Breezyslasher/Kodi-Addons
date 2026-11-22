@@ -510,6 +510,8 @@ def show_people(people):
 def show_person(api, person_id, name=""):
     """A person's own page: their details, then their films and shows."""
     if not person_id:
+        # Close the directory, or the list is left spinning on a bad id.
+        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
         return
     info = api.get_person_info(person_id)
     title = info.get("name") or name
@@ -587,6 +589,14 @@ def do_sign_out(auth, api):
     except Exception as exc:
         kodiutils.log_error("Sign-out request failed: %s" % exc)
     auth.clear()
+    # Playback left the account's bearer / media-user-token in these caches;
+    # a sign-out must not leave them on disk for the licence proxy or the
+    # reporter to reuse. They are rebuilt by the next playback.
+    for cache in ("playback_context.json", PLAYBACK_REPORT_CACHE):
+        try:
+            kodiutils.write_json(cache, {})
+        except Exception:
+            pass
     kodiutils.notify(L("sign_out"))
 
 
@@ -969,9 +979,9 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
         # A live game starts where the menu said (live edge, from start, catch
         # up, or the Resume seek above) -- never where Kodi last left it. Kodi
         # otherwise resumes a sporting event from its own stored bookmark for
-        # this path, seeking on top of the choice; resumetime 0 tells it not to.
-        # A finished game is left alone, so it resumes like any on-demand title.
-        play_item.setProperty("resumetime", "0")
+        # this path, seeking on top of the choice; a resume point of 0 tells it
+        # not to. A finished game is left alone, so it resumes like on-demand.
+        play_item.getVideoInfoTag().setResumePoint(0)
     # Playback resolves from an id, so the item Kodi shows while playing knew
     # nothing about the title and its plot read "Not available". A title's own
     # page carries the description and the cast, which shelf items do not.

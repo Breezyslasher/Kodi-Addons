@@ -33,6 +33,10 @@ except ImportError:
 REPORT_INTERVAL_SECS = 30
 # Past this fraction the title counts as watched rather than resumable.
 FINISHED_FRACTION = 0.95
+# Below this many seconds a stop is not reported: a stop in the first moments
+# often lands before the first tick recorded a real position, and reporting ~0
+# would move Apple's resume point to the start and wipe it.
+RESUME_MIN_SECS = 15
 
 
 class WatchHistory(object):
@@ -121,6 +125,12 @@ class WatchHistory(object):
             return
         finished = (not self._live) and bool(self._duration) and \
             self._last_position >= self._duration * FINISHED_FRACTION
+        # A near-start stop (often before the first tick set a real position,
+        # so _last_position is still 0) must not report ~0 and wipe an existing
+        # resume point. Below the threshold, and not finished, just forget it.
+        if self._last_position < RESUME_MIN_SECS and not finished:
+            self.reset()
+            return
         self._send(self._last_position, finished=finished)
         self.reset()
 
@@ -140,6 +150,10 @@ class WatchHistory(object):
             kodiutils.log_error("Watch history report failed: %s" % exc)
 
     def reset(self):
+        # Drop the cached API/auth too: it is rebuilt per play from the current
+        # session.json, so a sign-out or account switch between plays is picked
+        # up instead of the old account being reused (and written back).
+        self._api = None
         self._token = None
         self._adam_id = None
         self._item_type = None
@@ -212,40 +226,36 @@ class KeyPlaySeeker(object):
 
 
 def start_resume(player):
-    """One-shot at playback start: skip Apple's intro ident bumper, and resume
-    at Apple's own watched position when Kodi is not already resuming.
+    """One-shot at playback start: skip Apple's intro ident bumper.
 
-    The markers come from the master playlist (license_proxy.start_markers()).
+    The marker comes from the master playlist (license_proxy.start_markers()).
     If Kodi (or ISA) has already seeked past the pre-roll -- e.g. a Continue
     Watching item whose Kodi resume point put it mid-stream -- nothing is done,
-    so this never fights Kodi's own resume or a "start from beginning" choice
-    that still lands after the ident. Apple resume only applies to a genuine
-    mid-point (never near the end, which is treated as finished).
+    so this never fights Kodi's own resume.
+
+    Resuming at Apple's watched.time is deliberately NOT done here. Kodi already
+    resumes Continue Watching items from the resume point the plugin sets, and
+    seeking to watched.time on top of that overrode an explicit "Play from
+    beginning" -- which also starts at position 0, indistinguishable from a
+    fresh play at this layer -- sending the viewer back to the middle.
     """
     m = license_proxy.start_markers()
     if not m:
         return
     pre = m.get("pre_roll_end") or 0.0
-    watched = m.get("watched_time") or 0.0
+    if pre < 2:
+        return
     try:
         pos = player.getTime()
-        dur = m.get("duration") or player.getTotalTime() or 0.0
     except Exception:
         return
     # Already resumed/seeked past the ident: leave it exactly as Kodi set it.
     if pos > pre + 2:
         return
-    target = None
-    if kodiutils.get_setting_bool("apple_auto_resume", True) and dur \
-            and pre + 30 < watched < dur * 0.9:
-        target = watched            # Apple's resume position
-    elif pre >= 2:
-        target = pre                # just skip the intro ident
-    if target and target > pos + 1:
+    if pre > pos + 1:
         try:
-            player.seekTime(float(target))
-            kodiutils.log("Start seek: to %.1fs (pre-roll=%.1f watched=%.1f)"
-                          % (target, pre, watched))
+            player.seekTime(float(pre))
+            kodiutils.log("Start seek: skip pre-roll ident to %.1fs" % pre)
         except Exception as exc:
             kodiutils.log_error("Start seek failed: %s" % exc)
 
@@ -314,6 +324,8 @@ class SkipButtons(object):
             pass
 
     def reset(self):
+        # Rebuild the API per play from the current session (see WatchHistory).
+        self._api = None
         if self._ctl:
             try:
                 self._ctl.reset()
