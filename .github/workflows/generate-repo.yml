@@ -78,7 +78,8 @@ jobs:
             'plugin.video.starz',
             'script.module.skipbuttons',
             'plugin.video.plexondemand',
-            'plugin.video.fawesome'
+            'plugin.video.fawesome',
+            'plugin.video.ifoodtv'
         ]
         
         addons_xml_content = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<addons>\n'
