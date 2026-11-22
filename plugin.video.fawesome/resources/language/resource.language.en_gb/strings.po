@@ -24,6 +24,10 @@ msgctxt "#32002"
 msgid "Show subtitles when available"
 msgstr ""
 
+msgctxt "#32003"
+msgid "Autoplay next episode"
+msgstr ""
+
 msgctxt "#32010"
 msgid "Advanced"
 msgstr ""

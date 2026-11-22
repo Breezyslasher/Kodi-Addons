@@ -3,6 +3,7 @@
     <category label="32000">
         <setting id="use_isa" type="bool" label="32001" default="true" />
         <setting id="subtitles" type="bool" label="32002" default="true" />
+        <setting id="autoplay_next" type="bool" label="32003" default="true" />
     </category>
     <category label="32010">
         <setting id="debug_log" type="bool" label="32011" default="false" />

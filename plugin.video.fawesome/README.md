@@ -13,6 +13,16 @@ shows in Kodi. There is no account or sign-up: Fawesome has none.
   subtitles where Fawesome has them
 - Posters, fanart, plot, year, runtime, genres, cast and director
 
+## Skip intro and Next episode
+
+Skip intro while a title's intro plays, and at the credits of an episode a
+**Next episode** countdown with **Watch credits** -- from Fawesome's own
+intro and credits times, the way its website does it (needs the
+`script.module.skipbuttons` add-on, installed automatically). Episodes
+without a credits time play the next episode when they end; turn this off
+with *Autoplay next episode* in the settings. **Restart Kodi once after
+installing or updating** so the background service starts.
+
 ## Known gaps
 
 - **Ads:** Fawesome's web player requests ads separately from the video
