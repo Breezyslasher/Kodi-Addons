@@ -6,7 +6,7 @@ relay), join one with an address + room code, view live status, or leave.
 All it really does is write session.json — the background service notices
 the change within a second and starts/stops the relay and sync engine.
 """
-import random
+import secrets
 import time
 
 import xbmc
@@ -20,6 +20,10 @@ ADDON = xbmcaddon.Addon()
 
 # no 0/O or 1/I — room codes get read out loud across the couch
 CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+# The room code is the party's access token: 6 characters of 32 is about a
+# billion codes (4 was 1,048,576), drawn from `secrets`, not `random`, whose
+# sequence can be worked out from its output.
+CODE_LENGTH = 6
 
 
 def _session():
@@ -42,7 +46,7 @@ def _port():
 
 
 def _random_code():
-    return ''.join(random.choice(CODE_ALPHABET) for _ in range(4))
+    return ''.join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
 
 
 def _ask_address(dialog, prompt):

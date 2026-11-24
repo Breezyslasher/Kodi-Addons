@@ -21,8 +21,11 @@ Pure standard library — no Kodi imports — so it is unit-testable outside
 Kodi. This file lives in WatchParty (watchparty-relay/); the Kodi addon runs
 a copy (tools/vendor-kodi.sh) for the relay it hosts inside Kodi.
 """
+import collections
 import gzip
+import ipaddress
 import json
+import math
 import os
 import re
 import socket
@@ -90,10 +93,74 @@ PROTOCOL_VERSION = 3
 
 
 def mask_code(code):
-    """Obscure a room code — codes are the access tokens."""
-    if len(code) <= 2:
-        return '·' * len(code)
-    return code[0] + '·' * (len(code) - 2) + code[-1]
+    """Obscure a room code — codes are the access tokens. Nothing of it is
+    shown: its first and last characters were, which left a 4-character
+    code (Kodi's) 2 characters to guess, 1,024 tries."""
+    return '·' * min(max(len(code), 4), 12)
+
+
+def finite(value, default=None):
+    """[value] as a finite float, else [default]: NaN and infinity would
+    make every reply's JSON invalid (json.dumps writes them as bare NaN)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return number if math.isfinite(number) else default
+
+
+class RateLimiter:
+    """Events per key (a client's address) in a sliding window."""
+
+    def __init__(self, limit, window):
+        self.limit = limit
+        self.window = window
+        self._events = collections.defaultdict(collections.deque)
+        self._lock = threading.Lock()
+
+    def _trim(self, events, now):
+        while events and now - events[0] > self.window:
+            events.popleft()
+
+    def blocked(self, key):
+        """Whether [key] has used up its events."""
+        now = time.time()
+        with self._lock:
+            events = self._events.get(key)
+            if not events:
+                return False
+            self._trim(events, now)
+            if not events:
+                del self._events[key]
+                return False
+            return len(events) >= self.limit
+
+    def hit(self, key):
+        """Count an event for [key]; False when it was over the limit."""
+        now = time.time()
+        with self._lock:
+            events = self._events[key]
+            self._trim(events, now)
+            if len(events) >= self.limit:
+                return False
+            events.append(now)
+            if len(self._events) > 10000:   # forget the oldest keys
+                for stale in list(self._events)[:1000]:
+                    del self._events[stale]
+            return True
+
+
+# Guessing room codes: a client (by address) gets this many wrong codes per
+# window, then every room lookup from it is refused until the window passes.
+# Joins are limited too (a member rejoins only after a network blip).
+BAD_CODE_LIMIT = 20
+JOIN_LIMIT = 30
+LIMIT_WINDOW = 600.0
+# Connections one address may hold open at once, and how long a connection
+# may stay silent (members poll every second): a client that opens many
+# connections and sends nothing (slow loris) can't hold the relay's threads.
+MAX_CONN_PER_IP = 32
+SOCKET_TIMEOUT = 60.0
 
 
 # Query parameters that carry a credential. Media servers put these in
@@ -416,7 +483,8 @@ DASH_HTML = """<!doctype html>
 var snap=null,lastGoodAt=0,unreachable=false,clockSkew=0,rtt=[],first=true;
 var prevPos={};
 function esc(t){var d=document.createElement('div');
- d.textContent=t==null?'':String(t);return d.innerHTML}
+ d.textContent=t==null?'':String(t);
+ return d.innerHTML.replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function fmt(s){s=Math.max(0,Math.floor(s||0));
  var h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
  return (h?h+':':'')+String(m).padStart(h?2:1,'0')+':'+
@@ -483,9 +551,9 @@ function roomHtml(r,threshold){
  if(n.type)bits.push(esc(n.type));
  if(n.artist)bits.push(esc([].concat(n.artist).join(', ')));
  if(n.album)bits.push(esc(n.album));
- if(n.show)bits.push(esc(n.show)+' S'+n.season+'E'+n.episode);
- if(n.year)bits.push(n.year);
- if(n.queue)bits.push('queue '+((n.queue_pos||0)+1)+'/'+n.queue);
+ if(n.show)bits.push(esc(n.show)+' S'+esc(n.season)+'E'+esc(n.episode));
+ if(n.year)bits.push(esc(n.year));
+ if(n.queue)bits.push('queue '+esc((+n.queue_pos||0)+1)+'/'+esc(n.queue));
  if(n.repeat&&n.repeat!='off')bits.push('repeat '+esc(n.repeat));
  if(n.shuffled)bits.push('shuffled');
  if(r.locked_by_name)bits.push('controls locked to '+esc(r.locked_by_name));
@@ -668,7 +736,7 @@ class RoomState:
                 return False
             m['last_seen'] = time.time()
             if position is not None:
-                m['position'] = float(position)
+                m['position'] = finite(position, m['position'])
             if paused is not None:
                 m['paused'] = bool(paused)
             if file is not None:
@@ -738,6 +806,45 @@ class RoomState:
                        'art')
     MAX_PLAYLIST = 100
 
+    INT_FIELDS = ('year', 'season', 'episode', 'playlist_pos')
+    TEXT_FIELDS = ('type', 'title', 'show', 'album', 'repeat', 'art')
+
+    @classmethod
+    def _clean_field(cls, key, value):
+        """An item field in the type every client expects, else None: a
+        member's malformed item ("season": "S01", "ids": []) would
+        otherwise break the others, and go unescaped into the dashboard."""
+        if value is None:
+            return None
+        if key in cls.INT_FIELDS:
+            if isinstance(value, bool):
+                return None
+            number = finite(value)
+            return int(number) if number is not None and number == int(number) else None
+        if key == 'duration':
+            number = finite(value)
+            return number if number is not None and number >= 0 else None
+        if key in cls.TEXT_FIELDS:
+            return value[:2000] if isinstance(value, str) else None
+        if key == 'shuffled':
+            return bool(value)
+        if key == 'artist':
+            if isinstance(value, str):
+                return value[:500]
+            if isinstance(value, list):
+                return [a[:500] for a in value[:20] if isinstance(a, str)] or None
+            return None
+        if key == 'ids':
+            if not isinstance(value, dict):
+                return None
+            clean = {}
+            for k, v in list(value.items())[:20]:
+                if isinstance(k, str) and isinstance(v, (str, int)) \
+                        and not isinstance(v, bool):
+                    clean[k[:40]] = v if isinstance(v, int) else v[:200]
+            return clean or None
+        return value
+
     def _clean_playlist(self, value):
         """Sanitized queue entries (file/label + identity), or []."""
         if not isinstance(value, list):
@@ -750,8 +857,8 @@ class RoomState:
                      'label': str(e.get('label') or '')}
             for field in ('type', 'ids', 'title', 'year', 'show',
                           'season', 'episode', 'artist', 'album'):
-                v = e.get(field)
-                if v not in (None, '', {}):
+                v = self._clean_field(field, e.get(field))
+                if v not in (None, '', {}, []):
                     entry[field] = v
             clean.append(entry)
         return clean if len(clean) >= 2 else []
@@ -771,6 +878,8 @@ class RoomState:
                 if not self.item:
                     return False
                 changes = payload.get('item') or {}
+                if not isinstance(changes, dict):
+                    return False
                 if 'repeat' in changes:
                     self.item['repeat'] = str(changes.get('repeat')
                                               or 'off')
@@ -788,10 +897,13 @@ class RoomState:
                 self.set_by = member_id
                 self.seq += 1
                 return True
-            position = float(payload.get('position') or 0.0)
+            position = finite(payload.get('position') or 0.0)
+            if position is None:
+                return False
+            position = max(0.0, position)
             if cmd == 'open':
                 item = payload.get('item') or {}
-                if not item.get('file'):
+                if not isinstance(item, dict) or not item.get('file'):
                     return False
                 stored = {'file': str(item['file']),
                           'label': str(item.get('label') or ''),
@@ -802,8 +914,10 @@ class RoomState:
                         continue
                     if key == 'playlist':
                         value = self._clean_playlist(value)
-                        if not value:
-                            continue
+                    else:
+                        value = self._clean_field(key, value)
+                    if value in (None, '', {}, []):
+                        continue
                     stored[key] = value
                 self.item = stored
                 self.position = position
@@ -965,8 +1079,52 @@ class _Handler(BaseHTTPRequestHandler):
     room = None
     show_codes = False  # full room codes on /status (they're the tokens)
 
+    # a connection silent this long is dropped (StreamRequestHandler sets it
+    # on the socket); members poll every second
+    timeout = SOCKET_TIMEOUT
+
     def log_message(self, fmt, *args):  # silence per-request stderr noise
         pass
+
+    def client_ip(self):
+        """The client's address, or None for this machine itself (not
+        limited: the hosting Kodi, a local test). Behind a reverse proxy
+        or tunnel on this machine or the LAN (cloudflared, nginx) every
+        request comes from the proxy, so its forwarded address counts:
+        Cloudflare's CF-Connecting-IP, X-Real-IP, or the address the proxy
+        appended last to X-Forwarded-For (earlier ones are the client's
+        own say)."""
+        peer = self.client_address[0] if self.client_address else ''
+        try:
+            addr = ipaddress.ip_address(peer)
+        except ValueError:
+            return peer or None
+        if addr.is_loopback or addr.is_private:
+            forwarded = (self.headers.get('CF-Connecting-IP')
+                         or self.headers.get('X-Real-IP')
+                         or (self.headers.get('X-Forwarded-For') or '').split(',')[-1])
+            forwarded = (forwarded or '').strip()
+            if forwarded:
+                return forwarded
+        return None if addr.is_loopback else peer
+
+    def _limiters(self):
+        server = getattr(self, 'server', None)
+        if not hasattr(server, 'bad_codes'):
+            # a handler driven without _ClosingServer (tests): limits off
+            return None, None
+        return server.bad_codes, server.joins
+
+    def find_room(self, code, ip):
+        """lookup_room, refusing a client that has guessed too many wrong
+        codes: a RoomState, or an error string."""
+        bad_codes, _ = self._limiters()
+        if ip and bad_codes and bad_codes.blocked(ip):
+            return 'too many wrong room codes, try again later'
+        room = self.lookup_room(code)
+        if not isinstance(room, RoomState) and ip and bad_codes:
+            bad_codes.hit(ip)
+        return room
 
     def iter_rooms(self):
         """[(code, RoomState), ...] for the dashboard. The embedded relay
@@ -1029,13 +1187,21 @@ class _Handler(BaseHTTPRequestHandler):
                     json.dumps(obj).encode('utf-8'))
 
     def _read_body(self):
-        length = int(self.headers.get('Content-Length') or 0)
+        """The request's JSON object, or None (then the connection closes:
+        an unread or bad body can't be skipped reliably)."""
+        try:
+            length = int(self.headers.get('Content-Length') or 0)
+        except ValueError:
+            length = -1
         if length <= 0 or length > MAX_BODY:
+            self.close_connection = True
             return None
         try:
-            return json.loads(self.rfile.read(length).decode('utf-8'))
+            data = json.loads(self.rfile.read(length).decode('utf-8'))
         except Exception:
+            self.close_connection = True
             return None
+        return data if isinstance(data, dict) else None
 
     def _send_file(self, path, content_type, cache='no-cache'):
         try:
@@ -1163,7 +1329,7 @@ class _Handler(BaseHTTPRequestHandler):
         if length <= 0 or length > MAX_ART:
             self._send(413, {'ok': False, 'error': 'bad art size'})
             return
-        room = self.lookup_room(str(self.headers.get('X-Room') or ''))
+        room = self.find_room(str(self.headers.get('X-Room') or ''), self.client_ip())
         if not isinstance(room, RoomState):
             # drain so the connection can be reused
             self.rfile.read(length)
@@ -1184,6 +1350,20 @@ class _Handler(BaseHTTPRequestHandler):
                          'server_time': time.time()})
 
     def do_POST(self):
+        try:
+            self._post()
+        except (ConnectionError, socket.timeout):
+            self.close_connection = True
+        except Exception:
+            # a request the relay didn't expect: answer it, never drop the
+            # member's connection with a traceback
+            self.close_connection = True
+            try:
+                self._send(400, {'ok': False, 'error': 'bad request'})
+            except Exception:
+                pass
+
+    def _post(self):
         if self.path.split('?', 1)[0] == '/art':
             self._handle_art_upload()
             return
@@ -1191,10 +1371,12 @@ class _Handler(BaseHTTPRequestHandler):
         if data is None:
             self._send(400, {'ok': False, 'error': 'bad request'})
             return
-        room = self.lookup_room(str(data.get('room') or ''))
+        ip = self.client_ip()
+        room = self.find_room(str(data.get('room') or ''), ip)
         if not isinstance(room, RoomState):
-            self._send(403, {'ok': False,
-                             'error': room or 'wrong room code'})
+            limited = room.startswith('too many')
+            self._send(429 if limited else 403, {'ok': False,
+                                                 'error': room or 'wrong room code'})
             return
 
         now = time.time()
@@ -1202,7 +1384,11 @@ class _Handler(BaseHTTPRequestHandler):
             self._remote_fetch(room, data, now)
             return
         if self.path == '/join':
-            member_id = room.join(str(data.get('name') or ''))
+            _, joins = self._limiters()
+            if ip and joins and not joins.hit(ip):
+                self._send(429, {'ok': False, 'error': 'too many joins, try again later'})
+                return
+            member_id = room.join(str(data.get('name') or '')[:64])
             self._send(200, {'ok': True, 'member_id': member_id,
                              'protocol': PROTOCOL_VERSION,
                              'state': client_view(room), 'server_time': now})
@@ -1259,18 +1445,58 @@ class _ClosingServer(ThreadingHTTPServer):
     request_queue_size = 512
 
     def __init__(self, *args, **kwargs):
-        self._open = set()
+        self._open = {}      # request -> the address counted for it, or None
+        self._per_ip = collections.Counter()
         self._open_lock = threading.Lock()
+        self.bad_codes = RateLimiter(BAD_CODE_LIMIT, LIMIT_WINDOW)
+        self.joins = RateLimiter(JOIN_LIMIT, LIMIT_WINDOW)
         super().__init__(*args, **kwargs)
 
+    @staticmethod
+    def _peer(client_address):
+        """The address counted against MAX_CONN_PER_IP, or None: this
+        machine (the hosting Kodi, a reverse proxy or tunnel here) isn't."""
+        try:
+            addr = ipaddress.ip_address(client_address[0])
+        except (ValueError, TypeError, IndexError):
+            return None
+        return None if addr.is_loopback else str(addr)
+
     def process_request(self, request, client_address):
+        peer = self._peer(client_address)
         with self._open_lock:
-            self._open.add(request)
+            if peer and self._per_ip[peer] >= MAX_CONN_PER_IP:
+                refused = True
+            else:
+                refused = False
+                self._open[request] = peer
+                if peer:
+                    self._per_ip[peer] += 1
+        if refused:
+            self.shutdown_request(request)
+            return
+        try:
+            request.settimeout(SOCKET_TIMEOUT)
+        except OSError:
+            pass
         super().process_request(request, client_address)
+
+    def handle_error(self, request, client_address):
+        """A client that dropped or went silent (a reset, the socket
+        timeout) is routine: no traceback for it."""
+        import sys
+        if isinstance(sys.exc_info()[1], (ConnectionError, socket.timeout)):
+            return
+        super().handle_error(request, client_address)
 
     def shutdown_request(self, request):
         with self._open_lock:
-            self._open.discard(request)
+            if request in self._open:
+                peer = self._open.pop(request)
+                if peer and self._per_ip[peer] > 0:
+                    self._per_ip[peer] -= 1
+                    if not self._per_ip[peer]:
+                        del self._per_ip[peer]
         super().shutdown_request(request)
 
     def server_close(self):

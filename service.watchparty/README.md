@@ -173,6 +173,17 @@ everyone has, a shared media server, or each member's own copy.
   automatically after a network blip (with a "Rejoined party" toast) —
   no manual re-joining needed.
 - Traffic is plain HTTP on your LAN; the room code is the access token.
+  Kodi's codes are 6 characters (about a billion), drawn with `secrets`;
+  the relay shows nothing of them on its dashboard, and refuses a client
+  after 20 wrong codes or 30 joins in 10 minutes (WatchParty's relay
+  README has the details).
+- A member's shared item can't make this device open just anything: a
+  `plugin://` path only into an installed video or music addon (not a
+  program or script addon), and a share or local path (`smb://`, `nfs://`,
+  `/storage/…`) only under one of this Kodi's own sources — an `smb://`
+  path to someone else's server would hand it this device's Windows login.
+  The library copy and the streaming addons a web link maps to aren't
+  affected.
   For anything crossing the internet, prefer the standalone relay behind
   TLS (reverse proxy / tunnel) over exposing a raw port.
 - With the embedded relay, the party lives in the hosting Kodi — if the

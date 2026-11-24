@@ -200,7 +200,72 @@ class AddonRefTest(unittest.TestCase):
         self.assertIsNone(engine._addon_ref({'file': 'http://127.0.0.1:8095/x', 'plugin': 'plugin://slyguy.hulu/?_=play&id=1'}))
 
 
+class GateRpc:
+    """Kodi's answers about its addons and sources, for the shared-path gate."""
+    ADDONS = {'video': ['plugin.video.youtube', 'slyguy.max'], 'audio': ['plugin.audio.x']}
+    SOURCES = {'video': [{'file': 'smb://nas/movies/'},
+                         {'file': 'multipath://nfs%3a%2f%2fbox%2ftv%2f/%2fstorage%2fvideos%2f/'}],
+               'music': [{'file': 'smb://nas/'}]}
+
+    def __enter__(self):
+        self.saved = engine._json_rpc
+        engine._gate_cache.clear()
+
+        def rpc(method, params=None):
+            if method == 'Addons.GetAddons':
+                return {'addons': [{'addonid': a} for a in self.ADDONS.get(params['content'], [])]}
+            if method == 'Files.GetSources':
+                return {'sources': self.SOURCES.get(params['media'], [])}
+            return self.saved(method, params)
+        engine._json_rpc = rpc
+        return self
+
+    def __exit__(self, *exc):
+        engine._json_rpc = self.saved
+        engine._gate_cache.clear()
+
+
+class SharedPathGateTest(unittest.TestCase):
+    """The audit, 2026-11-22: a member's item mustn't run any addon, or
+    send this device to someone else's SMB server."""
+
+    def test_media_addons_only(self):
+        with GateRpc():
+            self.assertTrue(engine._allowed_path('plugin://plugin.video.youtube/play/?video_id=x'))
+            self.assertTrue(engine._allowed_path('plugin://plugin.audio.x/?id=1'))
+            for path in ('plugin://plugin.program.backup/?action=restore',
+                         'plugin://script.module.x/', 'plugin://not.installed/?a=1'):
+                self.assertFalse(engine._allowed_path(path), path)
+
+    def test_paths_under_this_kodis_sources_only(self):
+        with GateRpc():
+            for path in ('smb://nas/movies/Inception (2010).mkv', 'SMB://NAS/Movies/x.mkv',
+                         'nfs://box/tv/show/s01e01.mkv', '/storage/videos/home.mp4',
+                         'smb://nas/music/a.flac'):
+                self.assertTrue(engine._allowed_path(path), path)
+            for path in ('smb://attacker/share/x.mkv', 'smb://nasty/movies/x.mkv',
+                         'smb://nas/movies/../../other/x', '/etc/passwd', 'http://x/y', ''):
+                self.assertFalse(engine._allowed_path(path), path)
+
+
+class CleanItemTest(unittest.TestCase):
+    def test_malformed_fields_dropped(self):
+        item = engine._clean_item({'file': 'smb://nas/a.mkv', 'season': 'S01', 'episode': '3',
+                                   'year': 2.5, 'ids': [], 'title': 5,
+                                   'playlist': [{'file': 'a', 'season': 'x'}, 'junk']})
+        self.assertEqual(item['episode'], 3)
+        for key in ('season', 'year', 'ids', 'title'):
+            self.assertNotIn(key, item)
+        self.assertEqual(item['playlist'], [{'file': 'a'}])
+        self.assertIsNone(engine._clean_item(['not', 'an', 'item']))
+        self.assertIsNone(engine._clean_item({'label': 'nothing to play'}))
+
+
 class EntryRefTest(unittest.TestCase):
+    def setUp(self):
+        self.gate = GateRpc().__enter__()
+        self.addCleanup(self.gate.__exit__)
+
     def test_plugin_entries_pass_through(self):
         ref, key = engine._local_entry_ref(
             {'file': 'plugin://plugin.audio.x/?id=1'})
@@ -222,6 +287,10 @@ class EntryRefTest(unittest.TestCase):
         ref, key = engine._local_entry_ref({'file': 'smb://nas/t.mp3'})
         self.assertEqual(ref, {'file': 'smb://nas/t.mp3'})
         self.assertEqual(key, 'smb://nas/t.mp3')
+
+    def test_other_paths_refused(self):
+        self.assertEqual(engine._local_entry_ref({'file': 'smb://attacker/t.mp3'}), (None, ''))
+        self.assertEqual(engine._local_entry_ref({'file': 'plugin://plugin.program.x/?a=1'}), (None, ''))
 
     def test_unmatchable_streams_rejected(self):
         self.assertEqual(engine._local_entry_ref(
@@ -794,3 +863,42 @@ class WbdEpisodeTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PauseReconcileTest(unittest.TestCase):
+    """The audit, 2026-11-22: our own pause, then the player resumed without
+    its event reaching the party, left us playing in a paused party."""
+
+    def _engine(self):
+        import queue
+        e = engine.SyncEngine.__new__(engine.SyncEngine)
+        e._cmd_q = queue.Queue()
+        e._pause_mismatch_since = 0.0
+        return e
+
+    def test_someone_elses_pause_applies_at_once(self):
+        self.assertTrue(self._engine()._pause_to_apply(True, False, own_change=False, now=100.0))
+
+    def test_our_own_state_wins_after_a_moment(self):
+        e = self._engine()
+        self.assertFalse(e._pause_to_apply(True, False, own_change=True, now=100.0))
+        self.assertFalse(e._pause_to_apply(True, False, own_change=True, now=101.0))
+        self.assertTrue(e._pause_to_apply(True, False, own_change=True, now=100.0 + engine.PAUSE_RECONCILE))
+        self.assertEqual(e._pause_mismatch_since, 0.0)
+
+    def test_not_while_our_command_is_on_its_way(self):
+        e = self._engine()
+        e._cmd_q.put(('play', 0.0, None, False, ''))
+        self.assertFalse(e._pause_to_apply(True, False, own_change=True, now=100.0))
+        self.assertFalse(e._pause_to_apply(True, False, own_change=True, now=110.0))
+        e._cmd_q.get()   # sent: the wait starts again from now
+        self.assertFalse(e._pause_to_apply(True, False, own_change=True, now=111.0))
+        self.assertTrue(e._pause_to_apply(True, False, own_change=True, now=114.0))
+
+    def test_agreeing_resets(self):
+        e = self._engine()
+        e._pause_to_apply(True, False, own_change=True, now=100.0)
+        self.assertFalse(e._pause_to_apply(True, True, own_change=True, now=101.0))
+        self.assertFalse(e._pause_to_apply(True, False, own_change=True, now=102.0))
+        self.assertFalse(e._pause_to_apply(True, False, own_change=True, now=104.0))
+        self.assertTrue(e._pause_to_apply(True, False, own_change=True, now=105.0))

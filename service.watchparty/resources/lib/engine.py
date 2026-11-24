@@ -39,6 +39,7 @@ SUPPRESS_TTL = 3.0       # seconds a suppress token stays valid
 SEEK_MATCH = 5.0         # a seek event this close to our own seek's target is ours
 CORRECTION_COOLDOWN = 4.0  # min seconds between drift-correcting seeks
 OPEN_GRACE = 20.0        # seconds to let a newly opened file start up
+PAUSE_RECONCILE = 3.0    # our own pause/play the relay never got: its state wins after this
                          # (addon streams can take a while to resolve)
 
 
@@ -417,6 +418,50 @@ def _now_playing_item(player):
     return item
 
 
+def _clean_item(item):
+    """A party item with its fields in the types the engine uses, or None.
+    A relay older than WatchParty e5c6e01 passes a member's item on as it
+    came ("season": "S01", "ids": []), which raised in the sync thread."""
+    if not isinstance(item, dict):
+        return None
+
+    def number(value):
+        if isinstance(value, bool):
+            return None
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            return None
+        return int(n) if n == n and n not in (float('inf'), float('-inf')) and n == int(n) else None
+
+    def clean(entry):
+        out = dict(entry)
+        for key in ('file', 'label', 'plugin', 'title', 'show', 'type', 'repeat', 'art', 'album'):
+            if key in out and not isinstance(out[key], str):
+                out.pop(key)
+        for key in ('season', 'episode', 'year', 'playlist_pos'):
+            if key in out:
+                n = number(out[key])
+                if n is None:
+                    out.pop(key)
+                else:
+                    out[key] = n
+        if 'ids' in out and not isinstance(out['ids'], dict):
+            out.pop('ids')
+        if 'artist' in out and not isinstance(out['artist'], (str, list)):
+            out.pop('artist')
+        return out
+
+    item = clean(item)
+    if 'playlist' in item:
+        playlist = item['playlist']
+        item['playlist'] = [clean(e) for e in playlist if isinstance(e, dict)] \
+            if isinstance(playlist, list) else []
+        if not item['playlist']:
+            item.pop('playlist')
+    return item if (item.get('file') or item.get('plugin')) else None
+
+
 def _item_key(item):
     """Stable identity for a shared item across devices."""
     return item.get('plugin') or item.get('file') or ''
@@ -628,6 +673,97 @@ def _find_song(item):
     return None, ''
 
 
+# What a shared item may make this device open. A member of the room (anyone
+# with its code) chooses the paths, so (the audit, 2026-11-22):
+#  - plugin:// only into an installed media addon (a video or music source),
+#    not a program or script addon, which could act on any parameters;
+#  - a share or local path only under one of this Kodi's own sources: an
+#    smb:// path to someone else's server would hand it this device's
+#    Windows login (NTLM) when Kodi connects.
+# The library copy (by id), the streaming addons a web link maps to, and the
+# Pluto / Fawesome streams are this device's own choices, not checked here.
+_GATE_TTL = 300.0
+_gate_cache = {}
+
+
+def _cached(name, fetch):
+    hit = _gate_cache.get(name)
+    if hit and time.time() - hit[0] < _GATE_TTL:
+        return hit[1]
+    value = fetch()
+    _gate_cache[name] = (time.time(), value)
+    return value
+
+
+def _media_plugins():
+    """Ids of the installed, enabled video and music addons."""
+    def fetch():
+        ids = set()
+        for content in ('video', 'audio'):
+            result = _json_rpc('Addons.GetAddons', {
+                'type': 'xbmc.python.pluginsource', 'content': content,
+                'enabled': True}) or {}
+            ids |= {a.get('addonid') for a in result.get('addons') or []} - {None}
+        return ids
+    return _cached('plugins', fetch)
+
+
+def _split_multipath(path):
+    """multipath://<a>/<b>/ (a source made of several folders) -> [a, b]."""
+    from urllib.parse import unquote
+    if not path.startswith('multipath://'):
+        return [path]
+    return [unquote(p) for p in path[len('multipath://'):].split('/') if p]
+
+
+def _source_roots():
+    """This Kodi's own video and music sources' folders."""
+    def fetch():
+        roots = []
+        for media in ('video', 'music'):
+            result = _json_rpc('Files.GetSources', {'media': media}) or {}
+            for source in result.get('sources') or []:
+                for root in _split_multipath(source.get('file') or ''):
+                    if root:
+                        roots.append(root)
+        return roots
+    return _cached('sources', fetch)
+
+
+def _norm_path(path):
+    path = path.replace('\\', '/')
+    scheme, sep, rest = path.partition('://')
+    return (scheme.lower() + sep + rest.lower()) if sep else path.lower()
+
+
+def _allowed_path(path):
+    """Whether a path a member shared may be opened here."""
+    path = (path or '').strip()
+    if not path:
+        return False
+    if path.startswith('plugin://'):
+        addon = path[len('plugin://'):].split('/', 1)[0].split('?', 1)[0]
+        if addon in _media_plugins():
+            return True
+        common.log(f"not opening shared path of {addon!r}: not an installed "
+                   "video or music addon", xbmc.LOGWARNING)
+        return False
+    if path.startswith(('http://', 'https://')):
+        return False   # resolved streams are the sender's own (see _playable_url)
+    if '/../' in path.replace('\\', '/') + '/':
+        return False
+    target = _norm_path(path)
+    for root in _source_roots():
+        base = _norm_path(root)
+        if not base.endswith('/'):
+            base += '/'
+        if target.startswith(base):
+            return True
+    common.log(f"not opening shared path {redact_url(path)}: not under one "
+               "of this Kodi's sources", xbmc.LOGWARNING)
+    return False
+
+
 def _local_entry_ref(entry):
     """(open_ref, local_key) this device can queue for a shared playlist
     entry, or (None, ''). Preference: plugin path (resolves per-device),
@@ -636,12 +772,13 @@ def _local_entry_ref(entry):
     queued."""
     file = entry.get('file') or ''
     if file.startswith('plugin://'):
-        return {'file': file}, file
+        return ({'file': file}, file) if _allowed_path(file) else (None, '')
     if entry.get('type'):
         ref, local_file = _find_in_library(entry)
         if ref:
             return ref, (local_file or file)
-    if file and not file.startswith(('http://', 'https://')):
+    if file and not file.startswith(('http://', 'https://')) \
+            and _allowed_path(file):
         return {'file': file}, file
     return None, ''
 
@@ -808,6 +945,8 @@ class SyncEngine:
         self._queue_playlistid = 0
         self._queue_jump_pending = ''
         self._last_error = ''
+        self._pause_mismatch_since = 0.0  # our player and our last pause/play disagree
+        self._loop_error = ''      # last unexpected error in the poll loop (logged once)
         self.connected = False
         # Player callbacks run on Kodi's announce thread — network I/O
         # there stalls the whole UI. Commands are queued and sent by a
@@ -834,8 +973,12 @@ class SyncEngine:
     def stop(self):
         self._stop_event.set()
         self._cmd_q.put(None)
-        self._thread.join(timeout=8)
-        self._push_thread.join(timeout=8)
+        # both threads wind down together, within 5 s in all (they took up
+        # to 8 s each, then the leave up to 5 more)
+        deadline = time.time() + 5.0
+        for thread in (self._thread, self._push_thread):
+            thread.join(timeout=max(0.1, deadline - time.time()))
+        self.client.timeout = min(self.client.timeout, 2.0)
         self.client.leave()
         self.connected = False
         try:
@@ -1079,6 +1222,17 @@ class SyncEngine:
                     common.log(f"lost relay: {e}", xbmc.LOGERROR)
                     common.notify('Party connection lost')
                 self._write_status(None)
+            except Exception as e:
+                # Anything else (a malformed item from another member, a
+                # Kodi call failing): this poll is skipped, the loop goes
+                # on — before, it ended the sync thread silently. Logged
+                # once per distinct error.
+                message = f"{type(e).__name__}: {e}"
+                if message != self._loop_error:
+                    self._loop_error = message
+                    import traceback
+                    common.log("sync error (continuing): " + message + "\n"
+                               + traceback.format_exc(), xbmc.LOGERROR)
         common.log("engine stopped")
 
     def _live_queue(self):
@@ -1196,6 +1350,27 @@ class SyncEngine:
         for name in (old - new).elements():
             common.notify(f"{name} left the party")
 
+    def _pause_to_apply(self, party_paused, local_paused, own_change, now=None):
+        """Whether to set the player to the party's pause state."""
+        if party_paused == local_paused:
+            self._pause_mismatch_since = 0.0
+            return False
+        if not own_change:
+            self._pause_mismatch_since = 0.0
+            return True
+        now = time.time() if now is None else now
+        if not self._cmd_q.empty():
+            self._pause_mismatch_since = now   # ours hasn't reached the relay yet
+            return False
+        if not self._pause_mismatch_since:
+            self._pause_mismatch_since = now
+        if now - self._pause_mismatch_since < PAUSE_RECONCILE:
+            return False
+        common.log("player and party disagree on pause — following the party",
+                   xbmc.LOGWARNING)
+        self._pause_mismatch_since = 0.0
+        return True
+
     def _expected_position(self, state):
         pos = float(state['position'])
         if not state['paused']:
@@ -1205,7 +1380,7 @@ class SyncEngine:
 
     def _apply(self, state):
         cfg = _settings()
-        item = state.get('item')
+        item = state['item'] = _clean_item(state.get('item'))
         local_file = self._playing_file()
 
         if item:
@@ -1385,7 +1560,7 @@ class SyncEngine:
             # those), the shared plain path. A failed candidate falls
             # through to the next.
             candidates = []
-            if item.get('plugin'):
+            if item.get('plugin') and _allowed_path(item['plugin']):
                 candidates.append({'file': item['plugin']})
             lib_ref, _lib_file = _find_in_library(item)
             if lib_ref:
@@ -1400,7 +1575,7 @@ class SyncEngine:
             if fawesome_ref:
                 candidates.append(fawesome_ref)
             plain = _playable_url(item)
-            if plain and plain != item.get('plugin'):
+            if plain and plain != item.get('plugin') and _allowed_path(plain):
                 candidates.append({'file': plain})
             if not candidates:
                 self._failed_keys.add(key)
@@ -1421,9 +1596,15 @@ class SyncEngine:
             _json_rpc('Player.Open', {'item': candidates[0]})
             return
 
-        # Pause state.
+        # Pause state. Someone else's pause or play applies at once. Our
+        # own normally matches the player already — unless the player
+        # changed without its event reaching the party (a play taken for
+        # the engine's own while its token was still armed): then we played
+        # while the party stayed paused, and the drift correction seeked us
+        # back every few seconds (the audit, 2026-11-22). So once nothing of
+        # ours is still on its way, the party's state wins after a moment.
         local_paused = self._is_paused()
-        if bool(state['paused']) != local_paused and not own_change:
+        if self._pause_to_apply(bool(state['paused']), local_paused, own_change):
             self._set_paused(bool(state['paused']))
             local_paused = bool(state['paused'])
 
