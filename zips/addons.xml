@@ -2051,4 +2051,246 @@ v1.0.0
 		</assets>
 	</extension>
 </addon>
+<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.20.12" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="21.0.0"/>
+		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
+		<import addon="script.module.skipbuttons" version="1.0.1"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Plex's free, ad-supported Movies &amp; Shows and Live TV (unofficial)</summary>
+		<description lang="en_GB">Browse and play the free on-demand movies and TV shows Plex streams from its own cloud. No Plex Media Server and no account needed; signing in with plex.tv/link is optional and only syncs watch progress to your Plex account.
+
+Live TV: Plex's free live channels (about 700 in the US) by genre, with what's on now and next, and in Kodi's TV guide through IPTV Manager (optional).
+
+Clear titles play as HLS; Widevine-protected titles play as DASH through InputStream Adaptive (SD on most L3 devices).
+
+The catalogue is region-limited (mainly the US). Plex refuses some titles from VPN or datacenter addresses. This add-on does not play Plex's ads. Rentals and purchases made on Plex's own apps or site play here once you sign in; renting is not possible from Kodi.
+
+Unofficial; not affiliated with or endorsed by Plex, Inc.</description>
+		<disclaimer lang="en_GB">Unofficial client. Plex is a trademark of Plex, Inc. Content availability is decided by Plex and its licensors.</disclaimer>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>v2026.11.20.12
+- Live TV channels are never marked as watched (no resume prompt either)
+- What's on later: a channel's context menu lists the next 24 hours
+
+v2026.11.20.11
+- Live TV: Plex's free live channels (Featured, All channels and genres) with what's on now and next
+- IPTV Manager support: Live TV channels and a day of guide in Kodi's TV section (Settings &gt; Live TV)
+
+v2026.11.20.10
+- Categories show their artwork with the name on it, like Plex's website
+
+v2026.11.20.9
+- Rentals store rows hide the few free titles Plex mixes in (rent/buy titles only)
+
+v2026.11.20.8
+- My Rentals &amp; Purchases is on the home menu (only when signed in and you have some), independent of the Rentals store setting
+
+v2026.11.20.7
+- Category and brand folders show their names next to the artwork
+
+v2026.11.20.6
+- Brands (AMC Networks, FilmRise, Hallmark, ...) and curated Categories, with their artwork
+
+v2026.11.20.5
+- No "Playback failed" after the not-rented dialog; rented store titles still play
+- Genre folders no longer try Plex's SVG icons (403 errors in the log)
+
+v2026.11.20.4
+- Tidier "not rented" dialog: title as heading, prices on one line, nothing cut off
+
+v2026.11.20.3
+- Movies by genre no longer list rental titles (they stay in Rentals)
+
+v2026.11.20.2
+- Context menu: "Mark as watched on Plex" / "Mark as unwatched on Plex", so they are not confused with Kodi's own entry
+
+v2026.11.20.1
+- Clearer wording for the Show Rentals setting
+
+v2026.11.20
+- Rentals menu shows only when signed in, and can be hidden (Settings, Browse, Show Rentals store)
+
+v2026.11.19.8
+- Remove from Watchlist is offered in every list, not only inside the Watchlist
+
+v2026.11.19.7
+- New fanart, sized 16:9
+
+v2026.11.19.6
+- Icon fills the whole square
+
+v2026.11.19.5
+- Rentals: My Rentals &amp; Purchases plays what your Plex account has rented or bought; the store rows show prices, and an un-rented title says where to rent it
+
+v2026.11.19.4
+- Rate… in the context menu: 1-5 stars (shown in lists as your rating), clear, or Not interested
+
+v2026.11.19.3
+- Watchlist menu, and Add to / Remove from Watchlist in the context menu
+- More like this (similar titles, and more from the cast &amp; crew)
+- Genre lists can be sorted by title or audience rating (Settings, Browse)
+- Smaller, faster artwork through Plex's image service
+- Up to 100 search results; a notice when Plex places you outside the US
+
+v2026.11.19.2
+- Next episode countdown only at a real Plex credits marker; otherwise the next episode autoplays at the end
+
+v2026.11.19.1
+- Next episode now also autoplays at the end after "Watch credits" or a dismissed countdown
+- Skip Buttons is installed with the add-on (no longer optional)
+- Search: New search opens its results directly and survives coming back from a video
+- Reaching a movie's credits marks it watched
+
+v2026.11.19
+- First release: Plex's free Movies &amp; Shows catalogue without a Plex server or account
+- Featured rows, Movies and TV Shows by genre, search
+- Clear HLS playback with subtitles; Widevine DASH for DRM titles
+- Optional plex.tv/link sign-in; watch progress reported to Plex
+- Continue Watching, resume points and watched marks shared with Plex
+- Subtitles on DRM titles too; trailers from the context menu
+- Next episode countdown at the credits (Skip Buttons), autoplay setting</news>
+	</extension>
+</addon>
+<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.21.3" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="20.0.0"/>
+		<import addon="script.module.skipbuttons" version="1.0.1"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Free movies and TV shows from Fawesome (unofficial)</summary>
+		<description lang="en_GB">Browse and play Fawesome's free, on-demand catalogue of movies and TV shows: Home, Collections, Shows, Movies, En Español and Handpicked rows, with search, seasons and episodes, and subtitles where Fawesome has them. No account or sign-up -- Fawesome has none.
+
+Streams are plain HLS played through InputStream Adaptive; no DRM module is needed.
+
+Known gaps: Fawesome is ad-supported and its web player requests ads separately from the video (client-side VMAP). This add-on plays the programme stream only and does not insert those ads. The FAST linear channels on Fawesome's TV apps are not included. Fawesome is US-centric; its catalogue may differ or be unavailable elsewhere.
+
+This add-on uses Fawesome's undocumented website API and may need updating when the site changes.</description>
+		<disclaimer lang="en_GB">Unofficial. Not affiliated with or endorsed by Future Today Inc. Fawesome is a trademark of Future Today Inc.</disclaimer>
+		<language>en</language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>
+2026.11.21 (.3) - Skip intro and Next episode
+- Skip intro while a title's intro plays, and at the credits of an episode a
+  Next episode countdown with Watch credits -- from Fawesome's own intro and
+  credits times, the way its website does it (Skip Buttons module).
+- Episodes without a credits time play the next episode when they end. Turn
+  this off with "Autoplay next episode" in the settings.
+- Restart Kodi once after installing or updating so the new background
+  service starts.
+2026.11.21 (.2) - My List
+- A "My List" row on the home screen, plus "Add to My List" / "Remove from
+  My List" on each title's context menu. Saved per device (Fawesome has no
+  account), using its own queue, so it persists on this install.
+2026.11.21 - First test build
+- Browse Fawesome's sections and rows, genre lists and collections, shows by
+  season, and search; play titles as clear HLS through InputStream Adaptive.
+- Subtitles are labelled by language and offered in your Kodi language, then
+  English, first (downloaded as language-named files, since Fawesome's caption
+  URLs carry no language). One-season shows open straight to their episodes.
+- Robust against Fawesome shipping a new site build: an API 404 re-reads the
+  current build and retries, instead of breaking until the cache expires.
+- Known gaps: one muxed audio track per title (no alternate audio exists);
+  ad insertion and the TV apps' FAST channels are not included.
+		</news>
+	</extension>
+</addon>
+<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.21.2" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="20.0.0"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Free movies and TV shows from Fawesome (unofficial)</summary>
+		<description lang="en_GB">Browse and play Fawesome's free, on-demand catalogue of movies and TV shows: Home, Collections, Shows, Movies, En Español and Handpicked rows, with search, seasons and episodes, and subtitles where Fawesome has them. No account or sign-up -- Fawesome has none.
+
+Streams are plain HLS played through InputStream Adaptive; no DRM module is needed.
+
+Known gaps: Fawesome is ad-supported and its web player requests ads separately from the video (client-side VMAP). This add-on plays the programme stream only and does not insert those ads. The FAST linear channels on Fawesome's TV apps are not included. Fawesome is US-centric; its catalogue may differ or be unavailable elsewhere.
+
+This add-on uses Fawesome's undocumented website API and may need updating when the site changes.</description>
+		<disclaimer lang="en_GB">Unofficial. Not affiliated with or endorsed by Future Today Inc. Fawesome is a trademark of Future Today Inc.</disclaimer>
+		<language>en</language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+	</extension>
+</addon>
+<addon id="plugin.video.ifoodtv" name="iFood.tv" version="2026.11.22" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="20.0.0"/>
+		<import addon="script.module.skipbuttons" version="1.0.1"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Free recipe and cooking videos from iFood.tv (unofficial)</summary>
+		<description lang="en_GB">Browse and play iFood.tv's free cooking catalogue: Home, Top Youtubers, Movies &amp; Shows, Dish, Fun With Food, Ingredients, Cuisine, Healthy, Method, Speciality and Taste, with search and My List. Videos are plain MP4 or HLS; no DRM module is needed.
+
+No account or sign-up -- the service has none. iFood.tv runs on Future Today's platform (the same one as Fawesome); this add-on uses its undocumented website API and may need updating when the site changes.
+
+Known gaps: the service is ad-supported and its web player requests ads separately from the video (client-side VMAP). This add-on plays the programme stream only and does not insert those ads. It is US-centric; the catalogue may differ or be unavailable elsewhere.</description>
+		<disclaimer lang="en_GB">Unofficial. Not affiliated with or endorsed by Future Today Inc. iFood.tv is a trademark of Future Today Inc.</disclaimer>
+		<language>en</language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>
+2026.11.22 - Skip intro and Next episode
+- Shows and movies in Movies &amp; Shows: a Next episode countdown with Watch
+  credits when an episode's credits start, and Skip intro where the service
+  gives an intro time (rare) -- the same Skip Buttons as the Fawesome add-on.
+  Recipe clips have no such times, so they play as before.
+- Episodes without a credits time play the next episode when they end. Turn
+  this off with "Autoplay next episode" in the settings.
+- Restart Kodi once after installing or updating so the new background
+  service starts.
+2026.11.21 - First test build
+- Browse iFood.tv's recipe sections (dish, cuisine, ingredient, method...), search, and play.
+- My List (watchlist), search, subtitles where available, and a self-heal
+  when the site ships a new build -- all shared with the Fawesome add-on.
+		</news>
+	</extension>
+</addon>
 </addons>

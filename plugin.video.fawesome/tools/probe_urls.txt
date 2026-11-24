@@ -1,0 +1,8 @@
+# URLs the recon workflow fetches and saves (one per line; '#' comments).
+# Optional headers:  URL | Header: value | Header: value
+# Add a lead here and push: the fawesome-recon workflow commits the bodies to
+# plugin.video.fawesome/docs/recon/.
+https://fawesome.tv/
+# Round 2: the app bundles (appConfig, rapi.ifood.tv calls) and the sitemap.
+https://fawesome.tv/home/new/v469/assets/js/iptv-main.js?ver=1236
+https://fawesome.tv/sitemaps/sitemap_index.xml

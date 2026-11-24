@@ -1,0 +1,96 @@
+# Kodi Media Center language file
+# Addon Name: iFood.tv
+# Addon id: plugin.video.ifoodtv
+# Addon Provider: Breezyslasher
+msgid ""
+msgstr ""
+"Project-Id-Version: plugin.video.ifoodtv\n"
+"Report-Msgid-Bugs-To: https://github.com/Breezyslasher/Kodi-Addons\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: en_GB\n"
+
+# --- Settings ---
+msgctxt "#32000"
+msgid "Playback"
+msgstr ""
+
+msgctxt "#32001"
+msgid "Play through InputStream Adaptive"
+msgstr ""
+
+msgctxt "#32002"
+msgid "Show subtitles when available"
+msgstr ""
+
+msgctxt "#32003"
+msgid "Autoplay next episode"
+msgstr ""
+
+msgctxt "#32010"
+msgid "Advanced"
+msgstr ""
+
+msgctxt "#32011"
+msgid "Developer logging"
+msgstr ""
+
+msgctxt "#32012"
+msgid "Reset device id"
+msgstr ""
+
+msgctxt "#32013"
+msgid "Device id"
+msgstr ""
+
+# --- Browsing ---
+msgctxt "#32100"
+msgid "Next page..."
+msgstr ""
+
+msgctxt "#32101"
+msgid "Search"
+msgstr ""
+
+# --- Messages ---
+msgctxt "#32110"
+msgid "This title is only available with DRM, which is not supported yet"
+msgstr ""
+
+msgctxt "#32111"
+msgid "No stream found for this title"
+msgstr ""
+
+msgctxt "#32112"
+msgid "Device id reset"
+msgstr ""
+
+msgctxt "#32113"
+msgid "iFood.tv is not responding -- see the Kodi log"
+msgstr ""
+
+# --- My List ---
+msgctxt "#32120"
+msgid "My List"
+msgstr ""
+
+msgctxt "#32121"
+msgid "Add to My List"
+msgstr ""
+
+msgctxt "#32122"
+msgid "Remove from My List"
+msgstr ""
+
+msgctxt "#32123"
+msgid "Added to My List"
+msgstr ""
+
+msgctxt "#32124"
+msgid "Removed from My List"
+msgstr ""
+
+msgctxt "#32125"
+msgid "My List is empty"
+msgstr ""

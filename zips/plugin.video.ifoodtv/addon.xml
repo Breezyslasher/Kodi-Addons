@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<addon id="plugin.video.ifoodtv" name="iFood.tv" version="2026.11.22" provider-name="Breezyslasher">
+	<requires>
+		<import addon="xbmc.python" version="3.0.1"/>
+		<import addon="script.module.requests" version="2.31.0"/>
+		<import addon="inputstream.adaptive" version="20.0.0"/>
+		<import addon="script.module.skipbuttons" version="1.0.1"/>
+	</requires>
+	<extension point="xbmc.python.pluginsource" library="default.py">
+		<provides>video</provides>
+	</extension>
+	<extension point="xbmc.service" library="service.py"/>
+	<extension point="xbmc.addon.metadata">
+		<summary lang="en_GB">Free recipe and cooking videos from iFood.tv (unofficial)</summary>
+		<description lang="en_GB">Browse and play iFood.tv's free cooking catalogue: Home, Top Youtubers, Movies &amp; Shows, Dish, Fun With Food, Ingredients, Cuisine, Healthy, Method, Speciality and Taste, with search and My List. Videos are plain MP4 or HLS; no DRM module is needed.
+
+No account or sign-up -- the service has none. iFood.tv runs on Future Today's platform (the same one as Fawesome); this add-on uses its undocumented website API and may need updating when the site changes.
+
+Known gaps: the service is ad-supported and its web player requests ads separately from the video (client-side VMAP). This add-on plays the programme stream only and does not insert those ads. It is US-centric; the catalogue may differ or be unavailable elsewhere.</description>
+		<disclaimer lang="en_GB">Unofficial. Not affiliated with or endorsed by Future Today Inc. iFood.tv is a trademark of Future Today Inc.</disclaimer>
+		<language>en</language>
+		<platform>all</platform>
+		<license>GPL-3.0-or-later</license>
+		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
+		<assets>
+			<icon>resources/icon.png</icon>
+			<fanart>resources/fanart.jpg</fanart>
+		</assets>
+		<news>
+2026.11.22 - Skip intro and Next episode
+- Shows and movies in Movies &amp; Shows: a Next episode countdown with Watch
+  credits when an episode's credits start, and Skip intro where the service
+  gives an intro time (rare) -- the same Skip Buttons as the Fawesome add-on.
+  Recipe clips have no such times, so they play as before.
+- Episodes without a credits time play the next episode when they end. Turn
+  this off with "Autoplay next episode" in the settings.
+- Restart Kodi once after installing or updating so the new background
+  service starts.
+2026.11.21 - First test build
+- Browse iFood.tv's recipe sections (dish, cuisine, ingredient, method...), search, and play.
+- My List (watchlist), search, subtitles where available, and a self-heal
+  when the site ships a new build -- all shared with the Fawesome add-on.
+		</news>
+	</extension>
+</addon>

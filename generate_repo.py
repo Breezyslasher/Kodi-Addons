@@ -21,6 +21,8 @@ ADDON_FOLDERS = [
     "service.watchparty",
     "plugin.video.tubitv",
     "plugin.video.starz",
+    "plugin.video.fawesome",
+    "plugin.video.ifoodtv",
     "script.module.skipbuttons"
 ]
 
