@@ -241,6 +241,11 @@ def start_resume(player):
     the report context), Kodi owns resume, so a start at ~0 means the viewer
     chose "Play from beginning" -- which must be respected -- and only the
     pre-roll ident is skipped.
+
+    The seek runs on a short-lived thread that first waits for a few frames to
+    render: seeking straight from onAVStarted, before the first frame, leaves
+    the picture black until the viewer nudges the seek bar. Letting playback
+    get going first turns it into a clean jump.
     """
     m = license_proxy.start_markers()
     if not m:
@@ -248,30 +253,51 @@ def start_resume(player):
     pre = m.get("pre_roll_end") or 0.0
     watched = m.get("watched_time") or 0.0
     try:
-        pos = player.getTime()
         dur = m.get("duration") or player.getTotalTime() or 0.0
     except Exception:
-        return
-    # Already resumed/seeked past the ident: leave it exactly as Kodi set it.
-    if pos > pre + 2:
-        return
-    ctx = kodiutils.read_json(PLAYBACK_REPORT_CACHE, default={}) or {}
-    has_kodi_resume = bool(ctx.get("has_kodi_resume"))
-    target = None
-    if (not has_kodi_resume
-            and kodiutils.get_setting_bool("apple_auto_resume", True)
-            and dur and pre + 30 < watched < dur * 0.9):
-        target = watched            # Apple's watched position; no Kodi point
-    elif pre >= 2:
-        target = pre                # just skip the intro ident
-    if target and target > pos + 1:
+        dur = 0.0
+
+    def _seek_when_ready():
+        # Wait until frames are actually flowing (position advancing past ~1s),
+        # up to a short cap, so the seek is a clean jump and not a black stall.
+        # Bail the moment this is no longer our stream.
+        deadline = time.time() + 8
+        while time.time() < deadline:
+            try:
+                if not player.isPlayingVideo():
+                    return
+                pos = player.getTime()
+            except Exception:
+                return
+            if pos >= 1.0:
+                break
+            time.sleep(0.2)
         try:
-            player.seekTime(float(target))
-            kodiutils.log("Start seek: to %.1fs (pre-roll=%.1f watched=%.1f "
-                          "kodi_resume=%s)"
-                          % (target, pre, watched, has_kodi_resume))
-        except Exception as exc:
-            kodiutils.log_error("Start seek failed: %s" % exc)
+            pos = player.getTime()
+        except Exception:
+            return
+        # Already resumed/seeked past the ident: leave it as Kodi set it.
+        if pos > pre + 2:
+            return
+        ctx = kodiutils.read_json(PLAYBACK_REPORT_CACHE, default={}) or {}
+        has_kodi_resume = bool(ctx.get("has_kodi_resume"))
+        target = None
+        if (not has_kodi_resume
+                and kodiutils.get_setting_bool("apple_auto_resume", True)
+                and dur and pre + 30 < watched < dur * 0.9):
+            target = watched            # Apple's watched position; no Kodi point
+        elif pre >= 2:
+            target = pre                # just skip the intro ident
+        if target and target > pos + 1:
+            try:
+                player.seekTime(float(target))
+                kodiutils.log("Start seek: to %.1fs (pre-roll=%.1f watched=%.1f "
+                              "kodi_resume=%s)"
+                              % (target, pre, watched, has_kodi_resume))
+            except Exception as exc:
+                kodiutils.log_error("Start seek failed: %s" % exc)
+
+    threading.Thread(target=_seek_when_ready, daemon=True).start()
 
 
 class SkipButtons(object):

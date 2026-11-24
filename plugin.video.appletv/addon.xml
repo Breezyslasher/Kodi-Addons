@@ -41,6 +41,8 @@ Features:
   resume now applies only to titles without a Kodi resume point (reached via
   search/browse, not Continue Watching), so it no longer fights that choice.
 - FIX: stopping in the first seconds no longer wipes the resume point.
+- FIX: the pre-roll/resume skip waits for the picture to start before
+  seeking, so the screen no longer stays black until you nudge the seek bar.
 - FIX: on hardware (L1) Widevine, the key collection now matches the tier
   the stream serves, preventing an intermittent no-key failure.
 - FIX: an intermittent licence error during live key rotation.
