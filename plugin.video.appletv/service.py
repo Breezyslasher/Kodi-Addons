@@ -225,64 +225,6 @@ class KeyPlaySeeker(object):
         self._index = 0
 
 
-def start_resume(player):
-    """One-shot at playback start: skip Apple's intro ident bumper.
-
-    Resume itself is Kodi's job now: the plugin stamps a Kodi resume point onto
-    every resumable item (Continue Watching, and -- via the Continue Watching
-    positions -- items reached by search or a show page), so Kodi shows its
-    resume dialog and seeks on open, smoothly and accurately. This only removes
-    the leading ident bumper. If Kodi has already seeked past it (a Resume
-    choice, or a mid-stream resume point) nothing is done; a start at ~0 is a
-    fresh play or an explicit "Play from beginning", where skipping just the
-    ident is correct.
-
-    The seek runs on a short-lived thread that first waits for a few frames to
-    render: seeking straight from onAVStarted, before the first frame, leaves
-    the picture black until the viewer nudges the seek bar. Letting playback
-    get going first turns it into a clean jump.
-    """
-    if not kodiutils.get_setting_bool("apple_skip_preroll", True):
-        return
-    m = license_proxy.start_markers()
-    if not m:
-        return
-    pre = m.get("pre_roll_end") or 0.0
-    if pre < 2:
-        return
-
-    def _seek_when_ready():
-        # Wait until frames are actually flowing (position advancing past ~1s),
-        # up to a short cap, so the seek is a clean jump and not a black stall.
-        # Bail the moment this is no longer our stream.
-        deadline = time.time() + 8
-        while time.time() < deadline:
-            try:
-                if not player.isPlayingVideo():
-                    return
-                pos = player.getTime()
-            except Exception:
-                return
-            if pos >= 1.0:
-                break
-            time.sleep(0.2)
-        try:
-            pos = player.getTime()
-        except Exception:
-            return
-        # Already resumed/seeked past the ident: leave it as Kodi set it.
-        if pos > pre + 2:
-            return
-        if pre > pos + 1:
-            try:
-                player.seekTime(float(pre))
-                kodiutils.log("Start seek: skip pre-roll ident to %.1fs" % pre)
-            except Exception as exc:
-                kodiutils.log_error("Start seek failed: %s" % exc)
-
-    threading.Thread(target=_seek_when_ready, daemon=True).start()
-
-
 class SkipButtons(object):
     """Drives the Skip recap / Skip intro / Next episode buttons.
 
@@ -314,7 +256,9 @@ class SkipButtons(object):
             self._ctl.reset()
             return
         ctx = kodiutils.read_json(PLAYBACK_REPORT_CACHE, default={}) or {}
-        content_id = ctx.get("content_id")
+        # Only an episode has a next episode; asking for a film's 404s.
+        content_id = (ctx.get("content_id")
+                      if ctx.get("play_type") == "Episode" else None)
         threading.Thread(target=self._prepare, args=(marks, content_id),
                          daemon=True).start()
 
@@ -381,7 +325,9 @@ class Player(xbmc.Player):
             return
         self.history.start(self)
         self.seeker.start(self)
-        start_resume(self)
+        # Resume and the pre-roll ident skip are both seeks Kodi makes as the
+        # stream opens (resume point / StartOffset set by the plugin); nothing
+        # is seeked from here once playback has begun.
         self.skip.start(self)
 
     def onPlayBackStopped(self):

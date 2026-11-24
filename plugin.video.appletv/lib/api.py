@@ -1761,6 +1761,9 @@ class AppleTVApi(object):
             # InputStream Adaptive for a Widevine session on an unencrypted
             # stream leaves it waiting for a licence that can never arrive.
             "encrypted": encrypted,
+            # Markers read from the master during key collection: the pre-roll
+            # ident length lets the plugin start past it with a seek on open.
+            "start_markers": dict(getattr(self, "_start_markers", None) or {}),
             # An iTunes purchase reports its resume point to the MediaAPI
             # playback-positions endpoint, keyed by its store (adam) id.
             "adam_id": assets.get("adam_id") if assets.get("itunes") else None,
@@ -3648,6 +3651,9 @@ class AppleTVApi(object):
         inside each PSSH so the proxy can pick the right one per challenge.
         """
         keys = {}
+        # Start markers (pre-roll length) read from this same master, so the
+        # plugin can start playback past the ident with a seek on open.
+        self._start_markers = {}
         # Variant playlists are authenticated by the token in their URL; the web
         # player requests them with no authorization/media-user-token headers,
         # and sending those makes the request fail.
@@ -3663,6 +3669,8 @@ class AppleTVApi(object):
                 resp = self.session.get(manifest_url, headers=headers, timeout=30)
                 if resp.status_code == 200:
                     master = resp.text
+                    self._start_markers = \
+                        license_proxy.start_markers_from_master(master)
                     break
                 retrying = resp.status_code >= 500 and attempt < 2
                 kodiutils.log_error("Master manifest -> %s for key collection%s"

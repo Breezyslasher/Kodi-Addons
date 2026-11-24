@@ -990,6 +990,8 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
         # this path, seeking on top of the choice; a resume point of 0 tells it
         # not to. A finished game is left alone, so it resumes like on-demand.
         play_item.getVideoInfoTag().setResumePoint(0)
+    elif not (seek_plays or seek_seconds or playback.get("override")):
+        apply_preroll_skip(play_item, playback)
     # Playback resolves from an id, so the item Kodi shows while playing knew
     # nothing about the title and its plot read "Not available". A title's own
     # page carries the description and the cast, which shelf items do not.
@@ -999,6 +1001,38 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
         apply_title_info(play_item, api.get_title_info(item_id, item_type))
 
     xbmcplugin.setResolvedUrl(HANDLE, True, play_item)
+
+
+def kodi_resuming():
+    """Whether Kodi is about to resume this item from its own resume point.
+
+    Kodi hands a plugin the viewer's choice from its Resume / Play from
+    beginning dialog as a fourth argument, "resume:true" or "resume:false"
+    (absent on older Kodi or a PlayMedia call, which are fresh plays).
+    """
+    return len(sys.argv) > 3 and sys.argv[3].strip().lower() == "resume:true"
+
+
+def apply_preroll_skip(play_item, playback):
+    """Start playback past Apple's intro ident with a seek on open.
+
+    The ident is unencrypted and the title after it is not, so seeking over it
+    once playback is running crosses from a clear period into an encrypted one
+    after the audio engine has buffered the clear part -- on some video drivers
+    that wedges the picture or leaves ~20s of audio to drain. Setting Kodi's
+    StartOffset instead makes Kodi seek as the stream opens, the same way its
+    own resume does, before anything is buffered. A Resume is left alone: Kodi
+    seeks to the resume point itself, which is already past the ident.
+    """
+    if not kodiutils.get_setting_bool("apple_skip_preroll", True):
+        return
+    if kodi_resuming():
+        return
+    pre = (playback.get("start_markers") or {}).get("pre_roll_end") or 0.0
+    if pre < 2:
+        return
+    play_item.setProperty("StartOffset", "%.3f" % pre)
+    kodiutils.log("Start offset: skip pre-roll ident, open at %.1fs" % pre)
 
 
 def apply_title_info(item, info):
@@ -1053,6 +1087,9 @@ def write_report_context(playback, duration=None, content_id=None,
     if content_id:
         # Also what Continue Watching sends as its playerContentId.
         report["content_id"] = content_id
+    if item_type:
+        # Lets the service tell an episode (which has a next one) from a film.
+        report["play_type"] = item_type
     # Whether Kodi has its own resume point for this item. When it does, the
     # service leaves resume to Kodi (so "Play from beginning" is honoured); when
     # it does not, the service may resume to Apple's watched.time instead.

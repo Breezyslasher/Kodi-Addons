@@ -125,6 +125,19 @@ def start_markers():
     return dict(_START_MARKERS)
 
 
+def start_markers_from_master(text):
+    """Parse the start markers out of a master playlist's text directly.
+
+    The plugin already fetches the master before playback (to collect the
+    Widevine keys), so it can learn the pre-roll length up front and hand Kodi
+    a start offset -- a seek on open -- instead of the service seeking after
+    playback has begun."""
+    try:
+        return _parse_start_markers(_session_data(text or ""))
+    except Exception:
+        return {}
+
+
 def _context():
     return kodiutils.read_json(CONTEXT_FILE, default={}) or {}
 
