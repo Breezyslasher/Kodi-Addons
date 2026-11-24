@@ -375,6 +375,13 @@ def add_playable(entry, cast=None):
     # finished game keeps its Kodi resume point, so it needs no such hand-off.
     if live_sport and (entry.get("resume") or {}).get("position"):
         play_params["resume_pos"] = int(entry["resume"]["position"])
+    # On-demand item with a Kodi resume point: tell the play flow so the service
+    # leaves resume to Kodi (which respects a "Play from beginning" choice)
+    # rather than also seeking to Apple's watched.time. Without it (a title
+    # reached via search/browse, not Continue Watching), the service may resume
+    # to watched.time -- the cross-device resume that has no Kodi point to rely on.
+    elif not live_sport and resume.get("position") and resume.get("total"):
+        play_params["has_kodi_resume"] = 1
     xbmcplugin.addDirectoryItem(
         HANDLE,
         url(action="play", **play_params),
@@ -916,7 +923,7 @@ def pick_live_mode(resume_seconds=None):
 
 
 def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=None,
-            resume_pos=None):
+            resume_pos=None, has_kodi_resume=False):
     # An event carried in with its own feed (Continue Watching) plays that
     # feed directly. Only when the feed is not already known is the picker
     # offered, and only for an event that has more than one.
@@ -973,7 +980,8 @@ def do_play(api, item_id, item_type, external_id=None, kp_start=None, kp_end=Non
         return
 
     kodiutils.notify(L("sd_notice"))
-    write_report_context(playback, content_id=item_id, item_type=item_type)
+    write_report_context(playback, content_id=item_id, item_type=item_type,
+                         has_kodi_resume=has_kodi_resume)
     play_item = build_isa_listitem(playback)
     if is_live:
         # A live game starts where the menu said (live edge, from start, catch
@@ -1032,7 +1040,7 @@ def apply_title_info(item, info):
 
 
 def write_report_context(playback, duration=None, content_id=None,
-                         item_type=None):
+                         item_type=None, has_kodi_resume=False):
     """Leave the service what it needs to report this stream to Apple.
 
     Playback runs in a different process from this one, so the ids that mint
@@ -1045,6 +1053,11 @@ def write_report_context(playback, duration=None, content_id=None,
     if content_id:
         # Also what Continue Watching sends as its playerContentId.
         report["content_id"] = content_id
+    # Whether Kodi has its own resume point for this item. When it does, the
+    # service leaves resume to Kodi (so "Play from beginning" is honoured); when
+    # it does not, the service may resume to Apple's watched.time instead.
+    if has_kodi_resume:
+        report["has_kodi_resume"] = True
     if playback.get("adam_id"):
         # A purchase reports its resume point to the MediaAPI playback-positions
         # endpoint (not the now-playing service), keyed by its store id; the
@@ -1417,7 +1430,8 @@ def router(paramstring):
         do_play(api, params.get("item_id"), params.get("item_type", "Movie"),
                 params.get("external_id"),
                 kp_start=params.get("kp_start"), kp_end=params.get("kp_end"),
-                resume_pos=params.get("resume_pos"))
+                resume_pos=params.get("resume_pos"),
+                has_kodi_resume=params.get("has_kodi_resume") == "1")
     elif action == "key_plays":
         show_key_plays(api, params.get("item_id"),
                        params.get("item_type", "SportingEvent"),

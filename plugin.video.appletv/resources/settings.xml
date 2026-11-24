@@ -16,6 +16,7 @@
         <setting id="sdr_only" type="bool" label="32043" default="true" />
         <setting id="avc_only" type="bool" label="32044" default="true" />
         <setting id="autoplay_next" type="bool" label="32115" default="true" />
+        <setting id="apple_auto_resume" type="bool" label="32116" default="true" />
     </category>
     <category label="32111">
         <setting id="external_subs" type="bool" label="32100" default="true" />

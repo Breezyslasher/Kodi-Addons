@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.appletv" name="Apple TV" version="2026.11.22" provider-name="Breezyslasher">
+<addon id="plugin.video.appletv" name="Apple TV" version="2026.11.24" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -34,11 +34,12 @@ Features:
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
-2026.11.22 - Audit fixes
+2026.11.24 - Audit fixes
 - FIX: a sign-out or account switch is now picked up by the background
   service instead of the old account lingering (and being written back).
-- FIX: "Play from beginning" is no longer overridden (the watched-position
-  auto-resume that fought it was removed; Kodi's own resume still applies).
+- FIX: "Play from beginning" is honoured again. The watched-position auto-
+  resume now applies only to titles without a Kodi resume point (reached via
+  search/browse, not Continue Watching), so it no longer fights that choice.
 - FIX: stopping in the first seconds no longer wipes the resume point.
 - FIX: on hardware (L1) Widevine, the key collection now matches the tier
   the stream serves, preventing an intermittent no-key failure.
