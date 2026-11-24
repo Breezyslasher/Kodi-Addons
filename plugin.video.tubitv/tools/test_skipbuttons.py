@@ -14,6 +14,7 @@ The payloads are the ones measured on 2026-11-19 with the anonymous token
 import json
 import os
 import sys
+import time
 import types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -219,6 +220,9 @@ import service                          # noqa: E402
 WINDOW['tubitv.playing'] = json.dumps(
     {'content_id': 438034, 'content_type': 'episode', 'duration': 1369,
      'report': False, 'markers': skipMarkers(EPISODE_438034),
+     # rememberPlaying() stamps this; the service disregards a property that
+     # was never played, so a test without it is correctly ignored.
+     'at': time.time(),
      'parent_id': '2914', 'series_id': '2914', 'season': '1',
      'episode_number': '1'})
 
@@ -286,7 +290,8 @@ print('\nthe service, playing film 570192')
 asked[:] = []
 WINDOW['tubitv.playing'] = json.dumps(
     {'content_id': 570192, 'content_type': 'movie', 'duration': 5760,
-     'report': False, 'markers': skipMarkers(FILM_570192)})
+     'report': False, 'markers': skipMarkers(FILM_570192),
+     'at': time.time()})
 player.onAVStarted()
 check('a film gets its credits time', asked[0][1], {'credits': 5715.18})
 check('and is never asked about a next episode', player.nextUrl, None)

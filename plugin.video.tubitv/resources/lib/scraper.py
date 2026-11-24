@@ -4,6 +4,7 @@
 import json
 import os
 import sys
+import time
 import urllib.parse
 
 import xbmc
@@ -30,6 +31,10 @@ qp = urllib.parse.quote_plus
 SERIES = 's'
 # The window property the service reads to know what is playing
 PLAYING = 'tubitv.playing'
+# Marks a search url as carrying a query rather than being the menu entry
+# that asks for one. A prefix rather than a sentinel word, so that searching
+# for the word itself is not mistaken for the entry.
+QUERY = 'q|'
 
 WIDEVINE_KEYSYSTEM = 'com.widevine.alpha'
 # Tubi's licence server takes the raw challenge and answers with the raw
@@ -412,7 +417,7 @@ class myAddon(t1mAddon):
         if historyId:
             extras.append((self.localLang(30054),
                            'RunPlugin(%s?mode=DF&url=%s)' % (
-                               sys.argv[0], qp('|'.join(['unwatch', historyId])))))
+                               sys.argv[0], qp('|'.join(['unwatch', str(historyId)])))))
         series = '1' if content.get('type') == SERIES else '0'
         for label, action in ((30045, LIKE), (30046, DISLIKE)):
             extras.append((self.localLang(label),
@@ -545,8 +550,25 @@ class myAddon(t1mAddon):
         return(ilist)
 
     def getAddonMovies(self, url, ilist):
-        query = xbmcgui.Dialog().input(self.localLang(30010))
-        if len(query) == 0:
+        """Search results.
+
+        The query travels in the url. The menu entry carries no query, so
+        it asks for one and sends Kodi to the url that holds it - because
+        "Add to My List" and "Remove from Continue Watching" both refresh
+        the container, and refreshing a listing built by a keyboard prompt
+        puts the keyboard back up instead of repeating the search.
+        """
+        asked = uqp(url)
+        if asked.startswith(QUERY):
+            query = asked[len(QUERY):]
+        else:
+            query = xbmcgui.Dialog().input(self.localLang(30010))
+            if len(query) == 0:
+                return ilist
+            # replace: the entry that asked does not belong in the history,
+            # so Back from the results goes to the menu, not the keyboard.
+            xbmc.executebuiltin('Container.Update(%s?mode=GM&url=%s,replace)' % (
+                sys.argv[0], qp(''.join([QUERY, query]))))
             return ilist
         try:
             contents = self.api.search(query)
@@ -767,6 +789,11 @@ class myAddon(t1mAddon):
         playing = {'content_id': contentId,
                    'content_type': HISTORY_MOVIE,
                    'duration': content.get('duration'),
+                   # When this was resolved. The service disregards a
+                   # property that was never played - a title that failed to
+                   # open does not always raise onPlayBackError, and one left
+                   # behind would be taken for whatever plays next.
+                   'at': time.time(),
                    'report': self.addon.getSetting('report_progress') == 'true',
                    'markers': skipMarkers(content)}
         parentId = self.seriesOf(url, content)

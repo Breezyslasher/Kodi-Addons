@@ -37,6 +37,10 @@ MIN_POSITION = 30
 # seconds, so a Tubi video is watched closely. Nothing else here needs it.
 POLL_PLAYING = 1
 POLL_IDLE = 5
+# How long after the plugin resolved a stream its property still stands for
+# what is playing. Generous: a slow manifest and a DRM handshake take seconds,
+# not minutes.
+STALE = 120
 
 
 def asInt(value):
@@ -47,16 +51,28 @@ def asInt(value):
 
 
 def api():
-    """An authenticated TubiApi, or None if Tubi cannot be reached."""
+    """An authenticated TubiApi, or None if Tubi cannot be reached.
+
+    apply() fills the headers as far as it can and reports the failure
+    afterwards, so a sign-in that was refused still leaves the anonymous
+    device token in place - and Tubi serves its catalogue to that. What
+    the service asks for (the next episode, and where a title stopped)
+    needs a bearer, not an account, so stored credentials that no longer
+    work must not cost the Next episode button. default.py carries on the
+    same way.
+    """
+    headers, auth = {}, None
     try:
         auth = TubiAuth(xbmcaddon.Addon(ADDON_ID))
-        headers = {}
         auth.apply(headers)
-        return TubiApi(headers, auth.deviceId, userId=auth.userId)
     except (TubiApiError, TubiAuthError) as err:
-        xbmc.log(msg='%s : no api in the service : %s' % (ADDON_ID, err),
-                 level=xbmc.LOGWARNING)
-        return None
+        if auth is None or not headers.get('Authorization'):
+            xbmc.log(msg='%s : no api in the service : %s' % (ADDON_ID, err),
+                     level=xbmc.LOGWARNING)
+            return None
+        xbmc.log(msg='%s : anonymous in the service, sign-in failed : %s' % (ADDON_ID, err),
+                 level=xbmc.LOGDEBUG)
+    return TubiApi(headers, auth.deviceId, userId=auth.userId)
 
 
 def nextEpisode(tubi, item):
@@ -172,13 +188,40 @@ class TubiMonitor(xbmc.Player):
         self.skip.reset()
         self.report()
 
+    def onPlayBackError(self):
+        # A title that failed to open never reaches onAVStarted, so without
+        # this its property is left behind and the next video played - this
+        # addon's or anyone else's - is taken for it. Reporting is safe: the
+        # position is 0, which report() declines to send.
+        self.skip.reset()
+        self.report()
+
     @staticmethod
     def currentItem():
+        """What the plugin left for us, if it is still about to play.
+
+        Belt as well as braces for the property outliving its playback:
+        Kodi does not always raise onPlayBackError - a stream the viewer
+        backs out of while it buffers just goes quiet - and a property left
+        behind would be applied to whatever is played next, which may not
+        even be ours. Playback follows the plugin within seconds, so
+        anything older than this was never played.
+        """
         try:
             playing = xbmcgui.Window(10000).getProperty(PLAYING)
-            return json.loads(playing) if playing else None
+            item = json.loads(playing) if playing else None
         except ValueError:
             return None
+        if item is None:
+            return None
+        age = time.time() - (item.get('at') or 0)
+        if age > STALE:
+            xbmc.log(msg='%s : ignoring a %ds old playing property for %s'
+                         % (ADDON_ID, age, item.get('content_id')),
+                     level=xbmc.LOGWARNING)
+            xbmcgui.Window(10000).clearProperty(PLAYING)
+            return None
+        return item
 
     def playing(self):
         """Whether one of ours is on screen, i.e. whether to watch closely."""

@@ -231,8 +231,18 @@ class TubiAuth(object):
                        'Referer': ''.join([WEB_API, '/login'])}
         if headers is not None:
             postHeaders.update(headers)
-        return requests.post(url, params=params, data=body.encode('utf-8'),
-                             headers=postHeaders, timeout=TIMEOUT)
+        try:
+            return requests.post(url, params=params, data=body.encode('utf-8'),
+                                 headers=postHeaders, timeout=TIMEOUT)
+        except requests.exceptions.RequestException as err:
+            # A refused or timed-out connection is a failure to sign in like
+            # any other, and has to arrive as one. Every caller here, and
+            # apply() above them, handles TubiAuthError and nothing else - so
+            # an unwrapped ConnectionError escapes all the way out of
+            # default.py's import and kills the addon outright, which is what
+            # an offline or firewalled Kodi used to do on every single
+            # invocation. tubi_api wraps all four of its verbs the same way.
+            raise TubiAuthError('could not reach Tubi : %s' % err)
 
     @staticmethod
     def _errorMessage(response, fallback):
@@ -364,6 +374,17 @@ class TubiAuth(object):
             return None
         session = self.cache.get('user') or {}
         if session.get('credentials') != fingerprint:
+            # The settings now hold different credentials from the ones this
+            # session was minted for. Dropping it from the local variable is
+            # not enough: bearer() reads the cache directly, so if the new
+            # credentials then fail to sign in, every content call would go
+            # on being signed as the previous account - the old token is
+            # still live and still inside its expiry.
+            if session:
+                self.cache.pop('user', None)
+                self._writeCache()
+                self.log('credentials changed, forgetting the previous session',
+                         level=xbmc.LOGINFO)
             session = {}
         if session.get('connect_sid') and session.get('expires_at', 0) > time.time() + EXPIRY_MARGIN:
             return session
