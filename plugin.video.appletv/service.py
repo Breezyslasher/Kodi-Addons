@@ -242,6 +242,8 @@ def start_resume(player):
     the picture black until the viewer nudges the seek bar. Letting playback
     get going first turns it into a clean jump.
     """
+    if not kodiutils.get_setting_bool("apple_skip_preroll", True):
+        return
     m = license_proxy.start_markers()
     if not m:
         return

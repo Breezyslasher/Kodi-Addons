@@ -45,7 +45,9 @@ Features:
   honoured. Toggle with "Resume from Apple's watched position" in settings.
 - FIX: stopping in the first seconds no longer wipes the resume point.
 - FIX: the pre-roll ident skip waits for the picture to start before seeking,
-  so the screen no longer stays black until you nudge the seek bar.
+  so the screen no longer stays black until you nudge the seek bar, and it can
+  be turned off ("Skip Apple's intro ident") on hardware whose driver stalls
+  on a mid-stream seek.
 - FIX: on hardware (L1) Widevine, the key collection now matches the tier
   the stream serves, preventing an intermittent no-key failure.
 - FIX: an intermittent licence error during live key rotation.

@@ -194,6 +194,10 @@ msgctxt "#32116"
 msgid "Resume from Apple's watched position (titles not in Continue Watching)"
 msgstr ""
 
+msgctxt "#32117"
+msgid "Skip Apple's intro ident at the start (turn off if playback stalls on seek)"
+msgstr ""
+
 msgctxt "#32050"
 msgid "This event has not started yet. It begins %s."
 msgstr ""
