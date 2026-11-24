@@ -31,10 +31,14 @@ qp = urllib.parse.quote_plus
 SERIES = 's'
 # The window property the service reads to know what is playing
 PLAYING = 'tubitv.playing'
-# Marks a search url as carrying a query rather than being the menu entry
-# that asks for one. A prefix rather than a sentinel word, so that searching
-# for the word itself is not mistaken for the entry.
-QUERY = 'q|'
+# The last search's terms, and the note an action leaves just before it
+# refreshes the listing it was used in, so a refreshed search repeats the
+# search rather than asking again.
+LAST_SEARCH = 'tubitv.search.last'
+REFRESHING = 'tubitv.search.refreshing'
+# The refresh follows its action within a second; anything older than this
+# is not that refresh, and a search opened then asks as usual.
+REFRESH_WINDOW = 10
 
 WIDEVINE_KEYSYSTEM = 'com.widevine.alpha'
 # Tubi's licence server takes the raw challenge and answers with the raw
@@ -552,24 +556,35 @@ class myAddon(t1mAddon):
     def getAddonMovies(self, url, ilist):
         """Search results.
 
-        The query travels in the url. The menu entry carries no query, so
-        it asks for one and sends Kodi to the url that holds it - because
         "Add to My List" and "Remove from Continue Watching" both refresh
-        the container, and refreshing a listing built by a keyboard prompt
-        puts the keyboard back up instead of repeating the search.
+        the listing they were used in, and refreshing search results runs
+        this again - which asked for the terms afresh and put the keyboard
+        back up. Those two actions leave a note before they refresh (see
+        refreshListing), and a search that finds one repeats the last
+        search instead of asking.
+
+        Not done by sending Kodi to a url that holds the terms, which was
+        tried first: t1mlib ends every listing as a success when this
+        returns, so the entry that asked closed an empty folder while the
+        update to the results was still queued, and search came back
+        empty. If the note is ever missed, the worst that happens is the
+        keyboard coming back - what it did before, not an empty search.
         """
-        asked = uqp(url)
-        if asked.startswith(QUERY):
-            query = asked[len(QUERY):]
-        else:
+        window = xbmcgui.Window(10000)
+        query = ''
+        refreshed = window.getProperty(REFRESHING)
+        window.clearProperty(REFRESHING)
+        try:
+            recent = time.time() - float(refreshed or 0) <= REFRESH_WINDOW
+        except ValueError:
+            recent = False
+        if recent:
+            query = window.getProperty(LAST_SEARCH)
+        if not query:
             query = xbmcgui.Dialog().input(self.localLang(30010))
-            if len(query) == 0:
-                return ilist
-            # replace: the entry that asked does not belong in the history,
-            # so Back from the results goes to the menu, not the keyboard.
-            xbmc.executebuiltin('Container.Update(%s?mode=GM&url=%s,replace)' % (
-                sys.argv[0], qp(''.join([QUERY, query]))))
+        if len(query) == 0:
             return ilist
+        window.setProperty(LAST_SEARCH, query)
         try:
             contents = self.api.search(query)
         except TubiApiError as err:
@@ -685,6 +700,17 @@ class myAddon(t1mAddon):
         elif parts[0] == 'unwatch' and len(parts) > 1:
             self.forget(parts[1])
 
+    @staticmethod
+    def refreshListing():
+        """Refresh the listing an action was used in.
+
+        Leaves a note first, so that when that listing is search results,
+        getAddonMovies repeats the search instead of asking for the terms
+        again.
+        """
+        xbmcgui.Window(10000).setProperty(REFRESHING, str(time.time()))
+        xbmc.executebuiltin('Container.Refresh')
+
     def forget(self, historyId):
         """Take a title out of Continue Watching."""
         try:
@@ -695,7 +721,7 @@ class myAddon(t1mAddon):
         self._watching = None
         self.debug('forgot %s from continue watching' % historyId)
         xbmcgui.Dialog().notification(self.addonName, self.localLang(30055))
-        xbmc.executebuiltin('Container.Refresh')
+        self.refreshListing()
 
     def toggleQueue(self, action, contentId, kind):
         """Put a title on the saved list, or take it off.
@@ -720,7 +746,7 @@ class myAddon(t1mAddon):
         self._saved = None
         self.debug('%s my list : %s' % (action, contentId))
         xbmcgui.Dialog().notification(self.addonName, self.localLang(message))
-        xbmc.executebuiltin('Container.Refresh')
+        self.refreshListing()
 
     def toggleRating(self, wanted, contentId, isSeries):
         """Like or dislike a title, or take back the one already given."""

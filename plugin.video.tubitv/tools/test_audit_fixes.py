@@ -16,7 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ADDON = os.path.dirname(HERE)
 ROOT = os.path.dirname(ADDON)
 
-LOG, BUILTINS, SHOWN = [], [], []
+LOG, BUILTINS, SHOWN, PROMPTS = [], [], [], []
 SETTINGS = {}
 WINDOW = {}
 failures = []
@@ -84,7 +84,7 @@ def stub_kodi(profile):
     xbmcgui.ListItem = lambda *a, **k: types.SimpleNamespace()
     xbmcgui.Dialog = lambda: types.SimpleNamespace(
         notification=lambda *a, **k: None, ok=lambda *a, **k: None,
-        input=lambda *a, **k: ASKED['answer'])
+        input=lambda *a, **k: (PROMPTS.append(1), ASKED['answer'])[1])
 
     xbmcvfs = types.ModuleType('xbmcvfs')
     xbmcvfs.translatePath = lambda p: p
@@ -312,23 +312,53 @@ print('\n6. a refreshed search repeats the search, not the keyboard')
 me.api = types.SimpleNamespace(search=lambda q: [{'id': 9, 'title': q, 'type': 'v'}])
 me.addContent = lambda content, ilist, inList=False: ilist + [content['title']]
 
+
+def listing(url):
+    """What Kodi is handed, the way t1mlib 4.0.9's procDir builds it:
+
+        ilist = dirFunc(url, [])
+        xbmcplugin.addDirectoryItems(ih, ilist, len(ilist))
+        xbmcplugin.endOfDirectory(ih, cacheToDisc=cache2Disc)
+
+    The listing is whatever the handler returns, then closed as a success.
+    The first attempt at this fix returned nothing from the entry and
+    relied on a queued Container.Update - which this would have shown as
+    the empty search it was in Kodi, had the test asked.
+    """
+    BUILTINS[:], PROMPTS[:] = [], []
+    return me.getAddonMovies(url, [])
+
+
+WINDOW.pop(scraper.LAST_SEARCH, None)
+WINDOW.pop(scraper.REFRESHING, None)
 ASKED['answer'] = 'blade runner'
-BUILTINS[:] = []
-out = me.getAddonMovies('search', [])
-check('the menu entry asks, then sends Kodi on', len(BUILTINS), 1)
-check('and lists nothing itself', out, [])
-check('sending Kodi to the url that holds the query',
-      BUILTINS[0],
-      'Container.Update(plugin://plugin.video.tubitv/?mode=GM&url=q%7Cblade+runner,replace)')
+check('opening search asks', (listing('search'), len(PROMPTS)), (['blade runner'], 1))
+check('and lists the results itself, nothing queued', BUILTINS, [])
 
-BUILTINS[:] = []
+# "Add to My List" on a result: the action refreshes the listing it was in.
+me.refreshListing()
+check('the action refreshes', BUILTINS, ['Container.Refresh'])
 ASKED['answer'] = 'SHOULD NOT BE ASKED'
-out = me.getAddonMovies('q%7Cblade+runner', [])
-check('that url searches', out, ['blade runner'])
-check('without asking again', BUILTINS, [])
+check('the refreshed search repeats the search', listing('search'), ['blade runner'])
+check('without the keyboard', len(PROMPTS), 0)
 
-out = me.getAddonMovies('q%7Csearch', [])
-check('and a search for the word "search" is still a search', out, ['search'])
+# The note is for that one refresh only.
+ASKED['answer'] = 'alien'
+check('opening search afterwards asks again', (listing('search'), len(PROMPTS)), (['alien'], 1))
+
+# A note too old to be that refresh is not taken for one.
+WINDOW[scraper.REFRESHING] = str(time.time() - scraper.REFRESH_WINDOW - 1)
+ASKED['answer'] = 'brazil'
+check('an old note is ignored', (listing('search'), len(PROMPTS)), (['brazil'], 1))
+
+# Backing out of the keyboard lists nothing and forgets nothing.
+ASKED['answer'] = ''
+check('an empty answer lists nothing', listing('search'), [])
+check('and keeps the last search', WINDOW.get(scraper.LAST_SEARCH), 'brazil')
+
+# A refresh of some other listing, then search opened straight after, would
+# repeat the last search rather than ask: the one imprecision left, and the
+# reason the window is ten seconds and not longer.
 
 print('\n%d failed' % len(failures) if failures else '\nall ok')
 sys.exit(1 if failures else 0)
