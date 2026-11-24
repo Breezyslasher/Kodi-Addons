@@ -1030,7 +1030,7 @@ class AppleTVApi(object):
                         continue
                     seen.add(key)
                 items.append(item)
-        return items
+        return self._stamp_resume(items)
 
     def search_hints(self, term):
         """Apple's search suggestions for a partly-typed term."""
@@ -1097,7 +1097,7 @@ class AppleTVApi(object):
             offset += page
         if season is not None:
             episodes = [e for e in episodes if str(e.get("season")) == str(season)]
-        return self._harvest_streams(episodes)
+        return self._stamp_resume(self._harvest_streams(episodes))
 
     def next_episode_id(self, content_id):
         """The content id of the episode after this one in its show, or None.
@@ -2299,8 +2299,11 @@ class AppleTVApi(object):
             kodiutils.log_error("Android UTS response for %s was not JSON" % path)
             return None
 
-    def get_continue_watching(self, max_pages=10):
+    def get_continue_watching(self, max_pages=10, positions_only=False):
         """The account-wide Continue Watching row, across every service.
+
+        positions_only skips the poster enrichment (extra requests), for the
+        callers that only want each item's id and resume point.
 
         The per-channel Up Next the home page shows is scoped to Apple TV+, so
         it never lists an iTunes purchase. This asks Apple's account-wide shelf
@@ -2342,7 +2345,55 @@ class AppleTVApi(object):
             items = self._itunes_continue_watching(max_pages)
         if not items:
             kodiutils.log("Continue Watching: 0 item(s)")
-        self._enrich_cw_posters(items)
+        if not positions_only:
+            self._enrich_cw_posters(items)
+        return items
+
+    def continue_watching_positions(self):
+        """{content_id: {"position", "total"}} for everything in the account's
+        Continue Watching row, so any listing can stamp a Kodi resume point onto
+        a matching item -- the accurate positionInMilliseconds, not the master
+        playlist's imprecise watched.time, and reached via search or a show page
+        rather than only from the Continue Watching shelf.
+
+        Cached briefly: a listing of many items must not refetch per item, and
+        the shelf moves slowly. Gated on the apple_auto_resume setting.
+        """
+        if not kodiutils.get_setting_bool("apple_auto_resume", True):
+            return {}
+        now = time.time()
+        cached = getattr(self, "_cw_pos_cache", None)
+        if cached and now - cached[0] < 60:
+            return cached[1]
+        positions = {}
+        try:
+            for item in self.get_continue_watching(positions_only=True):
+                cid = item.get("id")
+                resume = item.get("resume") or {}
+                if cid and resume.get("position") and resume.get("total"):
+                    positions[cid] = {"position": resume["position"],
+                                      "total": resume["total"]}
+        except Exception as exc:
+            kodiutils.log("Continue Watching positions unavailable: %s" % exc)
+        self._cw_pos_cache = (now, positions)
+        return positions
+
+    def _stamp_resume(self, items):
+        """Give each item that has no resume of its own the Continue Watching
+        position for its id, so Kodi can resume it natively (no service seek).
+        A no-op when nothing matches or auto-resume is off.
+        """
+        try:
+            positions = self.continue_watching_positions()
+            if not positions:
+                return items
+            for item in items or []:
+                if isinstance(item, dict) and not item.get("resume"):
+                    hit = positions.get(item.get("id"))
+                    if hit:
+                        item["resume"] = dict(hit)
+        except Exception as exc:
+            kodiutils.log("Resume stamp skipped: %s" % exc)
         return items
 
     def _enrich_cw_posters(self, items):

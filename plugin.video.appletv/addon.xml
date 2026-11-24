@@ -37,12 +37,15 @@ Features:
 2026.11.24 - Audit fixes
 - FIX: a sign-out or account switch is now picked up by the background
   service instead of the old account lingering (and being written back).
-- FIX: "Play from beginning" is honoured again. The watched-position auto-
-  resume now applies only to titles without a Kodi resume point (reached via
-  search/browse, not Continue Watching), so it no longer fights that choice.
+- CHANGE: resume is now handled by Kodi throughout. A partly-watched title
+  carries its Apple resume point into Kodi's own resume (so the Resume / Play
+  from beginning dialog works and the seek is smooth) even when reached via
+  search or a show page, not just Continue Watching -- using Apple's accurate
+  position, and no longer the imprecise watched.time. "Play from beginning" is
+  honoured. Toggle with "Resume from Apple's watched position" in settings.
 - FIX: stopping in the first seconds no longer wipes the resume point.
-- FIX: the pre-roll/resume skip waits for the picture to start before
-  seeking, so the screen no longer stays black until you nudge the seek bar.
+- FIX: the pre-roll ident skip waits for the picture to start before seeking,
+  so the screen no longer stays black until you nudge the seek bar.
 - FIX: on hardware (L1) Widevine, the key collection now matches the tier
   the stream serves, preventing an intermittent no-key failure.
 - FIX: an intermittent licence error during live key rotation.
