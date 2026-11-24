@@ -18,6 +18,7 @@ Capture-confirmed behaviour (tools/probe.py):
 """
 
 import json
+import time
 import re
 from urllib.parse import quote, urlparse, parse_qs, urljoin
 
@@ -162,7 +163,7 @@ def build(api, rating_key):
             nxt = api.next_item(item_meta["ratingKey"])
         except Exception as exc:
             kodiutils.log("up next lookup failed: %s" % exc)
-    _remember(item_meta, nxt)
+    _remember(item_meta, nxt, manifest)
     return li
 
 
@@ -186,7 +187,10 @@ def _widevine(li, license_url, headers):
         li.setProperty("inputstream.adaptive.license_type", "com.widevine.alpha")
         li.setProperty("inputstream.adaptive.license_key", "%s|%s|R{SSM}|" % (license_url, req))
         if android:
-            li.setProperty("inputstream.adaptive.secure_decoder", "true")
+            # Before the JSON drm config (ISA < 22.1.5) the secure decoder is
+            # asked for through license_flags; there is no secure_decoder
+            # property on those versions (CompKodiProps.cpp, Omega branch).
+            li.setProperty("inputstream.adaptive.license_flags", "force_secure_decoder")
 
 
 def _isa_version():
@@ -198,7 +202,7 @@ def _isa_version():
     return tuple((parts + [0, 0, 0])[:3])
 
 
-def _remember(m, nxt=None):
+def _remember(m, nxt=None, path=None):
     """Hand the playing title to service.py: /timeline progress reports,
     the credits marker and the next episode for the skip-buttons countdown."""
     markers = m.get("Marker") or []
@@ -217,4 +221,8 @@ def _remember(m, nxt=None):
     xbmcgui.Window(10000).setProperty("plexondemand.playing", json.dumps({
         "ratingKey": m.get("ratingKey"), "key": m.get("key") or "/library/metadata/%s" % m.get("ratingKey"),
         "duration": m.get("duration") or 0, "credits": credits, "intro": intro,
-        "next": (nxt or {}).get("ratingKey")}))
+        "next": (nxt or {}).get("ratingKey"),
+        # The service only takes this for the video it was meant for: the
+        # same stream, started soon after. If playback never starts (stream
+        # error), a later, unrelated video must not inherit it.
+        "path": path, "at": time.time()}))

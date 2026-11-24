@@ -30,7 +30,7 @@ from concurrent.futures import ThreadPoolExecutor
 import requests
 
 from . import kodiutils
-from .api import PlexVodApi, _provider_base, image
+from .api import PlexApiError, PlexVodApi, _provider_base, image
 
 EPG_ID = "tv.plex.provider.epg"
 EPG_BASE = "https://epg.provider.plex.tv"
@@ -54,8 +54,11 @@ class LiveApi(PlexVodApi):
         out = []
         # The provider root is {"MediaProvider": ...} at the top level, not
         # inside a MediaContainer like everything else (probe round 18).
-        resp = self.session.get(self.base + "/", headers=self.headers(), timeout=25)
-        data = resp.json() if resp.status_code == 200 else {}
+        try:
+            resp = self.session.get(self.base + "/", headers=self.headers(), timeout=25)
+            data = resp.json() if resp.status_code == 200 else {}
+        except (requests.RequestException, ValueError) as exc:
+            raise PlexApiError("Live TV filters -> %s" % exc.__class__.__name__)
         provider = data.get("MediaProvider") or (data.get("MediaContainer") or {}).get("MediaProvider") or {}
         for f in provider.get("Feature") or []:
             if f.get("type") != "grid":
@@ -66,7 +69,9 @@ class LiveApi(PlexVodApi):
         return out
 
     def channels(self, key=ALL):
-        return [c for c in self._get(key).get("Channel") or [] if not c.get("hidden")]
+        # A channel without an id can't be played (the stream is keyed by it)
+        # and would break IPTV Manager's channel list, so it is left out.
+        return [c for c in self._get(key).get("Channel") or [] if c.get("id") and not c.get("hidden")]
 
     def stream_url(self, channel_id):
         return self.base + "/library/parts/%s.m3u8" % channel_id

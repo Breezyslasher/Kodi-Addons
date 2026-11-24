@@ -121,6 +121,8 @@ class SkipController(object):
         self.own_credits = credits
         self.done = set()                # segments dismissed or used
         self.shown_at = None
+        self.elapsed = 0.0               # playing time the button has been up
+        self._last = None                # (position, now) at the last tick
 
     def close(self):
         d = getattr(self, "dialog", None)
@@ -155,18 +157,25 @@ class SkipController(object):
             self.close()
             if seg:
                 self._open(seg, now)
+                self._last = (pos, now)  # the countdown runs from here
             return
         if not seg:
             return
+        # Count only while the video moves: paused at the credits (position
+        # unchanged), the countdown waits instead of starting the next episode.
+        last_pos, last_now = self._last or (pos, now)
+        if pos != last_pos:
+            self.elapsed += max(0.0, now - last_now)
+        self._last = (pos, now)
         if seg == "credits":
-            left = NEXT_DELAY_SECS - int(now - self.shown_at)
+            left = NEXT_DELAY_SECS - int(self.elapsed)
             if left <= 0:
                 self.done.add("credits")
                 self.close()
                 self.play_next()
                 return
             self.dialog.set_primary(self.labels["next"] % left)
-        elif now - self.shown_at >= SKIP_SHOW_SECS:
+        elif self.elapsed >= SKIP_SHOW_SECS:
             self.done.add(seg)       # out of the way; Kodi's OSD is back
             self.close()
 
@@ -177,6 +186,8 @@ class SkipController(object):
         else:
             primary, secondary = self.labels[seg], ""
         self.segment, self.shown_at = seg, now
+        self.elapsed = 0.0
+        self._last = None
         d = SkipDialog(SKIN_FILE, self.skin_path, "default", "1080i")
         d.primary_label, d.secondary_label = primary, secondary
         self.dialog = d

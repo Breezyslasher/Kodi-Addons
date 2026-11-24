@@ -86,7 +86,7 @@ add-on's service has to reload with the module available.
 
 ## Endpoint check
 Plex On Demand is one entry in the shared `.github/workflows/endpoint-checks.yml` matrix:
-`tools/check_endpoints.py`, which runs three parts in turn and fails if any fails. The daily
+`tools/check_endpoints.py`, which runs four parts in turn and fails if any fails. The daily
 scheduled run files one rolling issue labelled `plexondemand-endpoint`.
 1. **spec**: `tools/endpoints.json` through the shared engine (token, PIN, providers, rows,
    genres and a genre's movies, store, search).
@@ -94,6 +94,8 @@ scheduled run files one rolling issue labelled `plexondemand-endpoint`.
    (playback incl. the DRM licence, watch state, watchlist, rentals, ...).
 3. **service**: `tools/test_service.py`, the service and Skip Buttons wiring with Kodi stubbed
    (no network).
+4. **offline**: `tools/test_offline.py`, failure paths with Kodi and the network stubbed
+   (offline, revoked sign-in, the ISA secure-decoder flag, a channel without an id).
 
 Pushes that touch these files or the addon's `lib/`/`service.py` run the matrix too.
 

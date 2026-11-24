@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="script.module.skipbuttons" name="Skip Buttons" version="1.0.1" provider-name="Breezyslasher">
+<addon id="script.module.skipbuttons" name="Skip Buttons" version="1.0.2" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.0"/>
 	</requires>
@@ -10,7 +10,10 @@
 		<platform>all</platform>
 		<license>GPL-3.0-or-later</license>
 		<source>https://github.com/Breezyslasher/Kodi-Addons</source>
-		<news>v1.0.1
+		<news>v1.0.2
+- Paused video: the Next episode countdown and the Skip buttons wait instead of running on
+
+v1.0.1
 - A click or tap anywhere but the buttons dismisses the pop-up
 
 v1.0.0

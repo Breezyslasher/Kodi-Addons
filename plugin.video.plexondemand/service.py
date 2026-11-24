@@ -22,6 +22,7 @@ from lib.api import PlexVodApi
 PROP = "plexondemand.playing"
 INTERVAL = 30
 WATCHED_AT = 0.90       # past this share of the runtime, a stop counts as watched
+HANDOFF_MAX_AGE = 300   # seconds between playback.build() and the video starting
 
 try:
     from skipbuttons import SkipController
@@ -38,6 +39,7 @@ class Player(xbmc.Player):
         self.last_time = 0
         self.skip = None
         self.next_started = False
+        self.paused = False
         if SkipController:
             self.skip = SkipController(self, play_next=self.play_next,
                                        autoplay=lambda: kodiutils.get_setting_bool("autoplay_next", True))
@@ -90,8 +92,9 @@ class Player(xbmc.Player):
             self._finish()
         raw = xbmcgui.Window(10000).getProperty(PROP)
         xbmcgui.Window(10000).clearProperty(PROP)
-        self.current = json.loads(raw) if raw else None
+        self.current = self._claim(json.loads(raw)) if raw else None
         self.next_started = False
+        self.paused = False
         if not self.current:
             if self.skip:  # another add-on's video: no button left from an earlier title
                 self.skip.reset()
@@ -110,11 +113,37 @@ class Player(xbmc.Player):
                 marks["intro"] = tuple(self.current["intro"])
             self.skip.reset(marks, has_next=bool(self.current.get("next")))
 
+    def periodic(self):
+        """The regular timeline report, with the state Plex should see."""
+        if time.time() - self.last_report >= INTERVAL:
+            self._report("paused" if self.paused else "playing")
+
+    def _claim(self, handoff):
+        """The handed-over title, only if it is what has just started: set by
+        playback.build() moments ago, and this stream or this title's plugin
+        URL is playing. A stale one (its playback never started) is dropped,
+        so an unrelated video is never reported, scrobbled or counted down."""
+        if time.time() - float(handoff.get("at") or 0) > HANDOFF_MAX_AGE:
+            kodiutils.log("dropping a stale playing-title handoff")
+            return None
+        try:
+            playing = self.getPlayingFile()
+        except RuntimeError:
+            return handoff
+        path = (handoff.get("path") or "").split("?")[0]
+        rk = handoff.get("ratingKey") or ""
+        if (path and path in playing) or (rk and "rk=%s" % rk in playing):
+            return handoff
+        kodiutils.log("playing file is not the handed-over title; ignoring it")
+        return None
+
     def onPlayBackPaused(self):
         self.tick()
+        self.paused = True
         self._report("paused")
 
     def onPlayBackResumed(self):
+        self.paused = False
         self._report("playing")
 
     def onPlayBackStopped(self):
@@ -133,6 +162,8 @@ class Player(xbmc.Player):
 
     def onPlayBackError(self):
         self.current = None
+        # A title that failed to start must not be picked up by the next video.
+        xbmcgui.Window(10000).clearProperty(PROP)
         if self.skip:
             self.skip.reset()
 
@@ -163,8 +194,7 @@ def run():
                     player.skip.tick(player.getTime(), time.time())
             except RuntimeError:
                 pass
-        if time.time() - player.last_report >= INTERVAL:
-            player._report("playing")
+        player.periodic()
     # Let go of the Player (and the Skip Buttons dialog it holds) before the
     # interpreter ends, or Kodi logs "left several classes in memory".
     if player.skip:

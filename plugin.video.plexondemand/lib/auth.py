@@ -128,7 +128,21 @@ class PlexAuth(object):
     def invalidate(self):
         """Drop a token the provider rejected (401) so the next call re-mints."""
         if self.signed_in():
-            return False
+            # A 401 with the user's token: ask plex.tv whether the token
+            # itself is dead (revoked, password changed) or only refused here.
+            tok = _account().get("plex_token")
+            try:
+                h = base_headers()
+                h["X-Plex-Token"] = tok
+                status = requests.get(PLEX_TV + "/user", headers=h, timeout=TIMEOUT).status_code
+            except requests.RequestException:
+                return False
+            if status != 401:
+                return False
+            kodiutils.log("Plex sign-in revoked; continuing anonymously")
+            _save_account(plex_token="", account_name="")
+            kodiutils.notify(kodiutils.addon().getLocalizedString(32087), time_ms=8000)
+            return True
         _save_account(anon_token="")
         return True
 

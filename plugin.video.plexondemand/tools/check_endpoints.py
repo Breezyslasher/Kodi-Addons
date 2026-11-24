@@ -2,7 +2,7 @@
 """Does Plex still answer the way plugin.video.plexondemand expects?
 
 The one entry for Plex On Demand in .github/workflows/endpoint-checks.yml. It
-runs three checks in turn and fails if any of them fails:
+runs four checks in turn and fails if any of them fails:
 
   1. spec     - tools/endpoints.json through the shared engine
                 (.github/endpoint-check/check_endpoints.py): token, PIN,
@@ -12,6 +12,8 @@ runs three checks in turn and fails if any of them fails:
                 watchlist, related, rentals, ...).
   3. service  - tools/test_service.py: service.py and the Skip Buttons wiring
                 with Kodi stubbed; no network.
+  4. offline  - tools/test_offline.py: failure paths (offline, revoked
+                sign-in, ISA secure-decoder flag, channel without an id).
 
     python3 plugin.video.plexondemand/tools/check_endpoints.py
 
@@ -29,6 +31,7 @@ PARTS = [
               os.path.join(TOOLS, "endpoints.json")]),
     ("addon", [os.path.join(TOOLS, "smoke_test.py")]),
     ("service", [os.path.join(TOOLS, "test_service.py")]),
+    ("offline", [os.path.join(TOOLS, "test_offline.py")]),
 ]
 
 

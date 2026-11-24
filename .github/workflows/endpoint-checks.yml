@@ -28,6 +28,8 @@ on:
       - 'plugin.video.plexondemand/tools/check_endpoints.py'
       - 'plugin.video.plexondemand/tools/smoke_test.py'
       - 'plugin.video.plexondemand/tools/test_service.py'
+      - 'plugin.video.plexondemand/tools/test_offline.py'
+      - 'plugin.video.plexondemand/default.py'
       - 'plugin.video.plexondemand/lib/**'
       - 'plugin.video.plexondemand/service.py'
       - 'script.module.skipbuttons/lib/**'

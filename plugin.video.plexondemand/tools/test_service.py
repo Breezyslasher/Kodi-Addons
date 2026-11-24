@@ -9,6 +9,7 @@ Usage: python3 tools/test_service.py
 import json
 import os
 import sys
+import time
 import types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -22,12 +23,13 @@ PROPS, BUILTINS, SETTINGS = {}, [], {}
 
 class _Player(object):
     def __init__(self, *a):
-        self.pos, self.playing, self.seeks = 0.0, True, []
+        self.pos, self.playing, self.seeks, self.file = 0.0, True, [], ""
 
     def isPlaying(self): return self.playing
     def isPlayingVideo(self): return self.playing
     def getTime(self): return self.pos
     def seekTime(self, t): self.seeks.append(t)
+    def getPlayingFile(self): return self.file
 
 
 class _Dialog(object):
@@ -107,10 +109,13 @@ def plays():
 def start(p, **cur):
     cur.setdefault("ratingKey", "EP1")
     cur.setdefault("key", "/library/metadata/" + cur["ratingKey"])
+    cur.setdefault("at", time.time())
+    playing_file = cur.pop("_file", "plugin://plugin.video.plexondemand/?action=play&rk=%s" % cur["ratingKey"])
     PROPS[service.PROP] = json.dumps(cur)
     del BUILTINS[:]
     del CALLS[:]
     p.pos = 0
+    p.file = playing_file
     p.onAVStarted()
 
 
@@ -194,6 +199,45 @@ p.tick()
 p.onPlayBackStopped()
 check("F stop mid-movie does not scrobble", not any(c[0] == "/actions/scrobble" for c in CALLS))
 
+# H. the handoff only goes to the video it was meant for (audit: a title whose
+#    playback never started was inherited by the next, unrelated video)
+start(p, ratingKey="OLD", duration=2400000, credits=2300.0, next="EP2", at=time.time() - 3600)
+check("H stale handoff ignored", p.current is None)
+start(p, ratingKey="T1", duration=2400000, next="EP2", _file="http://other.addon/stream.m3u8")
+check("H other add-on's stream ignored", p.current is None)
+p.skip.tick(2300, 100)
+check("H no countdown on the other video", p.skip.dialog is None)
+start(p, ratingKey="T2", duration=2400000, path="https://vod.provider.plex.tv/library/parts/abc-hls.m3u8",
+      _file="https://vod.provider.plex.tv/library/parts/abc-hls.m3u8")
+check("H matched by the stream URL", p.current and p.current["ratingKey"] == "T2")
+start(p, ratingKey="T3", duration=2400000)
+check("H matched by the plugin URL (rk)", p.current and p.current["ratingKey"] == "T3")
+PROPS[service.PROP] = json.dumps({"ratingKey": "FAILED", "at": time.time()})
+p.onPlayBackError()
+check("H playback error clears the handoff", service.PROP not in PROPS)
+
+# I. paused at the credits: the countdown waits (audit: it ran on wall time)
+start(p, duration=2400000, credits=2300.0, next="EP2")
+p.skip.tick(2300, 100)
+for now in range(101, 160):
+    p.skip.tick(2300.5, now)       # paused: position frozen for a minute
+check("I paused at the credits: no next episode", not plays() and p.skip.segment == "credits", plays())
+for i in range(1, 12):
+    p.skip.tick(2300.5 + i, 160 + i)
+check("I resumed: countdown finishes and plays next once", len(plays()) == 1, plays())
+
+# J. a paused title is reported as paused on the regular timeline report
+start(p, duration=2400000, next=None)
+p.onPlayBackPaused()
+del CALLS[:]
+p.last_report = 0
+p.periodic()
+check("J periodic report while paused says paused", CALLS and CALLS[-1][1].get("state") == "paused", CALLS[-1:])
+p.onPlayBackResumed()
+p.last_report = 0
+p.periodic()
+check("J after resume it says playing", CALLS[-1][1].get("state") == "playing", CALLS[-1:])
+
 # G. _remember: prefer the final credits marker, carry intro
 playback._remember({"ratingKey": "X", "duration": 3000000, "Marker": [
     {"type": "credits", "startTimeOffset": 2900000, "endTimeOffset": 2950000},
@@ -205,6 +249,9 @@ check("G intro handed over", h["intro"] == [30.0, 90.0], h["intro"])
 playback._remember({"ratingKey": "X", "Marker": [
     {"type": "credits", "startTimeOffset": 100000}, {"type": "credits", "startTimeOffset": 200000}]})
 check("G without final: latest credits start", json.loads(PROPS[service.PROP])["credits"] == 200.0)
+playback._remember({"ratingKey": "X"}, None, "https://vod/x-hls.m3u8")
+h = json.loads(PROPS[service.PROP])
+check("G handoff carries the stream and the time", h["path"] == "https://vod/x-hls.m3u8" and time.time() - h["at"] < 5)
 
 print("\n%d failure(s)" % len(FAIL))
 sys.exit(1 if FAIL else 0)

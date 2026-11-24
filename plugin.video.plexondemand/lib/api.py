@@ -111,7 +111,12 @@ class PlexVodApi(object):
     def _get(self, url, params=None, method="GET", retry=True):
         if not url.startswith("http"):
             url = self.base + url
-        resp = self.session.request(method, url, params=params, headers=self.headers(), timeout=TIMEOUT)
+        try:
+            resp = self.session.request(method, url, params=params, headers=self.headers(), timeout=TIMEOUT)
+        except requests.RequestException as exc:
+            # Offline, DNS, timeout, TLS...: report it like any other API
+            # failure so the router can end the directory cleanly.
+            raise PlexApiError("%s %s -> %s" % (method, url.split("?")[0], exc.__class__.__name__))
         if resp.status_code == 401 and retry and self.auth.invalidate():
             return self._get(url, params, method, retry=False)
         if resp.status_code >= 400:

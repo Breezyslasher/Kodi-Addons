@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.20.12" provider-name="Breezyslasher">
+<addon id="plugin.video.plexondemand" name="Plex On Demand" version="2026.11.24" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
 		<import addon="inputstream.adaptive" version="21.0.0"/>
 		<import addon="script.module.inputstreamhelper" version="0.5.10" optional="true"/>
-		<import addon="script.module.skipbuttons" version="1.0.1"/>
+		<import addon="script.module.skipbuttons" version="1.0.2"/>
 	</requires>
 	<extension point="xbmc.python.pluginsource" library="default.py">
 		<provides>video</provides>
@@ -30,7 +30,16 @@ Unofficial; not affiliated with or endorsed by Plex, Inc.</description>
 			<icon>resources/icon.png</icon>
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
-		<news>v2026.11.20.12
+		<news>v2026.11.24
+- A title whose playback never started is no longer reported to Plex (or counted down) when the next, unrelated video plays
+- Pausing at the credits pauses the Next episode countdown (Skip Buttons 1.0.2)
+- Paused playback is reported to Plex as paused
+- No connection: an error message instead of a broken menu
+- A revoked Plex sign-in falls back to anonymous with a notice instead of failing every call
+- Android on Kodi 21: Widevine titles ask for the secure decoder the way InputStream Adaptive 21 expects
+- Live TV: a channel without an id no longer breaks IPTV Manager
+
+v2026.11.20.12
 - Live TV channels are never marked as watched (no resume prompt either)
 - What's on later: a channel's context menu lists the next 24 hours
 
