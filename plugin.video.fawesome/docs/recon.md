@@ -124,3 +124,7 @@ Confirmed live 2026-11-21 (`tools/probe_markers.py`, research job):
   first. Confirmed: Looney Tunes S01E01 -> E02 (10389419); Tarzan S01's last
   -> S02E01 (10382633). The website wraps from the last episode to the first;
   the add-on stops instead.
+- The add-on looks the next episode up **after** `setResolvedUrl` (Kodi is
+  already starting the stream) and starts at the episode's own season
+  (`season_no`), so it never delays playback; `service.py` picks it up from
+  the `fawesome.next` home-window property, matched by `nid`.

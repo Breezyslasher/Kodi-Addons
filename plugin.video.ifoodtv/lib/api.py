@@ -313,6 +313,13 @@ class FtApi(object):
         feeds = [s.get("feed") or s.get("url") for s in seasons
                  if isinstance(s, dict) and (s.get("feed") or s.get("url"))]
         nid, season, episode = str(item.get("node_id")), _num(item.get("season")), _num(item.get("episode"))
+        # Start at this episode's own season: earlier seasons cannot hold it,
+        # and paging through them made long shows slow. Seasons without a
+        # season_no keep their place (searched as before).
+        nums = [_num(s.get("season_no") or s.get("season")) for s in seasons
+                if isinstance(s, dict) and (s.get("feed") or s.get("url"))]
+        if season is not None and season in nums:
+            feeds = feeds[nums.index(season):]
         found = False
         for feed in feeds:
             page = 0

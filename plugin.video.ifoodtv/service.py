@@ -5,9 +5,10 @@ What the markers are (confirmed live, docs/recon.md "Skip markers"): every
 title record carries intro_st / intro_et / endcredit_st / endcredit_et in
 seconds; 0 means unset. On iFood.tv only the shows and movies have them
 (credits on about a third, intro rarely); recipe clips have none.
-default.py hands this service the title, its markers and the next episode's
-node_id through a home-window property just before playback starts; nothing
-here touches the network.
+default.py hands this service the title and its markers through a home-window
+property just before playback starts, then the next episode's node_id through
+a second one once it has looked it up (after playback started, so a long
+show never delays it); nothing here touches the network.
 
 Behaviour follows the web player (same Future Today player as Fawesome):
   * Skip intro while inside intro_st..intro_et; it seeks to intro_et.
@@ -27,6 +28,7 @@ import xbmcgui
 from lib import kodiutils as ku
 
 PROP = "ifoodtv.playing"
+NEXT_PROP = "ifoodtv.next"
 
 try:
     from skipbuttons import SkipController
@@ -77,10 +79,34 @@ class Player(xbmc.Player):
             if m.get("credits"):
                 marks["credits"] = m["credits"]
             self.skip.reset(marks, has_next=bool(self.current.get("next")))
+        self.poll_next()
+
+    def poll_next(self):
+        """Pick up the next episode once default.py has looked it up (it does
+        so after playback started). Matched by nid, so a stale answer for an
+        earlier title is never used."""
+        cur = self.current
+        if not cur or not cur.get("next_pending"):
+            return
+        raw = xbmcgui.Window(10000).getProperty(NEXT_PROP)
+        if not raw:
+            return
+        try:
+            got = json.loads(raw)
+        except ValueError:
+            got = {}
+        if str(got.get("nid")) != str(cur.get("nid")):
+            return
+        xbmcgui.Window(10000).clearProperty(NEXT_PROP)
+        cur["next_pending"] = False
+        cur["next"] = got.get("next")
+        if self.skip:
+            self.skip.has_next = bool(cur["next"])
 
     def onPlayBackEnded(self):
         # Also after "Watch credits" or a dismissed countdown -- but not when
         # the countdown already started the next one, or it would play twice.
+        self.poll_next()
         nxt = (self.current or {}).get("next")
         started = self.next_started
         self.current = None
@@ -112,6 +138,8 @@ def run():
     # tick() must run on this loop: the buttons' callbacks fire while it
     # waits in waitForAbort.
     while not monitor.waitForAbort(1):
+        if player.current:
+            player.poll_next()
         if player.current and player.skip:
             try:
                 if player.isPlayingVideo():

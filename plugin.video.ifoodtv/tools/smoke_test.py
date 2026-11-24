@@ -145,7 +145,8 @@ xbmcplugin = _mod("xbmcplugin")
 xbmcplugin.addDirectoryItem = lambda h, url, li, folder=False: RESULT["items"].append((url, li, folder))
 xbmcplugin.setContent = lambda h, c: RESULT.__setitem__("content", c)
 xbmcplugin.endOfDirectory = lambda h, succeeded=True, cacheToDisc=True: RESULT.__setitem__("ok", succeeded)
-xbmcplugin.setResolvedUrl = lambda h, ok, li: RESULT.update(resolved=ok, li=li)
+xbmcplugin.setResolvedUrl = lambda h, ok, li: RESULT.update(resolved=ok, li=li,
+    next_at_resolve="ifoodtv.next" in PROPS)
 
 sys.path.insert(0, ADDON)
 import default  # noqa: E402
@@ -289,7 +290,9 @@ if pair:
     PROPS.clear()
     run("action=play&nid=%s" % pair[0]["node_id"])
     hand = json.loads(PROPS.get("ifoodtv.playing") or "{}")
-    ok = str(hand.get("next")) == str(pair[1]["node_id"])
+    hand["next"] = json.loads(PROPS.get("ifoodtv.next") or "{}").get("next")
+    # looked up after setResolvedUrl, so it never delays the start
+    ok = str(hand.get("next")) == str(pair[1]["node_id"]) and not RESULT.get("next_at_resolve")
     print("%s  hand-off episode %-13s next=%s (want %s) marks=%s" % (
         "OK  " if ok else "FAIL", str(pair[0].get("series_name"))[:13], hand.get("next"),
         pair[1]["node_id"], hand.get("marks")))

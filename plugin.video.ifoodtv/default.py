@@ -19,6 +19,8 @@ SUBTITLE_DIR = "subtitles"
 # Hand-off to service.py (Skip Buttons): the title now starting, its intro /
 # credits markers and the next episode's node_id.
 PLAYING_PROP = "ifoodtv.playing"
+# The next episode, looked up after playback has started (see hand_off).
+NEXT_PROP = "ifoodtv.next"
 
 HANDLE = int(sys.argv[1]) if len(sys.argv) > 1 else -1
 BASE = sys.argv[0] if sys.argv else "plugin://plugin.video.ifoodtv/"
@@ -318,24 +320,37 @@ def play(api, nid):
         subs = fetch_subtitles(api, item)
         if subs:
             li.setSubtitles(subs)
-    hand_off(api, nid, item, url)
+    pending = hand_off(nid, item, url)
     ku.log("play %s (%s) %s" % (nid, how, url))
     xbmcplugin.setResolvedUrl(HANDLE, True, li)
+    if pending:
+        hand_off_next(api, nid, item)
 
 
-def hand_off(api, nid, item, url):
-    """Tell service.py what is starting: markers for Skip intro / the credits
-    countdown, and (for an episode) the next one -- looked up now, while the
-    plugin still runs, so the service never blocks on the network."""
-    nxt = None
-    if is_episode(item) and ku.get_setting_bool("autoplay_next", True):
-        try:
-            nxt = api.next_episode(item)
-        except Exception as exc:  # noqa: BLE001  never fail playback over it
-            ku.log("next episode lookup failed: %r" % (exc,))
+def hand_off(nid, item, url):
+    """Tell service.py what is starting: the markers for Skip intro and the
+    credits countdown. No network here, so playback is never held up.
+    Returns True when the next episode still has to be looked up."""
+    pending = is_episode(item) and ku.get_setting_bool("autoplay_next", True)
     marks = {k: list(v) if isinstance(v, tuple) else v for k, v in skip_markers(item).items()}
-    xbmcgui.Window(10000).setProperty(PLAYING_PROP, json.dumps(
-        {"nid": str(nid), "url": url, "marks": marks, "next": nxt}))
+    home = xbmcgui.Window(10000)
+    home.clearProperty(NEXT_PROP)
+    home.setProperty(PLAYING_PROP, json.dumps(
+        {"nid": str(nid), "url": url, "marks": marks, "next": None, "next_pending": bool(pending)}))
+    return pending
+
+
+def hand_off_next(api, nid, item):
+    """Look up the next episode after setResolvedUrl -- Kodi is already
+    starting the stream while this runs -- and hand it to service.py, which
+    matches it to the playing title by nid. An empty next means there is none
+    (or the lookup failed): the service then simply does not offer one."""
+    nxt = None
+    try:
+        nxt = api.next_episode(item)
+    except Exception as exc:  # noqa: BLE001  never fail playback over it
+        ku.log("next episode lookup failed: %r" % (exc,))
+    xbmcgui.Window(10000).setProperty(NEXT_PROP, json.dumps({"nid": str(nid), "next": nxt}))
 
 
 def fetch_subtitles(api, item):

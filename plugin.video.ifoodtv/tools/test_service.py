@@ -190,6 +190,41 @@ p.onPlayBackEnded()
 check("G other add-on's video: nothing plays at its end", not plays())
 p.file = STREAM
 
+# I. next episode arrives after playback started (looked up after resolve)
+PROPS[service.PROP] = json.dumps({"nid": "10389418", "url": STREAM, "marks": {"credits": 365},
+                                  "next": None, "next_pending": True})
+PROPS.pop(service.NEXT_PROP, None)
+del BUILTINS[:]
+p.onAVStarted()
+check("I pending: no countdown offered yet", p.skip.has_next is False)
+PROPS[service.NEXT_PROP] = json.dumps({"nid": "999", "next": "123"})
+p.poll_next()
+check("I stale answer for another title is ignored", p.skip.has_next is False and service.NEXT_PROP in PROPS)
+PROPS[service.NEXT_PROP] = json.dumps({"nid": "10389418", "next": "10389419"})
+p.poll_next()
+check("I late next picked up", p.skip.has_next is True and p.current["next"] == "10389419")
+p.skip.tick(365, 100)
+p.skip.tick(376, 111)
+check("I late next: countdown plays it", plays() == [NEXT], plays())
+
+# J. lookup finished with no next (last episode / failure): nothing at the end
+PROPS[service.PROP] = json.dumps({"nid": "10389418", "url": STREAM, "marks": {},
+                                  "next": None, "next_pending": True})
+del BUILTINS[:]
+p.onAVStarted()
+PROPS[service.NEXT_PROP] = json.dumps({"nid": "10389418", "next": None})
+p.onPlayBackEnded()
+check("J no next: nothing plays at the end", not plays())
+
+# K. playback ends before the lookup answered: nothing plays, no crash
+PROPS[service.PROP] = json.dumps({"nid": "10389418", "url": STREAM, "marks": {},
+                                  "next": None, "next_pending": True})
+PROPS.pop(service.NEXT_PROP, None)
+del BUILTINS[:]
+p.onAVStarted()
+p.onPlayBackEnded()
+check("K ended before the lookup: nothing plays", not plays())
+
 # H. no hand-off at all (e.g. a library item): nothing
 PROPS.pop(service.PROP, None)
 p.onAVStarted()

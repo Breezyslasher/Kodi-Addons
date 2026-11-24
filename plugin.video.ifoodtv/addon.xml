@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.ifoodtv" name="iFood.tv" version="2026.11.22" provider-name="Breezyslasher">
+<addon id="plugin.video.ifoodtv" name="iFood.tv" version="2026.11.22.1" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -27,6 +27,10 @@ Known gaps: the service is ad-supported and its web player requests ads separate
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.11.22 (.1) - Faster start for episodes
+- Next episode no longer delays the start of an episode: it is looked up
+  after playback has begun, and only from the episode's own season on (long
+  shows used to page through every season first).
 2026.11.22 - Skip intro and Next episode
 - Shows and movies in Movies &amp; Shows: a Next episode countdown with Watch
   credits when an episode's credits start, and Skip intro where the service

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.21.3" provider-name="Breezyslasher">
+<addon id="plugin.video.fawesome" name="Fawesome" version="2026.11.21.4" provider-name="Breezyslasher">
 	<requires>
 		<import addon="xbmc.python" version="3.0.1"/>
 		<import addon="script.module.requests" version="2.31.0"/>
@@ -29,6 +29,10 @@ This add-on uses Fawesome's undocumented website API and may need updating when 
 			<fanart>resources/fanart.jpg</fanart>
 		</assets>
 		<news>
+2026.11.21 (.4) - Faster start for episodes
+- Next episode no longer delays the start of an episode: it is looked up
+  after playback has begun, and only from the episode's own season on (long
+  shows used to page through every season first).
 2026.11.21 (.3) - Skip intro and Next episode
 - Skip intro while a title's intro plays, and at the credits of an episode a
   Next episode countdown with Watch credits -- from Fawesome's own intro and

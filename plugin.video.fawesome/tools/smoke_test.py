@@ -141,7 +141,8 @@ xbmcplugin = _mod("xbmcplugin")
 xbmcplugin.addDirectoryItem = lambda h, url, li, folder=False: RESULT["items"].append((url, li, folder))
 xbmcplugin.setContent = lambda h, c: RESULT.__setitem__("content", c)
 xbmcplugin.endOfDirectory = lambda h, succeeded=True, cacheToDisc=True: RESULT.__setitem__("ok", succeeded)
-xbmcplugin.setResolvedUrl = lambda h, ok, li: RESULT.update(resolved=ok, li=li)
+xbmcplugin.setResolvedUrl = lambda h, ok, li: RESULT.update(resolved=ok, li=li,
+    next_at_resolve="fawesome.next" in PROPS)
 
 sys.path.insert(0, ADDON)
 import default  # noqa: E402
@@ -266,8 +267,11 @@ if looney:
     if e1 and e2:
         run(q(e1[0]))
         hand = json.loads(PROPS.get("fawesome.playing") or "{}")
+        hand["next"] = json.loads(PROPS.get("fawesome.next") or "{}").get("next")
         want = re.search(r"nid=(\d+)", e2[0]).group(1)
-        ok = str(hand.get("next")) == want and "intro" in (hand.get("marks") or {})
+        # looked up after setResolvedUrl, so it never delays the start
+        ok = (str(hand.get("next")) == want and "intro" in (hand.get("marks") or {})
+              and not RESULT.get("next_at_resolve"))
         print("%s  hand-off S01E01                next=%s (want %s) marks=%s" % (
             "OK  " if ok else "FAIL", hand.get("next"), want, hand.get("marks")))
         if not ok:
